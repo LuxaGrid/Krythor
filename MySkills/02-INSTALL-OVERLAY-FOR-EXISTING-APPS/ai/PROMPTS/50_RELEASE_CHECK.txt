@@ -1,0 +1,20 @@
+Follow /ai/MASTER_PROMPT.md exactly.
+
+RELEASE CHECK ONLY (no features):
+
+1) Run verification:
+- scripts/check.sh or scripts/check.ps1
+- plus any app-specific checks you can identify
+
+2) Ensure:
+- .env.example includes all referenced env vars
+- no secrets are committed
+- deploy config is consistent (firebase.json, etc.) — read-only unless requested
+- basic app start instructions exist (README or docs)
+
+3) Output readiness status:
+- READY or NOT READY
+- What blocks release
+- Exact steps to resolve
+
+Update /ai/AI_CHANGELOG.md.

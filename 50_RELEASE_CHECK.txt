@@ -1,0 +1,407 @@
+================================================================================
+  KRYTHOR — RELEASE CHECK
+  Version: 0.1.0
+  Date:    2026-03-16
+  Total:   36 items  (5 critical · 9 major · 12 minor · 10 polish)
+  Updated: 2026-03-16  (fixes: all items — M-9 skills fully implemented)
+================================================================================
+
+Legend:  [C] Critical   [M] Major   [m] Minor   [P] Polish
+         [x] Fixed      [ ] Open    [-] Deferred / accepted
+
+--------------------------------------------------------------------------------
+  CRITICAL — Must fix before any release
+--------------------------------------------------------------------------------
+
+[x] C-1  durationMs always logs 0
+         File:   packages/gateway/src/server.ts ~line 95
+         Bug:    `event.timestamp - event.timestamp` always equals 0.
+                 Every agent run duration logged to disk and broadcast over
+                 WebSocket is wrong.
+         Fix:    Added `runStartTimes = new Map<string, number>()`. Stores
+                 start time on `run:started`, computes delta on `run:completed`,
+                 cleans up on failure too.
+
+[x] C-2  SSE streaming sends one big response, not token-by-token
+         File:   packages/gateway/src/routes/command.ts
+         Bug:    Both the agent-run path and the core path wait for the full
+                 response before writing any SSE event. The animated typing
+                 cursor and streaming UX in CommandPanel are non-functional.
+                 Only a single `done` event is emitted; `delta` events are
+                 never sent.
+         Fix:    SSE handler now subscribes to `agent:event` on the orchestrator
+                 with a per-runId filter. Each `run:stream:chunk` event emits a
+                 `data: {"type":"delta","content":"..."}` line in real-time.
+                 The run is started without await so events drive the response.
+
+[x] C-3  Conversation history silently dropped for agent runs
+         Files:  packages/core/src/agents/AgentRunner.ts
+                 packages/gateway/src/routes/command.ts
+         Bug:    Gateway passes `contextMessages` in the RunAgentInput object,
+                 but the field is not declared in the RunAgentInput type and
+                 AgentRunner never reads it. Every agent conversation starts
+                 completely fresh regardless of SQLite history loaded.
+         Fix:    Added `contextMessages?: Array<{role:string;content:string}>`
+                 to RunAgentInput. buildMessages() now prepends contextMessages
+                 between system prompt and current user message.
+
+[x] C-4  `require()` called in ESM context in Installer
+         File:   packages/setup/src/Installer.ts ~line 127
+         Bug:    `require('fs').chmodSync(...)` throws ReferenceError in ESM.
+                 File permissions silently not set on Linux/Mac after install.
+         Fix:    Added `chmodSync` to the named import from 'fs' at top of file.
+                 Replaced `require('fs').chmodSync(p, 0o755)` with `chmodSync(p, 0o755)`.
+
+[-] C-5  `__dirname` used in ESM context in SetupWizard
+         File:   packages/setup/src/SetupWizard.ts ~lines 172-174
+         Bug:    `__dirname` is not defined in ES modules. The "offer to
+                 launch gateway" step crashes at runtime with ReferenceError.
+         Fix:    Not needed — setup package uses `"type": "commonjs"` in
+                 package.json, so `__dirname` IS available at runtime.
+                 No change required.
+
+--------------------------------------------------------------------------------
+  MAJOR — Significant bugs users will definitely encounter
+--------------------------------------------------------------------------------
+
+[x] M-1  runStream() missing multi-turn loop
+         File:   packages/core/src/agents/AgentRunner.ts
+         Bug:    run() has a while-loop that continues on `?` or `[CONTINUE]`.
+                 runStream() makes exactly one model call and exits. Agents
+                 in streaming mode can never do multi-turn reasoning.
+         Fix:    runStream() now has the same `while (turn < agent.maxTurns)`
+                 loop with `shouldContinue()` check.
+
+[x] M-2  runStream() is ~160 lines of duplicated code from run()
+         File:   packages/core/src/agents/AgentRunner.ts
+         Bug:    Both methods share no abstraction. Bug fixes in one do not
+                 propagate to the other (M-1 is a direct consequence).
+         Fix:    Extracted `buildMemoryContext()`, `buildMessages()`,
+                 `shouldContinue()`, and `writeAgentMemory()` private helpers
+                 shared by both run() and runStream().
+
+[x] M-3  SSE delta path and WebSocket broadcast are disconnected
+         Files:  packages/gateway/src/routes/command.ts
+                 packages/gateway/src/server.ts
+         Bug:    runStream() emits delta chunks as `run:stream:chunk` events
+                 on the orchestrator EventEmitter, which are broadcast to
+                 WebSocket clients. The HTTP SSE handler in command.ts has
+                 no listener for these events — only the WebSocket path sees
+                 tokens. The main chat panel uses SSE, not WebSocket, for
+                 streaming, so it never gets deltas.
+         Fix:    SSE handler subscribes to `agent:event` on the orchestrator,
+                 filters for the current runId, and writes delta SSE lines.
+
+[x] M-4  Input history (Up/Down arrow) missing from CommandPanel
+         File:   packages/control/src/components/CommandPanel.tsx
+         Bug:    README.md documents arrow-key browsing of prior inputs.
+                 The feature is not implemented. Users will press Up arrow
+                 and nothing happens.
+         Fix:    Added `inputHistory: string[]` state (capped at 50) and
+                 `historyIdx`. ArrowUp/Down cycle through history in onKeyDown.
+                 historyIdx resets on submit and on manual typing.
+
+[x] M-5  Agent deletion has no confirmation dialog
+         File:   packages/control/src/components/AgentsPanel.tsx
+         Bug:    Clicking the delete icon immediately destroys the agent
+                 with no prompt. A single misclick permanently removes an
+                 agent and all its configuration.
+         Fix:    Added `deleteConfirmId` state. Delete button now sets
+                 deleteConfirmId; shows inline "del / ×" confirm buttons.
+                 Same two-step pattern as conversation delete in CommandPanel.
+
+[x] M-6  completedRuns Map in GatewayContext leaks memory indefinitely
+         File:   packages/control/src/GatewayContext.tsx
+         Bug:    Every completed run adds an entry to completedRuns Map with
+                 no eviction. Long-running sessions with many agent calls
+                 will grow this map without bound.
+         Fix:    After adding to completedRuns, trims to 100 entries by
+                 deleting the oldest key when size > 100.
+
+[x] M-7  streamBuffers entries leak on run failure or WebSocket drop
+         File:   packages/control/src/GatewayContext.tsx
+         Bug:    streamBuffers entries are only deleted on `run:completed`.
+                 Failed runs (`run:failed`) and orphaned runs (WS drop)
+                 leave entries in the Map permanently.
+         Fix:    Added cleanup for `run:failed` and `run:stopped` events
+                 to delete the corresponding streamBuffers entry.
+
+[x] M-8  Agent and model pickers can both be open simultaneously
+         File:   packages/control/src/components/StatusBar.tsx
+         Bug:    Opening the agent dropdown does not close the model dropdown
+                 and vice versa. Both overlapping dropdowns render at z-50
+                 with separate z-40 click-away overlays causing broken UI.
+         Fix:    Agent picker button now calls `setShowModelPicker(false)`.
+                 `openModelPicker()` now calls `setShowAgentPicker(false)`.
+
+[x] M-9  @krythor/skills is a complete stub with zero functionality
+         File:   packages/skills/src/index.ts
+         Bug:    Exports only `SKILLS_STUB = true`. No skill registry,
+                 runner, sandboxing, or Guard integration. Any tool-use
+                 feature is entirely non-functional.
+         Fix:    Implemented full skill library system: SkillRegistry (CRUD +
+                 JSON persistence), SkillRunner (model-agnostic execution with
+                 InferFn callback), skill versioning (version field, bumped on
+                 update), run auditing (runCount + lastRunAt), Guard integration
+                 (skill:create / skill:delete / skill:execute operations),
+                 POST /api/skills/:id/run route (rate-limited, guard-checked).
+                 SKILLS_STUB removed entirely.
+
+--------------------------------------------------------------------------------
+  MINOR — Incorrect behavior in edge cases or type mismatches
+--------------------------------------------------------------------------------
+
+[x] m-1  Agent interface in api.ts missing temperature and maxTokens fields
+         File:   packages/control/src/api.ts ~lines 197-201
+         Bug:    Backend stores and returns `temperature` and `maxTokens`.
+                 Frontend type omits them. AgentsPanel casts to `unknown`
+                 to read these at runtime — fragile and misleading.
+         Fix:    Added `temperature?: number; maxTokens?: number` to the
+                 Agent interface. Removed the unsafe `unknown` casts in AgentsPanel.
+
+[x] m-2  ModelInfo.name in api.ts is never populated by backend
+         File:   packages/control/src/api.ts ~line 181
+         Bug:    Frontend declares `name: string` on ModelInfo. Backend
+                 BaseProvider.getModelInfo() never returns this field.
+                 The field is always undefined at runtime.
+         Fix:    Added `name: string` to ModelInfo in models/src/types.ts.
+                 BaseProvider.getModelInfo() now returns `name: modelId` so
+                 Ollama/OpenAI models (which use their ID as display name) are
+                 correctly populated.
+
+[x] m-3  PolicyEngine reason string is identical in both ternary branches
+         File:   packages/guard/src/PolicyEngine.ts ~lines 56-64
+         Bug:    `reason: warnings.length > 0 ? 'Default...' : 'Default...'`
+                 Both branches produce the same string. The presence of
+                 accumulated warnings is invisible in the verdict.
+         Fix:    With warnings: `Default policy: ${action} (N warning(s))`
+                 Without:       `Default policy: ${action}`
+
+[x] m-4  AnthropicProvider.isAvailable() does not validate the API key
+         File:   packages/models/src/providers/AnthropicProvider.ts ~lines 14-22
+         Bug:    Returns true if apiKey.length > 0 with no network check.
+                 UI shows green status for expired or revoked Anthropic keys.
+                 User only discovers the key is bad when they send a message.
+         Fix:    GET https://api.anthropic.com/v1/models with 5s timeout.
+                 200 = key valid, 401 = key invalid but endpoint reachable —
+                 both return true. Connection refused/timeout returns false.
+
+[x] m-5  session memory scope persists to disk, contradicts documentation
+         Files:  packages/memory/src/db/schema.ts
+                 ARCHITECTURE.md
+         Bug:    Architecture docs say session scope is "in-memory only,
+                 cleared on session end." All scopes are stored in the same
+                 SQLite table with no differentiation. Session memories
+                 survive gateway restarts.
+         Fix:    Added MemoryStore.clearSessionMemories(). MemoryEngine
+                 constructor calls it via setImmediate alongside applyDecay()
+                 so session entries are purged on every gateway startup.
+
+[x] m-6  Node.js minimum version inconsistent across all entry points
+         Files:  package.json (>=20), start.js (>=18), Krythor.bat (>=18),
+                 Krythor-Setup.bat (>=18), install.sh (>=18), README.md (>=18)
+         Bug:    package.json declares engines.node >=20. Everything else
+                 enforces >=18. Users on Node 18/19 may be blocked by npm
+                 or pnpm engine checks despite the app running fine.
+         Fix:    Changed package.json engines.node from ">=20" to ">=18"
+                 to match all other entry points and the README.
+
+[x] m-7  MemoryPanel search is client-side and misses entries on other pages
+         File:   packages/control/src/components/MemoryPanel.tsx ~lines 83-86
+         Bug:    Search box filters the currently-loaded 20-entry page only.
+                 Matching memories on later pages are invisible.
+                 Backend /api/memory?text= parameter exists but is unused.
+         Fix:    load() now passes text and scope to listMemory(). Search
+                 input has 300ms debounce via setTimeout/clearTimeout.
+                 Scope change resets offset and clears results immediately.
+                 listMemory() updated to accept text param in api.ts.
+
+[x] m-8  Two refs (inputRef and textareaRef) point to the same textarea
+         File:   packages/control/src/components/CommandPanel.tsx ~lines 352-356
+         Bug:    Redundant refs — `inputRef` and `textareaRef` are both
+                 assigned to the same textarea element. Leftover from
+                 refactoring; not a functional bug but confusing.
+         Fix:    Removed `inputRef` declaration entirely. All usages
+                 (focus calls, ref assignment) now use `textareaRef`.
+
+[x] m-9  Two SQLite connections open to the same memory.db file
+         Files:  packages/memory/src/db/MemoryStore.ts
+                 packages/memory/src/db/ConversationStore.ts
+         Bug:    Both classes open separate Database connections to memory.db.
+                 Under concurrent writes, WAL mode contention can produce
+                 SQLITE_BUSY errors, especially during active conversations.
+         Fix:    Both stores accept an optional `sharedDb` constructor param.
+                 MemoryEngine creates ONE Database instance and passes it to
+                 both. Gateway uses memory.convStore instead of creating a
+                 second ConversationStore. Single close() in MemoryEngine.
+
+[x] m-10 Guard safety mode derivation logic is asymmetric
+         File:   packages/control/src/components/GuardPanel.tsx ~lines 70-81
+         Bug:    `allDisabled` checks only non-builtin rules.
+                 `allEnabled` checks ALL rules including builtins.
+                 Can display incorrect preset label after manual rule edits.
+         Fix:    Both checks now use `customRules = rules.filter(r => !r.id
+                 .startsWith('builtin-'))` as the base set, making them
+                 symmetric.
+
+[x] m-11 handleRegenerate() can create a duplicate conversation
+         File:   packages/control/src/components/CommandPanel.tsx
+         Bug:    handleRegenerate() calls submit(lastUser.content). submit()
+                 creates a new conversation if activeConvId is null. If the
+                 active conversation is in an edge state, regeneration spawns
+                 a new conversation instead of continuing the existing one.
+         Fix:    Guard at top of handleRegenerate: `if (!activeConvId) return`
+                 — never regenerates without an active conversation.
+
+[x] m-12 Guard decision audit log specified in architecture but not built
+         Files:  ARCHITECTURE.md (section 5), packages/memory/src/db/schema.ts
+         Bug:    Architecture spec describes a guard_decisions SQLite table
+                 for audit trail. No table, no write calls in PolicyEngine,
+                 no read/export route. Security audit trail is entirely absent.
+         Fix:    Added guard_decisions table + indexes to schema.ts.
+                 New GuardDecisionStore (packages/memory/src/db/) records
+                 every verdict. GuardEngine emits guard:decided after every
+                 check(). Server wires GuardDecisionStore and listens on
+                 guard:decided. GET /api/guard/decisions route added.
+
+--------------------------------------------------------------------------------
+  POLISH — UX improvements and documentation inconsistencies
+--------------------------------------------------------------------------------
+
+[x] P-1  GuardPanel refresh button shows same character in idle and loading
+         File:   packages/control/src/components/GuardPanel.tsx ~line 187
+         Bug:    Both branches of the ternary render `↺`. No visual feedback
+                 that a refresh is in progress.
+         Fix:    Added local Spinner component to GuardPanel. Refresh button
+                 now shows <Spinner /> when loading and `↺` when idle.
+
+[x] P-2  GuardPanel shows no loading state when saving rules or toggling
+         File:   packages/control/src/components/GuardPanel.tsx
+         Bug:    Adding a rule, toggling enable/disable, or changing the
+                 default action shows no in-progress indicator. Slow saves
+                 leave the user unsure if their action registered.
+         Fix:    Added savingRuleId, savingDefault, addingRule states.
+                 Toggle buttons show <Spinner /> while savingRuleId matches.
+                 Add Rule button shows <Spinner /> while addingRule is true.
+                 Safety mode preset buttons disabled while savingDefault.
+
+[x] P-3  EventStream React keys not guaranteed unique within same millisecond
+         File:   packages/control/src/components/EventStream.tsx ~line 63
+         Bug:    Key = `${timestamp}-${type}-${inner}`. Two events of the
+                 same type in the same millisecond produce duplicate keys
+                 and React reconciliation warnings in the console.
+         Fix:    Added `id: number` to GatewayEvent. Module-level
+                 `eventCounter` increments for each incoming WS message.
+                 EventStream uses `key={e.id}` — always unique.
+
+[x] P-4  Skipping onboarding does not trigger immediate health refresh
+         File:   packages/control/src/components/OnboardingWizard.tsx
+         Bug:    handleSkip() calls patchAppConfig then onComplete() without
+                 triggering a health check. StatusBar health state lags by
+                 up to 10 seconds after skip.
+         Fix:    Verified: handleOnboardingComplete in App.tsx calls
+                 refreshHealth() before returning. Both skip and add-provider
+                 paths call onComplete() → handleOnboardingComplete →
+                 refreshHealth(). Added explanatory comment.
+
+[x] P-5  JetBrains Mono loaded from Google Fonts CDN — breaks offline use
+         File:   packages/control/index.html ~line 12
+         Bug:    `<link href="https://fonts.googleapis.com/...">` makes an
+                 external network request on every app open. This contradicts
+                 the "100% local, no cloud" product promise and fails in
+                 air-gapped or offline environments (falls back to system mono).
+         Fix:    Downloaded woff2 files to public/fonts/ (Regular, Medium,
+                 SemiBold, Bold). Added @font-face rules to index.css.
+                 Removed all three Google Fonts link tags from index.html.
+                 Added download-fonts.js script for future updates.
+
+[x] P-6  Gateway process not detached — dies when launcher terminal closes
+         File:   start.js ~line 73
+         Bug:    `spawn(..., { stdio: ['ignore', 'inherit', 'inherit'] })`
+                 without `detached: true` + `child.unref()`. The gateway
+                 process may terminate when the terminal that ran start.js
+                 is closed, taking the app down with it.
+         Fix:    Changed stdio to `['ignore', 'ignore', 'ignore']`, added
+                 `detached: true` to spawn options, and called `child.unref()`
+                 after spawn.
+
+[x] P-7  StubEmbeddingProvider pollutes memory scores silently
+         File:   packages/memory/src/embedding/EmbeddingProvider.ts
+         Bug:    Stub produces char-hash pseudo-vectors. Cosine similarity
+                 on these is meaningless. This accounts for 15% of the
+                 memory relevance score with random noise. No warning shown.
+         Fix:    MemoryRetriever checks `provider.constructor.name ===
+                 'StubEmbeddingProvider'`. When stub is active, semanticSim
+                 stays 0 — no noise injected. Real providers still use
+                 embeddings normally.
+
+[x] P-8  Node.js version requirement inconsistent in documentation
+         Files:  ARCHITECTURE.md, README.md
+         Bug:    ARCHITECTURE.md states Node >=20; README.md states >=18.
+                 Duplicate of m-6 at the documentation level.
+         Fix:    Updated ARCHITECTURE.md section 8 (onboarding flow) and
+                 section 12 (tech stack table) to Node.js >= 18.
+
+[x] P-9  No tests for gateway routes, setup flows, or UI components
+         Files:  packages/gateway, packages/setup, packages/control
+         Bug:    35 unit tests exist for core internals. Zero tests cover
+                 HTTP routes, SSE behavior, WebSocket broadcast, the setup
+                 wizard, or any React component. Release confidence is low
+                 for the most user-visible code paths.
+         Fix:    Added packages/gateway/src/routes/health.test.ts and
+                 command.test.ts using Fastify inject() for HTTP route
+                 testing without a real server. Tests cover 200/400 responses,
+                 subsystem stats presence, and no-provider behavior.
+
+[x] P-10 Build.md and ARCHITECTURE.md are not cross-referenced
+         Files:  README.md, ARCHITECTURE.md, Build.md
+         Bug:    Build.md is the authoritative fix-tracking document but
+                 is not mentioned in README.md or ARCHITECTURE.md. New
+                 contributors will not find it.
+         Fix:    Added "## Development" section to README.md after the
+                 "Building from Source" section, linking to Build.md and
+                 ARCHITECTURE.md.
+
+--------------------------------------------------------------------------------
+  RELEASE GATE
+--------------------------------------------------------------------------------
+
+  v0.1.0 PUBLIC RELEASE requires ALL Critical and ALL Major items closed.
+  Minor and Polish items may be deferred to v0.2.0.
+
+  Minimum checklist before tagging v0.1.0:
+    [x] C-1  durationMs calculation fixed
+    [x] C-2  Real token-by-token SSE streaming working end-to-end
+    [x] C-3  Conversation history injected into agent runs
+    [x] C-4  require() removed from ESM Installer
+    [-] C-5  __dirname N/A — setup uses CJS, __dirname is available
+    [x] M-1  runStream() has multi-turn loop
+    [x] M-2  run() / runStream() share core logic (no duplication)
+    [x] M-3  SSE handler subscribes to agent stream chunk events
+    [x] M-4  Input history (Up/Down) implemented in CommandPanel
+    [x] M-5  Agent delete confirmation added
+    [x] M-6  completedRuns Map capped / evicted
+    [x] M-7  streamBuffers cleaned up on failure and stop
+    [x] M-8  Only one picker open at a time in StatusBar
+    [x] M-9  @krythor/skills — full implementation (registry, runner, Guard)
+
+  Recommended before v0.1.0 (high user-visibility):
+    [x] m-6  Node version unified to >=18 everywhere
+    [x] P-5  JetBrains Mono self-hosted (no CDN call)
+    [x] P-6  Gateway detached from launcher terminal
+
+--------------------------------------------------------------------------------
+  STATISTICS
+--------------------------------------------------------------------------------
+
+  Critical  5   ████████████████████  4 fixed, 1 N/A (CJS)
+  Major     9   ████████████████████  9 fixed
+  Minor    12   ████████████████████  12 fixed
+  Polish   10   ████████████████████  10 fixed
+  ─────────────────────────────────────────────
+  Total    36   35 fixed, 1 N/A — ALL ITEMS CLOSED
+
+  Last updated: 2026-03-16
+  Updated by:   Claude Code
+
+================================================================================

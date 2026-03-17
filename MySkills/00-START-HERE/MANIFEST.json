@@ -1,0 +1,10 @@
+{
+  "created_at": "2026-02-21T18:41:24.319966Z",
+  "pack_name": "LuxaGrid_OnePack_FINAL",
+  "contains": {
+    "repo_template": "01-REPO-TEMPLATE/",
+    "overlay_for_existing": "02-INSTALL-OVERLAY-FOR-EXISTING-APPS/",
+    "original_skill_zips": "03-CLAUDE-CODE-SKILLS-ORIGINAL-ZIPS/",
+    "reference_guides": "04-GUIDES-REFERENCE/"
+  }
+}

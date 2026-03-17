@@ -1,0 +1,361 @@
+import Fastify from 'fastify';
+import fastifyCors from '@fastify/cors';
+import fastifyWebsocket from '@fastify/websocket';
+import fastifyStatic from '@fastify/static';
+import fastifyRateLimit from '@fastify/rate-limit';
+import { join } from 'path';
+import { existsSync, readFileSync } from 'fs';
+import { homedir, networkInterfaces } from 'os';
+import { KrythorCore, AgentOrchestrator } from '@krythor/core';
+import { MemoryEngine, GuardDecisionStore, OllamaEmbeddingProvider } from '@krythor/memory';
+import { ModelEngine } from '@krythor/models';
+import { GuardEngine } from '@krythor/guard';
+import { SkillRegistry, SkillRunner } from '@krythor/skills';
+import type { SkillEvent } from '@krythor/skills';
+import { registerCommandRoute } from './routes/command.js';
+import { registerMemoryRoutes } from './routes/memory.js';
+import { registerModelRoutes } from './routes/models.js';
+import { registerAgentRoutes } from './routes/agents.js';
+import { registerGuardRoutes } from './routes/guard.js';
+import { registerConfigRoute } from './routes/config.js';
+import { registerConversationRoutes } from './routes/conversations.js';
+import { registerSkillRoutes } from './routes/skills.js';
+import { registerStreamWs } from './ws/stream.js';
+import { logger } from './logger.js';
+import { loadOrCreateToken, verifyToken } from './auth.js';
+import { registerErrorHandler } from './errors.js';
+import { redactErrorMessage } from './redact.js';
+import { checkReadiness } from './readiness.js';
+
+export const GATEWAY_PORT = 47200;
+export const GATEWAY_HOST = '127.0.0.1';
+
+function getDataDir(): string {
+  if (process.platform === 'win32') {
+    return join(process.env['LOCALAPPDATA'] ?? join(homedir(), 'AppData', 'Local'), 'Krythor');
+  }
+  if (process.platform === 'darwin') {
+    return join(homedir(), 'Library', 'Application Support', 'Krythor');
+  }
+  return join(homedir(), '.local', 'share', 'krythor');
+}
+
+export { verifyToken } from './auth.js';
+
+/** Print a warning if the machine has any non-loopback network interfaces,
+ *  since a misconfigured firewall could expose port 47200 to the LAN. */
+export function warnIfNetworkExposed(host: string): void {
+  if (host !== '127.0.0.1' && host !== 'localhost' && host !== '::1') {
+    console.error('\n⚠️  SECURITY WARNING: Krythor is not binding to loopback only.');
+    console.error('   Binding to', host, 'exposes the API to the network with NO authentication.');
+    console.error('   Set KRYTHOR_HOST=127.0.0.1 or add a reverse proxy with auth.\n');
+    return;
+  }
+  // Even on loopback, warn if the port is likely forwarded by firewall rules
+  const nets = networkInterfaces();
+  const publicIps: string[] = [];
+  for (const ifaces of Object.values(nets)) {
+    for (const iface of ifaces ?? []) {
+      if (!iface.internal && iface.family === 'IPv4') publicIps.push(iface.address);
+    }
+  }
+  if (publicIps.length > 0) {
+    // Informational only — loopback binding is safe
+    console.log(`ℹ️  Gateway bound to ${host}:${GATEWAY_PORT} (loopback only — not reachable from network)`);
+  }
+}
+
+export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
+  const dataDir = getDataDir();
+
+  // Load or generate the auth token before the server starts.
+  const authCfg = loadOrCreateToken(join(dataDir, 'config'));
+  if (!authCfg.authDisabled) {
+    if ((authCfg as unknown as Record<string, unknown>)['firstRun']) {
+      console.log('\n🔑 Krythor Gateway — Auth token generated (first run)');
+      console.log('   Token:', authCfg.token);
+      console.log('   Stored in: app-config.json (auto-loaded by UI)\n');
+    }
+  } else {
+    console.warn('\n⚠️  Auth is DISABLED (authDisabled=true in app-config.json). All API routes are unprotected.\n');
+  }
+
+  const isDev = process.env['NODE_ENV'] !== 'production';
+  const app = Fastify({
+    bodyLimit: 1_048_576, // 1 MB — prevents OOM from oversized request bodies
+    logger: isDev
+      ? {
+          level: 'info',
+          transport: {
+            target: 'pino-pretty',
+            options: {
+              colorize: true,
+              translateTime: 'SYS:HH:MM:ss',
+              ignore: 'pid,hostname',
+            },
+          },
+        }
+      : { level: 'info' },
+  });
+
+  // Global error handler — formats all unhandled throws as { code, message, hint?, requestId? }
+  registerErrorHandler(app);
+
+  // CORS — restrict to loopback origins only. Rejects cross-origin requests from
+  // arbitrary websites, preventing DNS rebinding and CSRF-style attacks.
+  await app.register(fastifyCors, {
+    origin: [
+      `http://127.0.0.1:${GATEWAY_PORT}`,
+      `http://localhost:${GATEWAY_PORT}`,
+    ],
+    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    credentials: false,
+  });
+
+  // Content-Security-Policy — injected on every response to restrict what the
+  // served UI can load and connect to. 'unsafe-inline' is required for the token
+  // injection script block added to index.html at serve time.
+  app.addHook('onSend', async (_req, reply) => {
+    reply.header(
+      'Content-Security-Policy',
+      [
+        "default-src 'self'",
+        "script-src 'self' 'unsafe-inline'",
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' data: blob:",
+        `connect-src 'self' ws://127.0.0.1:${GATEWAY_PORT} ws://localhost:${GATEWAY_PORT}`,
+        "frame-ancestors 'none'",
+      ].join('; '),
+    );
+    reply.header('X-Frame-Options', 'DENY');
+    reply.header('X-Content-Type-Options', 'nosniff');
+  });
+
+  // Host header validation — secondary defence against DNS rebinding.
+  // Applied only to /api/* and /ws/* so that static assets load normally.
+  app.addHook('preHandler', async (req, reply) => {
+    const url = req.url ?? '';
+    if (!url.startsWith('/api/') && !url.startsWith('/ws/')) return;
+    const host = req.headers['host'] ?? '';
+    const allowed = [`127.0.0.1:${GATEWAY_PORT}`, `localhost:${GATEWAY_PORT}`];
+    if (!allowed.includes(host)) {
+      reply.code(400).send({ error: 'Invalid Host header — requests must come from localhost' });
+    }
+  });
+
+  // Rate limiting — applied globally; generous limits for local single-user use.
+  // Command/inference routes get a tighter limit to prevent runaway loops.
+  await app.register(fastifyRateLimit, {
+    global: true,
+    max: 300,          // 300 req / minute across all routes
+    timeWindow: 60_000,
+    errorResponseBuilder: () => ({ error: 'Too many requests — slow down' }),
+  });
+
+  // Auth preHandler — protects /api/* and /ws/* routes.
+  // /health is public (UI polls it before token is loaded).
+  if (!authCfg.authDisabled) {
+    app.addHook('preHandler', async (req, reply) => {
+      const url = req.url ?? '';
+      // Public routes — no token required
+      if (url === '/health' || url.startsWith('/health?')) return;
+      if (url === '/ready' || url.startsWith('/ready?')) return;
+      if (!url.startsWith('/api/') && !url.startsWith('/ws/')) return;
+
+      const authHeader = req.headers['authorization'] ?? '';
+      const bearerToken = authHeader.startsWith('Bearer ')
+        ? authHeader.slice(7).trim()
+        : undefined;
+
+      // WebSocket clients pass token as ?token= query param
+      const wsToken = (req.query as Record<string, string>)['token'];
+
+      const token = bearerToken ?? wsToken;
+      if (!verifyToken(token, authCfg.token)) {
+        reply.code(401).send({ error: 'Unauthorized — invalid or missing token' });
+      }
+    });
+  }
+
+  await app.register(fastifyWebsocket);
+
+  // Serve control UI from packages/control/dist if present.
+  // On every request for index.html, inject the auth token as a global so the
+  // UI can bootstrap without reading the public /health endpoint.
+  const uiDist = join(__dirname, '..', '..', 'control', 'dist');
+  if (existsSync(uiDist)) {
+    await app.register(fastifyStatic, { root: uiDist, prefix: '/' });
+
+    const serveIndex = (_req: unknown, reply: { type: (t: string) => void; send: (b: unknown) => void; code: (n: number) => { send: (b: unknown) => void } }) => {
+      const indexPath = join(uiDist, 'index.html');
+      if (!existsSync(indexPath)) {
+        (reply as unknown as { code: (n: number) => { send: (b: unknown) => void } }).code(404).send('index.html not found');
+        return;
+      }
+      const html = readFileSync(indexPath, 'utf-8');
+      const tokenScript = authCfg.authDisabled
+        ? '<script>window.__KRYTHOR_TOKEN__=null;</script>'
+        : `<script>window.__KRYTHOR_TOKEN__=${JSON.stringify(authCfg.token)};</script>`;
+      const injected = html.replace('</head>', `${tokenScript}</head>`);
+      (reply as unknown as { type: (t: string) => void; send: (b: unknown) => void }).type('text/html').send(injected);
+    };
+
+    // SPA fallback — serves index.html with token injected for all non-asset routes
+    app.setNotFoundHandler((req, reply) => {
+      // Only inject for HTML navigations — pass through if it looks like an asset request
+      if (req.url.includes('.') && !req.url.endsWith('.html')) {
+        (reply as unknown as { code: (n: number) => { send: (b: unknown) => void } }).code(404).send('Not found');
+        return;
+      }
+      serveIndex(req, reply as unknown as Parameters<typeof serveIndex>[1]);
+    });
+  }
+
+  // Initialise subsystems — MemoryEngine opens a single shared SQLite connection;
+  // both MemoryStore and ConversationStore are accessed through it.
+  const memory = new MemoryEngine(join(dataDir, 'memory'));
+  const convStore = memory.convStore;
+  const models = new ModelEngine(join(dataDir, 'config'));
+
+  // Initialise guard (loads/creates policy.json on first run)
+  const guard = new GuardEngine(join(dataDir, 'config'));
+
+  // Guard decision audit store — shares the same SQLite connection as memory
+  const guardDecisionStore = new GuardDecisionStore(memory.db);
+
+  // Initialise skills registry and runner.
+  // The event emitter is wired after `broadcast` is defined — forward skill
+  // lifecycle events to all connected WebSocket clients.
+  const skillRegistry = new SkillRegistry(join(dataDir, 'config'));
+
+  // Wire Ollama embedding provider if any Ollama provider is configured and enabled.
+  // Uses the first enabled Ollama provider's endpoint with the nomic-embed-text model,
+  // which is the standard lightweight embedding model for Ollama.
+  const ollamaProviders = models.listProviders().filter(p => p.type === 'ollama' && p.isEnabled);
+  if (ollamaProviders.length > 0) {
+    const ollamaEndpoint = ollamaProviders[0]!.endpoint ?? 'http://127.0.0.1:11434';
+    const embeddingProvider = new OllamaEmbeddingProvider(ollamaEndpoint, 'nomic-embed-text');
+    memory.registerEmbeddingProvider(embeddingProvider);
+    memory.setActiveEmbeddingProvider(embeddingProvider.name);
+    console.log(`[embeddings] Using Ollama embedding provider at ${ollamaEndpoint} (nomic-embed-text)`);
+  }
+
+  // Initialise core and wire subsystems
+  const orchestrator = new AgentOrchestrator(memory, models, join(dataDir, 'config'));
+  const core = new KrythorCore();
+  core.attachMemory(memory);
+  core.attachModels(models);
+  core.attachOrchestrator(orchestrator);
+
+  // Broadcast helper — sends a message to all connected WebSocket clients
+  const broadcast = (msg: unknown): void => {
+    app.websocketServer?.clients.forEach((client: { readyState: number; send: (data: string) => void }) => {
+      if (client.readyState === 1 /* OPEN */) {
+        client.send(JSON.stringify(msg));
+      }
+    });
+  };
+
+  // Track run start times for accurate duration calculation
+  const runStartTimes = new Map<string, number>();
+
+  // Forward agent and guard events to WebSocket clients; also log to disk
+  orchestrator.on('agent:event', (event) => {
+    broadcast({ type: 'agent:event', payload: event });
+    // Disk logging for key lifecycle events
+    if (event.type === 'run:started') {
+      runStartTimes.set(event.runId, Date.now());
+      logger.agentRunStarted(event.runId, event.agentId, '');
+    } else if (event.type === 'run:completed') {
+      const p = event.payload as { output?: string; modelUsed?: string } | undefined;
+      const durationMs = runStartTimes.get(event.runId) ? Date.now() - runStartTimes.get(event.runId)! : 0;
+      runStartTimes.delete(event.runId);
+      logger.agentRunCompleted(event.runId, event.agentId, durationMs, p?.modelUsed);
+    } else if (event.type === 'run:stopped') {
+      runStartTimes.delete(event.runId);
+    } else if (event.type === 'run:failed') {
+      runStartTimes.delete(event.runId);
+      const p = event.payload as { error?: string } | undefined;
+      logger.agentRunFailed(event.runId, event.agentId, redactErrorMessage(p?.error ?? 'unknown'));
+    }
+  });
+  guard.on('guard:denied', (payload) => {
+    broadcast({ type: 'guard:denied', payload });
+    const p = payload as { context?: Record<string, unknown>; verdict?: { reason?: string } } | undefined;
+    logger.guardDenied(p?.context ?? {}, p?.verdict?.reason ?? 'denied');
+  });
+
+  // Record every guard decision (allow and deny) for the audit log.
+  // The guard:decided event fires after every check() call.
+  guard.on('guard:decided', (payload: { context: Record<string, unknown>; verdict: Record<string, unknown> }) => {
+    try {
+      guardDecisionStore.record(
+        payload.context as import('@krythor/memory').GuardContextInput,
+        payload.verdict as unknown as import('@krythor/memory').GuardVerdictInput,
+      );
+    } catch (err) { console.warn('[GuardDecisionStore] Failed to record decision:', err instanceof Error ? err.message : err); }
+    // Also log to disk for off-process audit trail
+    const v = payload.verdict as { allowed: boolean; action: string; ruleId?: string };
+    const c = payload.context as { operation: string };
+    logger.guardDecisionLogged(c.operation, v.allowed, v.action, v.ruleId);
+  });
+
+  // SkillRunner — constructed here so it can close over `broadcast` for event forwarding
+  const skillRunner = new SkillRunner(
+    (request, context, signal) => models.infer(request, context, signal),
+    (id) => skillRegistry.getById(id),
+    (event) => broadcast({ type: 'skill:event', payload: event }),
+  );
+
+  // Register routes
+  registerCommandRoute(app, core, orchestrator, broadcast, guard, convStore);
+  registerMemoryRoutes(app, memory, models, guard);
+  registerModelRoutes(app, models, memory, guard);
+  registerAgentRoutes(app, orchestrator, guard);
+  registerGuardRoutes(app, guard, guardDecisionStore);
+  registerConfigRoute(app, join(dataDir, 'config'), guard);
+  registerConversationRoutes(app, convStore, guard);
+  registerSkillRoutes(app, skillRegistry, guard, skillRunner);
+  registerStreamWs(app, core, authCfg.token, guard);
+
+  // Health check — intentionally public (no auth required).
+  // The token is returned here so the browser UI can bootstrap itself without
+  // the user ever needing to copy/paste it. This is safe for a local-only tool:
+  // any caller that can reach /health can already read app-config.json from disk.
+  app.get('/health', async () => {
+    const modelStats = models.stats();
+    const agentStats = orchestrator.stats();
+    return {
+      status: 'ok',
+      version: '0.1.0',
+      nodeVersion: process.version,
+      timestamp: new Date().toISOString(),
+      memory: memory.stats(),
+      models: modelStats,
+      circuits: models.circuitStats(),
+      guard: guard.stats(),
+      agents: agentStats,
+      firstRun: modelStats.providerCount === 0 && agentStats.agentCount === 0,
+      // Token is intentionally NOT included here — it is injected into index.html
+      // at serve time so the UI can bootstrap without exposing it on a public endpoint.
+    };
+  });
+
+  // Readiness check — returns 200 when db + guard are ok, 503 otherwise.
+  // Public (no auth required) so load balancers and health checks can poll it.
+  app.get('/ready', async (_req, reply) => {
+    const result = await checkReadiness(memory, models, guard);
+    reply.code(result.ready ? 200 : 503).send(result);
+  });
+
+  app.addHook('onClose', async () => {
+    // memory.close() closes the shared SQLite connection used by both stores
+    memory.close();
+  });
+
+  // Expose a checkReady helper so index.ts can log readiness after listen()
+  (app as unknown as Record<string, unknown>)['checkReady'] = () =>
+    checkReadiness(memory, models, guard);
+
+  return app;
+}

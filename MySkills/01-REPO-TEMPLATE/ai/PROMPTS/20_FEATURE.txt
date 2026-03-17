@@ -1,0 +1,23 @@
+Follow /ai/MASTER_PROMPT.md exactly.
+
+FEATURE:
+<name>
+
+GOAL (1 sentence):
+<fill>
+
+ACCEPTANCE CRITERIA:
+- <bullet>
+- <bullet>
+
+SCOPE BOUNDARIES (do NOT touch):
+- <example: auth/session>
+- <example: firestore rules>
+- <example: src/core>
+
+IMPLEMENTATION NOTES (optional):
+- <any constraints like "no UI changes", "backend only", etc>
+
+Now implement the smallest change that meets the acceptance criteria.
+Run verification.
+Update /ai/AI_CHANGELOG.md.

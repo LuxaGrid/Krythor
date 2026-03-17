@@ -1,0 +1,80 @@
+
+CLAUDE CODE ENGINEERING OS – GO-TO GUIDE
+=========================================
+
+=========================
+NEW APP – STEP BY STEP
+=========================
+
+1) Open terminal inside project folder:
+   cd your-new-app
+   claude
+
+2) Bootstrap (run once):
+   /00-bootstrap-project
+
+3) Start building properly:
+   /50-orchestrate-big-task "Describe your app and tech stack"
+
+4) Continue work later:
+   /50-orchestrate-resume
+
+5) Keep build stable:
+   /10-check
+
+6) If something breaks:
+   /20-debug-root-cause "what broke + expected vs actual"
+
+7) Before deploying:
+   /48-finish-branch prod
+
+
+===============================
+ALREADY 50% DONE APP – FLOW
+===============================
+
+1) Make sure it builds:
+   /10-check
+
+2) If failing:
+   /20-debug-root-cause "describe issue"
+
+3) Get structure overview:
+   /05-architecture-scan
+
+4) Finish or stabilize work:
+   /50-orchestrate-big-task "Finish X feature" 
+   OR
+   /50-orchestrate-big-task "Clean up and stabilize project"
+
+5) Continue later:
+   /50-orchestrate-resume
+
+6) Optional safety passes:
+   Firebase rules check:
+     /40-firebase-rules-guard
+   Performance pass:
+     /45-performance-pass
+
+7) Before deploying:
+   /48-finish-branch prod
+
+
+=========================
+MINIMUM COMMAND SET
+=========================
+
+/00-bootstrap-project
+/50-orchestrate-big-task
+/10-check
+/20-debug-root-cause
+/48-finish-branch
+
+
+Think in MODES:
+- New Project → Bootstrap
+- Build Feature → Orchestrate
+- Bug → Debug Root Cause
+- Deploy → Finish Branch
+
+Use one mode at a time.

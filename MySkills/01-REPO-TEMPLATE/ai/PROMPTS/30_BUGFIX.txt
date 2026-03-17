@@ -1,0 +1,20 @@
+Follow /ai/MASTER_PROMPT.md exactly.
+
+BUG:
+<name>
+
+SYMPTOMS:
+- <what happens>
+- <error text>
+- <when it happens>
+
+REPRO STEPS:
+1) <step>
+2) <step>
+
+TASKS:
+1) Identify root cause (file + line range)
+2) Apply minimal fix
+3) Run verification
+4) Update /ai/AI_CHANGELOG.md
+5) If recurring, add to /ai/KNOWN_ISSUES.md

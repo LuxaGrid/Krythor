@@ -1,0 +1,21 @@
+LUXAGRID ONEPACK — QUICK CARD (PIN THIS)
+======================================
+
+NEW APP
+- Copy: 01-REPO-TEMPLATE/* into repo
+- Run:  /ai/PROMPTS/00_BOOTSTRAP.txt
+- Run:  /ai/PROMPTS/10_STABILIZE.txt
+- Build with: /ai/PROMPTS/20_FEATURE.txt
+
+50% DONE APP
+- Copy overlay: 02-INSTALL-OVERLAY-FOR-EXISTING-APPS/* into repo
+- Run: /ai/PROMPTS/10_STABILIZE.txt
+- Then: /ai/PROMPTS/20_FEATURE.txt or /ai/PROMPTS/30_BUGFIX.txt
+
+VERIFY
+- mac/linux: scripts/check.sh
+- windows:   scripts/check.ps1
+
+LOG
+- /ai/AI_CHANGELOG.md (every run)
+- /ai/KNOWN_ISSUES.md (recurring loops)

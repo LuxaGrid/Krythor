@@ -1,0 +1,65 @@
+
+CLAUDE CODE – ULTRA MINIMAL WORKFLOW
+====================================
+
+NEW PROJECT
+------------
+cd your-app
+claude
+
+/00-bootstrap-project
+/50-orchestrate-big-task "Describe the app"
+
+Build continues with:
+/50-orchestrate-resume
+
+------------------------------------
+
+ADDING OR FINISHING A FEATURE
+-----------------------------
+/50-orchestrate-big-task "Add or finish X feature"
+
+------------------------------------
+
+BUG
+---
+/20-debug-root-cause "what broke + expected vs actual"
+
+Quick fix option:
+/20-fixloop "what broke"
+
+------------------------------------
+
+CHECK BUILD ANYTIME
+--------------------
+/10-check
+
+------------------------------------
+
+BEFORE DEPLOYING
+----------------
+/48-finish-branch prod
+
+------------------------------------
+
+OPTIONAL SAFETY
+---------------
+Structure scan:
+/05-architecture-scan
+
+Firebase rules check:
+/40-firebase-rules-guard
+
+Performance pass:
+/45-performance-pass
+
+------------------------------------
+
+MENTAL MODEL
+------------
+New → Bootstrap  
+Build → Orchestrate  
+Bug → Debug  
+Ship → Finish Branch  
+
+Use one mode at a time.

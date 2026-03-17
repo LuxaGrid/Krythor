@@ -1,0 +1,114 @@
+LUXAGRID ONEPACK — ONE WORKFLOW FOR NEW + 50% DONE APPS
+======================================================
+
+This pack is meant to end the “fix loop” problem by enforcing:
+- small scope work
+- verification after every change
+- a changelog so you always know what changed
+- repeatable prompts (bootstrap / stabilize / feature / bugfix / ship)
+
+------------------------------------------------------
+WHAT’S IN HERE (YOU ONLY NEED THESE TWO THINGS)
+------------------------------------------------------
+A) REPO GUARDRAILS (drop into every repo)
+   - /ai (MASTER_PROMPT + prompts + changelog + known issues)
+   - /docs/ARCHITECTURE.md
+   - /scripts/check.sh and check.ps1
+   - /.env.example
+
+B) YOUR CLAUDE CODE SKILLS PACKS (kept as original zips)
+   - Your v5 Pro + Discipline packs
+   - Your NextCue baseline bundle
+   - Reference guides
+
+------------------------------------------------------
+PART 1 — NEW APP (FAST + CLEAN)
+------------------------------------------------------
+1) Create a new repo (empty folder + git init, or whatever you do).
+2) Copy EVERYTHING from:
+     01-REPO-TEMPLATE/
+   into your new repo root.
+
+   You should now have:
+     /ai
+     /docs
+     /scripts
+     /.env.example
+
+3) Open Claude Code INSIDE the repo folder, then run:
+     /ai/PROMPTS/00_BOOTSTRAP.txt
+   (Paste the prompt contents into Claude Code — or open the file and paste it.)
+
+4) Then run:
+     /ai/PROMPTS/10_STABILIZE.txt
+   Goal: make sure lint/typecheck/build are green before you add features.
+
+5) Now build features ONLY using:
+     /ai/PROMPTS/20_FEATURE.txt
+
+------------------------------------------------------
+PART 2 — 50% DONE APP (STOP THE LOOP)
+------------------------------------------------------
+1) DO NOT copy the whole template into your repo.
+   Instead, copy ONLY the overlay from:
+     02-INSTALL-OVERLAY-FOR-EXISTING-APPS/
+   into your existing repo root.
+   (It adds /ai, /docs, /scripts, .env.example without moving your code.)
+
+2) Open Claude Code in that repo and run:
+     /ai/PROMPTS/10_STABILIZE.txt
+   No features. Just get checks passing and map the structure.
+
+3) After stabilization is green, you’re allowed to do new work:
+     /ai/PROMPTS/20_FEATURE.txt  (one feature at a time)
+     /ai/PROMPTS/30_BUGFIX.txt   (one bug at a time)
+
+------------------------------------------------------
+THE DAILY LOOP (USE THIS EVERY TIME)
+------------------------------------------------------
+A) Make a branch (recommended):
+   feat/<thing>  OR  fix/<thing>
+
+B) Run ONE prompt only:
+   - Feature → /ai/PROMPTS/20_FEATURE.txt
+   - Bugfix → /ai/PROMPTS/30_BUGFIX.txt
+
+C) Verification (required):
+   - mac/linux:  scripts/check.sh
+   - windows:    scripts/check.ps1
+   OR run the repo’s npm scripts (lint/typecheck/build)
+
+D) Logging (required):
+   - append to /ai/AI_CHANGELOG.md
+   - if it’s recurring, add a short entry to /ai/KNOWN_ISSUES.md
+
+------------------------------------------------------
+HOW TO USE YOUR CLAUDE CODE SKILLS WITH THIS (NO CHAOS)
+------------------------------------------------------
+Rule: MASTER_PROMPT is always the boss.
+- Start every request with: “Follow /ai/MASTER_PROMPT.md exactly.”
+- Then optionally apply ONE skill (not 10 at once).
+- Then do the task.
+- Then verify + update changelog.
+
+Example pattern:
+1) Follow /ai/MASTER_PROMPT.md exactly.
+2) Apply skill: /10-check  (or your v5 discipline check)
+3) Task: implement <small scoped feature>
+4) Verify + update /ai/AI_CHANGELOG.md
+
+Your skill maps/guides are included in:
+  04-GUIDES-REFERENCE/
+Your original skill packs are included in:
+  03-CLAUDE-CODE-SKILLS-ORIGINAL-ZIPS/
+
+------------------------------------------------------
+THE 4 MODES (KEEP IT SIMPLE)
+------------------------------------------------------
+New App      → Bootstrap, then Stabilize
+Build        → Feature (one at a time)
+Bug          → Bugfix (root cause, minimal edit)
+Ship         → Release Check
+
+If you feel “confused”, you are usually mixing modes.
+Pick one mode, run one prompt, verify, log, commit.

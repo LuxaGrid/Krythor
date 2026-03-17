@@ -1,0 +1,14 @@
+Follow /ai/MASTER_PROMPT.md exactly.
+
+PR REVIEW / DIFF REVIEW TASK:
+
+1) Summarize the changes in this branch in plain English.
+2) List any risky changes (especially config/auth/firebase/rules).
+3) Confirm protected zones were respected.
+4) Provide a short merge checklist:
+   - checks to run
+   - files to re-review
+   - rollback notes
+
+Do not modify code unless explicitly requested.
+Append the review summary to /ai/AI_CHANGELOG.md.
