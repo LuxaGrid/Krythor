@@ -48,19 +48,6 @@ This is **AI you can operate**.
 
 ---
 
-## 🖥️ Screenshots
-
-*(Add screenshots to elevate this repo visually)*
-
-```text
-/assets/screenshots/command.png
-/assets/screenshots/agents.png
-/assets/screenshots/memory.png
-/assets/screenshots/models.png
-```
-
----
-
 ## ⚙️ Requirements
 
 * **Node.js 20 or higher** — https://nodejs.org
