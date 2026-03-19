@@ -4,8 +4,8 @@
 
 // ── Node version check ─────────────────────────────────────────────────────
 const [major] = process.versions.node.split('.').map(Number);
-if (major < 18) {
-  console.error('Krythor requires Node.js 18 or higher. Please update at https://nodejs.org');
+if (major < 20) {
+  console.error('Krythor requires Node.js 20 or higher. Please update at https://nodejs.org');
   process.exit(1);
 }
 

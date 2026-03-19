@@ -17,7 +17,7 @@ export interface CommandResult {
 }
 
 export class KrythorCore {
-  private readonly version = '0.1.0';
+  private readonly version = '0.5.0';
   private memory: MemoryEngine | null = null;
   private models: ModelEngine | null = null;
   private orchestrator: AgentOrchestrator | null = null;
