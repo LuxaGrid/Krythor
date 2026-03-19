@@ -4,7 +4,7 @@
 ;
 ;  Prerequisites:
 ;    - Inno Setup 6 installed (https://jrsoftware.org/isinfo.php)
-;    - krythor-dist/ must exist (run: node bundle.js first)
+;    - krythor-dist-win/ must exist (run: node bundle.js --platform win first)
 ;    - installer/node.exe must exist (run: node installer/fetch-node.js first)
 ; ============================================================
 
@@ -13,7 +13,7 @@
 #define MyAppPublisher "Luxa Grid LLC"
 #define MyAppURL       "https://github.com/LuxaGrid/Krythor"
 #define MyAppExe       "Krythor.bat"
-#define DistDir        "..\krythor-dist"
+#define DistDir        "..\krythor-dist-win"
 
 [Setup]
 AppId={{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}
@@ -50,7 +50,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Additional icons:"; Flags: unchecked
 
 [Files]
-; --- All files from krythor-dist/ ---
+; --- All files from krythor-dist-win/ ---
 Source: "{#DistDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 ; --- Bundled Node.js runtime ---

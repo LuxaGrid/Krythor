@@ -140,6 +140,14 @@ vite.config.ts.timestamp-*
 
 # Krythor build artifacts
 krythor-dist/
+krythor-dist-win/
+krythor-dist-linux/
+krythor-dist-mac/
+krythor-win-x64.zip
+krythor-linux-x64.zip
+krythor-linux-arm64.zip
+krythor-macos-x64.zip
+krythor-macos-arm64.zip
 krythor.exe
 sea-prep.blob
 *.blob

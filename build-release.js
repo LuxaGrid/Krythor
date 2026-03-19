@@ -5,10 +5,10 @@
  * Full Krythor release pipeline:
  *
  *   1. pnpm build              — compile all packages
- *   2. node bundle.js          — create krythor-dist/
+ *   2. node bundle.js          — create krythor-dist-win/
  *   3. node build-exe.js       — build krythor.exe (SEA)
  *   4. node sign.js (exe only) — sign krythor.exe before installer bundles it
- *   5. node build-installer.js — compile Inno Setup installer
+ *   5. node build-installer.js — compile Inno Setup installer (uses krythor-dist-win/)
  *   6. node sign.js            — sign Krythor-Setup-{version}.exe
  *
  * Signing is skipped automatically if KRYTHOR_SIGN_PFX is not set.
@@ -71,9 +71,9 @@ async function main() {
   ok('All packages built');
 
   // ── 2. Bundle dist ────────────────────────────────────────────────────────────
-  step('Step 2 — Bundle distribution');
-  run('bundle.js');
-  ok('krythor-dist/ ready');
+  step('Step 2 — Bundle distribution (Windows)');
+  run('bundle.js', ['--platform', 'win']);
+  ok('krythor-dist-win/ ready');
 
   // ── 3. Build SEA exe ──────────────────────────────────────────────────────────
   if (!SKIP_EXE) {
@@ -109,13 +109,30 @@ async function main() {
     console.log(`${DIM}  Skipped — no certificate configured${RESET}`);
   }
 
-  // ── Done ──────────────────────────────────────────────────────────────────────
+  // ── 7. Zip win bundle as krythor-win-x64.zip ──────────────────────────────────
+  step('Step 7 — Zip Windows distribution');
   const pkg = JSON.parse(require('fs').readFileSync(join(ROOT, 'package.json'), 'utf-8'));
+  const distWin = join(ROOT, 'krythor-dist-win');
+  const zipOut  = join(ROOT, `krythor-win-x64.zip`);
+  const { existsSync: exists } = require('fs');
+  if (exists(distWin)) {
+    // Use PowerShell Compress-Archive on Windows (no external deps)
+    const psResult = spawnSync('powershell', [
+      '-NoProfile', '-Command',
+      `Compress-Archive -Path '${distWin}\\*' -DestinationPath '${zipOut}' -Force`,
+    ], { stdio: 'inherit', cwd: ROOT });
+    if (psResult.status !== 0) fail('Zip step failed');
+    ok(`krythor-win-x64.zip`);
+  } else {
+    console.log(`${DIM}  krythor-dist-win/ not found — skipping zip step${RESET}`);
+  }
+
+  // ── Done ──────────────────────────────────────────────────────────────────────
   console.log(`\n${CYAN}══ Release Complete ══${RESET}`);
   console.log(`\n  ${GREEN}Krythor v${pkg.version} release artifacts:${RESET}`);
-  console.log(`    installer-out/Krythor-Setup-${pkg.version}.exe`);
+  console.log(`    installer-out/Krythor-Setup-${pkg.version}.exe  ← upload to GitHub Release`);
+  console.log(`    krythor-win-x64.zip                            ← upload to GitHub Release`);
   if (!SKIP_EXE) console.log(`    krythor.exe`);
-  console.log(`    krythor-dist/  (zip this for zip distribution)`);
   if (!hasCert) {
     console.log(`\n  ${DIM}Note: artifacts are unsigned.`);
     console.log(`  Set KRYTHOR_SIGN_PFX + KRYTHOR_SIGN_PASSWORD to enable signing.${RESET}`);

@@ -5,13 +5,13 @@
  * Builds a Windows installer (Krythor-Setup-{version}.exe) using Inno Setup.
  *
  * Steps:
- *   1. Verify krythor-dist/ exists (run: node bundle.js first)
+ *   1. Verify krythor-dist-win/ exists (run: node bundle.js first)
  *   2. Fetch Node.js runtime for bundling (installer/fetch-node.js)
  *   3. Compile the Inno Setup script (installer/krythor.iss)
  *
  * Prerequisites:
  *   - Inno Setup 6 installed: https://jrsoftware.org/isinfo.php
- *   - krythor-dist/ must exist: run  pnpm build && node bundle.js  first
+ *   - krythor-dist-win/ must exist: run  pnpm build && node bundle.js  first
  *
  * Usage:
  *   node build-installer.js
@@ -22,7 +22,7 @@ const { join } = require('path');
 const { execSync, spawnSync } = require('child_process');
 
 const ROOT      = __dirname;
-const DIST_DIR  = join(ROOT, 'krythor-dist');
+const DIST_DIR  = join(ROOT, 'krythor-dist-win');
 const ISS_FILE  = join(ROOT, 'installer', 'krythor.iss');
 const OUT_DIR   = join(ROOT, 'installer-out');
 
@@ -60,12 +60,12 @@ async function main() {
   // ── Step 1: Verify dist exists ────────────────────────────────────────────
   head('Step 1 — Verify distribution bundle');
   if (!existsSync(DIST_DIR)) {
-    fail('krythor-dist/ not found. Run: pnpm build && node bundle.js');
+    fail('krythor-dist-win/ not found. Run: pnpm build && node bundle.js');
   }
   if (!existsSync(join(DIST_DIR, 'packages', 'gateway', 'dist', 'index.js'))) {
-    fail('krythor-dist/ is incomplete. Run: pnpm build && node bundle.js');
+    fail('krythor-dist-win/ is incomplete. Run: pnpm build && node bundle.js');
   }
-  ok('krythor-dist/ found');
+  ok('krythor-dist-win/ found');
 
   // ── Step 2: Fetch node.exe for bundling ───────────────────────────────────
   head('Step 2 — Fetch Node.js runtime');

@@ -45,7 +45,13 @@ try {
 }
 
 $version = $release.tag_name
-$zipAsset = $release.assets | Where-Object { $_.name -like '*.zip' } | Select-Object -First 1
+
+# Prefer the Windows-specific asset; fall back to any zip if not found
+$zipAsset = $release.assets | Where-Object { $_.name -eq 'krythor-win-x64.zip' } | Select-Object -First 1
+if (-not $zipAsset) {
+  Write-Warn "Platform asset 'krythor-win-x64.zip' not found — falling back to first zip."
+  $zipAsset = $release.assets | Where-Object { $_.name -like '*.zip' } | Select-Object -First 1
+}
 $zipUrl = $zipAsset.browser_download_url
 
 if (-not $version -or -not $zipUrl) {

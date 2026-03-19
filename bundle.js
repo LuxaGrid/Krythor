@@ -2,28 +2,45 @@
 /**
  * Krythor Bundle Script
  *
- * Prepares a self-contained distribution folder (krythor-dist/) that can be
- * zipped and shared with users who have Node.js 20+ installed.
+ * Prepares a self-contained distribution folder that can be zipped and shared.
  *
- * What it does:
- *   1. Verifies the build exists (pnpm build must have run first)
- *   2. Creates krythor-dist/ with all required runtime files
- *   3. Copies launcher scripts and entry points
- *   4. Writes a minimal package.json for the dist folder
- *   5. Prints a clear summary of what to ship
+ * Usage:
+ *   node bundle.js                   — build krythor-dist-win/ (Windows, full)
+ *   node bundle.js --platform win    — same as above
+ *   node bundle.js --platform linux  — build krythor-dist-linux/ (no native binary)
+ *   node bundle.js --platform mac    — build krythor-dist-mac/   (no native binary)
  *
- * Usage: node bundle.js
+ * Platform zip asset names (for GitHub Releases):
+ *   krythor-win-x64.zip    — built on Windows CI, includes better_sqlite3.node
+ *   krythor-linux-x64.zip  — built on Linux CI, includes linux better_sqlite3.node
+ *   krythor-macos-x64.zip  — built on macOS CI, includes macOS better_sqlite3.node
+ *   krythor-macos-arm64.zip — built on macOS ARM CI
  *
- * The resulting krythor-dist/ folder is the only thing users need.
- * They do NOT need pnpm — only Node.js 20+.
+ * The resulting folder is the only thing users need. They do NOT need pnpm — only Node.js 20+.
  */
 
 const { existsSync, mkdirSync, cpSync, writeFileSync, readFileSync, readdirSync, statSync } = require('fs');
 const { join, resolve } = require('path');
 const { execSync } = require('child_process');
 
-const ROOT    = __dirname;
-const DISTDIR = join(ROOT, 'krythor-dist');
+const ROOT = __dirname;
+
+// ── Platform selection ─────────────────────────────────────────────────────────
+const platformArg = (() => {
+  const idx = process.argv.indexOf('--platform');
+  if (idx !== -1 && process.argv[idx + 1]) return process.argv[idx + 1].toLowerCase();
+  // Auto-detect from current OS if not specified
+  if (process.platform === 'darwin') return 'mac';
+  if (process.platform === 'linux')  return 'linux';
+  return 'win';
+})();
+
+if (!['win', 'linux', 'mac'].includes(platformArg)) {
+  console.error(`Unknown platform: ${platformArg}. Use: win, linux, mac`);
+  process.exit(1);
+}
+
+const DISTDIR = join(ROOT, `krythor-dist-${platformArg}`);
 
 const RED   = '\x1b[31m';
 const GREEN = '\x1b[32m';
@@ -50,7 +67,7 @@ function copy(src, dest, opts = {}) {
 }
 
 async function main() {
-  console.log(`\n${CYAN}  KRYTHOR — Bundle${RESET}`);
+  console.log(`\n${CYAN}  KRYTHOR — Bundle [${platformArg}]${RESET}`);
   console.log(`${DIM}  Building a self-contained distribution folder…${RESET}\n`);
 
   // ── Preflight ──────────────────────────────────────────────────────────────
@@ -87,17 +104,23 @@ async function main() {
     ok('migrations SQL files');
   }
 
-  // ── Copy only better-sqlite3 runtime files (all JS deps are bundled inline) ─
-  // All JS dependencies are inlined into each package's dist/index.js by tsup.
-  // Only better-sqlite3 must remain external — it ships a native .node addon.
-  // Runtime needs: lib/ (JS wrapper), package.json, build/Release/better_sqlite3.node only.
-  // All build artifacts (.pdb, .iobj, obj/, deps/, src/) are excluded.
+  // ── Copy native bindings (better-sqlite3) ─────────────────────────────────
+  // Each platform bundle ships only the .node binary compiled for that OS/arch.
+  // The binary in node_modules was compiled on the machine running bundle.js,
+  // so it is always correct for the current platform.
+  // For cross-platform builds (e.g. building linux/mac bundle on Windows),
+  // the .node binary is intentionally omitted — CI must build on the target OS.
   head('Copying native bindings (better-sqlite3 only)');
   const { realpathSync: rps, copyFileSync } = require('fs');
   const sqliteNm = join(ROOT, 'node_modules', 'better-sqlite3');
+  const currentOS = process.platform === 'darwin' ? 'mac'
+                  : process.platform === 'linux'  ? 'linux'
+                  : 'win';
+  const binaryIsForThisPlatform = (currentOS === platformArg);
+
   if (existsSync(sqliteNm)) {
     const realSqlite = (() => { try { return rps(sqliteNm); } catch { return sqliteNm; } })();
-    // lib/ and package.json
+    // Always copy lib/ and package.json (pure JS, platform-neutral)
     for (const sub of ['lib', 'package.json']) {
       const subSrc = join(realSqlite, sub);
       if (existsSync(subSrc)) {
@@ -106,14 +129,29 @@ async function main() {
         cpSync(subSrc, subDest, { recursive: true });
       }
     }
-    // Only the compiled .node binary from build/Release/
-    const nodeBin = join(realSqlite, 'build', 'Release', 'better_sqlite3.node');
-    if (existsSync(nodeBin)) {
-      const binDest = join(DISTDIR, 'node_modules', 'better-sqlite3', 'build', 'Release', 'better_sqlite3.node');
-      mkdirSync(join(binDest, '..'), { recursive: true });
-      copyFileSync(nodeBin, binDest);
+    if (binaryIsForThisPlatform) {
+      // Copy the compiled .node binary only when building for the current OS
+      const nodeBin = join(realSqlite, 'build', 'Release', 'better_sqlite3.node');
+      if (existsSync(nodeBin)) {
+        const binDest = join(DISTDIR, 'node_modules', 'better-sqlite3', 'build', 'Release', 'better_sqlite3.node');
+        mkdirSync(join(binDest, '..'), { recursive: true });
+        copyFileSync(nodeBin, binDest);
+        ok('node_modules/better-sqlite3 (runtime only: lib + .node binary)');
+      } else {
+        console.log(`${DIM}  better-sqlite3 .node binary not found — skipped${RESET}`);
+      }
+    } else {
+      // Cross-platform: omit binary, write a rebuild helper instead
+      const rebuildNote = join(DISTDIR, 'node_modules', 'better-sqlite3', 'build', 'Release', 'README.txt');
+      mkdirSync(join(rebuildNote, '..'), { recursive: true });
+      writeFileSync(rebuildNote,
+        `This folder is intentionally empty.\n` +
+        `Run: npm rebuild better-sqlite3\n` +
+        `from the krythor-dist-${platformArg}/ directory to compile for your system.\n`
+      );
+      ok(`node_modules/better-sqlite3 (lib only — binary excluded for cross-platform build)`);
+      console.log(`${DIM}  NOTE: This ${platformArg} bundle was built on ${currentOS}. The .node binary must be compiled on ${platformArg}.${RESET}`);
     }
-    ok('node_modules/better-sqlite3 (runtime only: lib + .node binary)');
   }
   // better-sqlite3 sub-deps: bindings and file-uri-to-path
   for (const dep of ['bindings', 'file-uri-to-path']) {
@@ -315,9 +353,14 @@ SUPPORT
   console.log(`  Output folder:  ${DISTDIR}`);
   console.log('');
   console.log('  To distribute:');
-  console.log(`    Zip the  krythor-dist/  folder and share it.`);
+  console.log(`    Zip the  krythor-dist-${platformArg}/  folder as  krythor-${platformArg}-x64.zip`);
+  console.log('    Upload to GitHub Releases as a release asset.');
   console.log('    Users need only Node.js 20+ installed.');
-  console.log('    Windows users: double-click Krythor-Setup.bat, then Krythor.bat');
+  if (platformArg === 'win') {
+    console.log('    Windows users: double-click Krythor-Setup.bat, then Krythor.bat');
+  } else {
+    console.log(`    ${platformArg} users: run  node start.js  after install`);
+  }
   console.log('');
 }
 

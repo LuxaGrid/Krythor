@@ -109,11 +109,21 @@ curl -fsSL https://raw.githubusercontent.com/LuxaGrid/Krythor/main/install.sh | 
 
 Installs to `~/.krythor/` and adds a `krythor` alias to your shell profile.
 
-Requires Node.js 20+ on PATH.
+Requires Node.js 20+ on PATH. Auto-detects your OS and architecture — downloads the correct platform build automatically.
 
-### Windows / Mac / Linux — zip
+### Platform zip — direct download
 
-Download the zip from the [releases page](https://github.com/LuxaGrid/Krythor/releases/latest), extract, and run:
+Each release includes platform-specific zips. Download the one for your system:
+
+| Asset | Platform |
+|-------|----------|
+| `krythor-win-x64.zip` | Windows x64 |
+| `krythor-linux-x64.zip` | Linux x64 |
+| `krythor-linux-arm64.zip` | Linux ARM64 |
+| `krythor-macos-x64.zip` | macOS Intel |
+| `krythor-macos-arm64.zip` | macOS Apple Silicon |
+
+Extract and run:
 
 ```bash
 node start.js          # Mac/Linux

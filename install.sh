@@ -24,6 +24,32 @@ echo -e "${CYAN}  KRYTHOR — Installer${RESET}"
 echo -e "${BOLD}  https://github.com/${REPO}${RESET}"
 echo ""
 
+# ── Detect platform ───────────────────────────────────────────────────────────
+OS=$(uname -s)
+ARCH=$(uname -m)
+
+case "$OS" in
+  Linux)  PLATFORM="linux" ;;
+  Darwin) PLATFORM="macos"  ;;
+  *)
+    echo -e "${RED}✗ Unsupported OS: $OS${RESET}"
+    echo "  Krythor supports Linux and macOS."
+    exit 1
+    ;;
+esac
+
+case "$ARCH" in
+  x86_64 | amd64) ARCH_TAG="x64"   ;;
+  arm64  | aarch64) ARCH_TAG="arm64" ;;
+  *)
+    echo -e "${YELLOW}⚠  Unknown architecture: $ARCH — assuming x64${RESET}"
+    ARCH_TAG="x64"
+    ;;
+esac
+
+ASSET_NAME="krythor-${PLATFORM}-${ARCH_TAG}.zip"
+echo -e "${GREEN}✓${RESET} Platform: ${PLATFORM}-${ARCH_TAG}  (looking for: ${ASSET_NAME})"
+
 # ── Check dependencies ────────────────────────────────────────────────────────
 check_dep() {
   if ! command -v "$1" &>/dev/null; then
@@ -48,13 +74,35 @@ echo -e "${GREEN}✓${RESET} Node.js $(node --version)"
 echo -e "${GREEN}✓${RESET} Checking latest release..."
 RELEASE_JSON=$(curl -fsSL "${GITHUB_API}")
 VERSION=$(echo "$RELEASE_JSON" | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')
-ZIP_URL=$(echo "$RELEASE_JSON" | grep '"browser_download_url"' | grep '\.zip' | head -1 | sed 's/.*"browser_download_url": *"\([^"]*\)".*/\1/')
 
-if [ -z "$VERSION" ] || [ -z "$ZIP_URL" ]; then
-  echo -e "${RED}✗ Could not find a release zip on GitHub.${RESET}"
+# Find asset URL matching platform+arch zip name exactly
+ZIP_URL=$(echo "$RELEASE_JSON" | grep '"browser_download_url"' \
+  | grep "\"${ASSET_NAME}\"" \
+  | head -1 \
+  | sed 's/.*"browser_download_url": *"\([^"]*\)".*/\1/')
+
+# Fallback: if no platform-specific zip found, look for a generic zip
+if [ -z "$ZIP_URL" ]; then
+  echo -e "${YELLOW}⚠  No platform-specific asset (${ASSET_NAME}) found in release.${RESET}"
+  ZIP_URL=$(echo "$RELEASE_JSON" | grep '"browser_download_url"' | grep '\.zip' | head -1 | sed 's/.*"browser_download_url": *"\([^"]*\)".*/\1/')
+  if [ -n "$ZIP_URL" ]; then
+    echo -e "${YELLOW}   Falling back to generic zip — native module may need rebuilding.${RESET}"
+  fi
+fi
+
+if [ -z "$VERSION" ]; then
+  echo -e "${RED}✗ Could not determine release version from GitHub API.${RESET}"
   echo "  Check: https://github.com/${REPO}/releases"
   exit 1
 fi
+
+if [ -z "$ZIP_URL" ]; then
+  echo -e "${RED}✗ No release zip found for this platform.${RESET}"
+  echo "  Check: https://github.com/${REPO}/releases"
+  echo "  Available assets should include: ${ASSET_NAME}"
+  exit 1
+fi
+
 echo -e "${GREEN}✓${RESET} Found release: ${VERSION}"
 
 # ── Check for existing install ────────────────────────────────────────────────
@@ -105,6 +153,20 @@ fi
 
 rm -rf "$TMP_DIR"
 echo -e "${GREEN}✓${RESET} Installed to: ${INSTALL_DIR}"
+
+# ── Rebuild native module if binary is missing ────────────────────────────────
+NATIVE_BIN="${INSTALL_DIR}/node_modules/better-sqlite3/build/Release/better_sqlite3.node"
+if [ ! -f "$NATIVE_BIN" ]; then
+  echo ""
+  echo -e "${YELLOW}  Native module not found — rebuilding better-sqlite3 for your platform...${RESET}"
+  if command -v npm &>/dev/null; then
+    ( cd "$INSTALL_DIR" && npm rebuild better-sqlite3 --silent 2>&1 ) && \
+      echo -e "${GREEN}✓${RESET} better-sqlite3 rebuilt successfully." || \
+      echo -e "${YELLOW}⚠  Rebuild failed. Run:  cd ${INSTALL_DIR} && npm rebuild better-sqlite3${RESET}"
+  else
+    echo -e "${YELLOW}⚠  npm not found. Run:  cd ${INSTALL_DIR} && npm rebuild better-sqlite3${RESET}"
+  fi
+fi
 
 # ── Create krythor launch script ──────────────────────────────────────────────
 LAUNCHER="${INSTALL_DIR}/krythor"
