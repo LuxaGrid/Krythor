@@ -26,4 +26,4 @@ Open an Issue or start a Discussion
 
 ---
 
-Built by Adam Brooks
+Built by Luxa Grid
