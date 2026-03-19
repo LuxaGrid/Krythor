@@ -1,6 +1,6 @@
 {
   "name": "krythor",
-  "version": "0.1.0",
+  "version": "0.5.0",
   "private": true,
   "description": "Krythor — local-first AI command platform",
   "packageManager": "pnpm@9.15.4",
@@ -16,7 +16,11 @@
     "test": "pnpm -r test",
     "clean": "pnpm -r clean",
     "bundle": "node bundle.js",
-    "build:exe": "node build-exe.js"
+    "build:bundle": "pnpm build && node bundle.js",
+    "build:exe": "node build-exe.js",
+    "build:installer": "node build-installer.js",
+    "build:sign": "node sign.js",
+    "build:release": "node build-release.js"
   },
   "devDependencies": {
     "node-gyp": "^12.2.0"

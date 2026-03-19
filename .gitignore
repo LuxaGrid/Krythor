@@ -137,3 +137,20 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Krythor build artifacts
+krythor-dist/
+krythor.exe
+sea-prep.blob
+*.blob
+.pnvm/
+.claude/
+
+# Installer build artifacts
+installer/node.exe
+installer-out/
+
+# Code signing — never commit certificates or passwords
+*.pfx
+*.p12
+.env.sign
