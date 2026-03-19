@@ -20,7 +20,8 @@
     "build:exe": "node build-exe.js",
     "build:installer": "node build-installer.js",
     "build:sign": "node sign.js",
-    "build:release": "node build-release.js"
+    "build:release": "node build-release.js",
+    "release": "node scripts/tag-release.js"
   },
   "devDependencies": {
     "node-gyp": "^12.2.0"

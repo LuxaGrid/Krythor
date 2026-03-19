@@ -1,0 +1,154 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  # ── Build on each platform ──────────────────────────────────────────────────
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win
+          - os: ubuntu-latest
+            platform: linux
+          - os: macos-latest
+            platform: mac
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Extract version from tag
+        id: version
+        shell: bash
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Patch version in package.json
+        shell: bash
+        run: |
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json','utf-8'));
+            pkg.version = '${{ steps.version.outputs.VERSION }}';
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+
+      - name: Patch version in installer/krythor.iss (Windows only)
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          sed -i "s/^#define MyAppVersion.*/#define MyAppVersion   \"${VERSION}\"/" installer/krythor.iss
+
+      - name: Build all packages
+        run: pnpm build
+
+      - name: Bundle (platform-specific)
+        run: node bundle.js --platform ${{ matrix.platform }}
+
+      # ── Windows: zip + installer ──────────────────────────────────────────
+      - name: Zip Windows distribution
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "krythor-dist-win\*" -DestinationPath "krythor-win-x64.zip" -Force
+
+      - name: Build Windows installer
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          node installer/fetch-node.js
+          node build-installer.js
+
+      - name: Rename installer with version
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          mv "installer-out/Krythor-Setup-${VERSION}.exe" "Krythor-Setup-${VERSION}.exe" || \
+          mv installer-out/Krythor-Setup-*.exe "Krythor-Setup-${VERSION}.exe"
+
+      # ── Linux: zip ────────────────────────────────────────────────────────
+      - name: Zip Linux distribution
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          cd krythor-dist-linux
+          zip -r ../krythor-linux-x64.zip .
+
+      # ── macOS: zip ────────────────────────────────────────────────────────
+      - name: Zip macOS distribution
+        if: matrix.os == 'macos-latest'
+        run: |
+          cd krythor-dist-mac
+          zip -r ../krythor-macos-x64.zip .
+
+      # ── Upload artifacts for the release job ─────────────────────────────
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets-${{ matrix.platform }}
+          retention-days: 1
+          path: |
+            krythor-win-x64.zip
+            krythor-linux-x64.zip
+            krythor-macos-x64.zip
+            Krythor-Setup-*.exe
+
+  # ── Create GitHub Release and upload all assets ─────────────────────────────
+  release:
+    name: Publish Release
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Extract version from tag
+        id: version
+        shell: bash
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist-artifacts
+          merge-multiple: true
+
+      - name: List collected assets
+        run: ls -lh dist-artifacts/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Krythor v${{ steps.version.outputs.VERSION }}"
+          tag_name: ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            dist-artifacts/krythor-win-x64.zip
+            dist-artifacts/krythor-linux-x64.zip
+            dist-artifacts/krythor-macos-x64.zip
+            dist-artifacts/Krythor-Setup-${{ steps.version.outputs.VERSION }}.exe
