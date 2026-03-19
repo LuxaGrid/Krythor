@@ -1,29 +1,74 @@
 # Krythor
 
-Local-first AI command platform with intelligent model routing, memory, and agent execution.
+![Krythor Banner](./assets/krythor-banner.png)
 
-## What is Krythor?
+**Local-first AI command platform with intelligent model routing, memory, and agent execution.**
 
-Krythor is a local-first AI system that lets you run agents, manage memory, and route tasks across multiple AI models — all from a single control interface running entirely on your machine. No cloud accounts required beyond the providers you choose to use.
+---
 
-## Features
+## ⚡ What is Krythor?
 
-- **Multi-model routing** — OpenAI, Anthropic, Ollama, LM Studio, GGUF (llama-server), or any OpenAI-compatible API
-- **Automatic fallback** — if your primary provider fails, Krythor routes to the next available one
-- **Persistent memory** — semantic or keyword search across conversation history, agent runs, and user-defined entries
-- **Agent system** — create agents with custom system prompts, memory scope, and model preferences
-- **Skills** — reusable task templates with structured model routing hints
-- **Guard engine** — per-operation policy rules with allow/deny control
-- **Transparent execution** — every run shows which model was used, why it was chosen, and whether a fallback occurred
-- **Heartbeat monitoring** — background health checks with persistent warnings across restarts
-- **Local-first** — all data stored on your machine, never sent anywhere beyond your chosen providers
+Krythor is a local-first AI system designed to give you **full control** over how AI runs, remembers, and executes tasks.
 
-## Requirements
+Run agents. Route across models. Persist memory. Enforce rules.
 
-- **Node.js 20 or higher** — [nodejs.org](https://nodejs.org)
-- **pnpm** — `npm install -g pnpm`
+All from a single control interface running entirely on your machine.
 
-## Quick Start
+No lock-in. No hidden cloud layer. No loss of visibility.
+
+---
+
+## 🚀 Why Krythor?
+
+Most AI tools hide what’s happening.
+
+Krythor does the opposite.
+
+* See which model ran your task
+* Know why it was selected
+* Track fallbacks in real time
+* Control memory and execution behavior
+
+This is not just chat.
+This is **AI you can operate**.
+
+---
+
+## ✨ Features
+
+* **Multi-model routing** — OpenAI, Anthropic, Ollama, LM Studio, GGUF (llama-server), and OpenAI-compatible APIs
+* **Automatic fallback** — seamless provider failover
+* **Persistent memory** — semantic + keyword retrieval across sessions
+* **Agent system** — custom prompts, memory scope, and model preferences
+* **Skills** — reusable task templates with structured routing hints
+* **Guard engine** — policy-based allow/deny control
+* **Transparent execution** — see exactly which model ran, why, and fallback behavior
+* **Heartbeat monitoring** — background provider health tracking
+* **Local-first** — all data stays on your machine
+
+---
+
+## 🖥️ Screenshots
+
+*(Add screenshots to elevate this repo visually)*
+
+```text
+/assets/screenshots/command.png
+/assets/screenshots/agents.png
+/assets/screenshots/memory.png
+/assets/screenshots/models.png
+```
+
+---
+
+## ⚙️ Requirements
+
+* **Node.js 20 or higher** — https://nodejs.org
+* **pnpm** — `npm install -g pnpm`
+
+---
+
+## ⚡ Quick Start
 
 ```bash
 # 1. Clone
@@ -43,24 +88,29 @@ node packages/setup/dist/bin/setup.js
 node start.js
 ```
 
-Then open **http://localhost:47200** in your browser.
+Then open: **http://localhost:47200**
 
-**Windows users:** after building, you can use `Krythor-Setup.bat` and `Krythor.bat` instead of steps 4–5.
+**Windows users:**
+Use `Krythor-Setup.bat` and `Krythor.bat` instead of steps 4–5.
 
-## Supported Providers
+---
 
-| Provider | Type | API Key Required |
-|---|---|---|
-| Anthropic (Claude) | Cloud | Yes |
-| OpenAI (GPT) | Cloud | Yes |
-| Ollama | Local | No |
-| LM Studio | Local | No |
-| llama-server (GGUF) | Local | No |
-| Any OpenAI-compatible API | Cloud/Local | Optional |
+## 🧠 Supported Providers
 
-Krythor auto-detects locally running providers (Ollama, LM Studio, llama-server) on first launch.
+| Provider                  | Type        | API Key Required |
+| ------------------------- | ----------- | ---------------- |
+| Anthropic (Claude)        | Cloud       | Yes              |
+| OpenAI (GPT)              | Cloud       | Yes              |
+| Ollama                    | Local       | No               |
+| LM Studio                 | Local       | No               |
+| llama-server (GGUF)       | Local       | No               |
+| Any OpenAI-compatible API | Cloud/Local | Optional         |
 
-## Project Structure
+Krythor auto-detects local providers (Ollama, LM Studio, llama-server) on first launch.
+
+---
+
+## 🏗️ Project Structure
 
 ```
 packages/
@@ -71,13 +121,15 @@ packages/
   models/     — Model registry, router, circuit breaker, providers
   guard/      — Policy engine (allow/deny rules per operation)
   skills/     — Skill registry and runner
-  setup/      — CLI setup wizard and doctor diagnostics
+  setup/      — CLI setup wizard and diagnostics
 start.js      — Launcher (starts gateway, opens browser)
-bundle.js     — Distribution packager (produces krythor-dist/)
-build-exe.js  — Windows SEA executable builder (produces krythor.exe)
+bundle.js     — Distribution packager (creates krythor-dist/)
+build-exe.js  — Windows SEA executable builder (creates krythor.exe)
 ```
 
-## Development
+---
+
+## 🧪 Development
 
 ```bash
 pnpm dev        # gateway in watch mode
@@ -86,25 +138,44 @@ pnpm build      # build all packages
 pnpm doctor     # run diagnostics
 ```
 
-## Distribution
+---
+
+## 📦 Distribution
 
 ```bash
 pnpm build
-node bundle.js        # creates krythor-dist/ — zip and share
-node build-exe.js     # Windows only — creates krythor.exe (no Node required on PATH)
+node bundle.js        # creates krythor-dist/
+node build-exe.js     # creates krythor.exe (Windows)
 ```
 
-## Data Location
+---
 
-All data is stored locally, never in this folder:
+## 📁 Data Location
 
-- **Windows:** `%LOCALAPPDATA%\Krythor\`
-- **macOS:** `~/Library/Application Support/Krythor/`
-- **Linux:** `~/.local/share/krythor/`
+All data is stored locally, outside the project folder:
 
-To uninstall: delete this folder and optionally delete the data folder above.
+* **Windows:** `%LOCALAPPDATA%\Krythor\`
+* **macOS:** `~/Library/Application Support/Krythor/`
+* **Linux:** `~/.local/share/krythor/`
 
-## License
+To uninstall: remove the app folder and the data folder above.
+
+---
+
+## 🗺️ Roadmap
+
+* [x] Local-first runtime
+* [x] Multi-provider model routing
+* [x] Persistent memory system
+* [x] Agent system
+* [ ] Production hardening
+* [ ] Installer polish
+* [ ] Expanded observability
+* [ ] Advanced memory controls
+
+---
+
+## 📜 License
 
 MIT — see [LICENSE](LICENSE)
 
