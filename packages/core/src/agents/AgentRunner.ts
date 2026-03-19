@@ -11,6 +11,27 @@ import type {
 
 type EventEmitter = (event: AgentEvent) => void;
 
+/**
+ * Optional callback invoked after each completed or failed run.
+ * Injected from the gateway so @krythor/core does not depend on
+ * @krythor/memory's LearningRecordStore directly.
+ */
+export interface LearningSignal {
+  taskType:                   string;
+  agentId:                    string;
+  modelId:                    string;
+  providerId:                 string;
+  outcome:                    'success' | 'failure' | 'stopped';
+  latencyMs:                  number;
+  retries:                    number;
+  turnCount:                  number;
+  userAcceptedRecommendation: boolean;
+  recommendedModelId?:        string;
+  wasPinnedPreference:        boolean;
+}
+
+export type LearningRecorder = (signal: LearningSignal) => void;
+
 /** Default per-turn inference timeout in ms (60 seconds). */
 const INFERENCE_TIMEOUT_MS = 60_000;
 
@@ -46,6 +67,7 @@ export class AgentRunner {
   constructor(
     private readonly memory: MemoryEngine | null,
     private readonly models: ModelEngine | null,
+    private readonly recordLearning?: LearningRecorder,
   ) {}
 
   // ── Private helpers ────────────────────────────────────────────────────────
@@ -110,10 +132,11 @@ export class AgentRunner {
   }
 
   private shouldContinue(response: string): boolean {
-    return (
-      response.trimEnd().endsWith('?') ||
-      response.includes('[CONTINUE]')
-    );
+    // Only continue when the model explicitly signals it via [CONTINUE].
+    // Previously this also triggered on responses ending in "?" — but that
+    // fires on almost every conversational reply, burning through maxTurns
+    // and generating unwanted follow-up turns.
+    return response.includes('[CONTINUE]');
   }
 
   private async writeAgentMemory(agent: AgentDefinition, input: RunAgentInput, run: AgentRun): Promise<string | null> {
@@ -158,6 +181,7 @@ export class AgentRunner {
       startedAt: now,
       memoryIdsUsed: [],
       memoryIdsWritten: [],
+      ...(input.requestId && { requestId: input.requestId }),
     };
 
     this.activeRuns.set(runId, { run, stop: stopFn, controller });
@@ -203,6 +227,9 @@ export class AgentRunner {
         };
         messages.push(assistantMsg);
         run.modelUsed = `${response.providerId}/${response.model}`;
+        if (response.selectionReason)                    run.selectionReason  = response.selectionReason;
+        if (response.fallbackOccurred)                   run.fallbackOccurred = response.fallbackOccurred;
+        if (typeof response.retryCount === 'number')     run.retryCount       = response.retryCount;
 
         emit({
           type: 'run:turn',
@@ -230,6 +257,7 @@ export class AgentRunner {
         run.status = 'stopped';
         run.completedAt = Date.now();
         emit({ type: 'run:stopped', runId, agentId: agent.id, timestamp: Date.now() });
+        this.emitLearning(agent, run, input, 'stopped', turn, now);
       } else {
         run.status = 'completed';
         run.completedAt = Date.now();
@@ -244,6 +272,7 @@ export class AgentRunner {
           payload: { output: run.output, modelUsed: run.modelUsed },
           timestamp: Date.now(),
         });
+        this.emitLearning(agent, run, input, 'success', turn, now);
       }
     } catch (err) {
       run.status = 'failed';
@@ -256,6 +285,7 @@ export class AgentRunner {
         payload: { error: run.errorMessage },
         timestamp: Date.now(),
       });
+      this.emitLearning(agent, run, input, 'failure', 0, now);
     } finally {
       this.activeRuns.delete(runId);
     }
@@ -289,6 +319,7 @@ export class AgentRunner {
       startedAt: now,
       memoryIdsUsed: [],
       memoryIdsWritten: [],
+      ...(input.requestId && { requestId: input.requestId }),
     };
 
     this.activeRuns.set(runId, { run, stop: stopFn, controller });
@@ -301,6 +332,7 @@ export class AgentRunner {
       const messages = this.buildMessages(agent, input, memoryContext, input.contextMessages);
       run.messages = messages;
 
+      let streamTurnCount = 0;
       if (!this.models || this.models.stats().providerCount === 0) {
         throw new Error('No model provider configured. Add a provider in the Models tab.');
       } else {
@@ -334,6 +366,9 @@ export class AgentRunner {
             if (chunk.model) run.modelUsed = chunk.model;
           }
           streamSignal.clear();
+          // Note: selectionReason, fallbackOccurred, and retryCount are not populated
+          // for streaming runs — inferStream yields per-chunk deltas and does not
+          // surface model routing metadata per chunk.
 
           const assistantMsg: AgentMessage = { role: 'assistant', content: fullContent, timestamp: Date.now() };
           messages.push(assistantMsg);
@@ -342,6 +377,7 @@ export class AgentRunner {
           emit({ type: 'run:turn', runId, agentId: agent.id, payload: { turn, message: assistantMsg }, timestamp: Date.now() });
 
           turn++;
+          streamTurnCount = turn;
 
           if (stopped || !this.shouldContinue(fullContent)) {
             break;
@@ -360,6 +396,7 @@ export class AgentRunner {
         run.status = 'stopped';
         run.completedAt = Date.now();
         emit({ type: 'run:stopped', runId, agentId: agent.id, timestamp: Date.now() });
+        this.emitLearning(agent, run, input, 'stopped', streamTurnCount, now);
       } else {
         run.status = 'completed';
         run.completedAt = Date.now();
@@ -374,6 +411,7 @@ export class AgentRunner {
           payload: { output: run.output, modelUsed: run.modelUsed },
           timestamp: Date.now(),
         });
+        this.emitLearning(agent, run, input, 'success', streamTurnCount, now);
       }
     } catch (err) {
       run.status = 'failed';
@@ -386,11 +424,41 @@ export class AgentRunner {
         payload: { error: run.errorMessage },
         timestamp: Date.now(),
       });
+      this.emitLearning(agent, run, input, 'failure', 0, now);
     } finally {
       this.activeRuns.delete(runId);
     }
 
     return run;
+  }
+
+  private emitLearning(
+    agent: AgentDefinition,
+    run: AgentRun,
+    input: RunAgentInput,
+    outcome: 'success' | 'failure' | 'stopped',
+    turnCount: number,
+    startedAt: number,
+  ): void {
+    if (!this.recordLearning || !run.modelUsed) return;
+    const [providerId, modelId] = run.modelUsed.split('/') as [string, string?];
+    if (!modelId) return;
+
+    try {
+      this.recordLearning({
+        taskType: 'agent_run',
+        agentId: agent.id,
+        modelId,
+        providerId,
+        outcome,
+        latencyMs: (run.completedAt ?? Date.now()) - startedAt,
+        retries: 0,
+        turnCount,
+        userAcceptedRecommendation: !input.modelOverride,
+        recommendedModelId: undefined,
+        wasPinnedPreference: !!agent.modelId && !input.modelOverride,
+      });
+    } catch { /* learning record failures must never crash a run */ }
   }
 
   stopRun(runId: string): boolean {

@@ -4,6 +4,7 @@ import type { MemorySearchResult } from '@krythor/memory';
 import type { RoutingContext } from '@krythor/models';
 import { AgentOrchestrator } from './agents/AgentOrchestrator.js';
 import type { AgentRun, RunAgentInput } from './agents/types.js';
+import { SystemIdentityProvider } from './SystemIdentityProvider.js';
 
 export interface CommandResult {
   input: string;
@@ -20,6 +21,11 @@ export class KrythorCore {
   private memory: MemoryEngine | null = null;
   private models: ModelEngine | null = null;
   private orchestrator: AgentOrchestrator | null = null;
+  readonly identity: SystemIdentityProvider;
+
+  constructor(soulSearchPaths: string[] = []) {
+    this.identity = new SystemIdentityProvider(soulSearchPaths);
+  }
 
   attachMemory(engine: MemoryEngine): void {
     this.memory = engine;
@@ -57,7 +63,7 @@ export class KrythorCore {
 
     if (this.models && this.models.stats().providerCount > 0) {
       const systemContent = [
-        'You are Krythor, a local-first AI command platform.',
+        this.identity.excerpt(1500),
         memoryContext.length > 0
           ? `\nRelevant context from memory:\n${memoryContext.map(r => `- ${r.entry.title}: ${r.entry.content}`).join('\n')}`
           : '',

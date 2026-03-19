@@ -8,7 +8,7 @@ import { existsSync, readFileSync } from 'fs';
 import { homedir, networkInterfaces } from 'os';
 import { KrythorCore, AgentOrchestrator } from '@krythor/core';
 import { MemoryEngine, GuardDecisionStore, OllamaEmbeddingProvider } from '@krythor/memory';
-import { ModelEngine } from '@krythor/models';
+import { ModelEngine, ModelRecommender, PreferenceStore } from '@krythor/models';
 import { GuardEngine } from '@krythor/guard';
 import { SkillRegistry, SkillRunner } from '@krythor/skills';
 import type { SkillEvent } from '@krythor/skills';
@@ -20,7 +20,9 @@ import { registerGuardRoutes } from './routes/guard.js';
 import { registerConfigRoute } from './routes/config.js';
 import { registerConversationRoutes } from './routes/conversations.js';
 import { registerSkillRoutes } from './routes/skills.js';
+import { registerRecommendRoutes } from './routes/recommend.js';
 import { registerStreamWs } from './ws/stream.js';
+import { HeartbeatEngine, type HeartbeatRunRecord, type HeartbeatInsight } from './heartbeat/HeartbeatEngine.js';
 import { logger } from './logger.js';
 import { loadOrCreateToken, verifyToken } from './auth.js';
 import { registerErrorHandler } from './errors.js';
@@ -29,6 +31,19 @@ import { checkReadiness } from './readiness.js';
 
 export const GATEWAY_PORT = 47200;
 export const GATEWAY_HOST = '127.0.0.1';
+
+// Read version from package.json at module load time — single source of truth.
+function readPackageVersion(): string {
+  try {
+    const pkgPath = new URL('../../package.json', import.meta.url).pathname;
+    const raw = readFileSync(pkgPath.startsWith('/') ? pkgPath : '/' + pkgPath, 'utf-8');
+    return (JSON.parse(raw) as { version?: string }).version ?? '0.1.0';
+  } catch {
+    return '0.1.0';
+  }
+}
+
+export const KRYTHOR_VERSION = readPackageVersion();
 
 function getDataDir(): string {
   if (process.platform === 'win32') {
@@ -46,9 +61,7 @@ export { verifyToken } from './auth.js';
  *  since a misconfigured firewall could expose port 47200 to the LAN. */
 export function warnIfNetworkExposed(host: string): void {
   if (host !== '127.0.0.1' && host !== 'localhost' && host !== '::1') {
-    console.error('\n⚠️  SECURITY WARNING: Krythor is not binding to loopback only.');
-    console.error('   Binding to', host, 'exposes the API to the network with NO authentication.');
-    console.error('   Set KRYTHOR_HOST=127.0.0.1 or add a reverse proxy with auth.\n');
+    logger.warn('SECURITY WARNING: Krythor is not binding to loopback only', { host, port: GATEWAY_PORT });
     return;
   }
   // Even on loopback, warn if the port is likely forwarded by firewall rules
@@ -60,8 +73,7 @@ export function warnIfNetworkExposed(host: string): void {
     }
   }
   if (publicIps.length > 0) {
-    // Informational only — loopback binding is safe
-    console.log(`ℹ️  Gateway bound to ${host}:${GATEWAY_PORT} (loopback only — not reachable from network)`);
+    logger.info('Gateway bound to loopback only — not reachable from network', { host, port: GATEWAY_PORT });
   }
 }
 
@@ -72,12 +84,10 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
   const authCfg = loadOrCreateToken(join(dataDir, 'config'));
   if (!authCfg.authDisabled) {
     if ((authCfg as unknown as Record<string, unknown>)['firstRun']) {
-      console.log('\n🔑 Krythor Gateway — Auth token generated (first run)');
-      console.log('   Token:', authCfg.token);
-      console.log('   Stored in: app-config.json (auto-loaded by UI)\n');
+      logger.info('Auth token generated (first run) — stored in app-config.json');
     }
   } else {
-    console.warn('\n⚠️  Auth is DISABLED (authDisabled=true in app-config.json). All API routes are unprotected.\n');
+    logger.warn('Auth is DISABLED — all API routes are unprotected');
   }
 
   const isDev = process.env['NODE_ENV'] !== 'production';
@@ -213,9 +223,16 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
 
   // Initialise subsystems — MemoryEngine opens a single shared SQLite connection;
   // both MemoryStore and ConversationStore are accessed through it.
-  const memory = new MemoryEngine(join(dataDir, 'memory'));
+  const memory = new MemoryEngine(
+    join(dataDir, 'memory'),
+    (level, msg, data) => logger[level](msg, data),
+  );
   const convStore = memory.convStore;
-  const models = new ModelEngine(join(dataDir, 'config'));
+  const models = new ModelEngine(
+    join(dataDir, 'config'),
+    (msg, data) => logger.warn(msg, data),
+    (msg, data) => logger.info(msg, data),
+  );
 
   // Initialise guard (loads/creates policy.json on first run)
   const guard = new GuardEngine(join(dataDir, 'config'));
@@ -237,15 +254,61 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
     const embeddingProvider = new OllamaEmbeddingProvider(ollamaEndpoint, 'nomic-embed-text');
     memory.registerEmbeddingProvider(embeddingProvider);
     memory.setActiveEmbeddingProvider(embeddingProvider.name);
-    console.log(`[embeddings] Using Ollama embedding provider at ${ollamaEndpoint} (nomic-embed-text)`);
+    logger.info('Ollama embedding provider wired', { endpoint: ollamaEndpoint, model: 'nomic-embed-text' });
+    logger.info('Embedding provider registered', { provider: embeddingProvider.name });
   }
 
-  // Initialise core and wire subsystems
-  const orchestrator = new AgentOrchestrator(memory, models, join(dataDir, 'config'));
-  const core = new KrythorCore();
+  // Log embedding status so startup logs always record whether semantic search is active
+  const embStatus = memory.embeddingStatus();
+  if (embStatus.degraded) {
+    logger.warn('Embedding degraded — semantic memory search will return keyword-only results', {
+      activeProvider: embStatus.providerName,
+    });
+  } else {
+    logger.info('Embedding ready', { provider: embStatus.providerName });
+  }
+
+  // Initialise recommendation engine with persistent preference store
+  const preferenceStore = new PreferenceStore(join(dataDir, 'config'));
+  const recommender = new ModelRecommender(models, preferenceStore);
+
+  // Initialise core and wire subsystems.
+  // Pass the repo root as a search path so SOUL.md is found during development.
+  const orchestrator = new AgentOrchestrator(
+    memory,
+    models,
+    join(dataDir, 'config'),
+    // Learning recorder — captures structured signals from every agent run
+    (signal) => {
+      try {
+        const id = memory.learningStore.record({
+          taskType:                   signal.taskType,
+          agentId:                    signal.agentId,
+          modelId:                    signal.modelId,
+          providerId:                 signal.providerId,
+          recommendedModelId:         signal.recommendedModelId,
+          userAcceptedRecommendation: signal.userAcceptedRecommendation,
+          outcome:                    signal.outcome,
+          latencyMs:                  signal.latencyMs,
+          retries:                    signal.retries,
+          turnCount:                  signal.turnCount,
+          wasPinnedPreference:        signal.wasPinnedPreference,
+        });
+        if (id) logger.learningRecordWritten(id, signal.taskType, signal.outcome);
+      } catch (err) {
+        logger.warn('LearningRecorder failed to write record', { error: err instanceof Error ? err.message : String(err) });
+      }
+    },
+  );
+  const core = new KrythorCore([join(__dirname, '..', '..', '..', '..', 'SOUL.md')]);
   core.attachMemory(memory);
   core.attachModels(models);
   core.attachOrchestrator(orchestrator);
+  logger.system('soul_load', {
+    loaded: core.identity.isLoaded,
+    path:   core.identity.meta.loadedFrom,
+    version: core.identity.meta.version,
+  });
 
   // Broadcast helper — sends a message to all connected WebSocket clients
   const broadcast = (msg: unknown): void => {
@@ -258,25 +321,37 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
 
   // Track run start times for accurate duration calculation
   const runStartTimes = new Map<string, number>();
+  // Map runId → requestId for end-to-end log correlation
+  const runRequestIds = new Map<string, string>();
+
+  /** Register a requestId for a given runId so the event listener can include it in logs. */
+  (app as unknown as Record<string, unknown>)['registerRunRequestId'] = (runId: string, requestId: string): void => {
+    runRequestIds.set(runId, requestId);
+  };
 
   // Forward agent and guard events to WebSocket clients; also log to disk
   orchestrator.on('agent:event', (event) => {
     broadcast({ type: 'agent:event', payload: event });
+    const requestId = runRequestIds.get(event.runId);
     // Disk logging for key lifecycle events
     if (event.type === 'run:started') {
       runStartTimes.set(event.runId, Date.now());
-      logger.agentRunStarted(event.runId, event.agentId, '');
+      const agentName = orchestrator.registry.getById(event.agentId)?.name ?? '';
+      logger.agentRunStarted(event.runId, event.agentId, agentName, requestId);
     } else if (event.type === 'run:completed') {
       const p = event.payload as { output?: string; modelUsed?: string } | undefined;
       const durationMs = runStartTimes.get(event.runId) ? Date.now() - runStartTimes.get(event.runId)! : 0;
       runStartTimes.delete(event.runId);
-      logger.agentRunCompleted(event.runId, event.agentId, durationMs, p?.modelUsed);
+      runRequestIds.delete(event.runId);
+      logger.agentRunCompleted(event.runId, event.agentId, durationMs, p?.modelUsed, requestId);
     } else if (event.type === 'run:stopped') {
       runStartTimes.delete(event.runId);
+      runRequestIds.delete(event.runId);
     } else if (event.type === 'run:failed') {
       runStartTimes.delete(event.runId);
+      runRequestIds.delete(event.runId);
       const p = event.payload as { error?: string } | undefined;
-      logger.agentRunFailed(event.runId, event.agentId, redactErrorMessage(p?.error ?? 'unknown'));
+      logger.agentRunFailed(event.runId, event.agentId, redactErrorMessage(p?.error ?? 'unknown'), requestId);
     }
   });
   guard.on('guard:denied', (payload) => {
@@ -293,18 +368,28 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
         payload.context as import('@krythor/memory').GuardContextInput,
         payload.verdict as unknown as import('@krythor/memory').GuardVerdictInput,
       );
-    } catch (err) { console.warn('[GuardDecisionStore] Failed to record decision:', err instanceof Error ? err.message : err); }
+    } catch (err) { logger.warn('GuardDecisionStore failed to record decision', { error: err instanceof Error ? err.message : String(err) }); }
     // Also log to disk for off-process audit trail
     const v = payload.verdict as { allowed: boolean; action: string; ruleId?: string };
     const c = payload.context as { operation: string };
     logger.guardDecisionLogged(c.operation, v.allowed, v.action, v.ruleId);
   });
 
-  // SkillRunner — constructed here so it can close over `broadcast` for event forwarding
+  // SkillRunner — constructed here so it can close over `broadcast` for event forwarding.
+  // The permission checker maps a skill's declared SkillPermission to a guard operation,
+  // enforcing the same policy engine used for all other operations.
   const skillRunner = new SkillRunner(
     (request, context, signal) => models.infer(request, context, signal),
     (id) => skillRegistry.getById(id),
     (event) => broadcast({ type: 'skill:event', payload: event }),
+    (skill, permission) => {
+      const verdict = guard.check({
+        operation: `skill:permission:${permission}`,
+        source: 'skill',
+        sourceId: skill.id,
+      });
+      return verdict.allowed;
+    },
   );
 
   // Register routes
@@ -316,7 +401,8 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
   registerConfigRoute(app, join(dataDir, 'config'), guard);
   registerConversationRoutes(app, convStore, guard);
   registerSkillRoutes(app, skillRegistry, guard, skillRunner);
-  registerStreamWs(app, core, authCfg.token, guard);
+  registerRecommendRoutes(app, models, recommender, guard);
+  registerStreamWs(app, core, () => authCfg.token, guard);
 
   // Health check — intentionally public (no auth required).
   // The token is returned here so the browser UI can bootstrap itself without
@@ -327,14 +413,24 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
     const agentStats = orchestrator.stats();
     return {
       status: 'ok',
-      version: '0.1.0',
+      version: KRYTHOR_VERSION,
       nodeVersion: process.version,
       timestamp: new Date().toISOString(),
-      memory: memory.stats(),
+      memory: { ...memory.stats(), ...memory.embeddingStatus() },
       models: modelStats,
       circuits: models.circuitStats(),
       guard: guard.stats(),
       agents: agentStats,
+      heartbeat: {
+        enabled:    heartbeat.getConfig().enabled,
+        recentRuns: heartbeat.history(3).length,
+        lastRun:    heartbeat.getLastRun() ?? undefined,
+        warnings:   heartbeat.getActiveWarnings(),
+      },
+      soul: {
+        loaded:  core.identity.isLoaded,
+        version: core.identity.meta.version,
+      },
       firstRun: modelStats.providerCount === 0 && agentStats.agentCount === 0,
       // Token is intentionally NOT included here — it is injected into index.html
       // at serve time so the UI can bootstrap without exposing it on a public endpoint.
@@ -348,7 +444,42 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
     reply.code(result.ready ? 200 : 503).send(result);
   });
 
+  // Heartbeat status — returns last run summary + active warnings.
+  // Authenticated. Polled by the UI status bar to surface non-critical warnings.
+  app.get('/api/heartbeat/status', async () => {
+    const last  = heartbeat.getLastRun();
+    const warns = heartbeat.getActiveWarnings();
+    const persisted = memory?.heartbeatInsightStore.recent(24) ?? [];
+    return {
+      enabled:         heartbeat.getConfig().enabled,
+      lastRun:         last ?? null,
+      warnings:        warns,
+      warningCount:    warns.length,
+      persistedWarnings: persisted,
+      embeddingStatus: memory.embeddingStatus(),
+    };
+  });
+
+  // Startup recovery — mark any 'running' DB rows as 'failed'.
+  // These are orphans from a previous process that crashed or was killed before
+  // it could update their status. Resolving them immediately prevents the UI from
+  // showing "forever running" ghosts.
+  const orphansResolved = memory.agentRunStore.resolveOrphanedRuns();
+  if (orphansResolved > 0) {
+    logger.warn('Startup recovery: orphaned runs resolved', { count: orphansResolved });
+  } else {
+    logger.info('Startup recovery: no orphaned runs found', { count: 0 });
+  }
+
+  // Start heartbeat maintenance loop.
+  // Disabled in test environments to prevent timer leaks.
+  const heartbeat = new HeartbeatEngine(memory, models, orchestrator, undefined, recommender, logger);
+  if (process.env['NODE_ENV'] !== 'test') {
+    heartbeat.start();
+  }
+
   app.addHook('onClose', async () => {
+    heartbeat.stop();
     // memory.close() closes the shared SQLite connection used by both stores
     memory.close();
   });

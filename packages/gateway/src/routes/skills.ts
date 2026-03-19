@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { SkillRegistry, SkillRunner, CreateSkillInput, UpdateSkillInput } from '@krythor/skills';
+import { SkillConcurrencyError, SkillPermissionError, SkillTimeoutError } from '@krythor/skills';
 import type { GuardEngine } from '@krythor/guard';
 import { sendError } from '../errors.js';
 import { logger } from '../logger.js';
@@ -34,6 +35,20 @@ export function registerSkillRoutes(app: FastifyInstance, skills: SkillRegistry,
           permissions:  { type: 'array', items: { type: 'string', enum: ['memory:read','memory:write','skill:invoke','internet:read'] }, maxItems: 10 },
           modelId:      { type: 'string' },
           providerId:   { type: 'string' },
+          timeoutMs:    { type: 'integer', minimum: 1000, maximum: 600_000 },
+          taskProfile:  {
+            type: 'object',
+            properties: {
+              taskCategories:  { type: 'array', items: { type: 'string' }, maxItems: 10 },
+              costTier:        { type: 'string', enum: ['local_preferred','cost_aware','quality_first'] },
+              speedTier:       { type: 'string', enum: ['fast','normal','thorough'] },
+              requiresVision:  { type: 'boolean' },
+              localOk:         { type: 'boolean' },
+              reasoningDepth:  { type: 'string', enum: ['shallow','medium','deep'] },
+              privacySensitive: { type: 'boolean' },
+            },
+            additionalProperties: false,
+          },
         },
         additionalProperties: false,
       },
@@ -60,6 +75,20 @@ export function registerSkillRoutes(app: FastifyInstance, skills: SkillRegistry,
           permissions:  { type: 'array', items: { type: 'string', enum: ['memory:read','memory:write','skill:invoke','internet:read'] }, maxItems: 10 },
           modelId:      { type: 'string' },
           providerId:   { type: 'string' },
+          timeoutMs:    { type: 'integer', minimum: 1000, maximum: 600_000 },
+          taskProfile:  {
+            type: 'object',
+            properties: {
+              taskCategories:  { type: 'array', items: { type: 'string' }, maxItems: 10 },
+              costTier:        { type: 'string', enum: ['local_preferred','cost_aware','quality_first'] },
+              speedTier:       { type: 'string', enum: ['fast','normal','thorough'] },
+              requiresVision:  { type: 'boolean' },
+              localOk:         { type: 'boolean' },
+              reasoningDepth:  { type: 'string', enum: ['shallow','medium','deep'] },
+              privacySensitive: { type: 'boolean' },
+            },
+            additionalProperties: false,
+          },
         },
         additionalProperties: false,
       },
@@ -102,11 +131,21 @@ export function registerSkillRoutes(app: FastifyInstance, skills: SkillRegistry,
       const abortSignal = req.raw.destroyed ? AbortSignal.abort() : undefined;
       const result = await runner.run({ skillId: req.params.id, input, abortSignal });
       skills.recordRun(req.params.id);
-      logger.skillRunCompleted(result.skillId, result.skillName, result.durationMs, result.modelId);
+      logger.skillRunCompleted(result.skillId, result.skillName, result.durationMs, result.modelId, req.id);
       return reply.send(result);
     } catch (err) {
+      if (err instanceof SkillTimeoutError) {
+        return sendError(reply, 408, 'SKILL_TIMEOUT', err.message, 'Increase the skill timeoutMs or check that the model provider is responsive');
+      }
+      if (err instanceof SkillConcurrencyError) {
+        reply.header('Retry-After', '10');
+        return sendError(reply, 429, 'SKILL_CONCURRENCY_LIMIT', err.message, 'Wait for a running skill to finish');
+      }
+      if (err instanceof SkillPermissionError) {
+        return sendError(reply, 403, 'SKILL_PERMISSION_DENIED', err.message, 'Grant the required permission in the skill definition');
+      }
       const message = err instanceof Error ? err.message : 'Skill run failed';
-      logger.skillRunFailed(req.params.id, skill.name, message);
+      logger.skillRunFailed(req.params.id, skill.name, message, req.id);
       return sendError(reply, 502, 'SKILL_RUN_FAILED', message, 'Check that a model provider is configured');
     }
   });

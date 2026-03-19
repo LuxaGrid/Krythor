@@ -1,10 +1,36 @@
 import { OpenAIProvider } from './OpenAIProvider.js';
 
 // OpenAI-compatible endpoints (LM Studio, vLLM, LocalAI, Together, Groq, etc.)
-// Identical to OpenAIProvider — the base URL points to the compatible server.
-// Separate class so UI can display "openai-compat" badge and allow custom naming.
+// Also used for GGUF providers — llama-server exposes an OpenAI-compat API.
+//
+// GGUF providers get a descriptive unavailable reason so logs and UI can guide
+// the user to start llama-server rather than showing a generic connection error.
 
 export class OpenAICompatProvider extends OpenAIProvider {
-  // Inherits all OpenAI logic — endpoint is set per-provider in config.
-  // No overrides needed; type badge differentiation is handled by config.type.
+  /** Last known unavailable reason — populated when isAvailable() returns false. */
+  lastUnavailableReason?: string;
+
+  override async isAvailable(): Promise<boolean> {
+    try {
+      await this.httpGet(`${this.config.endpoint}/models`, this.authHeaders);
+      this.lastUnavailableReason = undefined;
+      return true;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (this.config.type === 'gguf' && (msg.includes('ECONNREFUSED') || msg.includes('fetch failed'))) {
+        this.lastUnavailableReason =
+          `llama-server is not running at ${this.config.endpoint}. ` +
+          `Start it with: llama-server --model <model.gguf> --port 8080`;
+      } else {
+        this.lastUnavailableReason = msg;
+      }
+      return false;
+    }
+  }
+
+  private get authHeaders(): Record<string, string> {
+    const h: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (this.config.apiKey) h['Authorization'] = `Bearer ${this.config.apiKey}`;
+    return h;
+  }
 }

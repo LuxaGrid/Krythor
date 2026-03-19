@@ -1,6 +1,7 @@
 import type { MemoryStore } from './db/MemoryStore.js';
 import type { MemoryScorer } from './MemoryScorer.js';
 import type { EmbeddingRegistry } from './embedding/EmbeddingProvider.js';
+import { EmbeddingCache } from './embedding/EmbeddingCache.js';
 import type {
   MemoryEntry,
   MemoryQuery,
@@ -17,6 +18,8 @@ export interface RetrieveOptions {
 // ─── MemoryRetriever ──────────────────────────────────────────────────────────
 
 export class MemoryRetriever {
+  readonly cache = new EmbeddingCache();
+
   constructor(
     private readonly store: MemoryStore,
     private readonly scorer: MemoryScorer,
@@ -50,8 +53,14 @@ export class MemoryRetriever {
 
         if (!isStub && queryVector && provider.isAvailable()) {
           try {
-            const entryVector = await provider.embed(`${entry.title} ${entry.content}`);
-            semanticSim = provider.similarity(queryVector, entryVector);
+            // Check cache before calling the embedding provider — avoids
+            // redundant HTTP calls for entries that were recently embedded.
+            let entryVector = this.cache.get(entry.id);
+            if (!entryVector) {
+              entryVector = await provider.embed(`${entry.title} ${entry.content}`);
+              this.cache.set(entry.id, entryVector);
+            }
+            semanticSim = provider.similarity(queryVector, entryVector!);
           } catch {
             semanticSim = 0;
           }

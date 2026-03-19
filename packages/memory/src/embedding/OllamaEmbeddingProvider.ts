@@ -23,6 +23,29 @@ export class OllamaEmbeddingProvider implements EmbeddingProvider {
     return this._available;
   }
 
+  /**
+   * Lightweight availability probe — does a HEAD-style GET on the Ollama tags
+   * endpoint. Much cheaper than a full embed() call. Used by the heartbeat
+   * model_signal check to opportunistically refresh availability status.
+   * Never throws — returns true if reachable, false otherwise.
+   */
+  async probe(): Promise<boolean> {
+    try {
+      const res = await fetch(`${this.baseUrl}/api/tags`, {
+        signal: AbortSignal.timeout(3_000),
+      });
+      const wasAvailable = this._available;
+      this._available = res.ok;
+      if (!wasAvailable && this._available) {
+        // Recovered — caller can log this
+      }
+      return this._available;
+    } catch {
+      this._available = false;
+      return false;
+    }
+  }
+
   async embed(text: string): Promise<EmbeddingVector> {
     const res = await fetch(`${this.baseUrl}/api/embeddings`, {
       method: 'POST',

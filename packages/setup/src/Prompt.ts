@@ -66,4 +66,9 @@ export const fmt = {
   dim:   (s: string) => `${c.gray}${s}${c.reset}`,
   bold:  (s: string) => `${c.bold}${s}${c.reset}`,
   head:  (s: string) => `\n${c.bold}${c.white}${s}${c.reset}`,
+  // Recommendation label — used to highlight suggested options in the wizard
+  rec:   (label: string, reason?: string) =>
+    reason
+      ? `${c.cyan}★${c.reset} ${c.bold}${label}${c.reset} ${c.gray}— ${reason}${c.reset}`
+      : `${c.cyan}★${c.reset} ${c.bold}${label}${c.reset}`,
 };

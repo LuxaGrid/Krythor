@@ -1,5 +1,6 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
-import { join, dirname } from 'path';
+import { readFileSync, existsSync, mkdirSync } from 'fs';
+import { join } from 'path';
+import { atomicWriteJSON } from './config/atomicWrite.js';
 import { randomUUID } from 'crypto';
 import type { Skill, CreateSkillInput, UpdateSkillInput, SkillPermission } from './types.js';
 
@@ -32,6 +33,8 @@ export class SkillRegistry {
       permissions: input.permissions ?? [],
       modelId: input.modelId,
       providerId: input.providerId,
+      timeoutMs: input.timeoutMs,
+      taskProfile: input.taskProfile,
       version: 1,
       runCount: 0,
       createdAt: now,
@@ -54,6 +57,8 @@ export class SkillRegistry {
       ...(input.permissions !== undefined && { permissions: input.permissions }),
       ...(input.modelId !== undefined && { modelId: input.modelId || undefined }),
       ...(input.providerId !== undefined && { providerId: input.providerId || undefined }),
+      ...(input.taskProfile !== undefined && { taskProfile: input.taskProfile }),
+      ...(input.timeoutMs !== undefined && { timeoutMs: input.timeoutMs || undefined }),
       version: (existing.version ?? 1) + 1,
       updatedAt: Date.now(),
     };
@@ -108,8 +113,6 @@ export class SkillRegistry {
   }
 
   private save(): void {
-    mkdirSync(dirname(this.configPath), { recursive: true });
-    const data = Array.from(this.skills.values());
-    writeFileSync(this.configPath, JSON.stringify(data, null, 2), 'utf-8');
+    atomicWriteJSON(this.configPath, Array.from(this.skills.values()));
   }
 }

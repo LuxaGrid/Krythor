@@ -148,10 +148,10 @@ Guard denial events log the full `context` object to rotating JSON log files. If
 
 #### SEC-10 — No encryption of API keys at rest
 
-**File:** `packages/models/src/providers/` (`providers.json`)
-**Status:** Accepted / Phase 2 target
+**File:** `packages/models/src/ModelRegistry.ts`
+**Status:** ✅ Fixed — AES-256-GCM encryption with machine-derived key
 
-API keys are stored in plain text in `providers.json`. On standard OS configurations this file is in `%LOCALAPPDATA%\Krythor\` and readable only by the local user. Full encryption at rest using machine-specific keys is a Phase 2 target.
+API keys are encrypted at rest using AES-256-GCM. The key is derived from `hostname + platform + "krythor-v1"` via SHA-256, making it specific to the machine. Encrypted values are prefixed with `e1:` and stored as `<iv>:<tag>:<ciphertext>` hex. Plaintext keys are automatically migrated on first load.
 
 ---
 
@@ -173,33 +173,6 @@ Any process on `127.0.0.1` can call any API endpoint. This is intentional for v0
 
 ---
 
-## Fixed in v0.1.0
-
-| ID | Finding | Fix |
-|----|---------|-----|
-| SEC-01 | API keys in GET /api/models/providers | Mask `apiKey` to `****xxxx` (last 4 chars only) |
-| SEC-02 | SSRF via provider endpoint | `validateEndpointUrl()` — must be http/https, blocks `169.254.169.254` and metadata hostnames |
-| SEC-03 | ReDoS via guard contentPattern | Pattern capped at 500 chars; content tested only up to 50 KB |
-| SEC-07 | Unbounded limit/offset queries | Clamped: `limit` → [1, 500], `offset` → ≥ 0 |
-| SEC-08 | Unstructured guard condition object | Explicit JSON schema with `additionalProperties: false` on all condition fields |
-
-## Implemented in v0.1.0 (Phase 2 auth shipped early)
-
-| ID | Finding | Fix |
-|----|---------|-----|
-| SEC-05 | No rate limiting | `@fastify/rate-limit` — 300 req/min global limit |
-| SEC-06 | No WebSocket auth | WS requires `?token=<token>` query param; rejected with close code 4001 |
-| SEC-11 | No HTTP auth token | Shared-secret token generated on first run, stored in `app-config.json`; all `/api/*` routes require `Authorization: Bearer <token>`; UI auto-bootstraps from `/health` response |
-
-## Accepted / Deferred
-
-| ID | Finding | Rationale |
-|----|---------|-----------|
-| SEC-04 | Guard policy modifiable by authenticated local process | By design — guard is a user safety layer, not a hardened security boundary. The user owns their guard config. |
-| SEC-09 | Sensitive context may appear in disk logs | OS file-permission boundary is sufficient for a local tool; logs are in user's private AppData dir |
-| SEC-10 | API keys plain text at rest in `providers.json` | Platform keychain integration (DPAPI/Keychain/libsecret) is a future enhancement |
-| SEC-12 | Bind address is a constant, not env-configurable | No env override path exists; non-issue in current code |
-
 ---
 
 ## User Guidance
@@ -212,9 +185,43 @@ The gateway prints a warning on startup if it detects it is not binding to loopb
 
 ---
 
+#### SEC-13 — WebSocket auth token exposed in URL
+
+**File:** `packages/gateway/src/ws/stream.ts`
+**Status:** Accepted — by design for local-only use
+
+WebSocket clients pass the auth token as `?token=<token>` in the query string. This means the token appears in server access logs and browser history. For a local-only tool binding to `127.0.0.1`, this is acceptable — the threat model does not include a shared machine where other users could read your browser history. If Krythor is ever exposed via a reverse proxy, the proxy should strip the token from logs.
+
+---
+
+## Fixed / Implemented summary
+
+| ID | Finding | Status |
+|----|---------|--------|
+| SEC-01 | API keys in GET /api/models/providers | ✅ Masked to `****xxxx` |
+| SEC-02 | SSRF via provider endpoint | ✅ `validateEndpointUrl()` validates http/https, blocks metadata hosts |
+| SEC-03 | ReDoS via guard contentPattern | ✅ Pattern capped at 500 chars; content tested up to 50 KB |
+| SEC-05 | No rate limiting | ✅ `@fastify/rate-limit` — 300 req/min global |
+| SEC-06 | No WebSocket auth | ✅ WS requires `?token=<token>`; rejected with close code 4001 |
+| SEC-07 | Unbounded limit/offset queries | ✅ `limit` clamped [1, 500], `offset` ≥ 0 |
+| SEC-08 | Unstructured guard condition object | ✅ Explicit JSON schema, `additionalProperties: false` |
+| SEC-10 | API keys plain text at rest | ✅ AES-256-GCM with machine-derived key; auto-migrates plaintext |
+| SEC-11 | No HTTP auth token | ✅ 32-byte token on first run; all `/api/*` and `/ws/*` require `Authorization: Bearer` |
+| SEC-12 (CSP) | No Content-Security-Policy headers | ✅ CSP, X-Frame-Options, X-Content-Type-Options on all responses |
+
+## Accepted / Deferred
+
+| ID | Finding | Rationale |
+|----|---------|-----------|
+| SEC-04 | Guard policy modifiable by authenticated local process | By design — user owns their guard config |
+| SEC-09 | Sensitive context may appear in disk logs | OS file permissions sufficient; logs in user's private AppData |
+| SEC-12 | Bind address is a constant | No env override path exists |
+| SEC-13 | WS token in URL query string | Acceptable for local-only tool; document if ever proxy-exposed |
+
+---
+
 ## Remaining Security Roadmap
 
-1. **API key encryption at rest** — use DPAPI (Windows) / Keychain (macOS) / libsecret (Linux) to encrypt `providers.json` at rest
-2. **Content-Security-Policy headers** — add CSP response headers to prevent XSS from AI-generated content in the browser
-3. **Guard rule change audit log** — record who/when changed a guard rule (currently only AI decisions are logged)
-4. **Token rotation UI** — let the user regenerate the gateway token from the Settings panel
+1. **Guard rule change audit log** — record who/when changed a guard rule (currently only AI decisions are logged)
+2. **Token rotation UI** — let the user regenerate the gateway token from the Settings panel
+3. **Platform keychain integration** — DPAPI/Keychain/libsecret as an upgrade path over machine-derived AES key

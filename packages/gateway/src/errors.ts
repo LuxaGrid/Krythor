@@ -32,6 +32,14 @@ export function sendError(
 // structured error code. Kept here so every route can reuse it.
 export function classifyError(err: unknown): { code: string; message: string; hint: string } {
   const msg = err instanceof Error ? err.message : String(err);
+  if (msg.includes('ECONNREFUSED') && (msg.includes('127.0.0.1') || msg.includes('localhost'))) {
+    // Local connection refused — could be GGUF llama-server or Ollama not running
+    return {
+      code: 'LOCAL_SERVER_UNAVAILABLE',
+      message: 'Local AI server is not running',
+      hint: 'If using GGUF: start llama-server first (e.g. llama-server --model model.gguf --port 8080). If using Ollama: run "ollama serve".',
+    };
+  }
   if (msg.includes('fetch failed') || msg.includes('ECONNREFUSED') || msg.includes('ENOTFOUND') || msg.includes('timeout')) {
     return { code: 'MODEL_UNAVAILABLE', message: 'AI provider is unreachable', hint: 'Check the Models tab and ping your provider to verify it is running.' };
   }

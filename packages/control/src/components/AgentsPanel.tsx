@@ -42,25 +42,55 @@ const SELECT_CLS = 'w-full bg-zinc-800 border border-zinc-700 rounded-lg px-2 py
 
 function RunRow({ run }: { run: AgentRun }) {
   const [expanded, setExpanded] = useState(false);
+  const durationMs = run.completedAt ? run.completedAt - run.startedAt : null;
+  const durationLabel = durationMs !== null
+    ? durationMs >= 1000 ? `${(durationMs / 1000).toFixed(1)}s` : `${durationMs}ms`
+    : '…';
+
   return (
     <div className="border border-zinc-800 rounded-lg p-3 text-xs space-y-1">
       <div className="flex items-center gap-2 cursor-pointer" onClick={() => setExpanded(e => !e)}>
         <span className={STATUS_COLOR[run.status] ?? 'text-zinc-400'}>{run.status}</span>
         <span className="text-zinc-500 truncate flex-1">{run.input}</span>
-        <span className="text-zinc-600">
-          {run.completedAt ? `${run.completedAt - run.startedAt}ms` : '…'}
-        </span>
+        <span className="text-zinc-600" title="Run duration">{durationLabel}</span>
         <span className="text-zinc-700">{expanded ? '▲' : '▼'}</span>
       </div>
       {expanded && (
-        <div className="pt-2 space-y-1 border-t border-zinc-800/60 mt-2">
+        <div className="pt-2 space-y-1.5 border-t border-zinc-800/60 mt-2">
           {run.output && (
             <p className="text-zinc-400 whitespace-pre-wrap leading-relaxed">{run.output}</p>
           )}
           {run.errorMessage && (
             <p className="text-red-400 bg-red-950/30 rounded-lg p-2">{run.errorMessage}</p>
           )}
-          {run.modelUsed && <p className="text-zinc-600">[{run.modelUsed}]</p>}
+          {run.status === 'failed' && run.errorMessage?.includes('No model provider') && (
+            <p className="text-zinc-600 text-[10px] mt-1">Go to the Models tab to add a provider.</p>
+          )}
+          {run.status === 'failed' && (run.errorMessage?.includes('GGUF') || run.errorMessage?.includes('llama-server')) && (
+            <p className="text-zinc-600 text-[10px] mt-1">Start llama-server before running this agent.</p>
+          )}
+          {run.status === 'failed' && run.errorMessage?.includes('LOCAL_SERVER_UNAVAILABLE') && (
+            <p className="text-zinc-600 text-[10px] mt-1">Your local AI server is not running. Start it first.</p>
+          )}
+          {/* Run summary line */}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 pt-0.5 text-zinc-700">
+            {run.modelUsed && (
+              <span title="Model used for this run">model: <span className="font-mono text-zinc-600">{run.modelUsed}</span></span>
+            )}
+            {run.selectionReason && (
+              <span title="Why this model was chosen">why: <span className="text-zinc-600">{run.selectionReason}</span></span>
+            )}
+            {run.fallbackOccurred && (
+              <span className="text-amber-600" title="Fallback model was used">fallback</span>
+            )}
+            {run.memoryUsed !== undefined && run.memoryUsed > 0 && (
+              <span title={`${run.memoryUsed} memory entries used`} className="text-zinc-700">mem:{run.memoryUsed}</span>
+            )}
+            {durationMs !== null && (
+              <span title="Total run duration">duration: {durationLabel}</span>
+            )}
+            <span className="text-zinc-800 font-mono text-[10px]" title="Run ID">{run.id.slice(0, 8)}…</span>
+          </div>
         </div>
       )}
     </div>
@@ -322,7 +352,9 @@ export function AgentsPanel() {
                   onChange={e => setForm(f => ({ ...f, memoryScope: e.target.value }))}
                   className={SELECT_CLS}
                 >
-                  {['session','agent','workspace'].map(s => <option key={s} value={s}>{s}</option>)}
+                  <option value="session">session — clears between conversations</option>
+                  <option value="agent">agent — persists across all runs of this agent</option>
+                  <option value="workspace">workspace — shared across all agents</option>
                 </select>
               </div>
             </div>

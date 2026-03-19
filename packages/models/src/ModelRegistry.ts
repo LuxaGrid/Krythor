@@ -1,8 +1,10 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
-import { join, dirname } from 'path';
+import { readFileSync, existsSync, mkdirSync } from 'fs';
+import { join } from 'path';
 import { randomUUID, createCipheriv, createDecipheriv, createHash, randomBytes } from 'crypto';
 import { hostname, platform } from 'os';
 import type { ProviderConfig, ProviderType } from './types.js';
+import { parseProviderList } from './config/validate.js';
+import { atomicWriteJSON } from './config/atomicWrite.js';
 import { BaseProvider } from './providers/BaseProvider.js';
 import { OllamaProvider } from './providers/OllamaProvider.js';
 import { OpenAIProvider } from './providers/OpenAIProvider.js';
@@ -134,16 +136,18 @@ export class ModelRegistry {
     try {
       const raw = readFileSync(this.configPath, 'utf-8');
       const parsed = JSON.parse(raw) as unknown;
-      // Handle both formats:
-      //   - wrapped: { version: "1", providers: [...] }  (written by Installer)
-      //   - flat:    [...]                               (written by ModelRegistry.save())
-      if (Array.isArray(parsed)) {
-        this.configs = parsed as ProviderConfig[];
-      } else if (parsed && typeof parsed === 'object' && 'providers' in parsed && Array.isArray((parsed as { providers: unknown }).providers)) {
-        this.configs = (parsed as { providers: ProviderConfig[] }).providers;
-      } else {
-        this.configs = [];
+
+      const { providers, skipped, errors } = parseProviderList(parsed);
+
+      if (errors.length > 0) {
+        console.error(`[ModelRegistry] Validation warnings in ${this.configPath}:\n${errors.join('\n')}`);
       }
+      if (skipped > 0) {
+        console.error(`[ModelRegistry] Skipped ${skipped} invalid provider(s) from ${this.configPath}`);
+      }
+
+      this.configs = providers;
+
       // Migrate plaintext keys to encrypted on first load
       let needsSave = false;
       for (const cfg of this.configs) {
@@ -161,8 +165,7 @@ export class ModelRegistry {
   }
 
   private save(): void {
-    mkdirSync(dirname(this.configPath), { recursive: true });
-    writeFileSync(this.configPath, JSON.stringify(this.configs, null, 2), 'utf-8');
+    atomicWriteJSON(this.configPath, this.configs);
   }
 
   // ── Key helpers ────────────────────────────────────────────────────────────

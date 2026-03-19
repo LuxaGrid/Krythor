@@ -43,3 +43,50 @@
 @layer utilities {
   .scrollbar-thin { scrollbar-width: thin; scrollbar-color: #3f3f46 #18181b; }
 }
+
+/* ── Krythor brand semantic tokens ───────────────────────────────────────────
+   Use these CSS variables for the Mission Control / Workflow views so the
+   palette can be updated in one place rather than scattered across components.
+   ──────────────────────────────────────────────────────────────────────────── */
+:root {
+  /* Surfaces */
+  --kr-bg-primary:      #09090b;   /* zinc-950 */
+  --kr-bg-panel:        #111113;   /* slightly lifted panel */
+  --kr-bg-card:         #18181b;   /* zinc-900 */
+  --kr-bg-card-hover:   #1f1f23;   /* zinc-800/60 */
+
+  /* Borders */
+  --kr-border-subtle:   #27272a;   /* zinc-800 */
+  --kr-border-active:   #f59e0b;   /* gold-500 */
+  --kr-border-signal:   #1eaeff;   /* arc-500 */
+
+  /* Text */
+  --kr-text-primary:    #f4f4f5;   /* zinc-100 */
+  --kr-text-muted:      #71717a;   /* zinc-500 */
+  --kr-text-dim:        #3f3f46;   /* zinc-700 */
+
+  /* Accents */
+  --kr-gold:            #f59e0b;   /* gold-500 */
+  --kr-gold-dim:        #92400e;   /* gold-800 — subtle glow bg */
+  --kr-arc:             #1eaeff;   /* arc-500 — electric blue */
+  --kr-arc-dim:         #0a2f54;   /* arc-950 — subtle glow bg */
+
+  /* Status */
+  --kr-status-idle:     #52525b;   /* zinc-600 */
+  --kr-status-running:  #1eaeff;   /* arc-500 */
+  --kr-status-waiting:  #f59e0b;   /* gold-500 */
+  --kr-status-error:    #f87171;   /* red-400 */
+  --kr-status-stopped:  #fb923c;   /* orange-400 */
+  --kr-status-done:     #34d399;   /* emerald-400 */
+}
+
+/* Utility helpers that consume the tokens */
+@layer utilities {
+  .kr-card          { background: var(--kr-bg-card); border: 1px solid var(--kr-border-subtle); border-radius: 0.75rem; }
+  .kr-card-active   { border-color: var(--kr-border-signal); box-shadow: 0 0 12px 0 rgba(30,174,255,0.12); }
+  .kr-card-gold     { border-color: rgba(245,158,11,0.35); box-shadow: 0 0 10px 0 rgba(245,158,11,0.08); }
+  .kr-text-gold     { color: var(--kr-gold); }
+  .kr-text-arc      { color: var(--kr-arc); }
+  .kr-glow-arc      { box-shadow: 0 0 8px 1px rgba(30,174,255,0.2); }
+  .kr-glow-gold     { box-shadow: 0 0 8px 1px rgba(245,158,11,0.15); }
+}

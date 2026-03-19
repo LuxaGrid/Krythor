@@ -1,7 +1,9 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
-import { join, dirname } from 'path';
+import { readFileSync, existsSync, mkdirSync } from 'fs';
+import { join } from 'path';
 import { randomUUID } from 'crypto';
 import type { AgentDefinition, CreateAgentInput, UpdateAgentInput } from './types.js';
+import { parseAgentList } from '../config/validate.js';
+import { atomicWriteJSON } from '../config/atomicWrite.js';
 
 export class AgentRegistry {
   private configPath: string;
@@ -85,9 +87,18 @@ export class AgentRegistry {
     if (!existsSync(this.configPath)) return;
     try {
       const raw = readFileSync(this.configPath, 'utf-8');
-      const list = JSON.parse(raw) as AgentDefinition[];
-      for (const agent of list) {
-        this.agents.set(agent.id, agent);
+      const parsed = JSON.parse(raw) as unknown;
+      const { agents, skipped, errors } = parseAgentList(parsed);
+
+      for (const agent of agents) {
+        this.agents.set(agent.id, agent as AgentDefinition);
+      }
+
+      if (errors.length > 0) {
+        console.error(`[AgentRegistry] Validation warnings in ${this.configPath}:\n${errors.join('\n')}`);
+      }
+      if (skipped > 0) {
+        console.error(`[AgentRegistry] Skipped ${skipped} invalid agent(s) from ${this.configPath}`);
       }
     } catch (err) {
       console.error(`[AgentRegistry] Failed to parse ${this.configPath} — starting with no agents. Error: ${err instanceof Error ? err.message : String(err)}`);
@@ -96,7 +107,6 @@ export class AgentRegistry {
   }
 
   private save(): void {
-    mkdirSync(dirname(this.configPath), { recursive: true });
-    writeFileSync(this.configPath, JSON.stringify(this.list(), null, 2), 'utf-8');
+    atomicWriteJSON(this.configPath, this.list());
   }
 }

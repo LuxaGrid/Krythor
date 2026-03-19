@@ -65,17 +65,53 @@ export interface CircuitStat {
   avgLatencyMs: number;
 }
 
+export interface HeartbeatInsight {
+  type:             'heartbeat_insight';
+  checkId:          string;
+  severity:         'info' | 'warning';
+  message:          string;
+  actionable:       boolean;
+  suggestedAction?: string;
+  timestamp:        string;
+}
+
+export interface HeartbeatLastRun {
+  startedAt:    number;
+  completedAt?: number;
+  durationMs?:  number;
+  checksRan:    string[];
+  insights:     HeartbeatInsight[];
+  timedOut:     boolean;
+  error?:       string;
+}
+
+export interface PersistedHeartbeatWarning {
+  id:               string;
+  recordedAt:       number;
+  checkId:          string;
+  severity:         'warning';
+  message:          string;
+  actionable:       boolean;
+  suggestedAction?: string;
+}
+
 export interface Health {
   status: string;
   version: string;
   nodeVersion?: string;
   timestamp: string;
   firstRun: boolean;
-  memory: { totalEntries: number; embeddingProvider: string };
+  memory: { totalEntries: number; embeddingProvider: string; embeddingDegraded?: boolean; semantic?: boolean };
   models: { providerCount: number; modelCount: number; hasDefault: boolean };
   circuits?: Record<string, CircuitStat>;
   guard: { ruleCount: number; enabledRules: number; defaultAction: string };
   agents: { agentCount: number; activeRuns: number; totalRuns: number };
+  heartbeat?: {
+    enabled:    boolean;
+    recentRuns: number;
+    lastRun?:   HeartbeatLastRun;
+    warnings:   HeartbeatInsight[];
+  };
 }
 
 // ── App Config ─────────────────────────────────────────────────────────────
@@ -239,7 +275,7 @@ export interface MemorySearchResult {
   tags: string[];
   score: number;
 }
-export interface MemoryStats { totalEntries: number; embeddingProvider: string }
+export interface MemoryStats { totalEntries: number; embeddingProvider: string; embeddingDegraded?: boolean; semantic?: boolean }
 
 // ── Models ─────────────────────────────────────────────────────────────────
 export const listProviders  = () => req<Provider[]>('GET', '/models/providers');
@@ -256,7 +292,7 @@ export interface Provider {
   isDefault?: boolean; isEnabled?: boolean;
   models?: string[];
 }
-export interface PingResult { ok: boolean; latencyMs: number; error?: string }
+export interface PingResult { ok: boolean; latencyMs: number; error?: string; lastUnavailableReason?: string }
 export interface ModelInfo  { id: string; name: string; providerId: string; badges: string[] }
 
 // ── Agents ────────────────────────────────────────────────────────────────
@@ -287,7 +323,8 @@ export interface CreateAgentInput {
 export interface AgentRun {
   id: string; agentId: string; status: string; input: string;
   output?: string; modelUsed?: string; startedAt: number; completedAt?: number;
-  errorMessage?: string;
+  errorMessage?: string; selectionReason?: string; fallbackOccurred?: boolean;
+  memoryUsed?: number; memoryIdsUsed?: string[];
 }
 export interface AgentStats { agentCount: number; activeRuns: number; totalRuns: number }
 
@@ -322,19 +359,75 @@ export const activateEmbedding = (baseUrl: string, model: string) =>
   req<{ active: string }>('POST', '/models/embeddings/activate', { baseUrl, model });
 export const deactivateEmbedding = () => req<{ active: string }>('DELETE', '/models/embeddings/active');
 
+// ── Model recommendations ─────────────────────────────────────────────────────
+
+export interface TaskClassification {
+  taskType: string;
+  confidence: 'high' | 'medium' | 'low';
+  signals: string[];
+}
+
+export interface ModelRecommendation {
+  modelId:    string;
+  providerId: string;
+  isLocal:    boolean;
+  reason:     string;
+  tradeoff?:  string;
+  confidence: 'high' | 'medium' | 'low';
+}
+
+export interface RecommendationResult {
+  classification:   TaskClassification;
+  recommendation:   ModelRecommendation | null;
+  availableModels:  ModelInfo[];
+}
+
+export interface TaskPreference {
+  taskType:   string;
+  modelId:    string;
+  providerId: string;
+  preference: 'always_use' | 'ask' | 'auto';
+}
+
+export const getRecommendation = (task: string) =>
+  req<RecommendationResult>('GET', `/recommend?task=${encodeURIComponent(task)}`);
+
+export const listPreferences = () => req<TaskPreference[]>('GET', '/recommend/preferences');
+
+export const setPreference = (taskType: string, modelId: string, providerId: string, preference: TaskPreference['preference']) =>
+  req<TaskPreference>('PUT', `/recommend/preferences/${encodeURIComponent(taskType)}`, { modelId, providerId, preference });
+
+export const clearPreference = (taskType: string) =>
+  req<void>('DELETE', `/recommend/preferences/${encodeURIComponent(taskType)}`);
+
+export const reportOverride = (taskType: string, suggestedModelId: string, chosenModelId: string) =>
+  req<void>('POST', '/recommend/override', { taskType, suggestedModelId, chosenModelId }).catch(() => {});
+
 // ── Skills ────────────────────────────────────────────────────────────────────
 export const listSkills  = () => req<Skill[]>('GET', '/skills');
 export const createSkill = (s: CreateSkillInput) => req<Skill>('POST', '/skills', s);
 export const updateSkill = (id: string, patch: Partial<CreateSkillInput>) => req<Skill>('PATCH', `/skills/${id}`, patch);
 export const deleteSkill = (id: string) => req<void>('DELETE', `/skills/${id}`);
 
+export interface SkillTaskProfile {
+  taskCategories?: string[];
+  costTier?: 'local_preferred' | 'cost_aware' | 'quality_first';
+  speedTier?: 'fast' | 'normal' | 'thorough';
+  requiresVision?: boolean;
+  localOk?: boolean;
+  reasoningDepth?: 'shallow' | 'medium' | 'deep';
+  privacySensitive?: boolean;
+}
+
 export interface Skill {
   id: string; name: string; description: string; systemPrompt: string;
   tags: string[]; modelId?: string; providerId?: string;
+  taskProfile?: SkillTaskProfile;
   version: number; runCount: number; lastRunAt?: number;
   createdAt: number; updatedAt: number;
 }
 export interface CreateSkillInput {
   name: string; description?: string; systemPrompt: string;
   tags?: string[]; modelId?: string; providerId?: string;
+  taskProfile?: SkillTaskProfile;
 }

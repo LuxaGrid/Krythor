@@ -41,8 +41,24 @@ export interface GuardDecision {
   warnings: string[];
 }
 
+const GUARD_RETENTION_DAYS = 90;
+const GUARD_MAX_ROWS = 10_000;
+
 export class GuardDecisionStore {
-  constructor(private db: Database.Database) {}
+  constructor(private db: Database.Database) {
+    this.prune();
+  }
+
+  /** Remove rows older than 90 days and enforce a 10 000-row ceiling. */
+  prune(): void {
+    const cutoff = Date.now() - GUARD_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+    this.db.prepare('DELETE FROM guard_decisions WHERE timestamp < ?').run(cutoff);
+    this.db.prepare(`
+      DELETE FROM guard_decisions WHERE id IN (
+        SELECT id FROM guard_decisions ORDER BY timestamp DESC LIMIT -1 OFFSET ?
+      )
+    `).run(GUARD_MAX_ROWS);
+  }
 
   record(ctx: GuardContextInput, verdict: GuardVerdictInput): void {
     const stmt = this.db.prepare(`

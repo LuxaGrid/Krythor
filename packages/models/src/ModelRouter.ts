@@ -18,77 +18,180 @@ import { CircuitBreaker, CircuitOpenError } from './CircuitBreaker.js';
 //
 
 const MAX_RETRIES      = 2;   // total attempts = 1 initial + 2 retries
-const RETRY_BASE_MS    = 500; // 500ms → 1000ms
+const RETRY_BASE_MS    = 500; // 500ms → 1000ms (+ jitter)
+const RETRY_JITTER_MS  = 100; // up to 100ms of random jitter per retry
 
 export class ModelRouter {
   private readonly breakers = new Map<string, CircuitBreaker>();
 
-  constructor(private readonly registry: ModelRegistry) {}
+  constructor(
+    private readonly registry: ModelRegistry,
+    private readonly warnFn?: (message: string, data?: Record<string, unknown>) => void,
+    private readonly infoFn?: (message: string, data?: Record<string, unknown>) => void,
+  ) {}
 
   async infer(request: InferenceRequest, context: RoutingContext = {}, signal?: AbortSignal): Promise<InferenceResponse> {
-    const { provider, model } = this.resolve(request, context);
-    return this.inferWithRetry(provider, { ...request, model }, signal);
+    const { provider, model, selectionReason } = this.resolve(request, context);
+    try {
+      const response = await this.inferWithRetry(provider, { ...request, model }, signal);
+      return { ...response, selectionReason, fallbackOccurred: false };
+    } catch (primaryErr) {
+      // Primary provider exhausted retries (or circuit opened mid-retry).
+      // Attempt cross-provider fallback: re-resolve with the primary provider's
+      // circuit tripped, pick the next available provider, and try once.
+      // Only attempt fallback for transient errors — not aborts or 4xx client errors.
+      if (signal?.aborted) throw primaryErr;
+      if (isClientError(primaryErr)) throw primaryErr;
+
+      // Mark primary provider as failed so resolve() skips it
+      const primaryBreaker = this.getBreaker(provider.id);
+      if (!primaryBreaker.isOpen()) {
+        // Circuit not yet open (e.g. only 1 attempt failed) — force open via recordFailure loop
+        // so resolve() will skip it for the fallback resolution.
+        // We don't want to permanently damage the breaker state if we have a fallback,
+        // but we do need resolve() to skip the same provider. Instead, we call resolve()
+        // with a set of providers to exclude explicitly.
+      }
+
+      const fallback = this.resolveExcluding(request, context, new Set([provider.id]));
+      if (!fallback) {
+        // No fallback available — re-throw primary error
+        throw primaryErr;
+      }
+
+      const errMsg = primaryErr instanceof Error ? primaryErr.message : String(primaryErr);
+      const logData = {
+        primaryProviderId: provider.id,
+        fallbackProviderId: fallback.provider.id,
+        fallbackModel: fallback.model,
+        reason: errMsg,
+      };
+      if (this.infoFn) {
+        this.infoFn('[ModelRouter] Primary provider failed — attempting fallback provider.', logData);
+      } else if (this.warnFn) {
+        this.warnFn('[ModelRouter] Primary provider failed — attempting fallback provider.', logData);
+      }
+
+      // Single attempt on fallback — no further cross-provider retry chain
+      const fallbackResponse = await this.inferWithRetry(fallback.provider, { ...request, model: fallback.model }, signal);
+      return { ...fallbackResponse, selectionReason: `fallback from ${provider.id}: ${errMsg.slice(0, 120)}`, fallbackOccurred: true };
+    }
   }
 
   async *inferStream(request: InferenceRequest, context: RoutingContext = {}, signal?: AbortSignal): AsyncGenerator<StreamChunk> {
-    // Streaming is not retried — partial output has already been sent to the client.
-    // The circuit breaker open-check happens before the stream begins; any error
-    // thrown during streaming also trips the breaker so it reflects the failure.
+    // Streaming is NOT retried and NOT fallen back mid-stream — partial output has
+    // already been sent to the client once the first chunk yields.
+    //
+    // Exception: if the primary provider's circuit is open *before* any bytes are
+    // sent, we can transparently fall back to the next provider — no partial output
+    // has been delivered yet so the switch is safe.
     const { provider, model } = this.resolve(request, context);
     const breaker = this.getBreaker(provider.id);
-    if (breaker.isOpen()) throw new CircuitOpenError(provider.id);
 
+    let resolvedProvider = provider;
+    let resolvedModel = model;
+
+    if (breaker.isOpen()) {
+      // Circuit is open before the stream begins — attempt pre-stream fallback.
+      if (!signal?.aborted) {
+        const fallback = this.resolveExcluding(request, context, new Set([provider.id]));
+        if (fallback) {
+          if (this.infoFn) {
+            this.infoFn('[ModelRouter] Primary provider circuit open — using fallback for stream.', {
+              primaryProviderId: provider.id,
+              fallbackProviderId: fallback.provider.id,
+            });
+          }
+          resolvedProvider = fallback.provider;
+          resolvedModel    = fallback.model;
+        } else {
+          // No fallback available — throw the circuit-open error as before
+          throw new CircuitOpenError(provider.id);
+        }
+      } else {
+        throw new CircuitOpenError(provider.id);
+      }
+    }
+
+    const activeBreaker = this.getBreaker(resolvedProvider.id);
     try {
-      yield* provider.inferStream({ ...request, model }, signal);
+      yield* resolvedProvider.inferStream({ ...request, model: resolvedModel }, signal);
       // Count the completed stream as a success so latency is tracked
-      breaker.recordSuccess(0);
+      activeBreaker.recordSuccess(0);
     } catch (err) {
       // Trip the breaker on stream failure (connection error, mid-stream abort, etc.)
       // but not on AbortError — abort is caller-initiated, not a provider failure.
       if (!signal?.aborted) {
-        breaker.recordFailure();
+        activeBreaker.recordFailure();
       }
       throw err;
     }
   }
 
   // Resolve which provider + model to use for a given request + routing context.
-  resolve(request: InferenceRequest, context: RoutingContext = {}): { provider: BaseProvider; model: string } {
+  resolve(request: InferenceRequest, context: RoutingContext = {}): { provider: BaseProvider; model: string; selectionReason: string } {
     // 1. Explicit provider + model on the request itself (direct override)
     if (request.providerId) {
       const p = this.registry.getProvider(request.providerId);
       if (p && p.isEnabled) {
-        return { provider: p, model: request.model ?? p.getModels()[0] ?? '' };
+        return { provider: p, model: this.resolveModel(p, request.model), selectionReason: `explicit providerId=${request.providerId}` };
       }
     }
 
     // 2. Skill model override
     if (context.skillModelId) {
       const found = this.findByModelId(context.skillModelId);
-      if (found) return found;
+      if (found) return { ...found, selectionReason: `skill override modelId=${context.skillModelId}` };
     }
 
     // 3. Agent model override
     if (context.agentModelId) {
       const found = this.findByModelId(context.agentModelId);
-      if (found) return found;
+      if (found) return { ...found, selectionReason: `agent override modelId=${context.agentModelId}` };
     }
 
-    // 4. Global default provider
-    const defaultProvider = this.registry.getDefaultProvider();
-    if (defaultProvider) {
-      const model = request.model ?? defaultProvider.getModels()[0] ?? '';
-      return { provider: defaultProvider, model };
-    }
-
-    // 5. Fallback: first enabled provider
+    // 4. Walk all enabled providers in order, skipping those with open circuits.
+    //    This replaces the old "default provider OR first enabled" logic with a
+    //    single ordered pass: default provider first, then the rest.
     const enabled = this.registry.listEnabled();
-    if (enabled.length > 0) {
-      const p = enabled[0]!;
-      return { provider: p, model: request.model ?? p.getModels()[0] ?? '' };
+    const defaultProvider = this.registry.getDefaultProvider();
+    const ordered = defaultProvider
+      ? [defaultProvider, ...enabled.filter(p => p.id !== defaultProvider.id)]
+      : enabled;
+
+    for (const provider of ordered) {
+      const breaker = this.breakers.get(provider.id);
+      if (breaker?.isOpen()) continue; // skip tripped providers
+      const reason = provider.id === defaultProvider?.id ? 'default provider' : 'first available enabled provider';
+      return { provider, model: this.resolveModel(provider, request.model), selectionReason: reason };
+    }
+
+    // All circuits open — use default anyway and let the error surface naturally
+    if (ordered.length > 0) {
+      const p = ordered[0]!;
+      return { provider: p, model: this.resolveModel(p, request.model), selectionReason: 'all circuits open — using default as last resort' };
     }
 
     throw new Error('No model provider is configured or enabled. Add a provider via /api/models/providers.');
+  }
+
+  /**
+   * Resolve the model string for a given provider.
+   * If the requested model is not in the provider's list, fall back to the
+   * provider's first model and log a warning rather than passing an empty string.
+   */
+  private resolveModel(provider: BaseProvider, requestedModel?: string): string {
+    const models = provider.getModels();
+    if (!requestedModel) return models[0] ?? '';
+    if (models.length === 0 || models.includes(requestedModel)) return requestedModel;
+    // Model not available on this provider — use first available and warn
+    const msg = `Requested model "${requestedModel}" not found on provider "${provider.id}" — using "${models[0]}" instead.`;
+    if (this.warnFn) {
+      this.warnFn('[ModelRouter] ' + msg, { requestedModel, providerId: provider.id, fallbackModel: models[0] });
+    } else {
+      console.warn('[ModelRouter]', msg);
+    }
+    return models[0]!;
   }
 
   // List all models across all enabled providers with badges and circuit state
@@ -119,10 +222,44 @@ export class ModelRouter {
   private getBreaker(providerId: string): CircuitBreaker {
     let breaker = this.breakers.get(providerId);
     if (!breaker) {
-      breaker = new CircuitBreaker(providerId);
+      breaker = new CircuitBreaker(providerId, this.warnFn);
       this.breakers.set(providerId, breaker);
     }
     return breaker;
+  }
+
+  /**
+   * Resolve to a provider+model, explicitly skipping providers in the exclusion set.
+   * Used for cross-provider fallback after primary exhausts retries.
+   * Returns null when no alternative provider is available.
+   */
+  private resolveExcluding(
+    request: InferenceRequest,
+    context: RoutingContext,
+    exclude: Set<string>,
+  ): { provider: BaseProvider; model: string } | null {
+    // Explicit provider override — respect it even for fallback (user chose it directly)
+    if (request.providerId && !exclude.has(request.providerId)) {
+      const p = this.registry.getProvider(request.providerId);
+      if (p && p.isEnabled) {
+        return { provider: p, model: this.resolveModel(p, request.model) };
+      }
+    }
+
+    // Walk enabled providers in priority order, skip excluded and open circuits
+    const enabled = this.registry.listEnabled();
+    const defaultProvider = this.registry.getDefaultProvider();
+    const ordered = defaultProvider
+      ? [defaultProvider, ...enabled.filter(p => p.id !== defaultProvider.id)]
+      : enabled;
+
+    for (const provider of ordered) {
+      if (exclude.has(provider.id)) continue;
+      const breaker = this.breakers.get(provider.id);
+      if (breaker?.isOpen()) continue;
+      return { provider, model: this.resolveModel(provider, request.model) };
+    }
+    return null;
   }
 
   private async inferWithRetry(provider: BaseProvider, request: InferenceRequest, signal?: AbortSignal): Promise<InferenceResponse> {
@@ -131,14 +268,20 @@ export class ModelRouter {
 
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       if (attempt > 0) {
-        // Exponential backoff — do not retry if the signal is already aborted
+        // Exponential backoff with jitter — do not retry if the signal is already aborted
         if (signal?.aborted) throw lastError;
-        const delay = RETRY_BASE_MS * Math.pow(2, attempt - 1); // 500ms, 1000ms
-        await sleep(delay, signal);
+        const base  = RETRY_BASE_MS * Math.pow(2, attempt - 1); // 500ms, 1000ms
+        const jitter = Math.random() * RETRY_JITTER_MS;
+        const errMsg = lastError instanceof Error ? lastError.message : String(lastError);
+        if (this.warnFn) {
+          this.warnFn('[ModelRouter] Retrying inference', { providerId: provider.id, attempt, maxRetries: MAX_RETRIES, delayMs: Math.round(base + jitter), error: errMsg });
+        }
+        await sleep(base + jitter, signal);
       }
 
       try {
-        return await breaker.execute(() => provider.infer(request, signal));
+        const response = await breaker.execute(() => provider.infer(request, signal));
+        return { ...response, retryCount: attempt };
       } catch (err) {
         lastError = err;
         // Do not retry on circuit-open — the breaker has already tripped

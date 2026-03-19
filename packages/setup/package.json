@@ -19,18 +19,20 @@
     "build": "tsup",
     "dev": "tsup --watch",
     "setup": "node dist/bin/setup.js",
+    "test": "vitest run",
     "clean": "rimraf dist"
   },
   "dependencies": {
     "@krythor/core": "workspace:*",
+    "@krythor/guard": "workspace:*",
     "@krythor/memory": "workspace:*",
-    "@krythor/models": "workspace:*",
-    "@krythor/guard": "workspace:*"
+    "@krythor/models": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "rimraf": "^6.0.1",
     "tsup": "^8.3.5",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.9"
   }
 }

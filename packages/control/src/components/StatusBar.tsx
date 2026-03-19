@@ -161,6 +161,18 @@ export function StatusBar({ health, connected, onTabChange, onAbout }: Props) {
 
       {/* Right side */}
       <div className="ml-auto flex items-center gap-2 shrink-0">
+        {/* Heartbeat warning indicator — shown only when there are active warnings */}
+        {(health?.heartbeat?.warnings?.length ?? 0) > 0 && (
+          <button
+            onClick={() => onTabChange('events')}
+            title={health!.heartbeat!.warnings.map(w => `[${w.checkId}] ${w.message}`).join('\n')}
+            className="flex items-center gap-1 text-amber-400 hover:text-amber-300 transition-colors focus:outline-none"
+            aria-label={`${health!.heartbeat!.warnings.length} heartbeat warning${health!.heartbeat!.warnings.length > 1 ? 's' : ''}`}
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+            <span className="text-[10px] font-mono">{health!.heartbeat!.warnings.length}w</span>
+          </button>
+        )}
         {health && (
           <span className="text-zinc-500">v{health.version}</span>
         )}

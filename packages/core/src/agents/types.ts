@@ -39,6 +39,10 @@ export interface AgentRun {
   errorMessage?: string;
   memoryIdsUsed: string[];
   memoryIdsWritten: string[];
+  requestId?: string;          // HTTP requestId for end-to-end log correlation
+  selectionReason?: string;    // why this model/provider was selected
+  fallbackOccurred?: boolean;  // true if a fallback provider was used
+  retryCount?: number;         // number of inference retry attempts (0 = first attempt succeeded)
 }
 
 // ─── Input types ──────────────────────────────────────────────────────────────
@@ -76,6 +80,7 @@ export interface RunAgentInput {
   modelOverride?: string;  // overrides agent.modelId for this run only
   contextMessages?: Array<{ role: string; content: string }>; // conversation history to prepend
   runId?: string;          // pre-specified run ID for SSE correlation
+  requestId?: string;      // HTTP requestId for end-to-end log correlation
 }
 
 // ─── Events (for streaming to UI via WebSocket) ───────────────────────────────

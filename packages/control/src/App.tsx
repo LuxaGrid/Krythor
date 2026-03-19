@@ -9,7 +9,10 @@ import { ModelsPanel } from './components/ModelsPanel.tsx';
 import { GuardPanel } from './components/GuardPanel.tsx';
 import { SkillsPanel } from './components/SkillsPanel.tsx';
 import { EventStream } from './components/EventStream.tsx';
+import { MissionControlPanel } from './components/MissionControlPanel.tsx';
+import { WorkflowPanel } from './components/WorkflowPanel.tsx';
 import { OnboardingWizard } from './components/OnboardingWizard.tsx';
+import { DegradedBanner } from './components/DegradedBanner.tsx';
 
 // ── App Config Context ─────────────────────────────────────────────────────
 interface AppConfigCtx {
@@ -23,16 +26,18 @@ export const AppConfigContext = createContext<AppConfigCtx>({
 export const useAppConfig = () => useContext(AppConfigContext);
 
 // ── Tabs ──────────────────────────────────────────────────────────────────
-type Tab = 'command' | 'agents' | 'skills' | 'memory' | 'models' | 'guard' | 'events';
+type Tab = 'command' | 'agents' | 'skills' | 'memory' | 'models' | 'guard' | 'events' | 'mission' | 'workflow';
 
 const TABS: { id: Tab; label: string }[] = [
-  { id: 'command', label: 'Command' },
-  { id: 'agents',  label: 'Agents'  },
-  { id: 'skills',  label: 'Skills'  },
-  { id: 'memory',  label: 'Memory'  },
-  { id: 'models',  label: 'Models'  },
-  { id: 'guard',   label: 'Guard'   },
-  { id: 'events',  label: 'Events'  },
+  { id: 'command',  label: 'Command'         },
+  { id: 'agents',   label: 'Agents'          },
+  { id: 'skills',   label: 'Skills'          },
+  { id: 'memory',   label: 'Memory'          },
+  { id: 'models',   label: 'Models'          },
+  { id: 'guard',    label: 'Guard'           },
+  { id: 'events',   label: 'Events'          },
+  { id: 'mission',  label: 'Mission Control' },
+  { id: 'workflow', label: 'Workflow'        },
 ];
 
 // ── About Dialog ──────────────────────────────────────────────────────────
@@ -101,13 +106,59 @@ function AboutDialog({ health, onClose }: AboutDialogProps) {
             )}
           </div>
 
+          {/* Heartbeat last-run summary */}
+          {health?.heartbeat && (
+            <div>
+              <p className="text-zinc-500 text-xs uppercase tracking-wider font-medium mb-2">System Health</p>
+              <div className="bg-zinc-950 rounded-lg px-3 py-2.5 text-xs space-y-1.5">
+                {health.heartbeat.lastRun ? (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="text-zinc-600 w-28 shrink-0">Last check</span>
+                      <span className="text-zinc-400 font-mono">
+                        {new Date(health.heartbeat.lastRun.completedAt ?? health.heartbeat.lastRun.startedAt).toLocaleTimeString()}
+                        {health.heartbeat.lastRun.durationMs !== undefined && (
+                          <span className="text-zinc-700 ml-1">({health.heartbeat.lastRun.durationMs}ms)</span>
+                        )}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-zinc-600 w-28 shrink-0">Checks ran</span>
+                      <span className="text-zinc-400 font-mono">{health.heartbeat.lastRun.checksRan.length}</span>
+                    </div>
+                    {health.heartbeat.lastRun.timedOut && (
+                      <div className="text-amber-500">⚠ Last run timed out</div>
+                    )}
+                    {health.heartbeat.lastRun.error && (
+                      <div className="text-red-400">✗ {health.heartbeat.lastRun.error}</div>
+                    )}
+                    {health.heartbeat.warnings.length > 0 ? (
+                      <div className="space-y-1 pt-1 border-t border-zinc-800">
+                        {health.heartbeat.warnings.map((w, i) => (
+                          <div key={i} className="flex gap-2">
+                            <span className="text-amber-400 shrink-0">[{w.checkId}]</span>
+                            <span className="text-zinc-400">{w.message}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-emerald-600">✓ No warnings</div>
+                    )}
+                  </>
+                ) : (
+                  <span className="text-zinc-600">No heartbeat run yet — checks begin after 60s startup delay.</span>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Keyboard shortcuts */}
           <div>
             <p className="text-zinc-500 text-xs uppercase tracking-wider font-medium mb-2">Keyboard Shortcuts</p>
             <div className="bg-zinc-950 rounded-lg px-3 py-2.5 space-y-1.5 font-mono text-xs">
               {[
                 ['Ctrl+N',       'New conversation'],
-                ['Ctrl+1 – 7',  'Switch tabs'],
+                ['Ctrl+1 – 9',  'Switch tabs'],
                 ['Ctrl+/',       'Show this dialog'],
                 ['Escape',       'Close dialog'],
               ].map(([key, desc]) => (
@@ -221,7 +272,7 @@ function AppInner({ onTokenReady }: { onTokenReady: (token: string) => void }) {
 
   // ── Global keyboard shortcuts ────────────────────────────────────────────
   useEffect(() => {
-    const tabOrder: Tab[] = ['command', 'agents', 'skills', 'memory', 'models', 'guard', 'events'];
+    const tabOrder: Tab[] = ['command', 'agents', 'skills', 'memory', 'models', 'guard', 'events', 'mission', 'workflow'];
 
     const handler = (e: KeyboardEvent) => {
       // Ignore when typing in an input/textarea (except for modal-close)
@@ -253,8 +304,8 @@ function AppInner({ onTokenReady }: { onTokenReady: (token: string) => void }) {
         return;
       }
 
-      // Ctrl+1 through Ctrl+7 — switch tabs
-      if (e.ctrlKey && e.key >= '1' && e.key <= '7') {
+      // Ctrl+1 through Ctrl+9 — switch tabs
+      if (e.ctrlKey && e.key >= '1' && e.key <= '9') {
         e.preventDefault();
         const idx = parseInt(e.key, 10) - 1;
         if (tabOrder[idx]) setTab(tabOrder[idx]!);
@@ -278,26 +329,35 @@ function AppInner({ onTokenReady }: { onTokenReady: (token: string) => void }) {
           onTabChange={setTab}
           onAbout={() => setShowAbout(s => !s)}
         />
+        <DegradedBanner />
 
         {/* Tab bar */}
         <div className="flex border-b border-zinc-800 bg-zinc-950">
-          {TABS.map(t => (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className={`px-4 py-2 text-xs font-medium transition-colors relative
-                ${tab === t.id
-                  ? 'text-zinc-100 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-brand-500'
-                  : 'text-zinc-500 hover:text-zinc-300'}`}
-            >
-              {t.label}
-              {t.id === 'events' && events.length > 0 && (
-                <span className="ml-1.5 bg-brand-600 text-white text-xs rounded-full px-1.5 py-0.5 leading-none">
-                  {events.length}
-                </span>
-              )}
-            </button>
-          ))}
+          {TABS.map(t => {
+            const isMC = t.id === 'mission' || t.id === 'workflow';
+            const isActive = tab === t.id;
+            return (
+              <button
+                key={t.id}
+                onClick={() => setTab(t.id)}
+                className={`px-4 py-2 text-xs font-medium transition-colors relative
+                  ${isActive
+                    ? isMC
+                      ? 'text-gold-400 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-gold-500'
+                      : 'text-zinc-100 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-brand-500'
+                    : isMC
+                      ? 'text-gold-600 hover:text-gold-400'
+                      : 'text-zinc-500 hover:text-zinc-300'}`}
+              >
+                {t.label}
+                {t.id === 'events' && events.length > 0 && (
+                  <span className="ml-1.5 bg-brand-600 text-white text-xs rounded-full px-1.5 py-0.5 leading-none">
+                    {events.length}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
 
         {/* Panel area */}
@@ -310,9 +370,11 @@ function AppInner({ onTokenReady }: { onTokenReady: (token: string) => void }) {
           <div className={`h-full ${tab === 'memory'  ? 'block' : 'hidden'}`}><MemoryPanel health={healthData} /></div>
           <div className={`h-full ${tab === 'models'  ? 'block' : 'hidden'}`}><ModelsPanel health={healthData} /></div>
           <div className={`h-full ${tab === 'guard'   ? 'block' : 'hidden'}`}><GuardPanel /></div>
-          <div className={`h-full ${tab === 'events'  ? 'block' : 'hidden'}`}>
+          <div className={`h-full ${tab === 'events'   ? 'block' : 'hidden'}`}>
             <EventStream events={events} onClear={clearEvents} />
           </div>
+          <div className={`h-full ${tab === 'mission'  ? 'block' : 'hidden'}`}><MissionControlPanel /></div>
+          <div className={`h-full ${tab === 'workflow' ? 'block' : 'hidden'}`}><WorkflowPanel /></div>
         </div>
       </div>
     </AppConfigContext.Provider>

@@ -5,6 +5,12 @@ import type { GuardEngine } from '@krythor/guard';
 import type { ConversationStore } from '@krythor/memory';
 import { classifyError } from '../errors.js';
 
+/** Register a requestId→runId mapping on the app instance (set in server.ts). */
+function registerRunRequestId(app: FastifyInstance, runId: string, requestId: string): void {
+  const reg = (app as unknown as Record<string, unknown>)['registerRunRequestId'];
+  if (typeof reg === 'function') reg(runId, requestId);
+}
+
 export function registerCommandRoute(
   app: FastifyInstance,
   core: KrythorCore,
@@ -128,11 +134,6 @@ export function registerCommandRoute(
           });
         }
 
-        const runInput = {
-          input,
-          ...(modelId && { modelOverride: modelId }),
-        };
-
         if (stream) {
           // Real SSE streaming — subscribe to orchestrator events for this run
           reply.raw.writeHead(200, {
@@ -155,6 +156,7 @@ export function registerCommandRoute(
           // Generate a runId upfront so we can correlate events.
           // Prefix with the Fastify request ID for end-to-end log correlation.
           const runId = `run-${req.id}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+          registerRunRequestId(app, runId, String(req.id));
 
           // Save user message to conversation before run
           let activeConvId = conversationId;
@@ -205,6 +207,7 @@ export function registerCommandRoute(
           reply.raw.on('close', endStream);
 
           // Start the run — don't await, events drive the response
+          const runInput = { input, ...(modelId && { modelOverride: modelId }), requestId: String(req.id) };
           orchestrator.runAgentStream(agentId, runInput, { contextMessages, runId }).catch(err => {
             const structured = classifyError(err);
             sendEvent({ type: 'error', message: structured.hint || structured.message });
@@ -216,7 +219,12 @@ export function registerCommandRoute(
 
         // Non-streaming (default)
         const startTime = Date.now();
-        const run = await orchestrator.runAgent(agentId, runInput, { contextMessages });
+        // Pre-generate runId so the requestId can be registered before the run emits events
+        const { randomUUID: genNonStreamId } = await import('crypto');
+        const nonStreamRunId = genNonStreamId();
+        registerRunRequestId(app, nonStreamRunId, String(req.id));
+        const nonStreamRunInput = { input, ...(modelId && { modelOverride: modelId }), requestId: String(req.id), runId: nonStreamRunId };
+        const run = await orchestrator.runAgent(agentId, nonStreamRunInput, { contextMessages });
         const output = run.output ?? '(no response)';
 
         // Save messages to conversation

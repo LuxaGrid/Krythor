@@ -11,6 +11,27 @@ export type SkillPermission =
   | 'skill:invoke'    // allowed to invoke other skills (chaining)
   | 'internet:read';  // future: allowed to make outbound HTTP requests
 
+/**
+ * Task metadata for the model recommendation engine.
+ * Optional — skills that omit these fields get general-purpose routing.
+ */
+export interface SkillTaskProfile {
+  /** Task types this skill handles. Matches TaskClassifier output. */
+  taskCategories?:      string[];
+  /** Cost preference: 'local_preferred' | 'cost_aware' | 'quality_first' */
+  costTier?:            'local_preferred' | 'cost_aware' | 'quality_first';
+  /** Speed priority: 'fast' | 'normal' | 'thorough' */
+  speedTier?:           'fast' | 'normal' | 'thorough';
+  /** True if vision capability is required */
+  requiresVision?:      boolean;
+  /** True if local model execution is acceptable */
+  localOk?:             boolean;
+  /** Minimum reasoning depth: 'shallow' | 'medium' | 'deep' */
+  reasoningDepth?:      'shallow' | 'medium' | 'deep';
+  /** True if this skill handles sensitive content requiring extra care */
+  privacySensitive?:    boolean;
+}
+
 export interface Skill {
   id: string;
   name: string;
@@ -20,6 +41,8 @@ export interface Skill {
   permissions: SkillPermission[];  // declared capabilities; empty = no special access
   modelId?: string;       // override model for this skill
   providerId?: string;    // override provider for this skill
+  timeoutMs?: number;     // per-skill execution timeout; overrides runner default (120 s)
+  taskProfile?: SkillTaskProfile;  // metadata for recommendation engine
   version: number;        // increments on every update (starts at 1)
   runCount: number;       // total number of times this skill has been executed
   lastRunAt?: number;     // Unix ms of last execution
@@ -35,6 +58,8 @@ export interface CreateSkillInput {
   permissions?: SkillPermission[];
   modelId?: string;
   providerId?: string;
+  timeoutMs?: number;
+  taskProfile?: SkillTaskProfile;
 }
 
 export interface UpdateSkillInput {
@@ -45,6 +70,8 @@ export interface UpdateSkillInput {
   permissions?: SkillPermission[];
   modelId?: string;
   providerId?: string;
+  timeoutMs?: number;
+  taskProfile?: SkillTaskProfile;
 }
 
 // ─── Skill lifecycle events ───────────────────────────────────────────────────

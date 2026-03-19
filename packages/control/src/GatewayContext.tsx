@@ -20,8 +20,17 @@ interface AgentEventPayload {
   payload?: unknown;
 }
 
+export type ConnectionState = 'connecting' | 'connected' | 'reconnecting' | 'degraded' | 'disconnected';
+
+// Reconnection: exponential backoff 2s → 4s → 8s → … capped at 30s
+const RECONNECT_BASE_MS  = 2_000;
+const RECONNECT_MAX_MS   = 30_000;
+const RECONNECT_MAX_TRIES = 10; // after this many failures → 'degraded'
+
 interface GatewayCtx {
   connected: boolean;
+  connectionState: ConnectionState;
+  reconnectAttempts: number;
   events: GatewayEvent[];
   clearEvents: () => void;
   // Per-run streaming buffers: runId → accumulated text so far
@@ -32,6 +41,8 @@ interface GatewayCtx {
 
 const defaultCtx: GatewayCtx = {
   connected: false,
+  connectionState: 'disconnected',
+  reconnectAttempts: 0,
   events: [],
   clearEvents: () => {},
   streamBuffers: new Map(),
@@ -47,7 +58,10 @@ let eventCounter = 0;
 export function GatewayProvider({ children, token }: { children: React.ReactNode; token?: string }) {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const attemptsRef = useRef(0);
   const [connected, setConnected] = useState(false);
+  const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected');
+  const [reconnectAttempts, setReconnectAttempts] = useState(0);
   const [events, setEvents] = useState<GatewayEvent[]>([]);
   const [streamBuffers, setStreamBuffers] = useState<Map<string, string>>(new Map());
   const [completedRuns, setCompletedRuns] = useState<Map<string, { output: string; modelUsed?: string }>>(new Map());
@@ -56,16 +70,35 @@ export function GatewayProvider({ children, token }: { children: React.ReactNode
     // Don't attempt connection without a token — would immediately get 4001 and loop.
     const t = resolvedToken ?? getGatewayToken();
     if (!t) return;
+
+    setConnectionState(attemptsRef.current === 0 ? 'connecting' : 'reconnecting');
+
     const wsUrl = `ws://${window.location.host}/ws/stream?token=${encodeURIComponent(t)}`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
-    ws.onopen = () => setConnected(true);
+    ws.onopen = () => {
+      attemptsRef.current = 0;
+      setReconnectAttempts(0);
+      setConnected(true);
+      setConnectionState('connected');
+    };
     ws.onclose = () => {
       setConnected(false);
       // Only reconnect if we have a token — avoids tight loop on auth failure.
       if (getGatewayToken()) {
-        reconnectTimer.current = setTimeout(() => connect(), 3000);
+        attemptsRef.current++;
+        setReconnectAttempts(attemptsRef.current);
+        if (attemptsRef.current >= RECONNECT_MAX_TRIES) {
+          setConnectionState('degraded');
+          // Still keep retrying slowly — gateway may come back
+        } else {
+          setConnectionState('reconnecting');
+        }
+        const backoffMs = Math.min(RECONNECT_BASE_MS * 2 ** (attemptsRef.current - 1), RECONNECT_MAX_MS);
+        reconnectTimer.current = setTimeout(() => connect(), backoffMs);
+      } else {
+        setConnectionState('disconnected');
       }
     };
     ws.onerror = () => ws.close();
@@ -140,7 +173,7 @@ export function GatewayProvider({ children, token }: { children: React.ReactNode
   const clearEvents = useCallback(() => setEvents([]), []);
 
   return (
-    <GatewayContext.Provider value={{ connected, events, clearEvents, streamBuffers, completedRuns }}>
+    <GatewayContext.Provider value={{ connected, connectionState, reconnectAttempts, events, clearEvents, streamBuffers, completedRuns }}>
       {children}
     </GatewayContext.Provider>
   );

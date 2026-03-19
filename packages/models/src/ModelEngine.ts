@@ -32,10 +32,14 @@ export class ModelEngine {
   readonly registry: ModelRegistry;
   readonly router: ModelRouter;
 
-  constructor(configDir?: string) {
+  constructor(
+    configDir?: string,
+    warnFn?: (message: string, data?: Record<string, unknown>) => void,
+    infoFn?: (message: string, data?: Record<string, unknown>) => void,
+  ) {
     const dir = configDir ?? getConfigDir();
     this.registry = new ModelRegistry(dir);
-    this.router = new ModelRouter(this.registry);
+    this.router = new ModelRouter(this.registry, warnFn, infoFn);
   }
 
   // ── Provider management ───────────────────────────────────────────────────
@@ -70,10 +74,12 @@ export class ModelEngine {
     return models;
   }
 
-  async checkAvailability(providerId: string): Promise<boolean> {
+  async checkAvailability(providerId: string): Promise<{ ok: boolean; lastUnavailableReason?: string }> {
     const provider = this.registry.getProvider(providerId);
-    if (!provider) return false;
-    return provider.isAvailable();
+    if (!provider) return { ok: false, lastUnavailableReason: 'Provider not found' };
+    const ok = await provider.isAvailable();
+    const reason = (provider as unknown as { lastUnavailableReason?: string }).lastUnavailableReason;
+    return { ok, ...(reason && { lastUnavailableReason: reason }) };
   }
 
   /** Returns the endpoint of the first enabled Ollama provider, or null if none. */

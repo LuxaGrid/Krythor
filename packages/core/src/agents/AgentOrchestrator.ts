@@ -5,6 +5,7 @@ import type { MemoryEngine } from '@krythor/memory';
 import type { ModelEngine } from '@krythor/models';
 import { AgentRegistry } from './AgentRegistry.js';
 import { AgentRunner } from './AgentRunner.js';
+import type { LearningRecorder } from './AgentRunner.js';
 import type {
   AgentDefinition,
   AgentRun,
@@ -29,24 +30,50 @@ function getConfigDir(): string {
 // Manages agent lifecycle. Exposes an EventEmitter so the Gateway can forward
 // agent events to connected WebSocket clients.
 //
+// Concurrency model:
+//   MAX_ACTIVE_RUNS  — simultaneous in-flight runs
+//   RUN_QUEUE_DEPTH  — max queued waiters (requests that arrived while at cap)
+//   RUN_QUEUE_TIMEOUT_MS — max time a queued request waits before failing
+//
+// Requests that arrive while at cap are queued (up to RUN_QUEUE_DEPTH).
+// When a run slot opens, the oldest queued waiter is resumed.
+// When the queue is full, callers get RunQueueFullError (→ 429).
+//
 
 /** Maximum number of agent runs that may be in-flight simultaneously. */
 const MAX_ACTIVE_RUNS = 10;
+
+/** Maximum number of requests waiting for a run slot. */
+const RUN_QUEUE_DEPTH = 50;
+
+/** Maximum time a queued request will wait for a slot (ms). */
+const RUN_QUEUE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
+export class RunQueueFullError extends Error {
+  constructor() {
+    super(`Agent run queue is full (max ${RUN_QUEUE_DEPTH} waiting). Try again later.`);
+    this.name = 'RunQueueFullError';
+  }
+}
 
 export class AgentOrchestrator extends EventEmitter {
   readonly registry: AgentRegistry;
   private runner: AgentRunner;
   private runHistory = new Map<string, AgentRun>(); // runId → run (capped at 500)
 
+  // Queue of resolve functions waiting for a run slot
+  private readonly waitQueue: Array<{ resolve: () => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }> = [];
+
   constructor(
     private readonly memory: MemoryEngine | null,
     private readonly models: ModelEngine | null,
     configDir?: string,
+    recordLearning?: LearningRecorder,
   ) {
     super();
     const dir = configDir ?? getConfigDir();
     this.registry = new AgentRegistry(dir);
-    this.runner = new AgentRunner(memory, models);
+    this.runner = new AgentRunner(memory, models, recordLearning);
   }
 
   // ── Agent CRUD ─────────────────────────────────────────────────────────────
@@ -78,9 +105,7 @@ export class AgentOrchestrator extends EventEmitter {
     input: RunAgentInput,
     options?: { contextMessages?: Array<{ role: string; content: string }>; runId?: string },
   ): Promise<AgentRun> {
-    if (this.runner.activeRunCount() >= MAX_ACTIVE_RUNS) {
-      throw new Error(`Too many concurrent agent runs (max ${MAX_ACTIVE_RUNS}). Wait for a run to finish.`);
-    }
+    await this.acquireSlot();
     const agent = this.registry.getById(agentId);
     if (!agent) throw new Error(`Agent "${agentId}" not found`);
 
@@ -94,7 +119,12 @@ export class AgentOrchestrator extends EventEmitter {
       ...(options?.runId && { runId: options.runId }),
     };
 
-    const run = await this.runner.run(agent, mergedInput, emit);
+    let run: AgentRun;
+    try {
+      run = await this.runner.run(agent, mergedInput, emit);
+    } finally {
+      this.releaseSlot();
+    }
     this.storeRun(run);
     return run;
   }
@@ -104,9 +134,7 @@ export class AgentOrchestrator extends EventEmitter {
     input: RunAgentInput,
     options?: { contextMessages?: Array<{ role: string; content: string }>; runId?: string },
   ): Promise<AgentRun> {
-    if (this.runner.activeRunCount() >= MAX_ACTIVE_RUNS) {
-      throw new Error(`Too many concurrent agent runs (max ${MAX_ACTIVE_RUNS}). Wait for a run to finish.`);
-    }
+    await this.acquireSlot();
     const agent = this.registry.getById(agentId);
     if (!agent) throw new Error(`Agent "${agentId}" not found`);
 
@@ -120,7 +148,12 @@ export class AgentOrchestrator extends EventEmitter {
       ...(options?.runId && { runId: options.runId }),
     };
 
-    const run = await this.runner.runStream(agent, mergedInput, emit);
+    let run: AgentRun;
+    try {
+      run = await this.runner.runStream(agent, mergedInput, emit);
+    } finally {
+      this.releaseSlot();
+    }
     this.storeRun(run);
     return run;
   }
@@ -198,16 +231,49 @@ export class AgentOrchestrator extends EventEmitter {
   stats(): {
     agentCount: number;
     activeRuns: number;
+    queuedRuns: number;
     totalRuns: number;
   } {
     return {
       agentCount: this.registry.count(),
       activeRuns: this.runner.activeRunCount(),
+      queuedRuns: this.waitQueue.length,
       totalRuns: this.runHistory.size,
     };
   }
 
   // ── Private ────────────────────────────────────────────────────────────────
+
+  /**
+   * Acquire a run slot. If at capacity, waits in the queue.
+   * Throws RunQueueFullError if the queue is also full.
+   */
+  private async acquireSlot(): Promise<void> {
+    if (this.runner.activeRunCount() < MAX_ACTIVE_RUNS) return; // slot available immediately
+
+    if (this.waitQueue.length >= RUN_QUEUE_DEPTH) {
+      throw new RunQueueFullError();
+    }
+
+    // Enqueue and wait
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        const idx = this.waitQueue.findIndex(e => e.resolve === resolve);
+        if (idx !== -1) this.waitQueue.splice(idx, 1);
+        reject(new Error(`Agent run queued too long (>${RUN_QUEUE_TIMEOUT_MS / 1000}s). Try again.`));
+      }, RUN_QUEUE_TIMEOUT_MS);
+      this.waitQueue.push({ resolve, reject, timer });
+    });
+  }
+
+  /** Release a run slot and wake the next queued waiter, if any. */
+  private releaseSlot(): void {
+    const next = this.waitQueue.shift();
+    if (next) {
+      clearTimeout(next.timer);
+      next.resolve();
+    }
+  }
 
   private storeRun(run: AgentRun): void {
     this.runHistory.set(run.id, run);

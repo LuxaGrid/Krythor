@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, mkdirSync, existsSync, chmodSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, chmodSync, readdirSync, copyFileSync } from 'fs';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
 
@@ -115,6 +115,45 @@ export class Installer {
     const f = join(this.configDir, 'app-config.json');
     if (!existsSync(f)) return {};
     try { return JSON.parse(readFileSync(f, 'utf8')) as AppConfig; } catch { return {}; }
+  }
+
+  /**
+   * Find the most recent pre-migration backup for the given DB file.
+   *
+   * MigrationRunner names backups as `<dbPath>.<ISO-timestamp>.bak`.
+   * This scans the directory containing the DB file and returns the
+   * newest `.bak` file that corresponds to the same base name, or
+   * undefined if none exist.
+   */
+  findLatestBackup(dbFilePath: string): string | undefined {
+    const dir = join(dbFilePath, '..');
+    const base = dbFilePath.split(/[\\/]/).pop()!;
+    let entries: string[];
+    try {
+      entries = readdirSync(dir);
+    } catch {
+      return undefined;
+    }
+    const backups = entries
+      .filter(f => f.startsWith(base + '.') && f.endsWith('.bak'))
+      .sort(); // ISO timestamps sort lexicographically = chronologically
+    if (backups.length === 0) return undefined;
+    return join(dir, backups[backups.length - 1]!);
+  }
+
+  /**
+   * Restore a `.bak` file over the live DB file.
+   *
+   * The caller is responsible for ensuring the gateway process is stopped
+   * before calling this method; SQLite does not detect external file replacement.
+   *
+   * Throws if the backup file does not exist or the copy fails.
+   */
+  restoreBackup(backupPath: string, dbFilePath: string): void {
+    if (!existsSync(backupPath)) {
+      throw new Error(`Backup file not found: ${backupPath}`);
+    }
+    copyFileSync(backupPath, dbFilePath);
   }
 
   writeStartScript(gatewayDistPath: string, scriptDir: string): void {

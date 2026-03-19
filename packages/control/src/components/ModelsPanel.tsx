@@ -5,7 +5,21 @@ import {
   type Provider, type PingResult, type Health,
 } from '../api.ts';
 
-const PROVIDER_TYPES = ['ollama', 'openai', 'anthropic', 'openai-compat'];
+const PROVIDER_TYPES = ['ollama', 'openai', 'anthropic', 'openai-compat', 'gguf'];
+
+const PROVIDER_DESCRIPTIONS: Record<string, string> = {
+  ollama:          'Free, runs fully local — no API key required. Install from ollama.com.',
+  openai:          'OpenAI (GPT-4o, o1, etc.) — requires an API key from platform.openai.com.',
+  anthropic:       'Anthropic (Claude) — recommended for reasoning and code. Key from console.anthropic.com.',
+  'openai-compat': 'Any API that speaks the OpenAI protocol: LM Studio, Together, Groq, and more.',
+  gguf:            'Local GGUF model file via llama-server. Requires llama.cpp installed and llama-server running. Endpoint: http://localhost:8080.',
+};
+
+const CIRCUIT_EXPLANATIONS: Record<string, string> = {
+  closed:    'Provider is healthy — requests pass through normally.',
+  open:      'Provider tripped: 3+ consecutive failures. Requests are paused for 30s to let it recover.',
+  'half-open': 'Testing recovery — one probe request is allowed through to check if the provider is back.',
+};
 
 const DEFAULT_ENDPOINTS: Record<string, string> = {
   openai:       'https://api.openai.com/v1',
@@ -162,6 +176,9 @@ export function ModelsPanel({ health }: Props) {
       {showAdd && (
         <div className="p-4 border-b border-zinc-800 space-y-2 bg-zinc-900/30">
           <p className="text-xs text-zinc-400 font-medium">Add Provider</p>
+          {form.type && PROVIDER_DESCRIPTIONS[form.type] && (
+            <p className="text-xs text-zinc-600 leading-relaxed">{PROVIDER_DESCRIPTIONS[form.type]}</p>
+          )}
           <div className="grid grid-cols-2 gap-2">
             <input
               value={form.name}
@@ -190,6 +207,12 @@ export function ModelsPanel({ health }: Props) {
                 type="password"
                 className={`col-span-2 ${INPUT_CLS}`}
               />
+            )}
+            {form.type === 'gguf' && (
+              <p className="col-span-2 text-xs text-amber-600/80 leading-relaxed px-1">
+                GGUF requires <span className="font-mono">llama-server</span> from llama.cpp to be running locally.
+                Start it with: <span className="font-mono text-zinc-400">llama-server --model your-model.gguf --port 8080</span>
+              </p>
             )}
           </div>
           <div className="flex items-center gap-2">
@@ -233,7 +256,10 @@ export function ModelsPanel({ health }: Props) {
           <div className="p-6 flex flex-col items-center gap-3 text-center">
             <p className="text-zinc-500 text-sm">No AI providers configured</p>
             <p className="text-zinc-700 text-xs leading-relaxed max-w-xs">
-              Add a provider to start using Krythor. Supports Ollama (local), OpenAI, Anthropic, and any OpenAI-compatible API.
+              Add a provider to start using Krythor. Supports Ollama (local, free), OpenAI, Anthropic, and any OpenAI-compatible API.
+            </p>
+            <p className="text-zinc-800 text-xs leading-relaxed max-w-xs">
+              The default provider is used for all commands. If it fails, Krythor automatically falls back to the next available provider.
             </p>
             <button
               onClick={() => { setShowAdd(true); setAddError(null); }}
@@ -254,20 +280,28 @@ export function ModelsPanel({ health }: Props) {
                       {p.isDefault && <span className="text-xs bg-brand-900 text-brand-400 px-1.5 py-0.5 rounded">default</span>}
                       <span className="text-xs text-zinc-600">{p.type}</span>
                       {circuitState === 'open' && (
-                        <span className="text-xs bg-red-950/60 text-red-400 px-1.5 py-0.5 rounded" title="Circuit open — too many recent failures">circuit open</span>
+                        <span className="text-xs bg-red-950/60 text-red-400 px-1.5 py-0.5 rounded" title={CIRCUIT_EXPLANATIONS['open']}>circuit open</span>
                       )}
                       {circuitState === 'half-open' && (
-                        <span className="text-xs bg-amber-950/60 text-amber-400 px-1.5 py-0.5 rounded" title="Circuit half-open — testing recovery">recovering</span>
+                        <span className="text-xs bg-amber-950/60 text-amber-400 px-1.5 py-0.5 rounded" title={CIRCUIT_EXPLANATIONS['half-open']}>recovering</span>
                       )}
                       {circuit && circuit.avgLatencyMs > 0 && circuitState === 'closed' && (
-                        <span className="text-xs text-zinc-700" title={`Average inference latency (last ${circuit.totalSuccesses} calls)`}>{circuit.avgLatencyMs}ms avg</span>
+                        <span className="text-xs text-zinc-700" title={`Average inference latency across last ${circuit.totalSuccesses} successful call(s). Lower is faster.`}>{circuit.avgLatencyMs}ms avg</span>
                       )}
                     </div>
                     {p.endpoint && <p className="text-xs text-zinc-600 mt-0.5 truncate">{p.endpoint}</p>}
+                    {PROVIDER_DESCRIPTIONS[p.type] && (
+                      <p className="text-xs text-zinc-700 mt-0.5 leading-relaxed">{PROVIDER_DESCRIPTIONS[p.type]}</p>
+                    )}
                     {ping && (
-                      <p className={`text-xs mt-0.5 ${ping.ok ? 'text-emerald-400' : 'text-red-400'}`}>
-                        {ping.ok ? `✓ ${ping.latencyMs}ms` : `✗ ${ping.error}`}
-                      </p>
+                      <div className="mt-0.5">
+                        <p className={`text-xs ${ping.ok ? 'text-emerald-400' : 'text-red-400'}`}>
+                          {ping.ok ? `✓ ${ping.latencyMs}ms` : `✗ ${ping.error ?? 'unreachable'}`}
+                        </p>
+                        {!ping.ok && ping.lastUnavailableReason && (
+                          <p className="text-[10px] text-zinc-600 mt-0.5 leading-snug">{ping.lastUnavailableReason}</p>
+                        )}
+                      </div>
                     )}
                     {refreshedModels[p.id] && (
                       <p className="text-xs mt-0.5 text-zinc-500">

@@ -4,19 +4,49 @@ import type { GuardEngine } from '@krythor/guard';
 import { verifyToken } from '../auth.js';
 
 // Heartbeat interval — ping every 30s, close if no pong within 10s.
-const PING_INTERVAL_MS = 30_000;
-const PONG_TIMEOUT_MS  = 10_000;
+const PING_INTERVAL_MS     = 30_000;
+const PONG_TIMEOUT_MS      = 10_000;
+// Max simultaneous WS connections — prevents resource exhaustion.
+const MAX_WS_CONNECTIONS   = 10;
+// Max connection lifetime — forces reconnect, re-validating the token.
+const MAX_CONNECTION_AGE_MS = 4 * 60 * 60 * 1000; // 4 hours
 
-export function registerStreamWs(app: FastifyInstance, core: KrythorCore, token: string, guard: GuardEngine): void {
+// Module-level connection counter
+let activeConnections = 0;
+
+export function registerStreamWs(
+  app: FastifyInstance,
+  core: KrythorCore,
+  // getToken is a function so token rotation is reflected without restart
+  getToken: () => string,
+  guard: GuardEngine,
+): void {
   app.get('/ws/stream', { websocket: true }, (socket, request) => {
-    // Auth check — token is passed as ?token= because browser WS APIs
+    // ── Connection cap ─────────────────────────────────────────────────────────
+    if (activeConnections >= MAX_WS_CONNECTIONS) {
+      socket.send(JSON.stringify({ type: 'error', error: 'Too many connections' }));
+      socket.close(4029, 'Too many connections');
+      return;
+    }
+
+    // ── Auth check — token is passed as ?token= because browser WS APIs
     // cannot set arbitrary headers.
     const supplied = (request.query as Record<string, string>)['token'];
-    if (!verifyToken(supplied, token)) {
+    if (!verifyToken(supplied, getToken())) {
       socket.send(JSON.stringify({ type: 'error', error: 'Unauthorized' }));
       socket.close(4001, 'Unauthorized');
       return;
     }
+
+    activeConnections++;
+
+    // ── Max connection lifetime ────────────────────────────────────────────────
+    // Force a reconnect after MAX_CONNECTION_AGE_MS. This ensures any token
+    // rotation is picked up without waiting for the client to disconnect.
+    const maxAgeTimer = setTimeout(() => {
+      socket.send(JSON.stringify({ type: 'reconnect', reason: 'max_connection_age' }));
+      socket.close(4000, 'Max connection age reached — please reconnect');
+    }, MAX_CONNECTION_AGE_MS);
 
     // ── Keepalive heartbeat ────────────────────────────────────────────────────
     // Send a ping frame every PING_INTERVAL_MS. If the client does not respond
@@ -52,7 +82,15 @@ export function registerStreamWs(app: FastifyInstance, core: KrythorCore, token:
       }
     });
 
+    // ── Per-message token recheck ──────────────────────────────────────────────
+    // Re-validate the token on every message. If the token was rotated after
+    // connection was established, the next message will be rejected.
     socket.on('message', async (rawMessage: Buffer) => {
+      if (!verifyToken(supplied, getToken())) {
+        socket.send(JSON.stringify({ type: 'error', error: 'Token invalidated — please reconnect' }));
+        socket.close(4001, 'Token invalidated');
+        return;
+      }
       if (rawMessage.length > 65_536) {
         socket.send(JSON.stringify({ error: 'Message too large (max 64 KB)' }));
         return;
@@ -94,7 +132,9 @@ export function registerStreamWs(app: FastifyInstance, core: KrythorCore, token:
     });
 
     socket.on('close', () => {
+      activeConnections = Math.max(0, activeConnections - 1);
       clearInterval(pingInterval);
+      clearTimeout(maxAgeTimer);
       if (pongTimer) clearTimeout(pongTimer);
     });
 

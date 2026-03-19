@@ -156,8 +156,8 @@ export function registerModelRoutes(app: FastifyInstance, models: ModelEngine, m
   app.post<{ Params: { id: string } }>('/api/models/providers/:id/ping', async (req, reply) => {
     const start = Date.now();
     try {
-      const ok = await models.checkAvailability(req.params.id);
-      return reply.send({ ok, latencyMs: Date.now() - start });
+      const result = await models.checkAvailability(req.params.id);
+      return reply.send({ ...result, latencyMs: Date.now() - start });
     } catch (err) {
       return reply.send({ ok: false, latencyMs: Date.now() - start, error: err instanceof Error ? err.message : 'Ping failed' });
     }

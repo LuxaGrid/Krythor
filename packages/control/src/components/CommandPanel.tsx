@@ -13,11 +13,14 @@ import {
   exportConversation,
   streamCommand,
   listAgents,
+  listModels,
   type Conversation,
   type StreamEvent,
   type Health,
+  type ModelInfo,
 } from '../api.ts';
 import { useAppConfig } from '../App.tsx';
+import { ModelRecommendationBar, ModelSwitcher } from './ModelRecommendation.tsx';
 
 type Tab = 'command' | 'agents' | 'memory' | 'models' | 'guard' | 'events';
 
@@ -373,18 +376,25 @@ function Sidebar({ conversations, activeId, onSelect, onNew, onDelete, onRename 
 export function CommandPanel({ health, onTabChange, newChatRef }: Props) {
   const { config } = useAppConfig();
 
-  const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [activeConvId, setActiveConvId]   = useState<string | null>(null);
-  const [messages, setMessages]           = useState<LocalMessage[]>([]);
-  const [input, setInput]                 = useState('');
-  const [loading, setLoading]             = useState(false);
-  const [inputHistory, setInputHistory]   = useState<string[]>([]);
-  const [historyIdx, setHistoryIdx]       = useState(-1);
-  const abortRef                          = useRef<AbortController | null>(null);
-  const bottomRef                         = useRef<HTMLDivElement>(null);
-  const textareaRef                       = useRef<HTMLTextAreaElement>(null);
+  const [conversations, setConversations]     = useState<Conversation[]>([]);
+  const [activeConvId, setActiveConvId]       = useState<string | null>(null);
+  const [messages, setMessages]               = useState<LocalMessage[]>([]);
+  const [input, setInput]                     = useState('');
+  const [loading, setLoading]                 = useState(false);
+  const [inputHistory, setInputHistory]       = useState<string[]>([]);
+  const [historyIdx, setHistoryIdx]           = useState(-1);
+  const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
+  const [selectedModelId, setSelectedModelId] = useState<string | undefined>(config.selectedModel);
+  const abortRef                              = useRef<AbortController | null>(null);
+  const bottomRef                             = useRef<HTMLDivElement>(null);
+  const textareaRef                           = useRef<HTMLTextAreaElement>(null);
 
   const noProvider = health ? health.models.providerCount === 0 : false;
+
+  // Load available models for recommendation bar + switcher
+  useEffect(() => {
+    listModels().then(setAvailableModels).catch(() => {});
+  }, [health?.models.modelCount]);
 
   // Load conversations
   const loadConversations = useCallback(() => {
@@ -520,7 +530,7 @@ export function CommandPanel({ health, onTabChange, newChatRef }: Props) {
         cmd,
         convId ?? undefined,
         config.selectedAgentId,
-        config.selectedModel,
+        selectedModelId ?? config.selectedModel,
         (event: StreamEvent) => {
           if (event.type === 'conversation') {
             resolvedConvId = event.conversationId;
@@ -689,6 +699,16 @@ export function CommandPanel({ health, onTabChange, newChatRef }: Props) {
 
         {/* Input area */}
         <div className="border-t border-zinc-800 px-4 py-3 shrink-0 bg-zinc-950">
+          {/* Inline model recommendation bar */}
+          {!noProvider && (
+            <ModelRecommendationBar
+              inputText={input}
+              selectedModelId={selectedModelId}
+              onAccept={(modelId, _providerId) => setSelectedModelId(modelId)}
+              className="mb-2"
+            />
+          )}
+
           <div className="flex items-end gap-2">
             <textarea
               ref={textareaRef}
@@ -719,9 +739,17 @@ export function CommandPanel({ health, onTabChange, newChatRef }: Props) {
               </button>
             )}
           </div>
-          <p className="text-zinc-700 text-xs mt-1.5 px-1">
-            Enter to send · Shift+Enter for newline
-          </p>
+
+          <div className="flex items-center justify-between mt-1.5 px-1">
+            <p className="text-zinc-700 text-xs">Enter to send · Shift+Enter for newline</p>
+            {availableModels.length > 1 && (
+              <ModelSwitcher
+                selectedModelId={selectedModelId}
+                models={availableModels}
+                onChange={(modelId) => setSelectedModelId(modelId)}
+              />
+            )}
+          </div>
         </div>
       </div>
     </div>

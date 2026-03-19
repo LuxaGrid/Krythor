@@ -5,15 +5,18 @@
   "description": "Krythor — local-first AI command platform",
   "packageManager": "pnpm@9.15.4",
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "scripts": {
     "build": "pnpm -r build",
     "dev": "pnpm --filter @krythor/gateway dev",
     "start": "node start.js",
     "setup": "node packages/setup/dist/bin/setup.js",
+    "doctor": "node packages/setup/dist/bin/setup.js doctor",
     "test": "pnpm -r test",
-    "clean": "pnpm -r clean"
+    "clean": "pnpm -r clean",
+    "bundle": "node bundle.js",
+    "build:exe": "node build-exe.js"
   },
   "devDependencies": {
     "node-gyp": "^12.2.0"

@@ -4,11 +4,15 @@ import { join } from 'path';
 import { MemoryStore } from './db/MemoryStore.js';
 import { ConversationStore } from './db/ConversationStore.js';
 import { AgentRunStore } from './db/AgentRunStore.js';
+import { LearningRecordStore } from './db/LearningRecordStore.js';
 import { applySchema } from './db/schema.js';
 import { MemoryScorer } from './MemoryScorer.js';
 import { MemoryWriter } from './MemoryWriter.js';
 import { MemoryRetriever } from './MemoryRetriever.js';
 import { EmbeddingRegistry } from './embedding/EmbeddingProvider.js';
+import { DbJanitor } from './db/DbJanitor.js';
+import type { JanitorResult, LogFn } from './db/DbJanitor.js';
+import { HeartbeatInsightStore } from './db/HeartbeatInsightStore.js';
 import type {
   CreateMemoryInput,
   UpdateMemoryInput,
@@ -35,36 +39,48 @@ export class MemoryEngine {
   readonly store: MemoryStore;
   readonly convStore: ConversationStore;
   readonly agentRunStore: AgentRunStore;
+  readonly learningStore: LearningRecordStore;
   readonly writer: MemoryWriter;
   readonly retriever: MemoryRetriever;
   readonly scorer: MemoryScorer;
   readonly embeddings: EmbeddingRegistry;
   readonly db: Database.Database;
+  readonly janitor: DbJanitor;
+  readonly heartbeatInsightStore: HeartbeatInsightStore;
+  /** Directory containing memory.db and any .bak backup files. */
+  readonly dbDir: string;
   private _decayInterval: ReturnType<typeof setInterval> | null = null;
+  private _startupImmediate: ReturnType<typeof setImmediate> | null = null;
 
-  constructor(dataDir: string) {
+  constructor(dataDir: string, logFn?: LogFn) {
     // Open ONE shared connection for both MemoryStore and ConversationStore to
     // eliminate WAL contention from two separate writers on the same file.
     mkdirSync(dataDir, { recursive: true });
     const dbPath = join(dataDir, 'memory.db');
+    this.dbDir = dataDir;
     this.db = new Database(dbPath);
-    applySchema(this.db);
+    applySchema(this.db, dbPath);
 
     this.store = new MemoryStore(dataDir, this.db);
     this.convStore = new ConversationStore(dataDir, this.db);
     this.agentRunStore = new AgentRunStore(this.db);
+    this.learningStore = new LearningRecordStore(this.db);
     this.scorer = new MemoryScorer();
     this.embeddings = new EmbeddingRegistry();
     this.writer = new MemoryWriter(this.store, this.scorer);
     this.retriever = new MemoryRetriever(this.store, this.scorer, this.embeddings);
+    this.janitor = new DbJanitor(this.db, logFn);
+    this.heartbeatInsightStore = new HeartbeatInsightStore(this.db);
 
-    // Apply decay and clear session-scoped memories on startup (non-blocking).
-    // Session scope is documented as "cleared on session end" — gateway startup
-    // is the appropriate point to enforce this contract.
-    setImmediate(() => {
+    // Apply decay, clear session-scoped memories, and run retention janitor on
+    // startup (non-blocking). Session scope is documented as "cleared on session
+    // end" — gateway startup is the appropriate point to enforce this contract.
+    this._startupImmediate = setImmediate(() => {
+      this._startupImmediate = null;
       this.store.clearSessionMemories();
       this.writer.applyDecay();
       this.writer.prune(MemoryEngine.MAX_ENTRIES);
+      this.janitor.run();
     });
 
     // Re-apply decay and prune every 24 hours so long-running sessions don't bypass it.
@@ -81,11 +97,15 @@ export class MemoryEngine {
   }
 
   update(id: string, input: UpdateMemoryInput): MemoryEntry {
-    return this.writer.update(id, input);
+    const result = this.writer.update(id, input);
+    // Invalidate cached embedding — content may have changed
+    this.retriever.cache.invalidate(id);
+    return result;
   }
 
   delete(id: string): void {
     this.writer.delete(id);
+    this.retriever.cache.invalidate(id);
   }
 
   pin(id: string): MemoryEntry {
@@ -103,6 +123,11 @@ export class MemoryEngine {
   // Prune non-pinned entries exceeding maxEntries (lowest importance removed first).
   prune(maxEntries = MemoryEngine.MAX_ENTRIES): number {
     return this.writer.prune(maxEntries);
+  }
+
+  // Run the full retention janitor — safe to call from heartbeat or on demand.
+  runJanitor(): JanitorResult {
+    return this.janitor.run();
   }
 
   // ── Read operations ────────────────────────────────────────────────────────
@@ -139,10 +164,13 @@ export class MemoryEngine {
 
   // ── Stats ──────────────────────────────────────────────────────────────────
 
-  stats(): { totalEntries: number; embeddingProvider: string } {
+  stats(): { totalEntries: number; entryCount: number; embeddingProvider: string; embeddingDegraded: boolean } {
+    const count = this.store.getAllEntryCount();
     return {
-      totalEntries: this.store.getAllEntryCount(),
+      totalEntries: count,
+      entryCount:   count,
       embeddingProvider: this.embeddings.getActive().name,
+      embeddingDegraded: this.embeddingStatus().degraded,
     };
   }
 
@@ -152,9 +180,28 @@ export class MemoryEngine {
     return this.embeddings.getActive();
   }
 
+  /**
+   * Returns whether the active embedding provider is semantically capable
+   * (i.e. NOT the stub/hash-based fallback).
+   * Used to surface degraded search status to the UI without spamming.
+   */
+  embeddingStatus(): { semantic: boolean; providerName: string; degraded: boolean } {
+    const provider = this.embeddings.getActive();
+    const isSemantic = provider.name !== 'stub' && provider.isAvailable();
+    return {
+      semantic:     isSemantic,
+      providerName: provider.name,
+      degraded:     !isSemantic,
+    };
+  }
+
   // ── Lifecycle ──────────────────────────────────────────────────────────────
 
   close(): void {
+    if (this._startupImmediate) {
+      clearImmediate(this._startupImmediate);
+      this._startupImmediate = null;
+    }
     if (this._decayInterval) {
       clearInterval(this._decayInterval);
       this._decayInterval = null;

@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { AgentOrchestrator, CreateAgentInput, UpdateAgentInput, RunAgentInput } from '@krythor/core';
+import { RunQueueFullError } from '@krythor/core';
 import type { GuardEngine } from '@krythor/guard';
 
 interface ParallelJob { agentId: string; input: RunAgentInput }
@@ -100,9 +101,9 @@ export function registerAgentRoutes(app: FastifyInstance, orchestrator: AgentOrc
         type: 'object',
         required: ['input'],
         properties: {
-          input:           { type: 'string', minLength: 1 },
+          input:           { type: 'string', minLength: 1, maxLength: 10000 },
           taskId:          { type: 'string' },
-          contextOverride: { type: 'string' },
+          contextOverride: { type: 'string', maxLength: 10000 },
         },
         additionalProperties: false,
       },
@@ -133,6 +134,10 @@ export function registerAgentRoutes(app: FastifyInstance, orchestrator: AgentOrc
       const run = await orchestrator.runAgent(req.params.id, req.body as RunAgentInput);
       return reply.send(run);
     } catch (err) {
+      if (err instanceof RunQueueFullError) {
+        reply.header('Retry-After', '30');
+        return reply.code(429).send({ error: err.message });
+      }
       return reply.code(500).send({ error: err instanceof Error ? err.message : 'Run failed' });
     }
   });

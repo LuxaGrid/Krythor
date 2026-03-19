@@ -17,7 +17,7 @@ where node >nul 2>&1
 if %ERRORLEVEL% neq 0 (
     echo ERROR: Node.js is not installed on this computer.
     echo.
-    echo Please install Node.js ^(version 18 or higher^) from:
+    echo Please install Node.js ^(version 20 or higher^) from:
     echo   https://nodejs.org
     echo.
     echo After installing Node.js, run this file again.
@@ -28,10 +28,10 @@ if %ERRORLEVEL% neq 0 (
     exit /b 1
 )
 
-:: ── Check Node.js version >= 18 ─────────────────────────────
+:: ── Check Node.js version >= 20 ─────────────────────────────
 for /f "tokens=1 delims=v." %%i in ('node --version') do set NODE_MAJOR=%%i
-if %NODE_MAJOR% lss 18 (
-    echo ERROR: Krythor requires Node.js version 18 or higher.
+if %NODE_MAJOR% lss 20 (
+    echo ERROR: Krythor requires Node.js version 20 or higher.
     echo You have version %NODE_MAJOR%. Please update from:
     echo   https://nodejs.org
     echo ========================================
@@ -76,4 +76,7 @@ if not exist "%~dp0packages\setup\dist\bin\setup.js" (
 )
 
 :: ── Run setup wizard ─────────────────────────────────────────
+echo This wizard will configure your AI provider and create your first agent.
+echo You can re-run it any time to change providers or reset configuration.
+echo.
 node "%~dp0packages\setup\dist\bin\setup.js" %*

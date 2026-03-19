@@ -289,6 +289,16 @@ export function MemoryPanel({ health }: MemoryPanelProps) {
           onClose={() => { setShowForm(false); setEditing(null); }}
         />
       )}
+      {health?.memory?.embeddingDegraded && (
+        <div className="mx-4 mt-3 px-3 py-2 rounded bg-zinc-800 border border-zinc-700 text-xs text-zinc-400 flex items-start gap-2">
+          <span className="shrink-0 text-amber-500 mt-0.5">ℹ</span>
+          <span>
+            Semantic memory search is unavailable — no embedding provider is active.
+            Keyword and stored memory features still work normally.
+            {' '}To enable semantic search, add an Ollama provider in the <button className="underline hover:text-zinc-200" onClick={() => {}}>Models tab</button>.
+          </span>
+        </div>
+      )}
       <div className="flex items-center gap-2 p-3 border-b border-zinc-800">
         <input
           value={search}
@@ -411,6 +421,15 @@ export function MemoryPanel({ health }: MemoryPanelProps) {
         )}
         {health?.memory.embeddingProvider && (
           <span className="text-zinc-700">{health.memory.embeddingProvider}</span>
+        )}
+        {health?.memory !== undefined && (
+          <>
+            <span className="text-zinc-800">·</span>
+            {health.memory.embeddingDegraded || health.memory.embeddingProvider === 'stub'
+              ? <span className="text-zinc-600">keyword search</span>
+              : <span className="text-brand-500">semantic search</span>
+            }
+          </>
         )}
         <div className="ml-auto flex items-center gap-2">
           {summarizeResult && (

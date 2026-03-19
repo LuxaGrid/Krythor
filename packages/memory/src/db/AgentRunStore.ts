@@ -24,6 +24,9 @@ export interface PersistedRun {
   messages: unknown[];
   memoryIdsUsed: string[];
   memoryIdsWritten: string[];
+  selectionReason?: string;
+  fallbackOccurred?: boolean;
+  retryCount?: number;
 }
 
 interface RunRow {
@@ -39,6 +42,9 @@ interface RunRow {
   messages_json: string;
   memory_ids_used: string;
   memory_ids_written: string;
+  selection_reason: string | null;
+  fallback_occurred: number;
+  retry_count: number;
 }
 
 export class AgentRunStore {
@@ -51,10 +57,12 @@ export class AgentRunStore {
     this.upsert = db.prepare(`
       INSERT INTO agent_runs
         (id, agent_id, status, input, output, model_used, error_message,
-         started_at, completed_at, messages_json, memory_ids_used, memory_ids_written)
+         started_at, completed_at, messages_json, memory_ids_used, memory_ids_written,
+         selection_reason, fallback_occurred, retry_count)
       VALUES
         (@id, @agentId, @status, @input, @output, @modelUsed, @errorMessage,
-         @startedAt, @completedAt, @messagesJson, @memoryIdsUsed, @memoryIdsWritten)
+         @startedAt, @completedAt, @messagesJson, @memoryIdsUsed, @memoryIdsWritten,
+         @selectionReason, @fallbackOccurred, @retryCount)
       ON CONFLICT(id) DO UPDATE SET
         status             = excluded.status,
         output             = excluded.output,
@@ -63,7 +71,10 @@ export class AgentRunStore {
         completed_at       = excluded.completed_at,
         messages_json      = excluded.messages_json,
         memory_ids_used    = excluded.memory_ids_used,
-        memory_ids_written = excluded.memory_ids_written
+        memory_ids_written = excluded.memory_ids_written,
+        selection_reason   = excluded.selection_reason,
+        fallback_occurred  = excluded.fallback_occurred,
+        retry_count        = excluded.retry_count
     `);
 
     this.selectById = db.prepare(
@@ -95,6 +106,9 @@ export class AgentRunStore {
       messagesJson:    JSON.stringify(run.messages),
       memoryIdsUsed:   JSON.stringify(run.memoryIdsUsed),
       memoryIdsWritten: JSON.stringify(run.memoryIdsWritten),
+      selectionReason:  run.selectionReason ?? null,
+      fallbackOccurred: run.fallbackOccurred ? 1 : 0,
+      retryCount:       run.retryCount ?? 0,
     });
   }
 
@@ -124,11 +138,28 @@ export class AgentRunStore {
       messages:        this.parseJson(row.messages_json, []),
       memoryIdsUsed:   this.parseJson(row.memory_ids_used, []),
       memoryIdsWritten: this.parseJson(row.memory_ids_written, []),
+      selectionReason:  row.selection_reason ?? undefined,
+      fallbackOccurred: row.fallback_occurred === 1 ? true : undefined,
+      retryCount:       row.retry_count > 0 ? row.retry_count : undefined,
     };
   }
 
   private parseJson<T>(raw: string, fallback: T): T {
     try { return JSON.parse(raw) as T; } catch { return fallback; }
+  }
+
+  /**
+   * Mark all persisted 'running' runs as 'failed'.
+   * Called once at startup to clear orphans left by a previous crashed process.
+   * Returns the number of rows updated.
+   */
+  resolveOrphanedRuns(errorMessage = 'Process restarted — run interrupted.'): number {
+    const result = this.db.prepare(`
+      UPDATE agent_runs
+      SET status = 'failed', completed_at = ?, error_message = ?
+      WHERE status = 'running'
+    `).run(Date.now(), errorMessage);
+    return result.changes;
   }
 
   private prune(): void {

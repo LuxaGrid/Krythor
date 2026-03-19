@@ -41,7 +41,10 @@ export class CircuitBreaker {
   private readonly latencyWindow: number[] = [];
   private readonly latencyWindowSize = 50;
 
-  constructor(readonly providerId: string) {}
+  constructor(
+    readonly providerId: string,
+    private readonly warnFn?: (message: string, data?: Record<string, unknown>) => void,
+  ) {}
 
   // ── Execution wrapper ──────────────────────────────────────────────────────
 
@@ -96,8 +99,12 @@ export class CircuitBreaker {
   // ── Private ───────────────────────────────────────────────────────────────
 
   private onSuccess(latencyMs: number): void {
+    const prev = this.state;
     this.failures = 0;
     this.state = 'closed';
+    if (prev !== 'closed' && this.warnFn) {
+      this.warnFn('[CircuitBreaker] State transition', { providerId: this.providerId, from: prev, to: 'closed', latencyMs });
+    }
     this.totalSuccesses++;
     this.latencyWindow.push(latencyMs);
     if (this.latencyWindow.length > this.latencyWindowSize) {
@@ -109,8 +116,12 @@ export class CircuitBreaker {
     this.failures++;
     this.lastFailureAt = Date.now();
     this.totalFailures++;
-    if (this.failures >= FAILURE_THRESHOLD) {
+    if (this.failures >= FAILURE_THRESHOLD && this.state !== 'open') {
+      const prev = this.state;
       this.state = 'open';
+      if (this.warnFn) {
+        this.warnFn('[CircuitBreaker] State transition', { providerId: this.providerId, from: prev, to: 'open', failures: this.failures });
+      }
     }
   }
 
@@ -121,6 +132,9 @@ export class CircuitBreaker {
       Date.now() - this.lastFailureAt >= RESET_TIMEOUT_MS
     ) {
       this.state = 'half-open';
+      if (this.warnFn) {
+        this.warnFn('[CircuitBreaker] State transition', { providerId: this.providerId, from: 'open', to: 'half-open', resetAfterMs: RESET_TIMEOUT_MS });
+      }
     }
   }
 

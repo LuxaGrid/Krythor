@@ -19,6 +19,13 @@ const HOST = '127.0.0.1';
 const gatewayDist = join(__dirname, 'packages', 'gateway', 'dist', 'index.js');
 const noBrowser = process.argv.includes('--no-browser');
 
+// Read version from package.json (same approach as gateway)
+let KRYTHOR_VERSION = '';
+try {
+  const rootPkg = JSON.parse(require('fs').readFileSync(join(__dirname, 'package.json'), 'utf-8'));
+  KRYTHOR_VERSION = rootPkg.version || '';
+} catch { /* non-fatal — version display is best-effort */ }
+
 // ── Check build ────────────────────────────────────────────────────────────
 if (!existsSync(gatewayDist)) {
   console.error('\x1b[31mKrythor has not been built yet.\x1b[0m');
@@ -52,7 +59,8 @@ async function isPortInUse() {
 }
 
 async function main() {
-  console.log('\x1b[36m  KRYTHOR\x1b[0m — Local-first AI command platform');
+  const versionTag = KRYTHOR_VERSION ? `\x1b[2m v${KRYTHOR_VERSION}\x1b[0m` : '';
+  console.log(`\x1b[36m  KRYTHOR\x1b[0m${versionTag} — Local-first AI command platform`);
   console.log('');
 
   // If already running (our process), just open the browser
@@ -92,10 +100,30 @@ async function main() {
 
   if (ready) {
     console.log(`\x1b[32m✓ Krythor is running\x1b[0m  →  http://${HOST}:${PORT}`);
+    console.log('  Press Ctrl+C to stop the gateway.');
+    console.log('');
+    console.log(`  Open \x1b[36mhttp://${HOST}:${PORT}\x1b[0m in your browser to get started.`);
+    console.log(`  First time? Run the setup wizard:  node start.js setup`);
+    console.log('');
+    // Show data location so users know where their data lives
+    const dataDir = process.platform === 'win32'
+      ? (process.env['LOCALAPPDATA'] || require('path').join(require('os').homedir(), 'AppData', 'Local')) + '\\Krythor'
+      : process.platform === 'darwin'
+        ? require('path').join(require('os').homedir(), 'Library', 'Application Support', 'Krythor')
+        : require('path').join(require('os').homedir(), '.local', 'share', 'krythor');
+    console.log(`\x1b[2m  Control UI:  http://${HOST}:${PORT}\x1b[0m`);
+    console.log(`\x1b[2m  Your data:   ${dataDir}\x1b[0m`);
+    console.log(`\x1b[2m  Diagnostics: node start.js doctor  (or pnpm doctor)\x1b[0m`);
+    console.log('');
     if (!noBrowser) tryOpen(`http://${HOST}:${PORT}`);
   } else {
     console.log('\x1b[31mKrythor gateway did not start within 10 seconds.\x1b[0m');
-    console.log(`Check for errors by running: node packages/gateway/dist/index.js`);
+    console.log('');
+    console.log('  To diagnose the issue, run the gateway directly:');
+    console.log(`    node packages/gateway/dist/index.js`);
+    console.log('');
+    console.log('  Or run the diagnostic tool:');
+    console.log('    node packages/setup/dist/bin/setup.js doctor');
   }
 }
 
@@ -106,6 +134,17 @@ function tryOpen(url) {
                 process.platform === 'darwin' ? `open "${url}"` : `xdg-open "${url}"`;
     execSync(cmd, { stdio: 'ignore' });
   } catch { /* browser open is best-effort */ }
+}
+
+// Allow `node start.js doctor` as an alias for the doctor command
+if (process.argv.includes('doctor')) {
+  const { execSync } = require('child_process');
+  const { join } = require('path');
+  const doctorScript = join(__dirname, 'packages', 'setup', 'dist', 'bin', 'setup.js');
+  try {
+    execSync(`node "${doctorScript}" doctor`, { stdio: 'inherit' });
+  } catch { /* exit code from setup.js propagates */ }
+  process.exit(0);
 }
 
 main().catch(err => {

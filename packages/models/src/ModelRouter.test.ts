@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { ModelRouter } from './ModelRouter.js';
 import type { ModelRegistry } from './ModelRegistry.js';
 import type { BaseProvider } from './providers/BaseProvider.js';
@@ -112,5 +112,95 @@ describe('ModelRouter', () => {
       expect.objectContaining({ model: 'model-a1' }),
       undefined,
     );
+  });
+});
+
+// ── Cross-provider fallback tests ─────────────────────────────────────────────
+
+describe('ModelRouter — cross-provider fallback', () => {
+  // Fake timers that auto-advance so retry sleeps don't block tests
+  beforeEach(() => { vi.useFakeTimers({ shouldAdvanceTime: true }); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('falls back to secondary provider when primary fails with transient error', async () => {
+    const primary = makeProvider('primary', ['model-p1'], true, true);
+    const secondary = makeProvider('secondary', ['model-s1'], true, false);
+
+    // Primary always throws a transient (non-4xx, non-abort) error
+    vi.mocked(primary.infer).mockRejectedValue(new Error('ECONNREFUSED'));
+
+    const registry = makeRegistry({ providers: [primary, secondary], defaultProvider: primary });
+    const infoMessages: string[] = [];
+    const router = new ModelRouter(registry, undefined, (msg) => { infoMessages.push(msg); });
+
+    const result = await router.infer({ messages: [{ role: 'user', content: 'hi' }] });
+
+    expect(result.providerId).toBe('secondary');
+    expect(secondary.infer).toHaveBeenCalled();
+    expect(infoMessages.some(m => m.includes('fallback'))).toBe(true);
+  });
+
+  it('does NOT fall back on 4xx client error', async () => {
+    const primary = makeProvider('primary', ['model-p1'], true, true);
+    const secondary = makeProvider('secondary', ['model-s1'], true, false);
+
+    vi.mocked(primary.infer).mockRejectedValue(new Error('HTTP 401: Unauthorized'));
+
+    const registry = makeRegistry({ providers: [primary, secondary], defaultProvider: primary });
+    const router = new ModelRouter(registry);
+
+    await expect(router.infer({ messages: [{ role: 'user', content: 'hi' }] }))
+      .rejects.toThrow('HTTP 401');
+    expect(secondary.infer).not.toHaveBeenCalled();
+  });
+
+  it('does NOT fall back when aborted', async () => {
+    const primary = makeProvider('primary', ['model-p1'], true, true);
+    const secondary = makeProvider('secondary', ['model-s1'], true, false);
+
+    const controller = new AbortController();
+    controller.abort();
+
+    vi.mocked(primary.infer).mockRejectedValue(new Error('Aborted'));
+
+    const registry = makeRegistry({ providers: [primary, secondary], defaultProvider: primary });
+    const router = new ModelRouter(registry);
+
+    await expect(router.infer({ messages: [] }, {}, controller.signal))
+      .rejects.toThrow();
+    expect(secondary.infer).not.toHaveBeenCalled();
+  });
+
+  it('throws original error when no fallback provider is available', async () => {
+    const primary = makeProvider('primary', ['model-p1'], true, true);
+
+    vi.mocked(primary.infer).mockRejectedValue(new Error('server error'));
+
+    const registry = makeRegistry({ providers: [primary], defaultProvider: primary });
+    const router = new ModelRouter(registry);
+
+    await expect(router.infer({ messages: [] })).rejects.toThrow('server error');
+  });
+
+  it('logs fallback decision with primary and fallback provider IDs', async () => {
+    const primary = makeProvider('primary', ['model-p1'], true, true);
+    const secondary = makeProvider('secondary', ['model-s1'], true, false);
+
+    vi.mocked(primary.infer).mockRejectedValue(new Error('timeout'));
+
+    const registry = makeRegistry({ providers: [primary, secondary], defaultProvider: primary });
+    const loggedData: Array<Record<string, unknown>> = [];
+    const router = new ModelRouter(
+      registry,
+      undefined,
+      (_msg, data) => { if (data) loggedData.push(data); },
+    );
+
+    await router.infer({ messages: [] });
+
+    expect(loggedData[0]).toMatchObject({
+      primaryProviderId: 'primary',
+      fallbackProviderId: 'secondary',
+    });
   });
 });

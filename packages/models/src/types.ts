@@ -48,6 +48,10 @@ export interface InferenceResponse {
   promptTokens?: number;
   completionTokens?: number;
   durationMs: number;
+  // Observability / Phase 2 transparency fields
+  retryCount?: number;         // number of retry attempts (0 = first attempt succeeded)
+  selectionReason?: string;    // why this provider/model was chosen
+  fallbackOccurred?: boolean;  // true when a fallback provider was used
 }
 
 export interface StreamChunk {

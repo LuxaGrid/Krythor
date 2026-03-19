@@ -1,4 +1,9 @@
 export { ModelEngine } from './ModelEngine.js';
+export { TaskClassifier } from './TaskClassifier.js';
+export type { TaskType, ClassificationResult } from './TaskClassifier.js';
+export { ModelRecommender } from './ModelRecommender.js';
+export type { ModelRecommendation, TaskPreference, RecommendationPreference } from './ModelRecommender.js';
+export { PreferenceStore } from './PreferenceStore.js';
 export { CircuitBreaker, CircuitOpenError } from './CircuitBreaker.js';
 export type { CircuitStats } from './CircuitBreaker.js';
 export { ModelRegistry } from './ModelRegistry.js';

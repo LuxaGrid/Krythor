@@ -102,6 +102,8 @@ export interface EmbeddingVector {
 export interface EmbeddingProvider {
   name: string;
   isAvailable(): boolean;
+  /** Optional lightweight reachability check. Returns true if provider is now available. */
+  probe?(): Promise<boolean>;
   embed(text: string): Promise<EmbeddingVector>;
   similarity(a: EmbeddingVector, b: EmbeddingVector): number;
 }
