@@ -48,10 +48,33 @@ This is **AI you can operate**.
 
 ---
 
+## Screenshots
+
+Screenshots coming soon — see [`assets/screenshots/CAPTURE.md`](./assets/screenshots/CAPTURE.md) for the capture guide.
+
+---
+
 ## Status
 
 Krythor is in active development and currently available as an early public preview.
 The current release is intended for testers, technical users, and early adopters.
+
+---
+
+## 🔒 Trust & Safety
+
+Krythor is built on a local-first principle:
+
+- **Your data never leaves your machine** unless you configure a cloud AI provider (OpenAI, Anthropic). Even then, only the content of your requests is sent — nothing else.
+- **No telemetry.** Krythor does not collect usage data, crash reports, or analytics of any kind.
+- **No accounts required.** You do not need to create an account to use Krythor. Cloud provider API keys are stored locally in your OS user profile.
+- **Transparent model selection.** Every run shows which model was used, why it was chosen, and whether a fallback occurred. Nothing is hidden.
+- **Open source.** The full source is on GitHub. You can read, audit, and build it yourself.
+
+Data is stored in your OS user profile, outside the application folder:
+- **Windows:** `%LOCALAPPDATA%\Krythor\`
+- **macOS:** `~/Library/Application Support/Krythor/`
+- **Linux:** `~/.local/share/krythor/`
 
 ---
 

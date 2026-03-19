@@ -373,6 +373,43 @@ function Sidebar({ conversations, activeId, onSelect, onNew, onDelete, onRename 
 
 // ── Main component ────────────────────────────────────────────────────────
 
+// ── First-run welcome banner ──────────────────────────────────────────────
+
+const FIRST_RUN_KEY = 'krythor_first_run_dismissed';
+
+function FirstRunBanner({ onDismiss, onTabChange }: { onDismiss: () => void; onTabChange: (tab: Tab) => void }) {
+  return (
+    <div className="mx-auto max-w-md w-full bg-zinc-900 border border-zinc-700 rounded-xl p-6 text-center shadow-xl">
+      <img src="/logo.png" alt="Krythor" className="w-16 h-16 object-contain mx-auto mb-4 opacity-90 drop-shadow-lg" />
+      <h2 className="text-zinc-100 text-lg font-semibold tracking-wide mb-1">Krythor is running</h2>
+      <p className="text-zinc-400 text-sm mb-4 leading-relaxed">
+        Everything runs locally on your machine.<br />
+        No telemetry. No cloud storage. No accounts required.
+      </p>
+      <div className="flex flex-col gap-2 text-xs text-zinc-500 mb-5 text-left bg-zinc-950 rounded-lg px-4 py-3">
+        <div className="flex items-center gap-2"><span className="text-emerald-500">✓</span> Your data stays on your computer</div>
+        <div className="flex items-center gap-2"><span className="text-emerald-500">✓</span> You can see which model ran every request</div>
+        <div className="flex items-center gap-2"><span className="text-emerald-500">✓</span> Fallbacks and routing decisions are always visible</div>
+        <div className="flex items-center gap-2"><span className="text-emerald-500">✓</span> No hidden behavior</div>
+      </div>
+      <div className="flex gap-2 justify-center">
+        <button
+          onClick={() => { onTabChange('models'); onDismiss(); }}
+          className="px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white text-xs rounded-lg transition-colors"
+        >
+          Add a provider
+        </button>
+        <button
+          onClick={onDismiss}
+          className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs rounded-lg transition-colors"
+        >
+          Run my first command
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function CommandPanel({ health, onTabChange, newChatRef }: Props) {
   const { config } = useAppConfig();
 
@@ -385,9 +422,16 @@ export function CommandPanel({ health, onTabChange, newChatRef }: Props) {
   const [historyIdx, setHistoryIdx]           = useState(-1);
   const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
   const [selectedModelId, setSelectedModelId] = useState<string | undefined>(config.selectedModel);
+  const [showFirstRun, setShowFirstRun]       = useState(() => !localStorage.getItem(FIRST_RUN_KEY));
   const abortRef                              = useRef<AbortController | null>(null);
   const bottomRef                             = useRef<HTMLDivElement>(null);
   const textareaRef                           = useRef<HTMLTextAreaElement>(null);
+
+  const dismissFirstRun = useCallback(() => {
+    localStorage.setItem(FIRST_RUN_KEY, '1');
+    setShowFirstRun(false);
+    setTimeout(() => textareaRef.current?.focus(), 50);
+  }, []);
 
   const noProvider = health ? health.models.providerCount === 0 : false;
 
@@ -668,19 +712,25 @@ export function CommandPanel({ health, onTabChange, newChatRef }: Props) {
         <div className="flex-1 overflow-y-auto scrollbar-thin px-4 py-6 space-y-6">
           {messages.length === 0 && !loading && (
             <div className="flex flex-col items-center justify-center h-full gap-3 text-center">
-              <img src="/logo.png" alt="Krythor" className="w-20 h-20 object-contain drop-shadow-lg opacity-90" />
-              <p className="text-zinc-400 text-sm">How can I help you today?</p>
-              <p className="text-zinc-600 text-xs">
-                {activeConvId ? 'Continue the conversation below.' : 'Start a new chat or select one from the sidebar.'}
-              </p>
-              {!config.selectedAgentId && (
-                <p className="text-zinc-700 text-xs">
-                  Tip:{' '}
-                  <button onClick={() => onTabChange('agents')} className="text-zinc-500 underline underline-offset-2 hover:text-zinc-400">
-                    select an agent
-                  </button>{' '}
-                  for memory-aware responses.
-                </p>
+              {showFirstRun ? (
+                <FirstRunBanner onDismiss={dismissFirstRun} onTabChange={onTabChange} />
+              ) : (
+                <>
+                  <img src="/logo.png" alt="Krythor" className="w-20 h-20 object-contain drop-shadow-lg opacity-90" />
+                  <p className="text-zinc-400 text-sm">How can I help you today?</p>
+                  <p className="text-zinc-600 text-xs">
+                    {activeConvId ? 'Continue the conversation below.' : 'Start a new chat or select one from the sidebar.'}
+                  </p>
+                  {!config.selectedAgentId && (
+                    <p className="text-zinc-700 text-xs">
+                      Tip:{' '}
+                      <button onClick={() => onTabChange('agents')} className="text-zinc-500 underline underline-offset-2 hover:text-zinc-400">
+                        select an agent
+                      </button>{' '}
+                      for memory-aware responses.
+                    </p>
+                  )}
+                </>
               )}
             </div>
           )}
