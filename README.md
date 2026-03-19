@@ -48,6 +48,13 @@ This is **AI you can operate**.
 
 ---
 
+## Status
+
+Krythor is in active development and currently available as an early public preview.
+The current release is intended for testers, technical users, and early adopters.
+
+---
+
 ## ⚙️ Requirements
 
 * **Node.js 20 or higher** — https://nodejs.org
@@ -130,9 +137,14 @@ pnpm doctor     # run diagnostics
 ## 📦 Distribution
 
 ```bash
+# Full release (build + bundle + exe + installer)
+node build-release.js
+
+# Or step by step:
 pnpm build
-node bundle.js        # creates krythor-dist/
-node build-exe.js     # creates krythor.exe (Windows)
+node bundle.js           # creates krythor-dist/
+node build-exe.js        # creates krythor.exe (Windows SEA)
+node build-installer.js  # creates Krythor-Setup-{version}.exe
 ```
 
 ---
@@ -152,13 +164,17 @@ To uninstall: remove the app folder and the data folder above.
 ## 🗺️ Roadmap
 
 * [x] Local-first runtime
-* [x] Multi-provider model routing
+* [x] Multi-provider model routing with automatic fallback
 * [x] Persistent memory system
 * [x] Agent system
-* [ ] Production hardening
-* [ ] Installer polish
+* [x] Production hardening (crash recovery, structured logging, circuit breaker)
+* [x] Bundle-slimmed distribution (~8 MB)
+* [x] Windows installer (Inno Setup)
+* [x] Transparent execution (selectionReason, fallbackOccurred in all run paths)
+* [ ] Code signing (OV certificate — eliminates SmartScreen)
+* [ ] Auto-updater
 * [ ] Expanded observability
-* [ ] Advanced memory controls
+* [ ] macOS / Linux installer
 
 ---
 
