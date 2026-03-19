@@ -7,4 +7,5 @@ export default defineConfig({
   sourcemap: true,
   clean: true,
   target: 'node20',
+  noExternal: [/^(?!better-sqlite3$|@krythor\/).+/],
 });

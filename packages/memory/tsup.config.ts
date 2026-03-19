@@ -8,8 +8,10 @@ export default defineConfig({
   sourcemap: true,
   clean: true,
   target: 'node20',
-  // Do not bundle better-sqlite3 — it is a native addon and must be required at runtime
+  // Do not bundle better-sqlite3 — it is a native addon and must be required at runtime.
+  // noExternal bundles all other JS deps inline so node_modules is not needed in dist.
   external: ['better-sqlite3'],
+  noExternal: [/^(?!better-sqlite3$|@krythor\/).+/],
   async onSuccess() {
     // Copy SQL migration files to dist/migrations so MigrationRunner can find them.
     // In the bundled CJS output, __dirname resolves to dist/ and MigrationRunner

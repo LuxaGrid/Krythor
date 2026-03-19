@@ -85,11 +85,13 @@ export class ModelRouter {
     // Exception: if the primary provider's circuit is open *before* any bytes are
     // sent, we can transparently fall back to the next provider — no partial output
     // has been delivered yet so the switch is safe.
-    const { provider, model } = this.resolve(request, context);
+    const { provider, model, selectionReason } = this.resolve(request, context);
     const breaker = this.getBreaker(provider.id);
 
     let resolvedProvider = provider;
     let resolvedModel = model;
+    let fallbackOccurred = false;
+    let resolvedSelectionReason = selectionReason;
 
     if (breaker.isOpen()) {
       // Circuit is open before the stream begins — attempt pre-stream fallback.
@@ -104,6 +106,8 @@ export class ModelRouter {
           }
           resolvedProvider = fallback.provider;
           resolvedModel    = fallback.model;
+          fallbackOccurred = true;
+          resolvedSelectionReason = `fallback from ${provider.id}: circuit open`;
         } else {
           // No fallback available — throw the circuit-open error as before
           throw new CircuitOpenError(provider.id);
@@ -115,7 +119,13 @@ export class ModelRouter {
 
     const activeBreaker = this.getBreaker(resolvedProvider.id);
     try {
-      yield* resolvedProvider.inferStream({ ...request, model: resolvedModel }, signal);
+      for await (const chunk of resolvedProvider.inferStream({ ...request, model: resolvedModel }, signal)) {
+        if (chunk.done) {
+          yield { ...chunk, selectionReason: resolvedSelectionReason, fallbackOccurred, retryCount: 0 };
+        } else {
+          yield chunk;
+        }
+      }
       // Count the completed stream as a success so latency is tracked
       activeBreaker.recordSuccess(0);
     } catch (err) {

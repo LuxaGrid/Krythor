@@ -58,6 +58,10 @@ export interface StreamChunk {
   delta: string;
   done: boolean;
   model?: string;
+  // Routing metadata — populated on the final chunk (done === true)
+  selectionReason?: string;
+  fallbackOccurred?: boolean;
+  retryCount?: number;
 }
 
 // ─── Routing context ─────────────────────────────────────────────────────────

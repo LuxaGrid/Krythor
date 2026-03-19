@@ -42,8 +42,11 @@ function copy(src, dest, opts = {}) {
     err(`Required path not found: ${src}`);
     process.exit(1);
   }
+  // Resolve symlinks before copying — pnpm stores packages as symlinks on Windows
+  const { realpathSync } = require('fs');
+  const realSrc = (() => { try { return realpathSync(src); } catch { return src; } })();
   mkdirSync(join(DISTDIR, dest, '..'), { recursive: true });
-  cpSync(src, join(DISTDIR, dest), { recursive: true, ...opts });
+  cpSync(realSrc, join(DISTDIR, dest), { recursive: true, ...opts });
 }
 
 async function main() {
@@ -84,15 +87,41 @@ async function main() {
     ok('migrations SQL files');
   }
 
-  // ── Copy node_modules (production only via pnpm pack approach) ─────────────
-  // We copy the workspace node_modules that are actually needed at runtime.
-  // This is the simplest cross-platform approach without pkg or esbuild bundling.
-  head('Copying node_modules (runtime only)');
-  info('This may take 10-20 seconds…');
-  const nmSrc = join(ROOT, 'node_modules');
-  if (existsSync(nmSrc)) {
-    copy(nmSrc, 'node_modules');
-    ok('node_modules');
+  // ── Copy only better-sqlite3 runtime files (all JS deps are bundled inline) ─
+  // All JS dependencies are inlined into each package's dist/index.js by tsup.
+  // Only better-sqlite3 must remain external — it ships a native .node addon.
+  // Runtime needs: lib/ (JS wrapper), package.json, build/Release/better_sqlite3.node only.
+  // All build artifacts (.pdb, .iobj, obj/, deps/, src/) are excluded.
+  head('Copying native bindings (better-sqlite3 only)');
+  const { realpathSync: rps, copyFileSync } = require('fs');
+  const sqliteNm = join(ROOT, 'node_modules', 'better-sqlite3');
+  if (existsSync(sqliteNm)) {
+    const realSqlite = (() => { try { return rps(sqliteNm); } catch { return sqliteNm; } })();
+    // lib/ and package.json
+    for (const sub of ['lib', 'package.json']) {
+      const subSrc = join(realSqlite, sub);
+      if (existsSync(subSrc)) {
+        const subDest = join(DISTDIR, 'node_modules', 'better-sqlite3', sub);
+        mkdirSync(join(subDest, '..'), { recursive: true });
+        cpSync(subSrc, subDest, { recursive: true });
+      }
+    }
+    // Only the compiled .node binary from build/Release/
+    const nodeBin = join(realSqlite, 'build', 'Release', 'better_sqlite3.node');
+    if (existsSync(nodeBin)) {
+      const binDest = join(DISTDIR, 'node_modules', 'better-sqlite3', 'build', 'Release', 'better_sqlite3.node');
+      mkdirSync(join(binDest, '..'), { recursive: true });
+      copyFileSync(nodeBin, binDest);
+    }
+    ok('node_modules/better-sqlite3 (runtime only: lib + .node binary)');
+  }
+  // better-sqlite3 sub-deps: bindings and file-uri-to-path
+  for (const dep of ['bindings', 'file-uri-to-path']) {
+    const depSrc = join(ROOT, 'node_modules', dep);
+    if (existsSync(depSrc)) {
+      copy(depSrc, join('node_modules', dep));
+      ok(`node_modules/${dep}`);
+    }
   }
 
   // ── Copy launcher files ────────────────────────────────────────────────────
@@ -187,19 +216,25 @@ UNINSTALL
   head('Writing RELEASE-NOTES.txt');
   const releaseNotes = `Krythor v${rootPkg.version} — Release Notes
 
-What's new in v0.2:
-- System readiness card on first launch
-- Model health and fallback visibility in run details
-- Memory search mode indicator (semantic vs keyword)
-- Heartbeat warnings persist across restarts
-- GGUF/local provider guidance improved
-- Embedding recovery probing
-- Cleaner distribution packaging
+Highlights:
+- Local-first AI command platform
+- Multi-provider model routing with automatic fallback
+- Agent system with persistent memory
+- Skills framework and guard engine
+- Transparent execution (see which model ran and why)
+- Heartbeat monitoring
+- Windows installer (Krythor-Setup-${rootPkg.version}.exe)
+- Bundle-slimmed distribution (~8 MB vs ~80 MB in earlier releases)
+
+Known Issues:
+- Windows SmartScreen may appear — build is unsigned
+- krythor.exe requires node.exe beside it (included in installer)
+- Streaming transparency fields not populated in all run modes
 
 Installation:
-1. Extract the krythor-dist folder
-2. Double-click Krythor.bat (Windows) or run: node start.js
-3. Open http://localhost:47200 in your browser
+  Installer:  Run Krythor-Setup-${rootPkg.version}.exe
+  Zip:        Extract, run Krythor-Setup.bat, then Krythor.bat
+  Open:       http://localhost:47200
 `;
   writeFileSync(join(DISTDIR, 'RELEASE-NOTES.txt'), releaseNotes);
   ok('RELEASE-NOTES.txt');
@@ -215,9 +250,9 @@ It contains everything needed to run Krythor on any machine with Node.js 20+.
 FOLDER STRUCTURE
   packages/            — Compiled Krythor packages (gateway, setup, memory, etc.)
                          These are pre-built JavaScript files, not source code.
-  node_modules/        — Runtime dependencies. DO NOT DELETE this folder.
-                         Krythor cannot run without it. It is NOT safe to prune
-                         or deduplicate this folder after distribution.
+  node_modules/        — Contains only better-sqlite3 native bindings.
+                         All other dependencies are bundled into packages/*/dist/.
+                         DO NOT DELETE this folder — Krythor cannot run without it.
   start.js             — Main launcher. Run: node start.js
   Krythor.bat          — Windows launcher (double-click to start)
   Krythor-Setup.bat    — Windows setup wizard (run first on a new machine)

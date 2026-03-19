@@ -81,9 +81,28 @@ function findNodeExe() {
     if (first && existsSync(first)) return first;
   } catch { /* not in PATH */ }
 
-  // 3. Fallback: use process.execPath and hope it's node (dev mode)
+  // 3. Fallback: use process.execPath (dev mode — process.execPath IS node)
   return process.execPath;
 }
+
+// ── Validate node.exe is usable when running as SEA ────────────────────────
+function assertNodeExe() {
+  const isSea = process.execPath.toLowerCase().endsWith('.exe') &&
+    !process.execPath.toLowerCase().includes('node');
+  if (!isSea) return; // running as plain node — no check needed
+
+  const nodeExe = findNodeExe();
+  // If findNodeExe returned process.execPath, node.exe was not found
+  if (nodeExe === process.execPath) {
+    console.error('');
+    console.error('\x1b[31mKrythor could not start because node.exe was not found beside krythor.exe.\x1b[0m');
+    console.error('Re-extract the full package and try again.');
+    console.error('');
+    process.exit(1);
+  }
+}
+
+assertNodeExe();
 
 async function main() {
   const versionTag = KRYTHOR_VERSION ? `\x1b[2m v${KRYTHOR_VERSION}\x1b[0m` : '';

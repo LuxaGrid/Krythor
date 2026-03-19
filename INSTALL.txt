@@ -1,0 +1,11 @@
+KRYTHOR INSTALL
+
+1. Extract the full zip
+2. Run Krythor-Setup.bat once
+3. Run Krythor.bat to launch
+4. Open http://localhost:47200
+
+Windows may show a SmartScreen warning because this build is not yet code signed.
+Click "More info" then "Run anyway" to proceed.
+
+If krythor.exe is used, node.exe must remain beside it.

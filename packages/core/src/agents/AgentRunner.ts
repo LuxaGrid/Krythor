@@ -363,12 +363,14 @@ export class AgentRunner {
               payload: { delta: chunk.delta, done: chunk.done },
               timestamp: Date.now(),
             });
-            if (chunk.model) run.modelUsed = chunk.model;
+            if (chunk.model)             run.modelUsed       = chunk.model;
+            if (chunk.done) {
+              if (chunk.selectionReason)               run.selectionReason  = chunk.selectionReason;
+              if (chunk.fallbackOccurred)              run.fallbackOccurred = chunk.fallbackOccurred;
+              if (typeof chunk.retryCount === 'number') run.retryCount      = chunk.retryCount;
+            }
           }
           streamSignal.clear();
-          // Note: selectionReason, fallbackOccurred, and retryCount are not populated
-          // for streaming runs — inferStream yields per-chunk deltas and does not
-          // surface model routing metadata per chunk.
 
           const assistantMsg: AgentMessage = { role: 'assistant', content: fullContent, timestamp: Date.now() };
           messages.push(assistantMsg);
