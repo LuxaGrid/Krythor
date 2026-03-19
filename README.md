@@ -81,7 +81,53 @@ Data is stored in your OS user profile, outside the application folder:
 ## ⚙️ Requirements
 
 * **Node.js 20 or higher** — https://nodejs.org
-* **pnpm** — `npm install -g pnpm`
+* **pnpm** — `npm install -g pnpm` *(only needed for source builds)*
+
+---
+
+## ⚡ Install
+
+### Windows — Installer (recommended)
+
+Download and run **[Krythor-Setup.exe](https://github.com/LuxaGrid/Krythor/releases/latest)** from the releases page.
+
+No Node.js required — the installer bundles everything.
+
+### Windows — PowerShell one-liner
+
+```powershell
+iwr https://raw.githubusercontent.com/LuxaGrid/Krythor/main/install.ps1 | iex
+```
+
+Installs to `%USERPROFILE%\.krythor\` and adds `krythor` to your PATH.
+
+### Mac / Linux — curl one-liner
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/LuxaGrid/Krythor/main/install.sh | bash
+```
+
+Installs to `~/.krythor/` and adds a `krythor` alias to your shell profile.
+
+Requires Node.js 20+ on PATH.
+
+### Windows / Mac / Linux — zip
+
+Download the zip from the [releases page](https://github.com/LuxaGrid/Krythor/releases/latest), extract, and run:
+
+```bash
+node start.js          # Mac/Linux
+Krythor.bat            # Windows
+```
+
+### From source
+
+```bash
+git clone https://github.com/LuxaGrid/Krythor
+cd Krythor
+pnpm install && pnpm build
+node start.js
+```
 
 ---
 

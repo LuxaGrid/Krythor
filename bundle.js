@@ -131,6 +131,7 @@ async function main() {
     ['Krythor.bat',          'Krythor.bat'],
     ['Krythor-Setup.bat',    'Krythor-Setup.bat'],
     ['install.sh',           'install.sh'],
+    ['install.ps1',          'install.ps1'],
     ['CHANGELOG.md',         'CHANGELOG.md'],
   ];
   for (const [src, dest] of launchers) {
