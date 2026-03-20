@@ -96,6 +96,27 @@ async function main() {
     }
   }
 
+  // ── Write node_modules/@krythor/* stubs ───────────────────────────────────
+  // The gateway and other packages require('@krythor/core') etc at runtime.
+  // Node resolves these via node_modules — write minimal package.json stubs
+  // that point "main" to the already-copied dist files.
+  head('Writing @krythor package stubs');
+  const krythorPkgs = ['core', 'memory', 'models', 'guard', 'skills'];
+  for (const pkg of krythorPkgs) {
+    const distMain = join(DISTDIR, 'packages', pkg, 'dist', 'index.js');
+    if (!existsSync(distMain)) continue;
+    const stubDir = join(DISTDIR, 'node_modules', '@krythor', pkg);
+    mkdirSync(stubDir, { recursive: true });
+    // Relative path from stub dir to the dist index
+    const rel = `../../../packages/${pkg}/dist/index.js`;
+    writeFileSync(join(stubDir, 'package.json'), JSON.stringify({
+      name: `@krythor/${pkg}`,
+      version: '0.0.0',
+      main: rel,
+    }, null, 2));
+    ok(`node_modules/@krythor/${pkg}`);
+  }
+
   // ── Copy migration SQL files (not compiled — runtime-loaded) ───────────────
   head('Copying runtime assets');
   const migrSrc = join(ROOT, 'packages', 'memory', 'src', 'db', 'migrations');

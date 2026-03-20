@@ -14,8 +14,6 @@ export default defineConfig({
   noExternal: [/^(?!better-sqlite3$|@krythor\/).+/],
   async onSuccess() {
     // Copy SQL migration files to dist/migrations so MigrationRunner can find them.
-    // In the bundled CJS output, __dirname resolves to dist/ and MigrationRunner
-    // uses join(__dirname, 'migrations'), so files must live at dist/migrations/.
     mkdirSync('dist/migrations', { recursive: true });
     cpSync('src/db/migrations', 'dist/migrations', { recursive: true });
   },
