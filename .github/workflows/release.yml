@@ -74,8 +74,26 @@ jobs:
       - name: Build all packages
         run: pnpm build
 
+      - name: Verify control UI was built
+        shell: bash
+        run: |
+          if [ ! -f "packages/control/dist/index.html" ]; then
+            echo "✗ packages/control/dist/index.html missing — UI build failed"
+            exit 1
+          fi
+          echo "✓ control UI build OK"
+
       - name: Bundle (platform-specific, with bundled Node runtime)
         run: node bundle.js --platform ${{ matrix.platform }} --arch ${{ matrix.arch }}
+
+      - name: Verify control UI in bundle
+        shell: bash
+        run: |
+          if [ ! -f "krythor-dist-${{ matrix.platform }}/packages/control/dist/index.html" ]; then
+            echo "✗ control UI missing from bundle"
+            exit 1
+          fi
+          echo "✓ control UI present in bundle"
 
       - name: Rebuild better-sqlite3 against bundled runtime (non-Windows)
         if: matrix.os != 'windows-latest'
