@@ -182,9 +182,13 @@ if [ -d "$SQLITE_DIR" ]; then
   echo ""
   echo -e "${YELLOW}  Compiling database module for your Node.js version...${RESET}"
   if command -v npm &>/dev/null; then
-    ( cd "$INSTALL_DIR" && npm rebuild better-sqlite3 --silent 2>&1 ) && \
-      echo -e "${GREEN}✓${RESET} Database module compiled." || \
-      echo -e "${YELLOW}⚠  Could not compile automatically. Run: cd ${INSTALL_DIR} && npm rebuild better-sqlite3${RESET}"
+    if ( cd "$INSTALL_DIR" && npm rebuild better-sqlite3 2>&1 ); then
+      echo -e "${GREEN}✓${RESET} Database module compiled."
+    else
+      echo -e "${YELLOW}⚠  Could not compile automatically.${RESET}"
+      echo -e "   To fix manually, run:"
+      echo -e "     ${BOLD}cd ${INSTALL_DIR} && npm rebuild better-sqlite3${RESET}"
+    fi
   else
     echo -e "${YELLOW}⚠  npm not found. Run manually: cd ${INSTALL_DIR} && npm rebuild better-sqlite3${RESET}"
   fi

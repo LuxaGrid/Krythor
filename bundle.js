@@ -141,37 +141,33 @@ async function main() {
 
   if (existsSync(sqliteNm)) {
     const realSqlite = (() => { try { return rps(sqliteNm); } catch { return sqliteNm; } })();
-    // Always copy lib/ and package.json (pure JS, platform-neutral)
-    for (const sub of ['lib', 'package.json']) {
+    const sqliteDest = join(DISTDIR, 'node_modules', 'better-sqlite3');
+
+    // Copy the full package source so npm rebuild / node-gyp can recompile for
+    // any Node version. Exclude test dirs to keep size down.
+    const subsToCopy = ['lib', 'src', 'package.json', 'binding.gyp', 'README.md'];
+    for (const sub of subsToCopy) {
       const subSrc = join(realSqlite, sub);
       if (existsSync(subSrc)) {
-        const subDest = join(DISTDIR, 'node_modules', 'better-sqlite3', sub);
+        const subDest = join(sqliteDest, sub);
         mkdirSync(join(subDest, '..'), { recursive: true });
         cpSync(subSrc, subDest, { recursive: true });
       }
     }
+
     if (binaryIsForThisPlatform) {
-      // Copy the compiled .node binary only when building for the current OS
+      // Include the pre-built binary as a starting point — installer will rebuild anyway
       const nodeBin = join(realSqlite, 'build', 'Release', 'better_sqlite3.node');
       if (existsSync(nodeBin)) {
-        const binDest = join(DISTDIR, 'node_modules', 'better-sqlite3', 'build', 'Release', 'better_sqlite3.node');
+        const binDest = join(sqliteDest, 'build', 'Release', 'better_sqlite3.node');
         mkdirSync(join(binDest, '..'), { recursive: true });
         copyFileSync(nodeBin, binDest);
-        ok('node_modules/better-sqlite3 (runtime only: lib + .node binary)');
+        ok('node_modules/better-sqlite3 (full source + prebuilt binary)');
       } else {
-        console.log(`${DIM}  better-sqlite3 .node binary not found — skipped${RESET}`);
+        ok('node_modules/better-sqlite3 (full source — no prebuilt binary)');
       }
     } else {
-      // Cross-platform: omit binary, write a rebuild helper instead
-      const rebuildNote = join(DISTDIR, 'node_modules', 'better-sqlite3', 'build', 'Release', 'README.txt');
-      mkdirSync(join(rebuildNote, '..'), { recursive: true });
-      writeFileSync(rebuildNote,
-        `This folder is intentionally empty.\n` +
-        `Run: npm rebuild better-sqlite3\n` +
-        `from the krythor-dist-${platformArg}/ directory to compile for your system.\n`
-      );
-      ok(`node_modules/better-sqlite3 (lib only — binary excluded for cross-platform build)`);
-      console.log(`${DIM}  NOTE: This ${platformArg} bundle was built on ${currentOS}. The .node binary must be compiled on ${platformArg}.${RESET}`);
+      ok(`node_modules/better-sqlite3 (full source — binary must be compiled on ${platformArg})`);
     }
   }
   // better-sqlite3 sub-deps: bindings and file-uri-to-path
@@ -214,6 +210,14 @@ async function main() {
   // ── Write a minimal package.json for the dist folder ──────────────────────
   head('Writing dist package.json');
   const rootPkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf-8'));
+  // Read better-sqlite3 version from the source package so the dist package.json
+  // lists it as a dependency — required for `npm rebuild better-sqlite3` to work.
+  let sqliteVersion = '*';
+  try {
+    const sqlitePkg = JSON.parse(readFileSync(join(ROOT, 'node_modules', 'better-sqlite3', 'package.json'), 'utf-8'));
+    sqliteVersion = sqlitePkg.version;
+  } catch { /* non-fatal */ }
+
   const distPkg = {
     name:        'krythor',
     version:     rootPkg.version,
@@ -223,6 +227,10 @@ async function main() {
       start:  'node start.js',
       setup:  'node packages/setup/dist/bin/setup.js',
       doctor: 'node packages/setup/dist/bin/setup.js doctor',
+    },
+    // Declare better-sqlite3 so `npm rebuild` targets it correctly
+    dependencies: {
+      'better-sqlite3': sqliteVersion,
     },
   };
   writeFileSync(join(DISTDIR, 'package.json'), JSON.stringify(distPkg, null, 2));

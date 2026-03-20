@@ -178,12 +178,15 @@ if (Test-Path $sqliteDir) {
   Write-Step "Compiling database module for your Node.js version..."
   try {
     Push-Location $InstallDir
-    & npm rebuild better-sqlite3 --silent 2>&1 | Out-Null
+    $rebuildOutput = & npm rebuild better-sqlite3 2>&1
     if ($LASTEXITCODE -eq 0) {
       Write-Ok "Database module compiled successfully"
     } else {
       Write-Warn "Could not compile database module automatically."
-      Write-Host "  If Krythor fails to start, run: cd `"$InstallDir`" && npm rebuild better-sqlite3" -ForegroundColor White
+      Write-Host "  Error: $rebuildOutput" -ForegroundColor Yellow
+      Write-Host "  To fix manually, run:" -ForegroundColor White
+      Write-Host "    cd `"$InstallDir`"" -ForegroundColor Cyan
+      Write-Host "    npm rebuild better-sqlite3" -ForegroundColor Cyan
     }
   } catch {
     Write-Warn "Could not compile database module: $_"
