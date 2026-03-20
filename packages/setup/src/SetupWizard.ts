@@ -60,6 +60,23 @@ export const PROVIDER_RECOMMENDATIONS: Record<string, ProviderRecommendation> = 
   },
 };
 
+// ─── Model picker ─────────────────────────────────────────────────────────────
+// Shows a numbered list of known models. The last option is always "Enter manually"
+// so the user is never blocked by a stale list.
+
+const ENTER_MANUALLY = 'Enter model name manually';
+
+async function pickModel(knownModels: string[], defaultModel: string): Promise<string> {
+  const options = [...knownModels, ENTER_MANUALLY];
+  const defaultIdx = knownModels.indexOf(defaultModel);
+  const chosen = await choose('  Default model', options, defaultIdx >= 0 ? defaultIdx : 0);
+  if (chosen === ENTER_MANUALLY) {
+    const manual = await ask(`  Model name [${defaultModel}]: `);
+    return manual || defaultModel;
+  }
+  return chosen;
+}
+
 // ─── SetupWizard ──────────────────────────────────────────────────────────────
 
 export class SetupWizard {
@@ -201,6 +218,8 @@ export class SetupWizard {
     console.log('');
   }
 
+  // ── Helpers ────────────────────────────────────────────────────────────────
+
   // Returns the first model name if one was detected/entered, or undefined if skipped
   private async configureProvider(
     installer: Installer,
@@ -240,16 +259,33 @@ export class SetupWizard {
     } else if (isDualAuth) {
       // ── Dual-auth providers (Anthropic, OpenAI) ───────────────────────────
       // Both API key (enter now) and OAuth (connect later in the app) are supported.
-      const providerInfo: Record<string, { endpoint: string; keyUrl: string; defaultModel: string }> = {
+      const providerInfo: Record<string, { endpoint: string; keyUrl: string; defaultModel: string; models: string[] }> = {
         anthropic: {
           endpoint:     'https://api.anthropic.com',
           keyUrl:       'https://console.anthropic.com/settings/keys',
           defaultModel: 'claude-sonnet-4-6',
+          models: [
+            'claude-sonnet-4-6',
+            'claude-opus-4-6',
+            'claude-haiku-4-5-20251001',
+            'claude-3-5-sonnet-20241022',
+            'claude-3-5-haiku-20241022',
+            'claude-3-opus-20240229',
+          ],
         },
         openai: {
           endpoint:     'https://api.openai.com/v1',
           keyUrl:       'https://platform.openai.com/api-keys',
           defaultModel: 'gpt-4o-mini',
+          models: [
+            'gpt-4o-mini',
+            'gpt-4o',
+            'gpt-4-turbo',
+            'gpt-4',
+            'o1-mini',
+            'o1',
+            'o3-mini',
+          ],
         },
       };
       const info = providerInfo[type]!;
@@ -272,16 +308,14 @@ export class SetupWizard {
         authMethod = 'api_key';
         console.log(fmt.dim(`  Get your API key at: ${info.keyUrl}`));
         apiKey = await ask('  API Key: ');
-        const modelInput = await ask(`  Default model [${info.defaultModel}]: `);
-        models = [modelInput || info.defaultModel];
+        models = [await pickModel(info.models, info.defaultModel)];
         console.log(fmt.ok(`Provider "${name}" configured with API key.`));
 
       } else if (authChoice === 'Connect with OAuth later (in the app)') {
         // Persist the provider shell so the UI can surface an OAuth CTA on first launch
         authMethod = 'none';
         setupHint = 'oauth_available';
-        const modelInput = await ask(`  Default model [${info.defaultModel}]: `);
-        models = [modelInput || info.defaultModel];
+        models = [await pickModel(info.models, info.defaultModel)];
         console.log(fmt.ok(`Provider "${name}" added. Connect with OAuth after launch.`));
         console.log(fmt.dim('  → Open the Models tab and click "OAuth" next to this provider.'));
 
@@ -297,8 +331,11 @@ export class SetupWizard {
       authMethod = 'api_key';
       console.log(fmt.dim('  Get your API key at: https://platform.moonshot.cn/console/api-keys'));
       apiKey = await ask('  API Key: ');
-      const modelInput = await ask('  Default model [moonshot-v1-128k]: ');
-      models = [modelInput || 'moonshot-v1-128k'];
+      models = [await pickModel([
+        'moonshot-v1-128k',
+        'moonshot-v1-32k',
+        'moonshot-v1-8k',
+      ], 'moonshot-v1-128k')];
 
     } else if (type === 'minimax') {
       endpoint = 'https://api.minimax.chat/v1';
@@ -306,8 +343,11 @@ export class SetupWizard {
       authMethod = 'api_key';
       console.log(fmt.dim('  Get your API key at: https://www.minimax.chat/user-center/basic-information/interface-key'));
       apiKey = await ask('  API Key: ');
-      const modelInput = await ask('  Default model [abab6.5s-chat]: ');
-      models = [modelInput || 'abab6.5s-chat'];
+      models = [await pickModel([
+        'abab6.5s-chat',
+        'abab6.5-chat',
+        'abab5.5s-chat',
+      ], 'abab6.5s-chat')];
 
     } else {
       // ── openai-compat ──────────────────────────────────────────────────────
