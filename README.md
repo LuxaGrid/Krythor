@@ -48,12 +48,6 @@ This is **AI you can operate**.
 
 ---
 
-## Screenshots
-
-Screenshots coming soon — see [`assets/screenshots/CAPTURE.md`](./assets/screenshots/CAPTURE.md) for the capture guide.
-
----
-
 ## Status
 
 Krythor is in active development and currently available as an early public preview.
