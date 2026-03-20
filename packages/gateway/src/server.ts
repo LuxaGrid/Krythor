@@ -201,7 +201,7 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
   // UI can bootstrap without reading the public /health endpoint.
   const uiDist = join(__dirname, '..', '..', 'control', 'dist');
   if (existsSync(uiDist)) {
-    await app.register(fastifyStatic, { root: uiDist, prefix: '/' });
+    await app.register(fastifyStatic, { root: uiDist, prefix: '/', index: false });
 
     const serveIndex = (_req: unknown, reply: { type: (t: string) => void; send: (b: unknown) => void; code: (n: number) => { send: (b: unknown) => void } }) => {
       const indexPath = join(uiDist, 'index.html');
@@ -216,6 +216,9 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
       const injected = html.replace('</head>', `${tokenScript}</head>`);
       (reply as unknown as { type: (t: string) => void; send: (b: unknown) => void }).type('text/html').send(injected);
     };
+
+    // Explicit root route
+    app.get('/', (req, reply) => serveIndex(req, reply as unknown as Parameters<typeof serveIndex>[1]));
 
     // SPA fallback — serves index.html with token injected for all non-asset routes
     app.setNotFoundHandler((req, reply) => {
