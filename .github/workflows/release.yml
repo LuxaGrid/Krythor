@@ -77,13 +77,51 @@ jobs:
       - name: Bundle (platform-specific, with bundled Node runtime)
         run: node bundle.js --platform ${{ matrix.platform }} --arch ${{ matrix.arch }}
 
+      - name: Rebuild better-sqlite3 against bundled runtime (non-Windows)
+        if: matrix.os != 'windows-latest'
+        shell: bash
+        run: |
+          DIST="krythor-dist-${{ matrix.platform }}"
+          RUNTIME="$DIST/runtime/node"
+          chmod +x "$RUNTIME"
+          SQLITE_DIR="$DIST/node_modules/better-sqlite3"
+          NODEGYP="$SQLITE_DIR/node_modules/.bin/node-gyp"
+          if [ -f "$NODEGYP" ]; then
+            echo "Rebuilding better-sqlite3 against bundled Node..."
+            (cd "$SQLITE_DIR" && "$OLDPWD/$RUNTIME" "$OLDPWD/$NODEGYP" rebuild)
+            echo "✓ Rebuild complete"
+          else
+            echo "node-gyp not found at $NODEGYP — skipping rebuild"
+          fi
+
+      - name: Rebuild better-sqlite3 against bundled runtime (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $dist     = "krythor-dist-win"
+          $runtime  = "$dist\runtime\node.exe"
+          $sqlite   = "$dist\node_modules\better-sqlite3"
+          $nodegyp  = "$sqlite\node_modules\.bin\node-gyp"
+          if (Test-Path $nodegyp) {
+            Write-Host "Rebuilding better-sqlite3 against bundled Node..."
+            Push-Location $sqlite
+            & $env:GITHUB_WORKSPACE\$runtime $env:GITHUB_WORKSPACE\$nodegyp rebuild
+            Pop-Location
+            if ($LASTEXITCODE -ne 0) { Write-Error "Rebuild failed"; exit 1 }
+            Write-Host "✓ Rebuild complete"
+          } else {
+            Write-Host "node-gyp not found at $nodegyp — skipping rebuild"
+          }
+
       - name: Verify native module loads under bundled runtime (non-Windows)
         if: matrix.os != 'windows-latest'
         shell: bash
         run: |
-          RUNTIME="krythor-dist-${{ matrix.platform }}/runtime/node"
+          DIST="krythor-dist-${{ matrix.platform }}"
+          RUNTIME="$DIST/runtime/node"
           chmod +x "$RUNTIME"
-          if "$RUNTIME" -e "require('./krythor-dist-${{ matrix.platform }}/node_modules/better-sqlite3')"; then
+          cd "$DIST"
+          if "../$RUNTIME" -e "require('./node_modules/better-sqlite3')"; then
             echo "✓ better-sqlite3 loads OK under bundled runtime"
           else
             echo "✗ better-sqlite3 failed to load under bundled runtime"
@@ -94,9 +132,11 @@ jobs:
         if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
-          $runtime = "krythor-dist-win\runtime\node.exe"
-          $distDir = "krythor-dist-win"
-          $result = & $runtime -e "require('./node_modules/better-sqlite3')" 2>&1
+          $dist    = "krythor-dist-win"
+          $runtime = "$dist\runtime\node.exe"
+          Push-Location $dist
+          $result = & $env:GITHUB_WORKSPACE\$runtime -e "require('./node_modules/better-sqlite3')" 2>&1
+          Pop-Location
           if ($LASTEXITCODE -eq 0) {
             Write-Host "✓ better-sqlite3 loads OK under bundled runtime"
           } else {

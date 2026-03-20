@@ -170,36 +170,9 @@ if ($userPath -notlike "*$InstallDir*") {
   Write-Ok "Added to PATH — the 'krythor' command will work in new terminal windows"
 }
 
-# ── Rebuild better-sqlite3 against the bundled Node runtime ──────────────────
-# The precompiled .node binary was built in CI against the bundled Node ABI.
-# On a fresh install this should already be correct. The rebuild step here is
-# a safety net in case the user installs a different zip or updates node-gyp.
-$sqliteDir = Join-Path $InstallDir 'node_modules\better-sqlite3'
-if ((Test-Path $sqliteDir) -and (Test-Path $BundledNode)) {
-  Write-Host ""
-  Write-Step "Compiling database module against bundled Node runtime..."
-  try {
-    Push-Location $sqliteDir
-    $NodeGyp = Join-Path $sqliteDir 'node_modules\.bin\node-gyp'
-    if (Test-Path $NodeGyp) {
-      $rebuildOutput = & $BundledNode $NodeGyp rebuild 2>&1
-      if ($LASTEXITCODE -eq 0) {
-        Write-Ok "Database module compiled successfully"
-      } else {
-        Write-Warn "Could not compile database module automatically."
-        Write-Host "  Output: $rebuildOutput" -ForegroundColor Yellow
-        Write-Host "  The prebuilt binary from CI will be used instead." -ForegroundColor White
-        Write-Host "  If Krythor fails to start, run: krythor repair" -ForegroundColor White
-      }
-    } else {
-      Write-Warn "node-gyp not found in better-sqlite3 — skipping rebuild. CI binary will be used."
-    }
-  } catch {
-    Write-Warn "Could not compile database module: $_"
-  } finally {
-    Pop-Location
-  }
-}
+# ── Verify native module loads under bundled runtime ─────────────────────────
+# CI rebuilds better-sqlite3 against the bundled Node before packaging,
+# so the prebuilt binary in the zip is already correct — no rebuild needed here.
 
 # ── Startup health check ──────────────────────────────────────────────────────
 Write-Host ""

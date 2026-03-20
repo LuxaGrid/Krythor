@@ -166,29 +166,6 @@ else
   echo "   The release zip may be incomplete. Try re-downloading."
 fi
 
-# ── Rebuild better-sqlite3 against the bundled Node runtime ──────────────────
-# The precompiled .node binary was built in CI against the bundled Node ABI.
-# This rebuild step is a safety net and ensures the binary matches exactly.
-SQLITE_DIR="${INSTALL_DIR}/node_modules/better-sqlite3"
-NODEGYP="${INSTALL_DIR}/node_modules/better-sqlite3/node_modules/.bin/node-gyp"
-
-if [ -d "$SQLITE_DIR" ] && [ -f "$BUNDLED_NODE" ]; then
-  echo ""
-  echo -e "${YELLOW}  Compiling database module against bundled Node runtime...${RESET}"
-  if [ -f "$NODEGYP" ]; then
-    if ( cd "${INSTALL_DIR}/node_modules/better-sqlite3" && "${BUNDLED_NODE}" "${NODEGYP}" rebuild 2>&1 ); then
-      echo -e "${GREEN}✓${RESET} Database module compiled."
-    else
-      echo -e "${YELLOW}⚠  Could not compile automatically. The CI prebuilt binary will be used.${RESET}"
-      echo -e "   If Krythor fails to start, run: krythor repair"
-    fi
-  else
-    echo -e "${YELLOW}⚠  node-gyp not found in better-sqlite3 — skipping rebuild. CI binary will be used.${RESET}"
-  fi
-elif [ -d "$SQLITE_DIR" ] && [ ! -f "$BUNDLED_NODE" ]; then
-  echo -e "${YELLOW}⚠  Bundled Node not found — skipping better-sqlite3 rebuild.${RESET}"
-fi
-
 # ── Create krythor launcher ───────────────────────────────────────────────────
 LAUNCHER="${INSTALL_DIR}/krythor"
 cat > "$LAUNCHER" <<'LAUNCHEREOF'
