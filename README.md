@@ -20,7 +20,7 @@ No lock-in. No hidden cloud layer. No loss of visibility.
 
 ## 🚀 Why Krythor?
 
-Most AI tools hide what’s happening.
+Most AI tools hide what's happening.
 
 Krythor does the opposite.
 
@@ -80,55 +80,96 @@ Data is stored in your OS user profile, outside the application folder:
 
 ## ⚙️ Requirements
 
-* **Node.js 20 or higher** — https://nodejs.org
-* **pnpm** — `npm install -g pnpm` *(only needed for source builds)*
+Krythor requires **Node.js version 20 or higher**.
+
+Download it free at **https://nodejs.org** — choose the "LTS" version.
+
+> **Not sure if you have Node.js?**
+> Open a terminal and type `node --version`. If you see a number like `v20.x.x` or higher, you're good. If not, visit nodejs.org and install it first.
 
 ---
 
 ## ⚡ Install
 
-### Windows — Installer (recommended)
+### ✅ Recommended — One-line install (all platforms)
 
-Download and run **[Krythor-Setup.exe](https://github.com/LuxaGrid/Krythor/releases/latest)** from the releases page.
+This is the fastest and most transparent way to install Krythor. The script downloads directly from GitHub Releases, detects your platform automatically, and sets everything up.
 
-No Node.js required — the installer bundles everything.
+**Mac or Linux** — open Terminal and run:
 
-### Windows — PowerShell one-liner
+```bash
+curl -fsSL https://get.krythor.dev/install.sh | bash
+```
+
+**Windows** — open PowerShell and run:
 
 ```powershell
-iwr https://raw.githubusercontent.com/LuxaGrid/Krythor/main/install.ps1 | iex
+iwr https://get.krythor.dev/install.ps1 | iex
 ```
 
-Installs to `%USERPROFILE%\.krythor\` and adds `krythor` to your PATH.
+The script will:
+- Detect your operating system and chip architecture
+- Download the correct Krythor build from GitHub
+- Install to `~/.krythor` (Mac/Linux) or `%USERPROFILE%\.krythor` (Windows)
+- Add the `krythor` command to your terminal
+- Run first-time setup
 
-### Mac / Linux — curl one-liner
+After install, start Krythor with:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/LuxaGrid/Krythor/main/install.sh | bash
+krythor
 ```
 
-Installs to `~/.krythor/` and adds a `krythor` alias to your shell profile.
+Then open **http://localhost:47200** in your browser.
 
-Requires Node.js 20+ on PATH. Auto-detects your OS and architecture — downloads the correct platform build automatically.
+---
 
-### Platform zip — direct download
+### 🔄 Updates
 
-Each release includes platform-specific zips. Download the one for your system:
+Once installed, updating is one command:
 
-| Asset | Platform |
-|-------|----------|
-| `krythor-win-x64.zip` | Windows x64 |
-| `krythor-linux-x64.zip` | Linux x64 |
+```bash
+krythor update
+```
+
+This downloads the latest release and replaces the application files. Your settings, memory, and data are always preserved.
+
+---
+
+### Alternative — Windows Installer *(may show a security warning)*
+
+A Windows `.exe` installer is available on the [Releases page](https://github.com/LuxaGrid/Krythor/releases/latest).
+
+**Important:** This installer is currently **unsigned** — it does not have a code signing certificate. Windows SmartScreen will show a warning when you run it ("Windows protected your PC"). This is expected for unsigned software, not evidence of a problem.
+
+If you see this warning:
+1. Click **"More info"**
+2. Click **"Run anyway"**
+
+We recommend the one-line install above as it is more transparent — you can read exactly what it does before running it.
+
+---
+
+### Manual install — platform zip
+
+Download the zip for your platform from the [Releases page](https://github.com/LuxaGrid/Krythor/releases/latest):
+
+| File | Platform |
+|------|----------|
+| `krythor-win-x64.zip` | Windows 64-bit |
+| `krythor-linux-x64.zip` | Linux 64-bit |
 | `krythor-linux-arm64.zip` | Linux ARM64 |
 | `krythor-macos-x64.zip` | macOS Intel |
-| `krythor-macos-arm64.zip` | macOS Apple Silicon |
+| `krythor-macos-arm64.zip` | macOS Apple Silicon (M1/M2/M3) |
 
-Extract and run:
+Extract the zip, open a terminal in the extracted folder, and run:
 
 ```bash
-node start.js          # Mac/Linux
-Krythor.bat            # Windows
+node start.js       # Mac / Linux
+Krythor.bat         # Windows
 ```
+
+---
 
 ### From source
 
@@ -141,45 +182,212 @@ node start.js
 
 ---
 
-## ⚡ Quick Start
+## 📖 Getting Started — Step by Step Guide
 
+*This section is written for people who have never used a tool like this before. Technical users can skip ahead.*
+
+---
+
+### Step 1 — Install Node.js (if you haven't already)
+
+Krythor is built on Node.js, a free runtime that lets software like Krythor run on your computer.
+
+1. Go to **https://nodejs.org**
+2. Click the big green **"Download LTS"** button
+3. Run the installer — just click Next through all the steps
+4. When it's done, close and reopen any terminal windows you have open
+
+**How to check it worked:** Open a terminal (search for "Terminal" on Mac/Linux, or "PowerShell" on Windows) and type:
+```
+node --version
+```
+You should see something like `v20.11.0`. Any number starting with 20 or higher is fine.
+
+---
+
+### Step 2 — Install Krythor
+
+Open your terminal and paste the install command for your platform:
+
+**Mac or Linux:**
 ```bash
-# 1. Clone
-git clone https://github.com/LuxaGrid/Krythor
-cd krythor
-
-# 2. Install dependencies
-pnpm install
-
-# 3. Build
-pnpm build
-
-# 4. Run setup wizard (first time only)
-node packages/setup/dist/bin/setup.js
-
-# 5. Launch
-node start.js
+curl -fsSL https://get.krythor.dev/install.sh | bash
 ```
 
-Then open: **http://localhost:47200**
+**Windows (PowerShell):**
+```powershell
+iwr https://get.krythor.dev/install.ps1 | iex
+```
 
-**Windows users:**
-Use `Krythor-Setup.bat` and `Krythor.bat` instead of steps 4–5.
+Watch the output — it will tell you what it's doing at each step. The whole process takes about 30–60 seconds depending on your internet speed.
+
+> **What does this command do?**
+> It downloads a small script from GitHub and runs it. The script downloads Krythor, puts it in a folder in your home directory, and sets up the `krythor` command. Nothing is installed system-wide. To uninstall, just delete the `.krythor` folder.
+
+---
+
+### Step 3 — Start Krythor
+
+After the installer finishes, type:
+
+```bash
+krythor
+```
+
+> **Windows users:** If you get "command not found", open a **new** PowerShell window and try again. The PATH update requires a fresh terminal.
+
+Krythor will start a local server on your computer. You'll see output like:
+```
+Krythor gateway running at http://localhost:47200
+```
+
+---
+
+### Step 4 — Open the Dashboard
+
+Open your web browser (Chrome, Firefox, Edge — any browser works) and go to:
+
+**http://localhost:47200**
+
+This is Krythor's control dashboard. It runs entirely on your machine — it's not a website, it's a local app that happens to use your browser as its interface.
+
+---
+
+### Step 5 — Connect an AI Provider
+
+Krythor needs to know which AI to use. You have two options:
+
+#### Option A — Use a local AI (free, runs on your computer)
+
+**Ollama** is a free tool that runs AI models locally. Nothing is sent to the internet.
+
+1. Go to **https://ollama.com** and install it
+2. In a terminal, run: `ollama pull llama3.2` (downloads a free model)
+3. In the Krythor dashboard, go to the **Models** tab
+4. Click **+ add provider**, choose **ollama**, and click **Add**
+5. Click **refresh** next to the provider to load your models
+
+#### Option B — Use a cloud AI (OpenAI or Anthropic)
+
+These require an API key from the provider. You pay for what you use.
+
+**For OpenAI (ChatGPT/GPT-4):**
+1. Go to **https://platform.openai.com** and create an account
+2. Go to API Keys and create a new key
+3. In Krythor, add a provider, choose **openai**, paste your key
+
+**For Anthropic (Claude):**
+1. Go to **https://console.anthropic.com** and create an account
+2. Go to API Keys and create a new key
+3. In Krythor, add a provider, choose **anthropic**, paste your key
+
+> **Your API keys are stored encrypted on your computer.** They are never sent anywhere except directly to the AI provider when you make a request.
+
+---
+
+### Step 6 — Send your first command
+
+Click the **Command** tab in the dashboard. Type anything in the input box and press Enter (or click Send).
+
+Krythor will:
+1. Route your request to the best available model
+2. Show you the response
+3. Display which model was used and why (at the bottom of the response)
+
+---
+
+### Step 7 — Explore the features
+
+The dashboard has several tabs:
+
+| Tab | What it does |
+|-----|-------------|
+| **Command** | Send messages and get responses from AI |
+| **Memory** | View and manage what Krythor remembers across sessions |
+| **Models** | Add, test, and configure AI providers |
+| **Agents** | Create custom AI assistants with their own instructions |
+| **Guard** | Set rules for what Krythor is and isn't allowed to do |
+| **Skills** | Reusable task templates |
+
+---
+
+### Stopping Krythor
+
+Press **Ctrl + C** in the terminal where Krythor is running. The dashboard will become unavailable until you start it again.
+
+---
+
+### Starting Krythor again later
+
+Any time you want to use Krythor, open a terminal and run:
+```bash
+krythor
+```
+Then open **http://localhost:47200** in your browser.
+
+---
+
+### Updating Krythor
+
+When a new version is available:
+```bash
+krythor update
+```
+Your settings and memory are preserved automatically.
+
+---
+
+### Uninstalling Krythor
+
+To remove Krythor completely:
+
+**Mac/Linux:**
+```bash
+rm -rf ~/.krythor
+```
+Then remove the line added to your `~/.bashrc` or `~/.zshrc` that contains `KRYTHOR`.
+
+**Windows:**
+Delete the folder `C:\Users\YourName\.krythor`
+
+Your AI provider data (config, memory) is stored separately:
+- **Windows:** `%LOCALAPPDATA%\Krythor\` — delete this too for a clean uninstall
+- **Mac:** `~/Library/Application Support/Krythor/`
+- **Linux:** `~/.local/share/krythor/`
+
+---
+
+### Troubleshooting
+
+**"krythor: command not found"**
+Open a new terminal window. The PATH update requires a fresh session. On Mac/Linux you can also run `source ~/.bashrc` (or `~/.zshrc`) to apply it immediately.
+
+**"Node.js is not installed"**
+Go to https://nodejs.org, download and install the LTS version, then open a new terminal and try again.
+
+**The dashboard won't load at http://localhost:47200**
+Make sure Krythor is running — you should see activity in the terminal. If Krythor crashed, re-run `krythor`.
+
+**"No AI provider configured"**
+You need to add at least one AI provider in the Models tab before Krythor can respond to commands. See Step 5 above.
+
+**Windows SmartScreen warning on the .exe installer**
+This is expected — the installer is currently unsigned. Click "More info" then "Run anyway". Or use the PowerShell one-liner instead, which doesn't trigger this warning.
 
 ---
 
 ## 🧠 Supported Providers
 
-| Provider                  | Type        | API Key Required |
-| ------------------------- | ----------- | ---------------- |
-| Anthropic (Claude)        | Cloud       | Yes              |
-| OpenAI (GPT)              | Cloud       | Yes              |
-| Ollama                    | Local       | No               |
-| LM Studio                 | Local       | No               |
-| llama-server (GGUF)       | Local       | No               |
-| Any OpenAI-compatible API | Cloud/Local | Optional         |
+| Provider | Type | Cost | API Key Required |
+|----------|------|------|-----------------|
+| Ollama | Local | Free | No |
+| LM Studio | Local | Free | No |
+| llama-server (GGUF) | Local | Free | No |
+| OpenAI (GPT-4o, o1, etc.) | Cloud | Pay per use | Yes |
+| Anthropic (Claude) | Cloud | Pay per use | Yes |
+| Any OpenAI-compatible API | Cloud/Local | Varies | Optional |
 
-Krythor auto-detects local providers (Ollama, LM Studio, llama-server) on first launch.
+Krythor auto-detects Ollama and LM Studio on first launch.
 
 ---
 
@@ -197,7 +405,7 @@ packages/
   setup/      — CLI setup wizard and diagnostics
 start.js      — Launcher (starts gateway, opens browser)
 bundle.js     — Distribution packager (creates krythor-dist/)
-build-exe.js  — Windows SEA executable builder (creates krythor.exe)
+build-exe.js  — Windows SEA executable builder
 ```
 
 ---
@@ -230,13 +438,13 @@ node build-installer.js  # creates Krythor-Setup-{version}.exe
 
 ## 📁 Data Location
 
-All data is stored locally, outside the project folder:
+All user data is stored locally, outside the application folder:
 
 * **Windows:** `%LOCALAPPDATA%\Krythor\`
 * **macOS:** `~/Library/Application Support/Krythor/`
 * **Linux:** `~/.local/share/krythor/`
 
-To uninstall: remove the app folder and the data folder above.
+To uninstall: remove the application folder (`~/.krythor`) and the data folder above.
 
 ---
 
@@ -247,13 +455,14 @@ To uninstall: remove the app folder and the data folder above.
 * [x] Persistent memory system
 * [x] Agent system
 * [x] Production hardening (crash recovery, structured logging, circuit breaker)
-* [x] Bundle-slimmed distribution (~8 MB)
+* [x] Cross-platform distribution (Windows, macOS, Linux)
 * [x] Windows installer (Inno Setup)
 * [x] Transparent execution (selectionReason, fallbackOccurred in all run paths)
-* [ ] Code signing (OV certificate — eliminates SmartScreen)
-* [ ] Auto-updater
+* [x] One-line curl/PowerShell installers
+* [ ] Code signing (OV certificate — eliminates SmartScreen warning)
+* [ ] Auto-updater UI
+* [ ] macOS / Linux native installers
 * [ ] Expanded observability
-* [ ] macOS / Linux installer
 
 ---
 

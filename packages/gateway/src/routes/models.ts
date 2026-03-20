@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
-import type { ModelEngine, ProviderConfig, InferenceRequest } from '@krythor/models';
+import type { ModelEngine, ProviderConfig, InferenceRequest, OAuthAccount } from '@krythor/models';
+import { getCapabilities, PROVIDER_CAPABILITIES } from '@krythor/models';
 import type { MemoryEngine } from '@krythor/memory';
 import type { GuardEngine } from '@krythor/guard';
 import { OllamaEmbeddingProvider } from '@krythor/memory';
@@ -28,7 +29,35 @@ function validateEndpointUrl(raw: string): string | null {
   return null;
 }
 
-export function registerModelRoutes(app: FastifyInstance, models: ModelEngine, memory?: MemoryEngine, guard?: GuardEngine): void {
+/** Mask secrets in a provider config before sending to the UI. */
+function maskProviderConfig(p: ProviderConfig): unknown {
+  const masked: Record<string, unknown> = { ...p };
+
+  // Mask API key — show only last 4 chars
+  if (p.apiKey) {
+    masked['apiKey'] = p.apiKey.length > 4 ? `****${p.apiKey.slice(-4)}` : '****';
+  }
+
+  // Mask OAuth tokens entirely — only expose non-secret metadata
+  if (p.oauthAccount) {
+    masked['oauthAccount'] = {
+      accountId:   p.oauthAccount.accountId,
+      displayName: p.oauthAccount.displayName,
+      expiresAt:   p.oauthAccount.expiresAt,
+      connectedAt: p.oauthAccount.connectedAt,
+      // accessToken and refreshToken intentionally omitted
+    };
+  }
+
+  return masked;
+}
+
+export function registerModelRoutes(
+  app: FastifyInstance,
+  models: ModelEngine,
+  memory?: MemoryEngine,
+  guard?: GuardEngine,
+): void {
 
   // GET /api/models — list all models across all providers (with badges)
   app.get('/api/models', async (_req, reply) => {
@@ -40,16 +69,16 @@ export function registerModelRoutes(app: FastifyInstance, models: ModelEngine, m
     return reply.send(models.stats());
   });
 
+  // GET /api/models/capabilities — provider type capability flags
+  // UI derives all auth-related behaviour from this endpoint; no hardcoded conditionals.
+  app.get('/api/models/capabilities', async (_req, reply) => {
+    return reply.send(PROVIDER_CAPABILITIES);
+  });
+
   // GET /api/models/providers — list all provider configs
-  // API keys are masked: only the last 4 chars are shown so the UI can
-  // indicate a key is set without returning the full secret.
+  // Secrets are masked: only last 4 chars of API keys, no OAuth tokens.
   app.get('/api/models/providers', async (_req, reply) => {
-    const providers = models.listProviders().map(p => ({
-      ...p,
-      apiKey: p.apiKey
-        ? (p.apiKey.length > 4 ? `****${p.apiKey.slice(-4)}` : '****')
-        : undefined,
-    }));
+    const providers = models.listProviders().map(maskProviderConfig);
     return reply.send(providers);
   });
 
@@ -60,13 +89,14 @@ export function registerModelRoutes(app: FastifyInstance, models: ModelEngine, m
         type: 'object',
         required: ['name', 'type', 'endpoint'],
         properties: {
-          name:      { type: 'string', minLength: 1 },
-          type:      { type: 'string', enum: ['ollama', 'openai', 'anthropic', 'openai-compat', 'gguf'] },
-          endpoint:  { type: 'string', minLength: 1 },
-          apiKey:    { type: 'string' },
-          isDefault: { type: 'boolean' },
-          isEnabled: { type: 'boolean' },
-          models:    { type: 'array', items: { type: 'string' } },
+          name:       { type: 'string', minLength: 1 },
+          type:       { type: 'string', enum: ['ollama', 'openai', 'anthropic', 'openai-compat', 'gguf'] },
+          endpoint:   { type: 'string', minLength: 1 },
+          authMethod: { type: 'string', enum: ['api_key', 'oauth', 'none'] },
+          apiKey:     { type: 'string' },
+          isDefault:  { type: 'boolean' },
+          isEnabled:  { type: 'boolean' },
+          models:     { type: 'array', items: { type: 'string' } },
         },
         additionalProperties: false,
       },
@@ -75,22 +105,33 @@ export function registerModelRoutes(app: FastifyInstance, models: ModelEngine, m
     const body = req.body as Omit<ProviderConfig, 'id'>;
     const endpointErr = validateEndpointUrl(body.endpoint);
     if (endpointErr) return reply.code(400).send({ error: endpointErr });
+
+    // Validate: if authMethod=api_key, must have apiKey
+    const caps = getCapabilities(body.type);
+    if (body.authMethod === 'api_key' && !body.apiKey) {
+      if (caps.supportsApiKey) {
+        return reply.code(400).send({ error: 'apiKey is required when authMethod is api_key' });
+      }
+    }
+
     const config = models.addProvider({
-      name:      body.name,
-      type:      body.type,
-      endpoint:  body.endpoint.replace(/\/$/, ''), // strip trailing slash
-      apiKey:    body.apiKey,
-      isDefault: body.isDefault ?? false,
-      isEnabled: body.isEnabled ?? true,
-      models:    body.models ?? [],
+      name:       body.name,
+      type:       body.type,
+      endpoint:   body.endpoint.replace(/\/$/, ''),
+      authMethod: body.authMethod ?? (body.apiKey ? 'api_key' : 'none'),
+      apiKey:     body.apiKey,
+      isDefault:  body.isDefault ?? false,
+      isEnabled:  body.isEnabled ?? true,
+      models:     body.models ?? [],
     });
+
     // If the new provider is Ollama, wire it as the embedding provider
     if (config.type === 'ollama' && config.isEnabled && memory) {
       const ep = new OllamaEmbeddingProvider(config.endpoint, 'nomic-embed-text');
       memory.registerEmbeddingProvider(ep);
       memory.setActiveEmbeddingProvider(ep.name);
     }
-    return reply.code(201).send(config);
+    return reply.code(201).send(maskProviderConfig(config));
   });
 
   // PATCH /api/models/providers/:id — update a provider
@@ -99,12 +140,13 @@ export function registerModelRoutes(app: FastifyInstance, models: ModelEngine, m
       body: {
         type: 'object',
         properties: {
-          name:      { type: 'string', minLength: 1 },
-          endpoint:  { type: 'string', minLength: 1 },
-          apiKey:    { type: 'string' },
-          isDefault: { type: 'boolean' },
-          isEnabled: { type: 'boolean' },
-          models:    { type: 'array', items: { type: 'string' } },
+          name:       { type: 'string', minLength: 1 },
+          endpoint:   { type: 'string', minLength: 1 },
+          authMethod: { type: 'string', enum: ['api_key', 'oauth', 'none'] },
+          apiKey:     { type: 'string' },
+          isDefault:  { type: 'boolean' },
+          isEnabled:  { type: 'boolean' },
+          models:     { type: 'array', items: { type: 'string' } },
         },
         additionalProperties: false,
       },
@@ -117,13 +159,12 @@ export function registerModelRoutes(app: FastifyInstance, models: ModelEngine, m
     }
     try {
       const updated = models.updateProvider(req.params.id, body);
-      // If we just enabled or updated an Ollama provider, re-wire embeddings
       if (updated.type === 'ollama' && updated.isEnabled && memory) {
         const ep = new OllamaEmbeddingProvider(updated.endpoint, 'nomic-embed-text');
         memory.registerEmbeddingProvider(ep);
         memory.setActiveEmbeddingProvider(ep.name);
       }
-      return reply.send(updated);
+      return reply.send(maskProviderConfig(updated));
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Not found';
       return reply.code(404).send({ error: msg });
@@ -140,6 +181,97 @@ export function registerModelRoutes(app: FastifyInstance, models: ModelEngine, m
       return reply.code(404).send({ error: msg });
     }
   });
+
+  // ── OAuth routes ───────────────────────────────────────────────────────────
+
+  // POST /api/models/providers/:id/oauth/connect
+  // Stores OAuth account credentials for a provider (tokens must be obtained
+  // via the desktop callback flow and passed in by the UI).
+  app.post<{ Params: { id: string } }>('/api/models/providers/:id/oauth/connect', {
+    schema: {
+      body: {
+        type: 'object',
+        required: ['accountId', 'accessToken'],
+        properties: {
+          accountId:    { type: 'string', minLength: 1 },
+          displayName:  { type: 'string' },
+          accessToken:  { type: 'string', minLength: 1 },
+          refreshToken: { type: 'string' },
+          expiresAt:    { type: 'number' },
+        },
+        additionalProperties: false,
+      },
+    },
+  }, async (req, reply) => {
+    const body = req.body as {
+      accountId: string;
+      displayName?: string;
+      accessToken: string;
+      refreshToken?: string;
+      expiresAt?: number;
+    };
+    try {
+      const account: OAuthAccount = {
+        accountId:    body.accountId,
+        displayName:  body.displayName,
+        accessToken:  body.accessToken,
+        refreshToken: body.refreshToken,
+        expiresAt:    body.expiresAt ?? 0,
+        connectedAt:  new Date().toISOString(),
+      };
+      const updated = models.connectOAuth(req.params.id, account);
+      return reply.send(maskProviderConfig(updated));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Not found';
+      return reply.code(404).send({ error: msg });
+    }
+  });
+
+  // DELETE /api/models/providers/:id/oauth/disconnect
+  // Revokes stored OAuth credentials and reverts authMethod to 'none'.
+  app.delete<{ Params: { id: string } }>('/api/models/providers/:id/oauth/disconnect', async (req, reply) => {
+    try {
+      const updated = models.disconnectOAuth(req.params.id);
+      return reply.send(maskProviderConfig(updated));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Not found';
+      return reply.code(404).send({ error: msg });
+    }
+  });
+
+  // POST /api/models/providers/:id/oauth/refresh
+  // Update OAuth tokens after a token refresh (called by the UI after completing
+  // a refresh flow). Only updates token fields — preserves all other account metadata.
+  app.post<{ Params: { id: string } }>('/api/models/providers/:id/oauth/refresh', {
+    schema: {
+      body: {
+        type: 'object',
+        required: ['accessToken'],
+        properties: {
+          accessToken:  { type: 'string', minLength: 1 },
+          refreshToken: { type: 'string' },
+          expiresAt:    { type: 'number' },
+        },
+        additionalProperties: false,
+      },
+    },
+  }, async (req, reply) => {
+    const body = req.body as { accessToken: string; refreshToken?: string; expiresAt?: number };
+    try {
+      const updated = models.refreshOAuthTokens(
+        req.params.id,
+        body.accessToken,
+        body.refreshToken,
+        body.expiresAt,
+      );
+      return reply.send(maskProviderConfig(updated));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Not found';
+      return reply.code(404).send({ error: msg });
+    }
+  });
+
+  // ── Existing provider utility routes ──────────────────────────────────────
 
   // POST /api/models/providers/:id/refresh — re-query available models from provider
   app.post<{ Params: { id: string } }>('/api/models/providers/:id/refresh', async (req, reply) => {
@@ -210,11 +342,11 @@ export function registerModelRoutes(app: FastifyInstance, models: ModelEngine, m
         type: 'object',
         required: ['messages'],
         properties: {
-          messages:   { type: 'array' },
-          model:      { type: 'string' },
-          providerId: { type: 'string' },
+          messages:    { type: 'array' },
+          model:       { type: 'string' },
+          providerId:  { type: 'string' },
           temperature: { type: 'number' },
-          maxTokens:  { type: 'number' },
+          maxTokens:   { type: 'number' },
         },
         additionalProperties: false,
       },

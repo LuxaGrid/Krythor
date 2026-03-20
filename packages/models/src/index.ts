@@ -7,7 +7,9 @@ export { PreferenceStore } from './PreferenceStore.js';
 export { CircuitBreaker, CircuitOpenError } from './CircuitBreaker.js';
 export type { CircuitStats } from './CircuitBreaker.js';
 export { ModelRegistry } from './ModelRegistry.js';
+export { resolveCredential } from './credential.js';
 export { ModelRouter } from './ModelRouter.js';
+export { getCapabilities, PROVIDER_CAPABILITIES } from './ProviderCapabilities.js';
 export { BaseProvider } from './providers/BaseProvider.js';
 export { OllamaProvider } from './providers/OllamaProvider.js';
 export { OpenAIProvider } from './providers/OpenAIProvider.js';
@@ -17,6 +19,10 @@ export { OpenAICompatProvider } from './providers/OpenAICompatProvider.js';
 export type {
   ProviderConfig,
   ProviderType,
+  AuthMethod,
+  OAuthAccount,
+  ProviderCapabilities,
+  ProviderCredential,
   ModelBadge,
   ModelInfo,
   Message,

@@ -1,15 +1,45 @@
-// ─── Provider types ───────────────────────────────────────────────────────────
+// ─── Provider auth types ──────────────────────────────────────────────────────
 
 export type ProviderType = 'ollama' | 'openai' | 'anthropic' | 'openai-compat' | 'gguf';
 
+export type AuthMethod = 'api_key' | 'oauth' | 'none';
+
 export type ModelBadge = 'local' | 'remote' | 'default' | 'agent-assigned' | 'override-active';
+
+/** Stored OAuth account metadata (tokens encrypted at rest alongside config). */
+export interface OAuthAccount {
+  /** Provider-specific account identifier (e.g. email, sub claim). */
+  accountId: string;
+  /** Display label for the connected account. */
+  displayName?: string;
+  /** Encrypted access token — same AES-256-GCM scheme as API keys. */
+  accessToken: string;
+  /** Encrypted refresh token, if the provider supports it. */
+  refreshToken?: string;
+  /** Unix epoch (seconds) when the access token expires. 0 = unknown/no expiry. */
+  expiresAt: number;
+  /** ISO timestamp when this account was connected. */
+  connectedAt: string;
+}
+
+/** Capability flags for a provider type. UI and logic derive behaviour from these. */
+export interface ProviderCapabilities {
+  supportsOAuth: boolean;
+  supportsApiKey: boolean;
+  supportsCustomBaseUrl: boolean;
+  supportsModelListing: boolean;
+}
 
 export interface ProviderConfig {
   id: string;
   name: string;
   type: ProviderType;
   endpoint: string;          // base URL or file path for gguf
-  apiKey?: string;           // encrypted at rest (Phase 6); plaintext for now
+  /** Which auth method is active for this provider instance. */
+  authMethod: AuthMethod;
+  apiKey?: string;           // AES-256-GCM encrypted at rest
+  /** Populated when authMethod === 'oauth'. */
+  oauthAccount?: OAuthAccount;
   isDefault: boolean;
   isEnabled: boolean;
   models: string[];          // list of available model IDs
@@ -23,6 +53,17 @@ export interface ModelInfo {
   contextWindow?: number;
   isAvailable: boolean;
   circuitState?: 'closed' | 'open' | 'half-open'; // undefined = no data yet (first use)
+}
+
+// ─── Credential abstraction ───────────────────────────────────────────────────
+// Normalised credential handed to providers at runtime. Downstream code (router,
+// agents, skills) does not need to know whether auth came from OAuth or an API key.
+
+export interface ProviderCredential {
+  /** The bearer/api-key token to use in outgoing requests. */
+  token: string;
+  /** Source of the token — for observability only, never logged. */
+  source: AuthMethod;
 }
 
 // ─── Inference types ──────────────────────────────────────────────────────────

@@ -11,8 +11,12 @@ export class OpenAICompatProvider extends OpenAIProvider {
   lastUnavailableReason?: string;
 
   override async isAvailable(): Promise<boolean> {
+    const h: Record<string, string> = { 'Content-Type': 'application/json' };
+    const token = this.getBearerToken();
+    if (token) h['Authorization'] = `Bearer ${token}`;
+
     try {
-      await this.httpGet(`${this.config.endpoint}/models`, this.authHeaders);
+      await this.httpGet(`${this.config.endpoint}/models`, h);
       this.lastUnavailableReason = undefined;
       return true;
     } catch (err) {
@@ -26,11 +30,5 @@ export class OpenAICompatProvider extends OpenAIProvider {
       }
       return false;
     }
-  }
-
-  private get authHeaders(): Record<string, string> {
-    const h: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (this.config.apiKey) h['Authorization'] = `Bearer ${this.config.apiKey}`;
-    return h;
   }
 }

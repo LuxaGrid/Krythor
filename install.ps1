@@ -1,9 +1,14 @@
 # ============================================================
 #  Krythor — One-line installer (Windows PowerShell)
-#  Usage: iwr https://raw.githubusercontent.com/LuxaGrid/Krythor/main/install.ps1 | iex
+#
+#  Install:
+#    iwr https://get.krythor.dev/install.ps1 | iex
+#
+#  Update (after install):
+#    krythor update
 #
 #  Installs to: $env:USERPROFILE\.krythor\
-#  Creates: krythor.bat in install directory
+#  Creates command: krythor  (added to user PATH)
 # ============================================================
 $ErrorActionPreference = 'Stop'
 
@@ -11,10 +16,19 @@ $Repo       = 'LuxaGrid/Krythor'
 $InstallDir = Join-Path $env:USERPROFILE '.krythor'
 $ApiUrl     = "https://api.github.com/repos/$Repo/releases/latest"
 
-function Write-Step  { param($msg) Write-Host "  $msg" -ForegroundColor Cyan }
-function Write-Ok    { param($msg) Write-Host "  [OK] $msg" -ForegroundColor Green }
-function Write-Warn  { param($msg) Write-Host "  [!]  $msg" -ForegroundColor Yellow }
-function Write-Fail  { param($msg) Write-Host "  [X]  $msg" -ForegroundColor Red; exit 1 }
+# Update mode: set by the krythor.bat launcher when user runs "krythor update"
+$UpdateMode = $env:KRYTHOR_UPDATE -eq '1'
+
+function Write-Step { param($msg) Write-Host "  $msg" -ForegroundColor Cyan }
+function Write-Ok   { param($msg) Write-Host "  [OK] $msg" -ForegroundColor Green }
+function Write-Warn { param($msg) Write-Host "  [!]  $msg" -ForegroundColor Yellow }
+function Write-Fail {
+  param($msg)
+  Write-Host ""
+  Write-Host "  [ERROR] $msg" -ForegroundColor Red
+  Write-Host ""
+  exit 1
+}
 
 Write-Host ""
 Write-Host "  KRYTHOR - Installer" -ForegroundColor Cyan
@@ -26,49 +40,70 @@ Write-Step "Checking Node.js..."
 try {
   $nodeVersion = & node --version 2>&1
   if ($LASTEXITCODE -ne 0) { throw "node not found" }
-  $nodeMajor = [int]($nodeVersion -replace 'v(\d+)\..*','$1')
+  $nodeMajor = [int]($nodeVersion -replace 'v(\d+)\..*', '$1')
   if ($nodeMajor -lt 20) {
-    Write-Fail "Node.js 20+ required. You have $nodeVersion. Update at https://nodejs.org"
+    Write-Host ""
+    Write-Host "  Node.js 20 or higher is required." -ForegroundColor Red
+    Write-Host "  You have: $nodeVersion"
+    Write-Host "  Download the free LTS version from: https://nodejs.org"
+    Write-Host "  Install it, then run this command again."
+    exit 1
   }
   Write-Ok "Node.js $nodeVersion"
 } catch {
-  Write-Fail "Node.js is not installed. Install it from https://nodejs.org (version 20+)"
+  Write-Host ""
+  Write-Host "  Node.js is not installed." -ForegroundColor Red
+  Write-Host ""
+  Write-Host "  Krythor needs Node.js to run." -ForegroundColor White
+  Write-Host "  1. Go to https://nodejs.org" -ForegroundColor White
+  Write-Host "  2. Click 'Download LTS'" -ForegroundColor White
+  Write-Host "  3. Install it (just click Next through the installer)" -ForegroundColor White
+  Write-Host "  4. Close this window, open a new PowerShell, and run the install command again." -ForegroundColor White
+  Write-Host ""
+  exit 1
 }
 
 # ── Fetch latest release ──────────────────────────────────────────────────────
-Write-Step "Checking latest release..."
+Write-Step "Checking latest version..."
 try {
-  $headers = @{ 'User-Agent' = 'Krythor-Installer' }
-  $release = Invoke-RestMethod -Uri $ApiUrl -Headers $headers
+  $headers = @{ 'User-Agent' = 'Krythor-Installer/1.0' }
+  $release = Invoke-RestMethod -Uri $ApiUrl -Headers $headers -ErrorAction Stop
 } catch {
-  Write-Fail "Could not reach GitHub API: $_"
+  Write-Fail "Could not reach GitHub to check for the latest version. Check your internet connection and try again."
 }
 
-$version = $release.tag_name
-
-# Prefer the Windows-specific asset; fall back to any zip if not found
+$version  = $release.tag_name
 $zipAsset = $release.assets | Where-Object { $_.name -eq 'krythor-win-x64.zip' } | Select-Object -First 1
+
 if (-not $zipAsset) {
-  Write-Warn "Platform asset 'krythor-win-x64.zip' not found — falling back to first zip."
+  Write-Warn "Windows asset 'krythor-win-x64.zip' not found in this release — trying any zip."
   $zipAsset = $release.assets | Where-Object { $_.name -like '*.zip' } | Select-Object -First 1
 }
-$zipUrl = $zipAsset.browser_download_url
 
-if (-not $version -or -not $zipUrl) {
-  Write-Fail "No zip release found at https://github.com/$Repo/releases"
+if (-not $version) {
+  Write-Fail "Could not determine the latest version. Check: https://github.com/$Repo/releases"
 }
-Write-Ok "Found release: $version"
+if (-not $zipAsset) {
+  Write-Fail "No release file found. Check: https://github.com/$Repo/releases"
+}
+
+$zipUrl = $zipAsset.browser_download_url
+Write-Ok "Latest version: $version"
 
 # ── Check for existing install ────────────────────────────────────────────────
-if (Test-Path $InstallDir) {
+if ((Test-Path $InstallDir) -and -not $UpdateMode) {
   Write-Host ""
   Write-Warn "Krythor is already installed at: $InstallDir"
-  $confirm = Read-Host "   Overwrite with $version? [y/N]"
+  Write-Host "  Your settings, memory, and saved data are stored separately and will not be deleted." -ForegroundColor White
+  $confirm = Read-Host "  Install $version over existing version? [y/N]"
   if ($confirm -notmatch '^[Yy]$') {
-    Write-Host "  Aborted." -ForegroundColor Yellow
+    Write-Host "  Cancelled." -ForegroundColor Yellow
     exit 0
   }
-  Write-Step "Removing existing install..."
+}
+
+if (Test-Path $InstallDir) {
+  Write-Step "Removing old version..."
   Remove-Item -Recurse -Force $InstallDir
 }
 
@@ -77,72 +112,89 @@ $tmpDir = Join-Path $env:TEMP "krythor-install-$(Get-Random)"
 New-Item -ItemType Directory -Path $tmpDir | Out-Null
 $tmpZip = Join-Path $tmpDir 'krythor.zip'
 
-Write-Step "Downloading $version..."
+Write-Host ""
+Write-Host "  Downloading Krythor $version..." -ForegroundColor Green
 try {
-  Invoke-WebRequest -Uri $zipUrl -OutFile $tmpZip -UseBasicParsing
+  Invoke-WebRequest -Uri $zipUrl -OutFile $tmpZip -UseBasicParsing -ErrorAction Stop
 } catch {
-  Write-Fail "Download failed: $_"
+  Write-Fail "Download failed. Check your internet connection and try again. Error: $_"
 }
 
 if (-not (Test-Path $tmpZip) -or (Get-Item $tmpZip).Length -eq 0) {
-  Write-Fail "Downloaded file is empty or missing."
+  Write-Fail "Downloaded file is empty. Please try again."
 }
 Write-Ok "Downloaded"
 
 # ── Extract ───────────────────────────────────────────────────────────────────
-Write-Step "Extracting..."
+Write-Host "  Installing..." -ForegroundColor Green
 $extractDir = Join-Path $tmpDir 'extracted'
-Expand-Archive -Path $tmpZip -DestinationPath $extractDir -Force
+try {
+  Expand-Archive -Path $tmpZip -DestinationPath $extractDir -Force
+} catch {
+  Write-Fail "Could not extract the downloaded file. Error: $_"
+}
 
-# Handle single top-level folder in zip
+# Handle single top-level folder inside the zip
 $entries = Get-ChildItem $extractDir
+New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
 if ($entries.Count -eq 1 -and $entries[0].PSIsContainer) {
-  New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
   Copy-Item -Path (Join-Path $entries[0].FullName '*') -Destination $InstallDir -Recurse -Force
 } else {
-  New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
   Copy-Item -Path (Join-Path $extractDir '*') -Destination $InstallDir -Recurse -Force
 }
 
 Remove-Item -Recurse -Force $tmpDir
-Write-Ok "Installed to: $InstallDir"
+Write-Ok "Files installed to: $InstallDir"
 
-# ── Create launch batch file ──────────────────────────────────────────────────
+# ── Create launcher batch file ────────────────────────────────────────────────
 $launcherPath = Join-Path $InstallDir 'krythor.bat'
-$launcherContent = @"
+$launcherContent = @'
 @echo off
+:: Krythor launcher — generated by installer
+if "%1"=="update" (
+  echo Checking for Krythor updates...
+  set KRYTHOR_UPDATE=1
+  powershell -NoProfile -ExecutionPolicy Bypass -Command "iwr https://get.krythor.dev/install.ps1 | iex"
+  exit /b 0
+)
 node "%~dp0start.js" %*
-"@
+'@
 Set-Content -Path $launcherPath -Value $launcherContent -Encoding ASCII
-Write-Ok "Created launcher: krythor.bat"
+Write-Ok "Launcher created: krythor.bat"
 
-# ── Add to user PATH (optional, non-destructive) ──────────────────────────────
+# ── Add to user PATH ──────────────────────────────────────────────────────────
 $userPath = [Environment]::GetEnvironmentVariable('PATH', 'User')
 if ($userPath -notlike "*$InstallDir*") {
   [Environment]::SetEnvironmentVariable('PATH', "$userPath;$InstallDir", 'User')
-  Write-Ok "Added to PATH (takes effect in new terminal sessions)"
+  Write-Ok "Added to PATH — the 'krythor' command will work in new terminal windows"
 }
 
-# ── Run setup wizard ──────────────────────────────────────────────────────────
-Write-Host ""
-Write-Step "Running setup wizard..."
-Write-Host ""
+# ── Run first-time setup wizard ───────────────────────────────────────────────
 $setupScript = Join-Path $InstallDir 'packages\setup\dist\bin\setup.js'
-if (Test-Path $setupScript) {
-  try { & node $setupScript } catch { Write-Warn "Setup wizard encountered an error — run it manually later." }
-} else {
-  Write-Warn "Setup script not found — run Krythor-Setup.bat manually."
+if ((Test-Path $setupScript) -and -not $UpdateMode) {
+  Write-Host ""
+  Write-Step "Running first-time setup..."
+  Write-Host ""
+  try {
+    & node $setupScript
+  } catch {
+    Write-Warn "Setup wizard had an issue — you can run it later with: node `"$setupScript`""
+  }
 }
 
 # ── Done ──────────────────────────────────────────────────────────────────────
 Write-Host ""
-Write-Host "  Krythor $version installed successfully!" -ForegroundColor Green
+Write-Host "  Setup complete!" -ForegroundColor Green
+Write-Host "  Krythor $version is ready." -ForegroundColor Green
 Write-Host ""
-Write-Host "  To launch Krythor:"
-Write-Host "    $launcherPath" -ForegroundColor White
+Write-Host "  To start Krythor, run:" -ForegroundColor White
+Write-Host "    krythor" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "  Or from any new terminal (after PATH update takes effect):"
-Write-Host "    krythor" -ForegroundColor White
+Write-Host "  (Open a new terminal window first so the PATH update takes effect.)" -ForegroundColor Gray
 Write-Host ""
-Write-Host "  Then open: http://localhost:47200"
+Write-Host "  After starting, open your browser to:" -ForegroundColor White
+Write-Host "    http://localhost:47200" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "  To update Krythor later:" -ForegroundColor White
+Write-Host "    krythor update" -ForegroundColor Cyan
 Write-Host ""

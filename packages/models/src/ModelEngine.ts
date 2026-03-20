@@ -4,6 +4,7 @@ import { ModelRegistry } from './ModelRegistry.js';
 import { ModelRouter } from './ModelRouter.js';
 import type {
   ProviderConfig,
+  OAuthAccount,
   InferenceRequest,
   InferenceResponse,
   StreamChunk,
@@ -54,6 +55,28 @@ export class ModelEngine {
 
   removeProvider(id: string): void {
     this.registry.removeProvider(id);
+  }
+
+  /**
+   * Store OAuth account credentials for a provider.
+   * Sets authMethod to 'oauth' and clears any existing API key.
+   */
+  connectOAuth(id: string, account: OAuthAccount): ProviderConfig {
+    return this.registry.connectOAuth(id, account);
+  }
+
+  /**
+   * Remove OAuth credentials from a provider. Reverts authMethod to 'none'.
+   */
+  disconnectOAuth(id: string): ProviderConfig {
+    return this.registry.disconnectOAuth(id);
+  }
+
+  /**
+   * Update OAuth tokens after a token refresh.
+   */
+  refreshOAuthTokens(id: string, accessToken: string, refreshToken?: string, expiresAt?: number): ProviderConfig {
+    return this.registry.refreshOAuthTokens(id, accessToken, refreshToken, expiresAt);
   }
 
   listProviders(): ProviderConfig[] {

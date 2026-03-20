@@ -285,11 +285,51 @@ export const deleteProvider = (id: string) => req<void>('DELETE', `/models/provi
 export const pingProvider   = (id: string) => req<PingResult>('POST', `/models/providers/${id}/ping`);
 export const refreshModels  = (id: string) => req<{ models: string[] }>('POST', `/models/providers/${id}/refresh`);
 export const listModels     = () => req<ModelInfo[]>('GET', '/models');
+export const getProviderCapabilities = () => req<Record<string, ProviderCapabilities>>('GET', '/models/capabilities');
+
+// OAuth routes
+export const connectOAuth = (
+  providerId: string,
+  account: { accountId: string; displayName?: string; accessToken: string; refreshToken?: string; expiresAt?: number },
+) => req<Provider>('POST', `/models/providers/${providerId}/oauth/connect`, account);
+
+export const disconnectOAuth = (providerId: string) =>
+  req<Provider>('DELETE', `/models/providers/${providerId}/oauth/disconnect`);
+
+export const refreshOAuthTokens = (
+  providerId: string,
+  tokens: { accessToken: string; refreshToken?: string; expiresAt?: number },
+) => req<Provider>('POST', `/models/providers/${providerId}/oauth/refresh`, tokens);
+
+export type AuthMethod = 'api_key' | 'oauth' | 'none';
+
+export interface OAuthAccountMeta {
+  /** Non-secret metadata only — tokens are never sent to the UI. */
+  accountId:    string;
+  displayName?: string;
+  expiresAt:    number;
+  connectedAt:  string;
+}
+
+export interface ProviderCapabilities {
+  supportsOAuth:         boolean;
+  supportsApiKey:        boolean;
+  supportsCustomBaseUrl: boolean;
+  supportsModelListing:  boolean;
+}
 
 export interface Provider {
-  id: string; name: string; type: string;
-  endpoint?: string;        // canonical field name
-  isDefault?: boolean; isEnabled?: boolean;
+  id: string;
+  name: string;
+  type: string;
+  endpoint?: string;
+  authMethod?: AuthMethod;
+  /** Masked API key (last 4 chars only) — set when authMethod === 'api_key'. */
+  apiKey?: string;
+  /** Non-secret OAuth account metadata — set when authMethod === 'oauth'. */
+  oauthAccount?: OAuthAccountMeta;
+  isDefault?: boolean;
+  isEnabled?: boolean;
   models?: string[];
 }
 export interface PingResult { ok: boolean; latencyMs: number; error?: string; lastUnavailableReason?: string }

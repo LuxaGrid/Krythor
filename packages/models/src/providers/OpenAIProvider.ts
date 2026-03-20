@@ -7,7 +7,8 @@ export class OpenAIProvider extends BaseProvider {
 
   private get headers(): Record<string, string> {
     const h: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (this.config.apiKey) h['Authorization'] = `Bearer ${this.config.apiKey}`;
+    const token = this.getBearerToken();
+    if (token) h['Authorization'] = `Bearer ${token}`;
     return h;
   }
 

@@ -6,13 +6,14 @@ export class AnthropicProvider extends BaseProvider {
   private get headers(): Record<string, string> {
     return {
       'Content-Type': 'application/json',
-      'x-api-key': this.config.apiKey ?? '',
+      'x-api-key': this.getBearerToken(),
       'anthropic-version': '2023-06-01',
     };
   }
 
   async isAvailable(): Promise<boolean> {
-    if (!this.config.apiKey) return false;
+    const token = this.getBearerToken();
+    if (!token) return false;
     try {
       // Make a lightweight GET to the models endpoint with a short timeout.
       // A 200 (success) or 401 (bad key but endpoint reachable) both confirm
@@ -21,7 +22,7 @@ export class AnthropicProvider extends BaseProvider {
       const res = await fetch('https://api.anthropic.com/v1/models', {
         method: 'GET',
         headers: {
-          'x-api-key': this.config.apiKey,
+          'x-api-key': token,
           'anthropic-version': '2023-06-01',
         },
         signal,

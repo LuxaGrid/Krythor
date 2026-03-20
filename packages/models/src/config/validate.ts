@@ -8,9 +8,10 @@
  * See packages/core/src/config/validate.ts for the shared validation pattern.
  */
 
-import type { ProviderConfig, ProviderType } from '../types.js';
+import type { ProviderConfig, ProviderType, AuthMethod, OAuthAccount } from '../types.js';
 
 const VALID_PROVIDER_TYPES: ProviderType[] = ['ollama', 'openai', 'anthropic', 'openai-compat', 'gguf'];
+const VALID_AUTH_METHODS: AuthMethod[] = ['api_key', 'oauth', 'none'];
 
 export interface ProviderValidationResult {
   value: ProviderConfig | null;
@@ -39,15 +40,39 @@ export function validateProviderConfig(raw: unknown): ProviderValidationResult {
     return { valid: false, value: null, errors };
   }
 
+  // Resolve authMethod: honour stored value or infer from legacy shape
+  const rawAuthMethod = r['authMethod'];
+  const authMethod: AuthMethod = VALID_AUTH_METHODS.includes(rawAuthMethod as AuthMethod)
+    ? (rawAuthMethod as AuthMethod)
+    : (typeof r['apiKey'] === 'string' ? 'api_key' : 'none');
+
+  // Parse oauthAccount if present
+  let oauthAccount: OAuthAccount | undefined;
+  if (r['oauthAccount'] && typeof r['oauthAccount'] === 'object' && !Array.isArray(r['oauthAccount'])) {
+    const oa = r['oauthAccount'] as Record<string, unknown>;
+    if (typeof oa['accountId'] === 'string' && typeof oa['accessToken'] === 'string') {
+      oauthAccount = {
+        accountId:    oa['accountId'],
+        displayName:  typeof oa['displayName'] === 'string' ? oa['displayName'] : undefined,
+        accessToken:  oa['accessToken'],
+        refreshToken: typeof oa['refreshToken'] === 'string' ? oa['refreshToken'] : undefined,
+        expiresAt:    typeof oa['expiresAt'] === 'number' ? oa['expiresAt'] : 0,
+        connectedAt:  typeof oa['connectedAt'] === 'string' ? oa['connectedAt'] : new Date().toISOString(),
+      };
+    }
+  }
+
   const value: ProviderConfig = {
-    id:        r['id'] as string,
-    name:      r['name'] as string,
-    type:      r['type'] as ProviderType,
-    endpoint:  r['endpoint'] as string,
-    apiKey:    typeof r['apiKey'] === 'string' ? r['apiKey'] : undefined,
-    isDefault: typeof r['isDefault'] === 'boolean' ? r['isDefault'] : false,
-    isEnabled: typeof r['isEnabled'] === 'boolean' ? r['isEnabled'] : true,
-    models:    Array.isArray(r['models'])
+    id:           r['id'] as string,
+    name:         r['name'] as string,
+    type:         r['type'] as ProviderType,
+    endpoint:     r['endpoint'] as string,
+    authMethod,
+    apiKey:       typeof r['apiKey'] === 'string' ? r['apiKey'] : undefined,
+    oauthAccount,
+    isDefault:    typeof r['isDefault'] === 'boolean' ? r['isDefault'] : false,
+    isEnabled:    typeof r['isEnabled'] === 'boolean' ? r['isEnabled'] : true,
+    models:       Array.isArray(r['models'])
       ? (r['models'] as unknown[]).filter(m => typeof m === 'string') as string[]
       : [],
   };

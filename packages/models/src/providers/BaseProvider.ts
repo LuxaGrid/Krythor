@@ -1,4 +1,5 @@
-import type { ProviderConfig, InferenceRequest, InferenceResponse, StreamChunk, ModelInfo } from '../types.js';
+import type { ProviderConfig, InferenceRequest, InferenceResponse, StreamChunk, ModelInfo, ProviderCredential } from '../types.js';
+import { resolveCredential } from '../credential.js';
 
 // ─── BaseProvider ─────────────────────────────────────────────────────────────
 
@@ -9,11 +10,29 @@ export abstract class BaseProvider {
   get name(): string { return this.config.name; }
   get type(): string { return this.config.type; }
   get isEnabled(): boolean { return this.config.isEnabled; }
+  get authMethod(): string { return this.config.authMethod; }
 
   abstract isAvailable(): Promise<boolean>;
   abstract listModels(): Promise<string[]>;
   abstract infer(request: InferenceRequest, signal?: AbortSignal): Promise<InferenceResponse>;
   abstract inferStream(request: InferenceRequest, signal?: AbortSignal): AsyncGenerator<StreamChunk>;
+
+  /**
+   * Returns a normalised credential regardless of whether auth came from OAuth
+   * or an API key. Downstream code (router, agents, skills) calls this and never
+   * inspects authMethod directly.
+   */
+  getCredential(): ProviderCredential | null {
+    return resolveCredential(this.config);
+  }
+
+  /**
+   * Convenience: return the bearer token string for use in HTTP headers.
+   * Returns empty string for providers that need no auth (Ollama, GGUF local).
+   */
+  protected getBearerToken(): string {
+    return this.getCredential()?.token ?? '';
+  }
 
   getModelInfo(modelId: string): ModelInfo {
     const isLocal = this.config.type === 'ollama' || this.config.type === 'gguf';
