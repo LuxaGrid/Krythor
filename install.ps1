@@ -78,27 +78,18 @@ if ((Test-Path $InstallDir) -and -not $UpdateMode) {
 
 if (Test-Path $InstallDir) {
   Write-Step "Removing old version..."
-  # Kill any node.exe running from the install dir (holds better_sqlite3.node locked)
+  # Kill Krythor's bundled node.exe by exact path using WMIC (avoids MainModule access errors)
   $nodePath = Join-Path $InstallDir 'runtime\node.exe'
-  Get-Process -Name 'node' -ErrorAction SilentlyContinue | ForEach-Object {
-    try {
-      $exe = $_.MainModule.FileName
-      if ($exe -like "*$InstallDir*") {
-        Write-Warn "Stopping Krythor process (PID $($_.Id))..."
-        Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
-      }
-    } catch { }
+  if (Test-Path $nodePath) {
+    Write-Warn "Stopping running Krythor processes..."
+    $wmicPath = $nodePath.Replace('\', '\\')
+    & wmic process where "ExecutablePath='$wmicPath'" delete 2>&1 | Out-Null
+    Start-Sleep -Milliseconds 1000
   }
-  # Also kill by matching the exact bundled node.exe path
-  Get-Process -Name 'node' -ErrorAction SilentlyContinue | Where-Object {
-    try { $_.MainModule.FileName -eq $nodePath } catch { $false }
-  } | Stop-Process -Force -ErrorAction SilentlyContinue
-  Start-Sleep -Milliseconds 800
-  # Use cmd rd which releases handles more aggressively than Remove-Item
+  # cmd rd /s /q bypasses PowerShell's file-lock errors on .node binaries
   & cmd /c "rd /s /q `"$InstallDir`"" 2>&1 | Out-Null
   if (Test-Path $InstallDir) {
-    # Last resort: Remove-Item
-    Remove-Item -Recurse -Force $InstallDir -ErrorAction SilentlyContinue
+    Remove-Item -Recurse -Force $InstallDir -ErrorAction Stop
   }
 }
 
