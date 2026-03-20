@@ -61,7 +61,10 @@ export class Installer {
     const f = join(this.configDir, 'providers.json');
     let file: ProvidersFile = { version: '1', providers: [] };
     if (existsSync(f)) {
-      try { file = JSON.parse(readFileSync(f, 'utf8')) as ProvidersFile; } catch {}
+      try {
+        const parsed = JSON.parse(readFileSync(f, 'utf8')) as ProvidersFile;
+        file = { version: parsed.version ?? '1', providers: Array.isArray(parsed.providers) ? parsed.providers : [] };
+      } catch {}
     }
 
     if (entry.isDefault) {

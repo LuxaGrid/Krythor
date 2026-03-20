@@ -78,8 +78,15 @@ async function main() {
   }
 
   console.log('Starting gateway...');
+
+  // Use a temp log file so startup errors are visible if the gateway times out
+  const os = require('os');
+  const fs = require('fs');
+  const logFile = join(os.tmpdir(), 'krythor-gateway.log');
+  const logStream = fs.openSync(logFile, 'w');
+
   const child = spawn(process.execPath, [gatewayDist], {
-    stdio: ['ignore', 'ignore', 'ignore'],
+    stdio: ['ignore', logStream, logStream],
     detached: true,
   });
   child.unref();
@@ -119,6 +126,15 @@ async function main() {
   } else {
     console.log('\x1b[31mKrythor gateway did not start within 10 seconds.\x1b[0m');
     console.log('');
+    // Show last lines of the gateway log to surface the actual error
+    try {
+      const log = fs.readFileSync(logFile, 'utf-8').trim();
+      if (log) {
+        console.log('  Gateway output:');
+        log.split('\n').slice(-20).forEach(l => console.log('    ' + l));
+        console.log('');
+      }
+    } catch { /* log unavailable */ }
     console.log('  To diagnose the issue, run the gateway directly:');
     console.log(`    node packages/gateway/dist/index.js`);
     console.log('');
