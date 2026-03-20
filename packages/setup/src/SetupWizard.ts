@@ -245,16 +245,36 @@ export class SetupWizard {
       const url = await ask(`  Base URL [${sys.ollamaBaseUrl}]: `);
       endpoint = url || sys.ollamaBaseUrl;
       authMethod = 'none';
+
+      const OLLAMA_POPULAR = [
+        'llama3.2',       // recommended — Meta Llama 3.2
+        'llama3.3',       // Meta Llama 3.3 70B
+        'mistral',        // Mistral 7B
+        'gemma3',         // Google Gemma 3
+        'qwen2.5',        // Alibaba Qwen 2.5
+        'phi4',           // Microsoft Phi-4
+        'deepseek-r1',    // DeepSeek R1 reasoning
+        'codellama',      // code-focused
+        'llava',          // vision / multimodal
+      ];
+
+      let liveModels: string[] = [];
       try {
         const res = await fetch(`${endpoint}/api/tags`, { signal: AbortSignal.timeout(2000) });
         if (res.ok) {
           const data = await res.json() as { models?: Array<{ name: string }> };
-          models = (data.models ?? []).map(m => m.name);
-          if (models.length > 0) {
-            console.log(fmt.ok(`Found ${models.length} model(s): ${models.slice(0, 5).join(', ')}${models.length > 5 ? '…' : ''}`));
-          }
+          liveModels = (data.models ?? []).map(m => m.name);
         }
       } catch { /* offline — fine */ }
+
+      if (liveModels.length > 0) {
+        console.log(fmt.ok(`Found ${liveModels.length} installed model(s).`));
+        models = [await pickModel(liveModels, liveModels[0]!)];
+      } else {
+        console.log(fmt.dim('  Ollama is offline or has no models installed yet.'));
+        console.log(fmt.dim('  Choose a popular model to pre-configure (install it later with: ollama pull <model>)'));
+        models = [await pickModel(OLLAMA_POPULAR, 'llama3.2')];
+      }
 
     } else if (isDualAuth) {
       // ── Dual-auth providers (Anthropic, OpenAI) ───────────────────────────
@@ -263,28 +283,31 @@ export class SetupWizard {
         anthropic: {
           endpoint:     'https://api.anthropic.com',
           keyUrl:       'https://console.anthropic.com/settings/keys',
-          defaultModel: 'claude-sonnet-4-6',
+          defaultModel: 'claude-sonnet-4-5',
           models: [
-            'claude-sonnet-4-6',
-            'claude-opus-4-6',
-            'claude-haiku-4-5-20251001',
-            'claude-3-5-sonnet-20241022',
+            'claude-sonnet-4-5',         // recommended — best balance
+            'claude-opus-4-5',           // most capable
+            'claude-haiku-4-5',          // fastest / cheapest
+            'claude-sonnet-4-20250514',  // Sonnet 4 (stable)
+            'claude-3-7-sonnet-20250219', // strong reasoning
+            'claude-3-5-sonnet-20241022', // previous generation
             'claude-3-5-haiku-20241022',
-            'claude-3-opus-20240229',
+            'claude-3-opus-20240229',    // legacy
           ],
         },
         openai: {
           endpoint:     'https://api.openai.com/v1',
           keyUrl:       'https://platform.openai.com/api-keys',
-          defaultModel: 'gpt-4o-mini',
+          defaultModel: 'gpt-4.1-mini',
           models: [
-            'gpt-4o-mini',
-            'gpt-4o',
-            'gpt-4-turbo',
-            'gpt-4',
-            'o1-mini',
-            'o1',
-            'o3-mini',
+            'gpt-4.1-mini',   // recommended — fast + affordable
+            'gpt-4.1',        // latest flagship
+            'gpt-4.1-nano',   // smallest / cheapest
+            'gpt-4o',         // previous flagship
+            'gpt-4o-mini',    // popular cheap omni
+            'o4-mini',        // compact reasoning
+            'o3-mini',        // fast reasoning
+            'o3',             // full reasoning
           ],
         },
       };
@@ -332,10 +355,14 @@ export class SetupWizard {
       console.log(fmt.dim('  Get your API key at: https://platform.moonshot.cn/console/api-keys'));
       apiKey = await ask('  API Key: ');
       models = [await pickModel([
-        'moonshot-v1-128k',
-        'moonshot-v1-32k',
-        'moonshot-v1-8k',
-      ], 'moonshot-v1-128k')];
+        'kimi-k2.5',          // latest flagship
+        'kimi-k2',            // agentic / coding
+        'moonshot-v1-32k',    // recommended classic
+        'moonshot-v1-128k',   // long context
+        'moonshot-v1-8k',     // short context / cheap
+        'moonshot-v1-32k-vision-preview',
+        'moonshot-v1-128k-vision-preview',
+      ], 'kimi-k2.5')];
 
     } else if (type === 'minimax') {
       endpoint = 'https://api.minimax.chat/v1';
@@ -344,10 +371,13 @@ export class SetupWizard {
       console.log(fmt.dim('  Get your API key at: https://www.minimax.chat/user-center/basic-information/interface-key'));
       apiKey = await ask('  API Key: ');
       models = [await pickModel([
-        'abab6.5s-chat',
-        'abab6.5-chat',
-        'abab5.5s-chat',
-      ], 'abab6.5s-chat')];
+        'MiniMax-Text-01',        // recommended — 456B, 1M context
+        'MiniMax-M2.5',           // latest reasoning
+        'MiniMax-M2.5-highspeed', // fast streaming
+        'MiniMax-M2',             // reasoning
+        'abab6.5s-chat',          // legacy fast
+        'abab6.5g-chat',          // legacy general
+      ], 'MiniMax-Text-01')];
 
     } else {
       // ── openai-compat ──────────────────────────────────────────────────────
