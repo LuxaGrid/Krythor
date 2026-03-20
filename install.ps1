@@ -76,20 +76,18 @@ if ((Test-Path $InstallDir) -and -not $UpdateMode) {
   }
 }
 
+$OldInstallDir = $null
 if (Test-Path $InstallDir) {
   Write-Step "Removing old version..."
-  # Kill Krythor's bundled node.exe by exact path using WMIC (avoids MainModule access errors)
-  $nodePath = Join-Path $InstallDir 'runtime\node.exe'
-  if (Test-Path $nodePath) {
-    Write-Warn "Stopping running Krythor processes..."
-    $wmicPath = $nodePath.Replace('\', '\\')
-    & wmic process where "ExecutablePath='$wmicPath'" delete 2>&1 | Out-Null
-    Start-Sleep -Milliseconds 1000
-  }
-  # cmd rd /s /q bypasses PowerShell's file-lock errors on .node binaries
-  & cmd /c "rd /s /q `"$InstallDir`"" 2>&1 | Out-Null
-  if (Test-Path $InstallDir) {
-    Remove-Item -Recurse -Force $InstallDir -ErrorAction Stop
+  # Windows cannot delete a locked .node DLL — but it CAN rename the directory.
+  # Rename the old install out of the way, install fresh into $InstallDir,
+  # then clean up the renamed directory in the background after the process exits.
+  $OldInstallDir = "$InstallDir-old-$(Get-Random)"
+  try {
+    Rename-Item -Path $InstallDir -NewName $OldInstallDir -ErrorAction Stop
+    Write-Ok "Old version moved aside (will be cleaned up on next reboot or manually)"
+  } catch {
+    Write-Fail "Could not move old install directory. Close Krythor and try again. Error: $_"
   }
 }
 
@@ -239,6 +237,21 @@ if ((Test-Path $setupScript) -and -not $UpdateMode) {
 }
 
 # ── Done ──────────────────────────────────────────────────────────────────────
+# ── Clean up renamed old install (best-effort, may still be locked) ──────────
+if ($OldInstallDir -and (Test-Path $OldInstallDir)) {
+  try {
+    Remove-Item -Recurse -Force $OldInstallDir -ErrorAction Stop
+    Write-Ok "Old version cleaned up"
+  } catch {
+    # The .node binary may still be locked if the old Krythor process didn't exit.
+    # Schedule deletion on next reboot via cmd /c rd in a detached process.
+    Start-Process -FilePath 'cmd.exe' `
+      -ArgumentList "/c timeout /t 5 /nobreak >nul & rd /s /q `"$OldInstallDir`"" `
+      -WindowStyle Hidden -ErrorAction SilentlyContinue
+    Write-Warn "Old version will be cleaned up automatically in a few seconds."
+  }
+}
+
 Write-Host ""
 Write-Host "  Setup complete!" -ForegroundColor Green
 Write-Host "  Krythor $version is ready." -ForegroundColor Green
