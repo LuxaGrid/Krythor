@@ -179,15 +179,26 @@ Write-Host ""
 Write-Step "Running startup health check..."
 if (Test-Path $BundledNode) {
   # Verify better-sqlite3 loads under the bundled Node
+  # Must run from $InstallDir so require('./node_modules/...') resolves correctly
   try {
+    Push-Location $InstallDir
     $result = & $BundledNode -e "require('./node_modules/better-sqlite3')" 2>&1
+    Pop-Location
     if ($LASTEXITCODE -eq 0) {
       Write-Ok "better-sqlite3 loads correctly"
     } else {
-      Write-Warn "better-sqlite3 failed to load: $result"
-      Write-Host "  Try running: krythor repair" -ForegroundColor White
+      Write-Warn "better-sqlite3 failed to load."
+      Write-Host "  Error: $result" -ForegroundColor Yellow
+      # Check if the .node binary exists at all
+      $nodeBin = Join-Path $InstallDir 'node_modules\better-sqlite3\build\Release\better_sqlite3.node'
+      if (-not (Test-Path $nodeBin)) {
+        Write-Warn "Native binary not found: $nodeBin"
+        Write-Host "  The release zip may be missing the prebuilt binary." -ForegroundColor White
+      }
+      Write-Host "  Krythor may not start. Try: krythor repair" -ForegroundColor White
     }
   } catch {
+    Pop-Location -ErrorAction SilentlyContinue
     Write-Warn "Health check failed: $_"
   }
 }
