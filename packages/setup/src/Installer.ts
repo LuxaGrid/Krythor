@@ -2,11 +2,14 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync, chmodSync, readdirS
 import { join } from 'path';
 import { randomUUID } from 'crypto';
 
+export type AuthMethod = 'api_key' | 'oauth' | 'none';
+
 export interface ProviderEntry {
   id: string;
   name: string;
   type: string;
   endpoint: string;          // canonical field name matching ProviderConfig
+  authMethod: AuthMethod;
   apiKey?: string;
   isDefault: boolean;
   isEnabled: boolean;

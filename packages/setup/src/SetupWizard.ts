@@ -212,11 +212,14 @@ export class SetupWizard {
     let name = type.charAt(0).toUpperCase() + type.slice(1);
     let endpoint: string;
     let apiKey: string | undefined;
+    let authMethod: 'api_key' | 'oauth' | 'none' = 'none';
     let models: string[] = [];
 
     if (type === 'ollama') {
+      // Ollama is local — no auth needed
       const url = await ask(`  Base URL [${sys.ollamaBaseUrl}]: `);
       endpoint = url || sys.ollamaBaseUrl;
+      authMethod = 'none';
       try {
         const res = await fetch(`${endpoint}/api/tags`, { signal: AbortSignal.timeout(2000) });
         if (res.ok) {
@@ -227,30 +230,41 @@ export class SetupWizard {
           }
         }
       } catch { /* offline — fine */ }
+
     } else if (type === 'openai') {
+      endpoint = 'https://api.openai.com/v1';
+      authMethod = 'api_key';
+      console.log(fmt.dim('  Get your API key at: https://platform.openai.com/api-keys'));
       apiKey = await ask('  API Key: ');
       const modelInput = await ask('  Default model [gpt-4o-mini]: ');
       models = [modelInput || 'gpt-4o-mini'];
-      endpoint = 'https://api.openai.com/v1';
+
     } else if (type === 'anthropic') {
+      endpoint = 'https://api.anthropic.com';
+      authMethod = 'api_key';
+      console.log(fmt.dim('  Get your API key at: https://console.anthropic.com/settings/keys'));
       apiKey = await ask('  API Key: ');
       const modelInput = await ask('  Default model [claude-sonnet-4-6]: ');
       models = [modelInput || 'claude-sonnet-4-6'];
-      endpoint = 'https://api.anthropic.com';
+
     } else if (type === 'kimi') {
+      endpoint = 'https://api.moonshot.cn/v1';
+      name = 'Kimi';
+      authMethod = 'api_key';
       console.log(fmt.dim('  Get your API key at: https://platform.moonshot.cn/console/api-keys'));
       apiKey = await ask('  API Key: ');
       const modelInput = await ask('  Default model [moonshot-v1-128k]: ');
       models = [modelInput || 'moonshot-v1-128k'];
-      endpoint = 'https://api.moonshot.cn/v1';
-      name = 'Kimi';
+
     } else if (type === 'minimax') {
+      endpoint = 'https://api.minimax.chat/v1';
+      name = 'MiniMax';
+      authMethod = 'api_key';
       console.log(fmt.dim('  Get your API key at: https://www.minimax.chat/user-center/basic-information/interface-key'));
       apiKey = await ask('  API Key: ');
       const modelInput = await ask('  Default model [abab6.5s-chat]: ');
       models = [modelInput || 'abab6.5s-chat'];
-      endpoint = 'https://api.minimax.chat/v1';
-      name = 'MiniMax';
+
     } else {
       // openai-compat
       endpoint = await ask('  Base URL: ');
@@ -258,7 +272,13 @@ export class SetupWizard {
       name = nameInput || 'OpenAI-Compat';
       const modelInput = await ask('  Default model: ');
       models = modelInput ? [modelInput] : [];
-      apiKey = await ask('  API Key (leave blank if none): ') || undefined;
+      const keyInput = await ask('  API Key (leave blank if none): ');
+      if (keyInput) {
+        apiKey = keyInput;
+        authMethod = 'api_key';
+      } else {
+        authMethod = 'none';
+      }
     }
 
     // kimi and minimax use the openai-compat provider type internally
@@ -268,6 +288,7 @@ export class SetupWizard {
       name,
       type: providerType,
       endpoint,
+      authMethod,
       apiKey: apiKey || undefined,
       isDefault: true,
       isEnabled: true,
@@ -275,6 +296,12 @@ export class SetupWizard {
     });
 
     console.log(fmt.ok(`Provider "${name}" configured as default.`));
+
+    // Remind user they can connect OAuth from the UI for supported providers
+    if (type === 'anthropic' || type === 'openai') {
+      console.log(fmt.dim('  Tip: you can also connect via OAuth from the Models tab in the Control UI.'));
+    }
+
     return models[0];
   }
 
