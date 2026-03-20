@@ -85,11 +85,11 @@ jobs:
           RUNTIME="$(pwd)/$DIST/runtime/node"
           chmod +x "$RUNTIME"
           SQLITE_DIR="$(pwd)/$DIST/node_modules/better-sqlite3"
-          # Use node-gyp from repo's top-level node_modules (not bundled sqlite3 deps)
-          NODEGYP="$(pwd)/node_modules/.bin/node-gyp"
-          echo "Rebuilding better-sqlite3 against bundled Node $($RUNTIME --version)..."
+          # Resolve node-gyp's JS entry point via the system node (not the shim script)
+          NODEGYP_JS="$(node -e "console.log(require.resolve('node-gyp/bin/node-gyp.js'))")"
+          echo "Rebuilding better-sqlite3 against bundled Node $("$RUNTIME" --version)..."
           cd "$SQLITE_DIR"
-          "$RUNTIME" "$NODEGYP" rebuild --nodedir="$(dirname $(dirname $RUNTIME))"
+          "$RUNTIME" "$NODEGYP_JS" rebuild
           echo "✓ Rebuild complete"
 
       - name: Rebuild better-sqlite3 against bundled runtime (Windows)
@@ -100,12 +100,12 @@ jobs:
           $dist    = "$root\krythor-dist-win"
           $runtime = "$dist\runtime\node.exe"
           $sqlite  = "$dist\node_modules\better-sqlite3"
-          # Use node-gyp from repo's top-level node_modules
-          $nodegyp = "$root\node_modules\.bin\node-gyp"
+          # Resolve node-gyp's JS entry point via the system node (not the shim script)
+          $nodegypJs = node -e "console.log(require.resolve('node-gyp/bin/node-gyp.js'))"
           $nodeVer = & $runtime --version
           Write-Host "Rebuilding better-sqlite3 against bundled Node $nodeVer..."
           Push-Location $sqlite
-          & $runtime $nodegyp rebuild
+          & $runtime $nodegypJs rebuild
           Pop-Location
           if ($LASTEXITCODE -ne 0) { Write-Error "Rebuild failed"; exit 1 }
           Write-Host "✓ Rebuild complete"
