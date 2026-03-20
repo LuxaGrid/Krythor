@@ -77,6 +77,28 @@ jobs:
       - name: Bundle (platform-specific)
         run: node bundle.js --platform ${{ matrix.platform }}
 
+      - name: Install Inno Setup (Windows only)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Fetch bundled Node runtime (Windows only)
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: node installer/fetch-node.js
+
+      - name: Build Windows installer (requires krythor-dist-win/)
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: node build-installer.js
+
+      - name: Rename installer with version (Windows only)
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          mv "installer-out/Krythor-Setup-${VERSION}.exe" "Krythor-Setup-${VERSION}.exe" 2>/dev/null || \
+          mv installer-out/Krythor-Setup-*.exe "Krythor-Setup-${VERSION}.exe"
+
       - name: Rename output folder
         shell: bash
         run: mv krythor-dist-${{ matrix.platform }} krythor-${{ matrix.target }}
@@ -92,28 +114,6 @@ jobs:
         run: |
           cd krythor-${{ matrix.target }}
           zip -r ../krythor-${{ matrix.target }}.zip .
-
-      - name: Install Inno Setup (Windows only)
-        if: matrix.os == 'windows-latest'
-        shell: pwsh
-        run: choco install innosetup --no-progress -y
-
-      - name: Fetch bundled Node runtime (Windows only)
-        if: matrix.os == 'windows-latest'
-        shell: bash
-        run: node installer/fetch-node.js
-
-      - name: Build Windows installer
-        if: matrix.os == 'windows-latest'
-        shell: bash
-        run: node build-installer.js
-
-      - name: Rename installer with version (Windows only)
-        if: matrix.os == 'windows-latest'
-        shell: bash
-        run: |
-          mv "installer-out/Krythor-Setup-${VERSION}.exe" "Krythor-Setup-${VERSION}.exe" 2>/dev/null || \
-          mv installer-out/Krythor-Setup-*.exe "Krythor-Setup-${VERSION}.exe"
 
       - name: Upload zip artifact
         uses: actions/upload-artifact@v4
