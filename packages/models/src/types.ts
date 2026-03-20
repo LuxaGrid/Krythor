@@ -43,6 +43,12 @@ export interface ProviderConfig {
   isDefault: boolean;
   isEnabled: boolean;
   models: string[];          // list of available model IDs
+  /**
+   * Onboarding hint written by the setup wizard when a user skips auth setup.
+   * 'oauth_available' — provider supports OAuth; UI should surface a connect CTA.
+   * Cleared (set to undefined) once the provider is fully authenticated.
+   */
+  setupHint?: 'oauth_available' | string;
 }
 
 export interface ModelInfo {

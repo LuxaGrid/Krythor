@@ -75,6 +75,7 @@ export function validateProviderConfig(raw: unknown): ProviderValidationResult {
     models:       Array.isArray(r['models'])
       ? (r['models'] as unknown[]).filter(m => typeof m === 'string') as string[]
       : [],
+    setupHint:    typeof r['setupHint'] === 'string' ? r['setupHint'] : undefined,
   };
 
   return { valid: true, value, errors: [] };

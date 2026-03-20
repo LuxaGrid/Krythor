@@ -331,6 +331,12 @@ export interface Provider {
   isDefault?: boolean;
   isEnabled?: boolean;
   models?: string[];
+  /**
+   * Onboarding hint from the setup wizard.
+   * 'oauth_available' — user skipped auth; UI should show an OAuth connect CTA.
+   * Cleared once the provider is fully authenticated.
+   */
+  setupHint?: string;
 }
 export interface PingResult { ok: boolean; latencyMs: number; error?: string; lastUnavailableReason?: string }
 export interface ModelInfo  { id: string; name: string; providerId: string; badges: string[] }

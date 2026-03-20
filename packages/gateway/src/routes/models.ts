@@ -49,6 +49,12 @@ function maskProviderConfig(p: ProviderConfig): unknown {
     };
   }
 
+  // setupHint is not a secret — pass through as-is so the UI can surface CTAs
+  // Clear it once the provider becomes fully authenticated
+  if (p.authMethod === 'api_key' || p.authMethod === 'oauth') {
+    masked['setupHint'] = undefined;
+  }
+
   return masked;
 }
 
@@ -147,6 +153,7 @@ export function registerModelRoutes(
           isDefault:  { type: 'boolean' },
           isEnabled:  { type: 'boolean' },
           models:     { type: 'array', items: { type: 'string' } },
+          setupHint:  { type: 'string' },
         },
         additionalProperties: false,
       },
@@ -219,6 +226,8 @@ export function registerModelRoutes(
         expiresAt:    body.expiresAt ?? 0,
         connectedAt:  new Date().toISOString(),
       };
+      // Clear setupHint once a real OAuth connection completes
+      models.updateProvider(req.params.id, { setupHint: undefined });
       const updated = models.connectOAuth(req.params.id, account);
       return reply.send(maskProviderConfig(updated));
     } catch (err) {

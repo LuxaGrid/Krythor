@@ -311,6 +311,25 @@ export function ModelsPanel({ health }: Props) {
         >+ add provider</button>
       </div>
 
+      {/* OAuth pending CTAs — shown for providers where the user chose "connect OAuth later" */}
+      {providers.filter(p => p.setupHint === 'oauth_available').map(p => (
+        <div key={p.id} className="px-4 py-2.5 border-b border-amber-800/40 bg-amber-950/20 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+            <p className="text-xs text-amber-300 truncate">
+              <span className="font-medium">{p.name}</span>
+              {' '}— finish connecting with OAuth to start using this provider.
+            </p>
+          </div>
+          <button
+            onClick={() => { setOauthPanel(oauthPanel === p.id ? null : p.id); setOauthError(null); }}
+            className="text-xs px-2.5 py-1 bg-amber-700 hover:bg-amber-600 text-white rounded-lg transition-colors shrink-0"
+          >
+            Connect OAuth
+          </button>
+        </div>
+      ))}
+
       {/* Add provider form */}
       {showAdd && (
         <div className="p-4 border-b border-zinc-800 space-y-2 bg-zinc-900/30">

@@ -14,6 +14,8 @@ export interface ProviderEntry {
   isDefault: boolean;
   isEnabled: boolean;
   models: string[];
+  /** Onboarding hint for the UI. 'oauth_available' = user skipped auth; prompt them to connect. */
+  setupHint?: string;
 }
 
 export interface ProvidersFile {

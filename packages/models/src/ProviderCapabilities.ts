@@ -13,13 +13,13 @@ export const PROVIDER_CAPABILITIES: Record<ProviderType, ProviderCapabilities> =
     supportsModelListing:  true,
   },
   openai: {
-    supportsOAuth:         false, // OpenAI API does not offer OAuth for direct API use
+    supportsOAuth:         true,  // OAuth token can be used as bearer token
     supportsApiKey:        true,
     supportsCustomBaseUrl: false,
     supportsModelListing:  true,
   },
   anthropic: {
-    supportsOAuth:         false, // Anthropic API is API-key only for now
+    supportsOAuth:         true,  // OAuth token can be used as bearer token
     supportsApiKey:        true,
     supportsCustomBaseUrl: false,
     supportsModelListing:  true,

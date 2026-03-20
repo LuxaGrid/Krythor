@@ -201,7 +201,7 @@ export class SetupWizard {
     console.log('');
   }
 
-  // Returns the first model name if one was detected/entered
+  // Returns the first model name if one was detected/entered, or undefined if skipped
   private async configureProvider(
     installer: Installer,
     type: string,
@@ -213,10 +213,16 @@ export class SetupWizard {
     let endpoint: string;
     let apiKey: string | undefined;
     let authMethod: 'api_key' | 'oauth' | 'none' = 'none';
+    let setupHint: string | undefined;
     let models: string[] = [];
 
+    // Providers that support both API key and OAuth get a three-way choice.
+    // The actual OAuth browser flow lives in the desktop UI — not the CLI wizard.
+    const dualAuthTypes = ['anthropic', 'openai'];
+    const isDualAuth = dualAuthTypes.includes(type);
+
     if (type === 'ollama') {
-      // Ollama is local — no auth needed
+      // ── Local provider — no auth needed ───────────────────────────────────
       const url = await ask(`  Base URL [${sys.ollamaBaseUrl}]: `);
       endpoint = url || sys.ollamaBaseUrl;
       authMethod = 'none';
@@ -231,21 +237,59 @@ export class SetupWizard {
         }
       } catch { /* offline — fine */ }
 
-    } else if (type === 'openai') {
-      endpoint = 'https://api.openai.com/v1';
-      authMethod = 'api_key';
-      console.log(fmt.dim('  Get your API key at: https://platform.openai.com/api-keys'));
-      apiKey = await ask('  API Key: ');
-      const modelInput = await ask('  Default model [gpt-4o-mini]: ');
-      models = [modelInput || 'gpt-4o-mini'];
+    } else if (isDualAuth) {
+      // ── Dual-auth providers (Anthropic, OpenAI) ───────────────────────────
+      // Both API key (enter now) and OAuth (connect later in the app) are supported.
+      const providerInfo: Record<string, { endpoint: string; keyUrl: string; defaultModel: string }> = {
+        anthropic: {
+          endpoint:     'https://api.anthropic.com',
+          keyUrl:       'https://console.anthropic.com/settings/keys',
+          defaultModel: 'claude-sonnet-4-6',
+        },
+        openai: {
+          endpoint:     'https://api.openai.com/v1',
+          keyUrl:       'https://platform.openai.com/api-keys',
+          defaultModel: 'gpt-4o-mini',
+        },
+      };
+      const info = providerInfo[type]!;
+      endpoint = info.endpoint;
 
-    } else if (type === 'anthropic') {
-      endpoint = 'https://api.anthropic.com';
-      authMethod = 'api_key';
-      console.log(fmt.dim('  Get your API key at: https://console.anthropic.com/settings/keys'));
-      apiKey = await ask('  API Key: ');
-      const modelInput = await ask('  Default model [claude-sonnet-4-6]: ');
-      models = [modelInput || 'claude-sonnet-4-6'];
+      console.log(fmt.dim('  This provider supports two connection methods:'));
+      console.log(fmt.dim(''));
+      console.log(fmt.dim('    [1] Enter API key now   — paste a key from the provider dashboard (fastest)'));
+      console.log(fmt.dim('    [2] Connect with OAuth  — skip for now; use the in-app button after launch'));
+      console.log(fmt.dim('    [3] Skip entirely       — add this provider manually later'));
+      console.log(fmt.dim(''));
+
+      const authChoice = await choose(
+        '  How would you like to connect?',
+        ['Enter API key now', 'Connect with OAuth later (in the app)', 'Skip'],
+        0,
+      );
+
+      if (authChoice === 'Enter API key now') {
+        authMethod = 'api_key';
+        console.log(fmt.dim(`  Get your API key at: ${info.keyUrl}`));
+        apiKey = await ask('  API Key: ');
+        const modelInput = await ask(`  Default model [${info.defaultModel}]: `);
+        models = [modelInput || info.defaultModel];
+        console.log(fmt.ok(`Provider "${name}" configured with API key.`));
+
+      } else if (authChoice === 'Connect with OAuth later (in the app)') {
+        // Persist the provider shell so the UI can surface an OAuth CTA on first launch
+        authMethod = 'none';
+        setupHint = 'oauth_available';
+        const modelInput = await ask(`  Default model [${info.defaultModel}]: `);
+        models = [modelInput || info.defaultModel];
+        console.log(fmt.ok(`Provider "${name}" added. Connect with OAuth after launch.`));
+        console.log(fmt.dim('  → Open the Models tab and click "OAuth" next to this provider.'));
+
+      } else {
+        // Skip entirely — do not write any provider entry
+        console.log(fmt.dim(`  Skipped. Add ${name} later from the Models tab.`));
+        return undefined;
+      }
 
     } else if (type === 'kimi') {
       endpoint = 'https://api.moonshot.cn/v1';
@@ -266,7 +310,7 @@ export class SetupWizard {
       models = [modelInput || 'abab6.5s-chat'];
 
     } else {
-      // openai-compat
+      // ── openai-compat ──────────────────────────────────────────────────────
       endpoint = await ask('  Base URL: ');
       const nameInput = await ask('  Provider name: ');
       name = nameInput || 'OpenAI-Compat';
@@ -290,16 +334,14 @@ export class SetupWizard {
       endpoint,
       authMethod,
       apiKey: apiKey || undefined,
-      isDefault: true,
+      setupHint,
+      isDefault: authMethod === 'api_key' || authMethod === 'none', // oauth-pending providers can still be default placeholder
       isEnabled: true,
       models,
     });
 
-    console.log(fmt.ok(`Provider "${name}" configured as default.`));
-
-    // Remind user they can connect OAuth from the UI for supported providers
-    if (type === 'anthropic' || type === 'openai') {
-      console.log(fmt.dim('  Tip: you can also connect via OAuth from the Models tab in the Control UI.'));
+    if (!isDualAuth || authMethod === 'api_key') {
+      console.log(fmt.ok(`Provider "${name}" configured as default.`));
     }
 
     return models[0];
