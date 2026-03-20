@@ -228,7 +228,7 @@ async function main() {
   head('Copying built packages');
 
   // ── Copy built package dist folders ───────────────────────────────────────
-  const pkgs = ['gateway', 'setup', 'memory', 'models', 'core', 'guard', 'skills'];
+  const pkgs = ['gateway', 'control', 'setup', 'memory', 'models', 'core', 'guard', 'skills'];
   for (const pkg of pkgs) {
     const src = join(ROOT, 'packages', pkg, 'dist');
     if (existsSync(src)) {
