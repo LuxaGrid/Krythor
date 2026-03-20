@@ -82,36 +82,33 @@ jobs:
         shell: bash
         run: |
           DIST="krythor-dist-${{ matrix.platform }}"
-          RUNTIME="$DIST/runtime/node"
+          RUNTIME="$(pwd)/$DIST/runtime/node"
           chmod +x "$RUNTIME"
-          SQLITE_DIR="$DIST/node_modules/better-sqlite3"
-          NODEGYP="$SQLITE_DIR/node_modules/.bin/node-gyp"
-          if [ -f "$NODEGYP" ]; then
-            echo "Rebuilding better-sqlite3 against bundled Node..."
-            (cd "$SQLITE_DIR" && "$OLDPWD/$RUNTIME" "$OLDPWD/$NODEGYP" rebuild)
-            echo "✓ Rebuild complete"
-          else
-            echo "node-gyp not found at $NODEGYP — skipping rebuild"
-          fi
+          SQLITE_DIR="$(pwd)/$DIST/node_modules/better-sqlite3"
+          # Use node-gyp from repo's top-level node_modules (not bundled sqlite3 deps)
+          NODEGYP="$(pwd)/node_modules/.bin/node-gyp"
+          echo "Rebuilding better-sqlite3 against bundled Node $($RUNTIME --version)..."
+          cd "$SQLITE_DIR"
+          "$RUNTIME" "$NODEGYP" rebuild --nodedir="$(dirname $(dirname $RUNTIME))"
+          echo "✓ Rebuild complete"
 
       - name: Rebuild better-sqlite3 against bundled runtime (Windows)
         if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
-          $dist     = "krythor-dist-win"
-          $runtime  = "$dist\runtime\node.exe"
-          $sqlite   = "$dist\node_modules\better-sqlite3"
-          $nodegyp  = "$sqlite\node_modules\.bin\node-gyp"
-          if (Test-Path $nodegyp) {
-            Write-Host "Rebuilding better-sqlite3 against bundled Node..."
-            Push-Location $sqlite
-            & $env:GITHUB_WORKSPACE\$runtime $env:GITHUB_WORKSPACE\$nodegyp rebuild
-            Pop-Location
-            if ($LASTEXITCODE -ne 0) { Write-Error "Rebuild failed"; exit 1 }
-            Write-Host "✓ Rebuild complete"
-          } else {
-            Write-Host "node-gyp not found at $nodegyp — skipping rebuild"
-          }
+          $root    = $env:GITHUB_WORKSPACE
+          $dist    = "$root\krythor-dist-win"
+          $runtime = "$dist\runtime\node.exe"
+          $sqlite  = "$dist\node_modules\better-sqlite3"
+          # Use node-gyp from repo's top-level node_modules
+          $nodegyp = "$root\node_modules\.bin\node-gyp"
+          $nodeVer = & $runtime --version
+          Write-Host "Rebuilding better-sqlite3 against bundled Node $nodeVer..."
+          Push-Location $sqlite
+          & $runtime $nodegyp rebuild
+          Pop-Location
+          if ($LASTEXITCODE -ne 0) { Write-Error "Rebuild failed"; exit 1 }
+          Write-Host "✓ Rebuild complete"
 
       - name: Verify native module loads under bundled runtime (non-Windows)
         if: matrix.os != 'windows-latest'
