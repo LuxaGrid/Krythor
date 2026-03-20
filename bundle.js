@@ -144,8 +144,9 @@ async function main() {
     const sqliteDest = join(DISTDIR, 'node_modules', 'better-sqlite3');
 
     // Copy the full package source so npm rebuild / node-gyp can recompile for
-    // any Node version. Exclude test dirs to keep size down.
-    const subsToCopy = ['lib', 'src', 'package.json', 'binding.gyp', 'README.md'];
+    // any Node version. deps/ contains common.gypi required by node-gyp.
+    // node_modules/ contains build-time deps (prebuild-install etc.).
+    const subsToCopy = ['lib', 'src', 'deps', 'node_modules', 'package.json', 'binding.gyp', 'README.md'];
     for (const sub of subsToCopy) {
       const subSrc = join(realSqlite, sub);
       if (existsSync(subSrc)) {
