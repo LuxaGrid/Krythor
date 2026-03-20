@@ -9,6 +9,8 @@
 #
 #  Installs to: $env:USERPROFILE\.krythor\
 #  Creates command: krythor  (added to user PATH)
+#
+#  No Node.js required — the bundled runtime is included in the zip.
 # ============================================================
 $ErrorActionPreference = 'Stop'
 
@@ -34,34 +36,6 @@ Write-Host ""
 Write-Host "  KRYTHOR - Installer" -ForegroundColor Cyan
 Write-Host "  https://github.com/$Repo"
 Write-Host ""
-
-# ── Check Node.js ─────────────────────────────────────────────────────────────
-Write-Step "Checking Node.js..."
-try {
-  $nodeVersion = & node --version 2>&1
-  if ($LASTEXITCODE -ne 0) { throw "node not found" }
-  $nodeMajor = [int]($nodeVersion -replace 'v(\d+)\..*', '$1')
-  if ($nodeMajor -lt 20) {
-    Write-Host ""
-    Write-Host "  Node.js 20 or higher is required." -ForegroundColor Red
-    Write-Host "  You have: $nodeVersion"
-    Write-Host "  Download the free LTS version from: https://nodejs.org"
-    Write-Host "  Install it, then run this command again."
-    exit 1
-  }
-  Write-Ok "Node.js $nodeVersion"
-} catch {
-  Write-Host ""
-  Write-Host "  Node.js is not installed." -ForegroundColor Red
-  Write-Host ""
-  Write-Host "  Krythor needs Node.js to run." -ForegroundColor White
-  Write-Host "  1. Go to https://nodejs.org" -ForegroundColor White
-  Write-Host "  2. Click 'Download LTS'" -ForegroundColor White
-  Write-Host "  3. Install it (just click Next through the installer)" -ForegroundColor White
-  Write-Host "  4. Close this window, open a new PowerShell, and run the install command again." -ForegroundColor White
-  Write-Host ""
-  exit 1
-}
 
 # ── Fetch latest release ──────────────────────────────────────────────────────
 Write-Step "Checking latest version..."
@@ -146,6 +120,23 @@ if ($entries.Count -eq 1 -and $entries[0].PSIsContainer) {
 Remove-Item -Recurse -Force $tmpDir
 Write-Ok "Files installed to: $InstallDir"
 
+# ── Verify bundled Node runtime ───────────────────────────────────────────────
+$BundledNode = Join-Path $InstallDir 'runtime\node.exe'
+if (Test-Path $BundledNode) {
+  Write-Step "Verifying bundled Node runtime..."
+  try {
+    $nodeVer = & $BundledNode --version 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "node --version returned exit code $LASTEXITCODE" }
+    Write-Ok "Bundled runtime: $nodeVer"
+  } catch {
+    Write-Warn "Bundled Node runtime check failed: $_"
+    Write-Warn "Krythor may not start correctly. Try re-downloading the installer."
+  }
+} else {
+  Write-Warn "Bundled Node runtime not found at: $BundledNode"
+  Write-Warn "The release zip may be incomplete. Try re-downloading."
+}
+
 # ── Create launcher batch file ────────────────────────────────────────────────
 $launcherPath = Join-Path $InstallDir 'krythor.bat'
 $launcherContent = @'
@@ -157,7 +148,7 @@ if "%1"=="update" (
   powershell -NoProfile -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/LuxaGrid/Krythor/main/install.ps1 | iex"
   exit /b 0
 )
-node "%~dp0start.js" %*
+"%~dp0runtime\node.exe" "%~dp0start.js" %*
 '@
 Set-Content -Path $launcherPath -Value $launcherContent -Encoding ASCII
 Write-Ok "Launcher created: krythor.bat"
@@ -169,29 +160,52 @@ if ($userPath -notlike "*$InstallDir*") {
   Write-Ok "Added to PATH — the 'krythor' command will work in new terminal windows"
 }
 
-# ── Rebuild better-sqlite3 for the local Node version ────────────────────────
-# The precompiled .node binary may not match the user's Node.js version.
-# Always rebuild to ensure compatibility.
+# ── Rebuild better-sqlite3 against the bundled Node runtime ──────────────────
+# The precompiled .node binary was built in CI against the bundled Node ABI.
+# On a fresh install this should already be correct. The rebuild step here is
+# a safety net in case the user installs a different zip or updates node-gyp.
 $sqliteDir = Join-Path $InstallDir 'node_modules\better-sqlite3'
-if (Test-Path $sqliteDir) {
+if ((Test-Path $sqliteDir) -and (Test-Path $BundledNode)) {
   Write-Host ""
-  Write-Step "Compiling database module for your Node.js version..."
+  Write-Step "Compiling database module against bundled Node runtime..."
   try {
-    Push-Location $InstallDir
-    $rebuildOutput = & npm rebuild better-sqlite3 2>&1
-    if ($LASTEXITCODE -eq 0) {
-      Write-Ok "Database module compiled successfully"
+    Push-Location $sqliteDir
+    $NodeGyp = Join-Path $sqliteDir 'node_modules\.bin\node-gyp'
+    if (Test-Path $NodeGyp) {
+      $rebuildOutput = & $BundledNode $NodeGyp rebuild 2>&1
+      if ($LASTEXITCODE -eq 0) {
+        Write-Ok "Database module compiled successfully"
+      } else {
+        Write-Warn "Could not compile database module automatically."
+        Write-Host "  Output: $rebuildOutput" -ForegroundColor Yellow
+        Write-Host "  The prebuilt binary from CI will be used instead." -ForegroundColor White
+        Write-Host "  If Krythor fails to start, run: krythor repair" -ForegroundColor White
+      }
     } else {
-      Write-Warn "Could not compile database module automatically."
-      Write-Host "  Error: $rebuildOutput" -ForegroundColor Yellow
-      Write-Host "  To fix manually, run:" -ForegroundColor White
-      Write-Host "    cd `"$InstallDir`"" -ForegroundColor Cyan
-      Write-Host "    npm rebuild better-sqlite3" -ForegroundColor Cyan
+      Write-Warn "node-gyp not found in better-sqlite3 — skipping rebuild. CI binary will be used."
     }
   } catch {
     Write-Warn "Could not compile database module: $_"
   } finally {
     Pop-Location
+  }
+}
+
+# ── Startup health check ──────────────────────────────────────────────────────
+Write-Host ""
+Write-Step "Running startup health check..."
+if (Test-Path $BundledNode) {
+  # Verify better-sqlite3 loads under the bundled Node
+  try {
+    $result = & $BundledNode -e "require('./node_modules/better-sqlite3')" 2>&1
+    if ($LASTEXITCODE -eq 0) {
+      Write-Ok "better-sqlite3 loads correctly"
+    } else {
+      Write-Warn "better-sqlite3 failed to load: $result"
+      Write-Host "  Try running: krythor repair" -ForegroundColor White
+    }
+  } catch {
+    Write-Warn "Health check failed: $_"
   }
 }
 
@@ -202,9 +216,13 @@ if ((Test-Path $setupScript) -and -not $UpdateMode) {
   Write-Step "Running first-time setup..."
   Write-Host ""
   try {
-    & node $setupScript
+    if (Test-Path $BundledNode) {
+      & $BundledNode $setupScript
+    } else {
+      & node $setupScript
+    }
   } catch {
-    Write-Warn "Setup wizard had an issue — you can run it later with: node `"$setupScript`""
+    Write-Warn "Setup wizard had an issue — you can run it later with: krythor setup"
   }
 }
 

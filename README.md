@@ -75,12 +75,11 @@ Data is stored in your OS user profile, outside the application folder:
 
 ## ⚙️ Requirements
 
-Krythor requires **Node.js version 20 or higher**.
+**One-line installer and release zips:** No Node.js required — each release includes a bundled Node.js 20 runtime for your platform. Just download and run.
 
-Download it free at **https://nodejs.org** — choose the "LTS" version.
+**Building from source:** Node.js 20 or higher is required. Download it free at **https://nodejs.org** — choose the "LTS" version.
 
-> **Not sure if you have Node.js?**
-> Open a terminal and type `node --version`. If you see a number like `v20.x.x` or higher, you're good. If not, visit nodejs.org and install it first.
+> **Using the one-line installer?** You do not need to install Node.js. The installer downloads a release zip that already contains its own `runtime/node` binary.
 
 ---
 
@@ -105,8 +104,9 @@ iwr https://raw.githubusercontent.com/LuxaGrid/Krythor/main/install.ps1 | iex
 The script will:
 - Detect your operating system and chip architecture
 - Download the correct Krythor build from GitHub
+- Extract the bundled Node.js runtime (no system Node.js needed)
 - Install to `~/.krythor` (Mac/Linux) or `%USERPROFILE%\.krythor` (Windows)
-- Add the `krythor` command to your terminal
+- Compile the native database module against the bundled runtime
 - Run first-time setup
 
 After install, start Krythor with:
@@ -182,20 +182,11 @@ node start.js
 
 ---
 
-### Step 1 — Install Node.js (if you haven't already)
+### Step 1 — No Node.js installation needed
 
-Krythor is built on Node.js, a free runtime that lets software like Krythor run on your computer.
+Krythor's installer downloads a release that includes its own bundled Node.js runtime. You do **not** need to install Node.js separately.
 
-1. Go to **https://nodejs.org**
-2. Click the big green **"Download LTS"** button
-3. Run the installer — just click Next through all the steps
-4. When it's done, close and reopen any terminal windows you have open
-
-**How to check it worked:** Open a terminal (search for "Terminal" on Mac/Linux, or "PowerShell" on Windows) and type:
-```
-node --version
-```
-You should see something like `v20.11.0`. Any number starting with 20 or higher is fine.
+> **Building from source?** In that case you do need Node.js 20+. Download it at **https://nodejs.org** and choose the "LTS" version. This only applies if you are cloning the repository and running `pnpm build` yourself.
 
 ---
 
@@ -360,9 +351,6 @@ Your AI provider data (config, memory) is stored separately:
 **"krythor: command not found"**
 Open a new terminal window. The PATH update requires a fresh session. On Mac/Linux you can also run `source ~/.bashrc` (or `~/.zshrc`) to apply it immediately.
 
-**"Node.js is not installed"**
-Go to https://nodejs.org, download and install the LTS version, then open a new terminal and try again.
-
 **The dashboard won't load at http://localhost:47200**
 Make sure Krythor is running — you should see activity in the terminal. If Krythor crashed, re-run `krythor`.
 
@@ -372,13 +360,12 @@ You need to add at least one AI provider in the Models tab before Krythor can re
 **Windows SmartScreen warning on the .exe installer**
 This is expected — the installer is currently unsigned. Click "More info" then "Run anyway". Or use the PowerShell one-liner instead, which doesn't trigger this warning.
 
-**"Gateway did not start" / ERR_DLOPEN_FAILED**
-Your Node.js version doesn't match the compiled database module. Run:
-```powershell
-cd C:\Users\YourName\.krythor
-npm rebuild better-sqlite3
+**"Gateway did not start"**
+Run the built-in repair check to identify the problem:
+```bash
+krythor repair
 ```
-Then run `krythor` again. Fresh installs handle this automatically.
+This verifies the bundled runtime, native modules, and gateway health, and prints a pass/fail for each. Follow the printed instructions if any check fails.
 
 ---
 

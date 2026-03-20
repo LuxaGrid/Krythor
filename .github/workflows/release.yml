@@ -74,8 +74,36 @@ jobs:
       - name: Build all packages
         run: pnpm build
 
-      - name: Bundle (platform-specific)
-        run: node bundle.js --platform ${{ matrix.platform }}
+      - name: Bundle (platform-specific, with bundled Node runtime)
+        run: node bundle.js --platform ${{ matrix.platform }} --arch ${{ matrix.arch }}
+
+      - name: Verify native module loads under bundled runtime (non-Windows)
+        if: matrix.os != 'windows-latest'
+        shell: bash
+        run: |
+          RUNTIME="krythor-dist-${{ matrix.platform }}/runtime/node"
+          chmod +x "$RUNTIME"
+          if "$RUNTIME" -e "require('./krythor-dist-${{ matrix.platform }}/node_modules/better-sqlite3')"; then
+            echo "✓ better-sqlite3 loads OK under bundled runtime"
+          else
+            echo "✗ better-sqlite3 failed to load under bundled runtime"
+            exit 1
+          fi
+
+      - name: Verify native module loads under bundled runtime (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $runtime = "krythor-dist-win\runtime\node.exe"
+          $distDir = "krythor-dist-win"
+          $result = & $runtime -e "require('./node_modules/better-sqlite3')" 2>&1
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "✓ better-sqlite3 loads OK under bundled runtime"
+          } else {
+            Write-Host "✗ better-sqlite3 failed to load under bundled runtime"
+            Write-Host $result
+            exit 1
+          }
 
       - name: Install Inno Setup (Windows only)
         if: matrix.os == 'windows-latest'

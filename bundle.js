@@ -5,23 +5,28 @@
  * Prepares a self-contained distribution folder that can be zipped and shared.
  *
  * Usage:
- *   node bundle.js                   — build krythor-dist-win/ (Windows, full)
- *   node bundle.js --platform win    — same as above
- *   node bundle.js --platform linux  — build krythor-dist-linux/ (no native binary)
- *   node bundle.js --platform mac    — build krythor-dist-mac/   (no native binary)
+ *   node bundle.js                              — build krythor-dist-win/ (Windows, full)
+ *   node bundle.js --platform win               — same as above
+ *   node bundle.js --platform linux             — build krythor-dist-linux/
+ *   node bundle.js --platform mac               — build krythor-dist-mac/
+ *   node bundle.js --platform mac --arch arm64  — build krythor-dist-mac/ for Apple Silicon
  *
  * Platform zip asset names (for GitHub Releases):
- *   krythor-win-x64.zip    — built on Windows CI, includes better_sqlite3.node
- *   krythor-linux-x64.zip  — built on Linux CI, includes linux better_sqlite3.node
- *   krythor-macos-x64.zip  — built on macOS CI, includes macOS better_sqlite3.node
- *   krythor-macos-arm64.zip — built on macOS ARM CI
+ *   krythor-win-x64.zip      — built on Windows CI, includes better_sqlite3.node + bundled Node
+ *   krythor-linux-x64.zip    — built on Linux CI, includes linux better_sqlite3.node + bundled Node
+ *   krythor-macos-x64.zip    — built on macOS CI, includes macOS better_sqlite3.node + bundled Node
+ *   krythor-macos-arm64.zip  — built on macOS ARM CI, includes arm64 better_sqlite3.node + bundled Node
  *
- * The resulting folder is the only thing users need. They do NOT need pnpm — only Node.js 20+.
+ * The resulting folder is self-contained — users do NOT need Node.js installed.
+ * A matching Node 20.19.0 runtime is downloaded and embedded in runtime/.
  */
 
 const { existsSync, mkdirSync, cpSync, writeFileSync, readFileSync, readdirSync, statSync } = require('fs');
 const { join, resolve } = require('path');
 const { execSync } = require('child_process');
+const https = require('https');
+const fs = require('fs');
+const os = require('os');
 
 const ROOT = __dirname;
 
@@ -37,6 +42,18 @@ const platformArg = (() => {
 
 if (!['win', 'linux', 'mac'].includes(platformArg)) {
   console.error(`Unknown platform: ${platformArg}. Use: win, linux, mac`);
+  process.exit(1);
+}
+
+// ── Arch selection ─────────────────────────────────────────────────────────────
+const archArg = (() => {
+  const idx = process.argv.indexOf('--arch');
+  if (idx !== -1 && process.argv[idx + 1]) return process.argv[idx + 1].toLowerCase();
+  return 'x64';
+})();
+
+if (!['x64', 'arm64'].includes(archArg)) {
+  console.error(`Unknown arch: ${archArg}. Use: x64, arm64`);
   process.exit(1);
 }
 
@@ -66,8 +83,132 @@ function copy(src, dest, opts = {}) {
   cpSync(realSrc, join(DISTDIR, dest), { recursive: true, ...opts });
 }
 
+// ── Download & embed bundled Node runtime ─────────────────────────────────────
+/**
+ * Downloads Node 20.19.0 for the given platform/arch, extracts the binary,
+ * places it at distDir/runtime/node[.exe], verifies it works, and chmod+xs it.
+ *
+ * @param {string} plat  - 'win' | 'linux' | 'mac'
+ * @param {string} arch  - 'x64' | 'arm64'
+ * @param {string} distDir - absolute path to the dist output folder
+ */
+async function downloadNodeRuntime(plat, arch, distDir) {
+  const NODE_VERSION = '20.19.0';
+
+  // Determine download URL and the path of node inside the archive
+  let url, archiveName, nodePathInArchive;
+
+  if (plat === 'win') {
+    archiveName = `node-v${NODE_VERSION}-win-x64.zip`;
+    url = `https://nodejs.org/dist/v${NODE_VERSION}/${archiveName}`;
+    nodePathInArchive = `node-v${NODE_VERSION}-win-x64/node.exe`;
+  } else if (plat === 'linux') {
+    archiveName = `node-v${NODE_VERSION}-linux-x64.tar.gz`;
+    url = `https://nodejs.org/dist/v${NODE_VERSION}/${archiveName}`;
+    nodePathInArchive = `node-v${NODE_VERSION}-linux-x64/bin/node`;
+  } else if (plat === 'mac') {
+    if (arch === 'arm64') {
+      archiveName = `node-v${NODE_VERSION}-darwin-arm64.tar.gz`;
+      url = `https://nodejs.org/dist/v${NODE_VERSION}/${archiveName}`;
+      nodePathInArchive = `node-v${NODE_VERSION}-darwin-arm64/bin/node`;
+    } else {
+      archiveName = `node-v${NODE_VERSION}-darwin-x64.tar.gz`;
+      url = `https://nodejs.org/dist/v${NODE_VERSION}/${archiveName}`;
+      nodePathInArchive = `node-v${NODE_VERSION}-darwin-x64/bin/node`;
+    }
+  } else {
+    err(`downloadNodeRuntime: unknown platform '${plat}'`);
+    process.exit(1);
+  }
+
+  const runtimeDir = join(distDir, 'runtime');
+  mkdirSync(runtimeDir, { recursive: true });
+
+  const destBinary = plat === 'win'
+    ? join(runtimeDir, 'node.exe')
+    : join(runtimeDir, 'node');
+
+  // ── Download the archive ────────────────────────────────────────────────────
+  const tmpDir = fs.mkdtempSync(join(os.tmpdir(), 'krythor-node-'));
+  const tmpArchive = join(tmpDir, archiveName);
+
+  info(`Downloading Node.js ${NODE_VERSION} for ${plat}-${arch}...`);
+  info(`  URL: ${url}`);
+
+  await new Promise((resolve, reject) => {
+    const file = fs.createWriteStream(tmpArchive);
+    function get(requestUrl) {
+      https.get(requestUrl, (res) => {
+        // Follow redirects
+        if (res.statusCode === 301 || res.statusCode === 302) {
+          file.close();
+          get(res.headers.location);
+          return;
+        }
+        if (res.statusCode !== 200) {
+          reject(new Error(`HTTP ${res.statusCode} from ${requestUrl}`));
+          return;
+        }
+        res.pipe(file);
+        file.on('finish', () => file.close(resolve));
+        file.on('error', reject);
+      }).on('error', reject);
+    }
+    get(url);
+  });
+
+  const archiveStat = fs.statSync(tmpArchive);
+  if (archiveStat.size < 10000) {
+    err(`Downloaded archive is suspiciously small (${archiveStat.size} bytes) — aborting`);
+    process.exit(1);
+  }
+  info(`  Downloaded: ${(archiveStat.size / 1024 / 1024).toFixed(1)} MB`);
+
+  // ── Extract the node binary ─────────────────────────────────────────────────
+  const extractDir = join(tmpDir, 'extracted');
+  mkdirSync(extractDir, { recursive: true });
+
+  if (plat === 'win') {
+    // Use PowerShell Expand-Archive on Windows
+    execSync(
+      `powershell -NoProfile -Command "Expand-Archive -Path '${tmpArchive}' -DestinationPath '${extractDir}' -Force"`,
+      { stdio: 'inherit' }
+    );
+    const srcExe = join(extractDir, `node-v${NODE_VERSION}-win-x64`, 'node.exe');
+    if (!existsSync(srcExe)) {
+      err(`node.exe not found in archive at expected path: ${srcExe}`);
+      process.exit(1);
+    }
+    fs.copyFileSync(srcExe, destBinary);
+  } else {
+    // Linux / macOS — use tar
+    execSync(`tar -xzf "${tmpArchive}" -C "${extractDir}"`, { stdio: 'inherit' });
+    const srcNode = join(extractDir, nodePathInArchive);
+    if (!existsSync(srcNode)) {
+      err(`node binary not found in archive at expected path: ${srcNode}`);
+      process.exit(1);
+    }
+    fs.copyFileSync(srcNode, destBinary);
+    fs.chmodSync(destBinary, 0o755);
+  }
+
+  // ── Clean up temp files ─────────────────────────────────────────────────────
+  try {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  } catch { /* non-fatal */ }
+
+  // ── Verify the binary works ─────────────────────────────────────────────────
+  try {
+    const result = execSync(`"${destBinary}" --version`, { encoding: 'utf-8' }).trim();
+    ok(`Bundled Node runtime: ${result}  →  runtime/${plat === 'win' ? 'node.exe' : 'node'}`);
+  } catch (e) {
+    err(`Bundled Node binary failed to execute: ${e.message}`);
+    process.exit(1);
+  }
+}
+
 async function main() {
-  console.log(`\n${CYAN}  KRYTHOR — Bundle [${platformArg}]${RESET}`);
+  console.log(`\n${CYAN}  KRYTHOR — Bundle [${platformArg}/${archArg}]${RESET}`);
   console.log(`${DIM}  Building a self-contained distribution folder…${RESET}\n`);
 
   // ── Preflight ──────────────────────────────────────────────────────────────
@@ -143,8 +284,8 @@ async function main() {
     const realSqlite = (() => { try { return rps(sqliteNm); } catch { return sqliteNm; } })();
     const sqliteDest = join(DISTDIR, 'node_modules', 'better-sqlite3');
 
-    // Copy the full package source so npm rebuild / node-gyp can recompile for
-    // any Node version. deps/ contains common.gypi required by node-gyp.
+    // Copy the full package source so the installer can recompile if needed.
+    // deps/ contains common.gypi required by node-gyp.
     // node_modules/ contains build-time deps (prebuild-install etc.).
     const subsToCopy = ['lib', 'src', 'deps', 'node_modules', 'package.json', 'binding.gyp', 'README.md'];
     for (const sub of subsToCopy) {
@@ -157,7 +298,7 @@ async function main() {
     }
 
     if (binaryIsForThisPlatform) {
-      // Include the pre-built binary as a starting point — installer will rebuild anyway
+      // Include the pre-built binary — already compiled against bundled Node in CI
       const nodeBin = join(realSqlite, 'build', 'Release', 'better_sqlite3.node');
       if (existsSync(nodeBin)) {
         const binDest = join(sqliteDest, 'build', 'Release', 'better_sqlite3.node');
@@ -179,6 +320,10 @@ async function main() {
       ok(`node_modules/${dep}`);
     }
   }
+
+  // ── Download & embed bundled Node runtime ─────────────────────────────────
+  head('Downloading bundled Node runtime');
+  await downloadNodeRuntime(platformArg, archArg, DISTDIR);
 
   // ── Copy launcher files ────────────────────────────────────────────────────
   head('Copying launcher files');
@@ -203,16 +348,13 @@ async function main() {
   if (existsSync(exeSrc)) {
     cpSync(exeSrc, join(DISTDIR, 'krythor.exe'));
     ok('krythor.exe (SEA executable)');
-    // Also copy node.exe alongside it for gateway spawning
-    cpSync(process.execPath, join(DISTDIR, 'node.exe'));
-    ok('node.exe (required for gateway spawning)');
   }
 
   // ── Write a minimal package.json for the dist folder ──────────────────────
   head('Writing dist package.json');
   const rootPkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf-8'));
   // Read better-sqlite3 version from the source package so the dist package.json
-  // lists it as a dependency — required for `npm rebuild better-sqlite3` to work.
+  // lists it as a dependency — required for node-gyp rebuild to work.
   let sqliteVersion = '*';
   try {
     const sqlitePkg = JSON.parse(readFileSync(join(ROOT, 'node_modules', 'better-sqlite3', 'package.json'), 'utf-8'));
@@ -223,13 +365,13 @@ async function main() {
     name:        'krythor',
     version:     rootPkg.version,
     description: rootPkg.description,
-    engines:     rootPkg.engines,
+    // engines field omitted — runtime is bundled, no system Node required
     scripts: {
       start:  'node start.js',
       setup:  'node packages/setup/dist/bin/setup.js',
       doctor: 'node packages/setup/dist/bin/setup.js doctor',
     },
-    // Declare better-sqlite3 so `npm rebuild` targets it correctly
+    // Declare better-sqlite3 so rebuild commands target it correctly
     dependencies: {
       'better-sqlite3': sqliteVersion,
     },
@@ -243,8 +385,8 @@ async function main() {
 Version: ${rootPkg.version}
 
 REQUIREMENTS
-  - Node.js 20 or higher  (https://nodejs.org)
-  - That's it. No pnpm, no cloud accounts required.
+  No Node.js required — this release includes a bundled Node.js runtime.
+  No pnpm, no cloud accounts required.
 
 INSTALL — Windows
   1. Extract this folder anywhere on your computer.
@@ -260,13 +402,15 @@ WINDOWS SECURITY NOTE
 
 INSTALL — macOS / Linux
   1. Extract this folder anywhere on your computer.
-  2. Run:  node packages/setup/dist/bin/setup.js
-  3. Run:  node start.js
+  2. Run:  ./runtime/node packages/setup/dist/bin/setup.js
+  3. Run:  ./start.js   (or: ./runtime/node start.js)
 
 COMMANDS (from this folder)
-  node start.js                              — launch gateway + open browser
-  node packages/setup/dist/bin/setup.js     — run setup wizard
-  node packages/setup/dist/bin/setup.js doctor  — run diagnostics
+  ./runtime/node start.js                              — launch gateway + open browser
+  ./runtime/node packages/setup/dist/bin/setup.js     — run setup wizard
+  ./runtime/node packages/setup/dist/bin/setup.js doctor  — run diagnostics
+
+  On Windows use:  runtime\\node.exe start.js
 
 YOUR DATA
   All data is stored in your user profile — NOT in this folder.
@@ -294,10 +438,10 @@ Highlights:
 - Heartbeat monitoring
 - Windows installer (Krythor-Setup-${rootPkg.version}.exe)
 - Bundle-slimmed distribution (~8 MB vs ~80 MB in earlier releases)
+- Bundled Node.js runtime — no system Node.js required
 
 Known Issues:
 - Windows SmartScreen may appear — build is unsigned
-- krythor.exe requires node.exe beside it (included in installer)
 - Streaming transparency fields not populated in all run modes
 
 Installation:
@@ -314,7 +458,8 @@ Installation:
 =====================================================================
 
 This folder is a self-contained Krythor installation.
-It contains everything needed to run Krythor on any machine with Node.js 20+.
+It contains everything needed to run Krythor — including a bundled Node.js runtime.
+No system Node.js installation is required.
 
 FOLDER STRUCTURE
   packages/            — Compiled Krythor packages (gateway, setup, memory, etc.)
@@ -322,7 +467,11 @@ FOLDER STRUCTURE
   node_modules/        — Contains only better-sqlite3 native bindings.
                          All other dependencies are bundled into packages/*/dist/.
                          DO NOT DELETE this folder — Krythor cannot run without it.
-  start.js             — Main launcher. Run: node start.js
+  runtime/             — Bundled Node.js 20 runtime binary.
+                         Windows: runtime/node.exe
+                         macOS/Linux: runtime/node
+                         DO NOT DELETE this folder — it is required to run Krythor.
+  start.js             — Main launcher. Run: ./runtime/node start.js
   Krythor.bat          — Windows launcher (double-click to start)
   Krythor-Setup.bat    — Windows setup wizard (run first on a new machine)
   install.sh           — macOS/Linux setup helper
@@ -332,13 +481,13 @@ FOLDER STRUCTURE
   CHANGELOG.md         — Full version history
 
 IMPORTANT NOTES
-  - node_modules/ is required at runtime and must travel with this folder.
+  - node_modules/ and runtime/ are required at runtime and must travel with this folder.
   - All user data (settings, history, models) is stored outside this folder
     in your OS user profile — deleting this folder does NOT delete your data.
   - To update Krythor, replace this folder with a newer distribution package.
 
 SUPPORT
-  Run diagnostics:  node start.js doctor
+  Run diagnostics:  ./runtime/node start.js doctor
   Documentation:    https://github.com/krythor/krythor
 `;
   writeFileSync(join(DISTDIR, 'README-DISTRIBUTION.txt'), readmeDist);
@@ -371,7 +520,7 @@ SUPPORT
     return (bytes / 1024 / 1024).toFixed(1) + ' MB';
   }
   const totalFiles = countFiles(DISTDIR);
-  const keyDirs = ['packages', 'node_modules'].map(d => {
+  const keyDirs = ['packages', 'node_modules', 'runtime'].map(d => {
     const present = existsSync(join(DISTDIR, d));
     return `    ${present ? GREEN + '✓' : RED + '✗'}${RESET}  ${d}/  ${present ? DIM + '(' + dirSizeMB(join(DISTDIR, d)) + ')' + RESET : DIM + 'missing' + RESET}`;
   });
@@ -383,13 +532,13 @@ SUPPORT
   console.log(`  Output folder:  ${DISTDIR}`);
   console.log('');
   console.log('  To distribute:');
-  console.log(`    Zip the  krythor-dist-${platformArg}/  folder as  krythor-${platformArg}-x64.zip`);
+  console.log(`    Zip the  krythor-dist-${platformArg}/  folder as  krythor-${platformArg}-${archArg}.zip`);
   console.log('    Upload to GitHub Releases as a release asset.');
-  console.log('    Users need only Node.js 20+ installed.');
+  console.log('    Users do NOT need Node.js installed — runtime is bundled.');
   if (platformArg === 'win') {
     console.log('    Windows users: double-click Krythor-Setup.bat, then Krythor.bat');
   } else {
-    console.log(`    ${platformArg} users: run  node start.js  after install`);
+    console.log(`    ${platformArg} users: run  ./runtime/node start.js  after install`);
   }
   console.log('');
 }
