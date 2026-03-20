@@ -174,14 +174,16 @@ fi
 rm -rf "$TMP_DIR"
 echo -e "${GREEN}✓${RESET} Files installed to: ${INSTALL_DIR}"
 
-# ── Rebuild native module if needed ──────────────────────────────────────────
-NATIVE_BIN="${INSTALL_DIR}/node_modules/better-sqlite3/build/Release/better_sqlite3.node"
-if [ ! -f "$NATIVE_BIN" ]; then
+# ── Rebuild native module for local Node version ──────────────────────────────
+# Always rebuild better-sqlite3 — the precompiled binary may not match the
+# user's Node.js version, causing an ERR_DLOPEN_FAILED crash at startup.
+SQLITE_DIR="${INSTALL_DIR}/node_modules/better-sqlite3"
+if [ -d "$SQLITE_DIR" ]; then
   echo ""
-  echo -e "${YELLOW}  Compiling database module for your platform...${RESET}"
+  echo -e "${YELLOW}  Compiling database module for your Node.js version...${RESET}"
   if command -v npm &>/dev/null; then
     ( cd "$INSTALL_DIR" && npm rebuild better-sqlite3 --silent 2>&1 ) && \
-      echo -e "${GREEN}✓${RESET} Database module ready." || \
+      echo -e "${GREEN}✓${RESET} Database module compiled." || \
       echo -e "${YELLOW}⚠  Could not compile automatically. Run: cd ${INSTALL_DIR} && npm rebuild better-sqlite3${RESET}"
   else
     echo -e "${YELLOW}⚠  npm not found. Run manually: cd ${INSTALL_DIR} && npm rebuild better-sqlite3${RESET}"

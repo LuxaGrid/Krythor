@@ -169,6 +169,29 @@ if ($userPath -notlike "*$InstallDir*") {
   Write-Ok "Added to PATH — the 'krythor' command will work in new terminal windows"
 }
 
+# ── Rebuild better-sqlite3 for the local Node version ────────────────────────
+# The precompiled .node binary may not match the user's Node.js version.
+# Always rebuild to ensure compatibility.
+$sqliteDir = Join-Path $InstallDir 'node_modules\better-sqlite3'
+if (Test-Path $sqliteDir) {
+  Write-Host ""
+  Write-Step "Compiling database module for your Node.js version..."
+  try {
+    Push-Location $InstallDir
+    & npm rebuild better-sqlite3 --silent 2>&1 | Out-Null
+    if ($LASTEXITCODE -eq 0) {
+      Write-Ok "Database module compiled successfully"
+    } else {
+      Write-Warn "Could not compile database module automatically."
+      Write-Host "  If Krythor fails to start, run: cd `"$InstallDir`" && npm rebuild better-sqlite3" -ForegroundColor White
+    }
+  } catch {
+    Write-Warn "Could not compile database module: $_"
+  } finally {
+    Pop-Location
+  }
+}
+
 # ── Run first-time setup wizard ───────────────────────────────────────────────
 $setupScript = Join-Path $InstallDir 'packages\setup\dist\bin\setup.js'
 if ((Test-Path $setupScript) -and -not $UpdateMode) {
