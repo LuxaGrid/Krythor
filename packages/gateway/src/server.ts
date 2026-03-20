@@ -90,10 +90,17 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
     logger.warn('Auth is DISABLED — all API routes are unprotected');
   }
 
+  // Use pino-pretty only in dev AND when it is resolvable as a real module.
+  // In a bundled dist pino-pretty cannot be loaded as a worker thread even if
+  // bundled inline — it must exist on disk. Disable it silently if absent.
   const isDev = process.env['NODE_ENV'] !== 'production';
+  let usePretty = false;
+  if (isDev) {
+    try { require.resolve('pino-pretty'); usePretty = true; } catch { /* not available */ }
+  }
   const app = Fastify({
     bodyLimit: 1_048_576, // 1 MB — prevents OOM from oversized request bodies
-    logger: isDev
+    logger: usePretty
       ? {
           level: 'info',
           transport: {
