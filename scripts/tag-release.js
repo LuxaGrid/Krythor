@@ -33,7 +33,8 @@ const DIM   = '\x1b[2m';
 const RESET = '\x1b[0m';
 
 function run(cmd, opts = {}) {
-  return execSync(cmd, { cwd: ROOT, encoding: 'utf-8', stdio: 'pipe', ...opts }).trim();
+  const result = execSync(cmd, { cwd: ROOT, encoding: 'utf-8', stdio: 'pipe', ...opts });
+  return result ? result.trim() : '';
 }
 
 function die(msg) {
