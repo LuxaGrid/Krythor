@@ -2,7 +2,7 @@
 #  Krythor — One-line installer (Windows PowerShell)
 #
 #  Install:
-#    iwr https://get.krythor.dev/install.ps1 | iex
+#    iwr https://raw.githubusercontent.com/LuxaGrid/Krythor/main/install.ps1 | iex
 #
 #  Update (after install):
 #    krythor update
@@ -154,7 +154,7 @@ $launcherContent = @'
 if "%1"=="update" (
   echo Checking for Krythor updates...
   set KRYTHOR_UPDATE=1
-  powershell -NoProfile -ExecutionPolicy Bypass -Command "iwr https://get.krythor.dev/install.ps1 | iex"
+  powershell -NoProfile -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/LuxaGrid/Krythor/main/install.ps1 | iex"
   exit /b 0
 )
 node "%~dp0start.js" %*

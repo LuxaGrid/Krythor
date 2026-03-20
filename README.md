@@ -92,13 +92,13 @@ This is the fastest and most transparent way to install Krythor. The script down
 **Mac or Linux** — open Terminal and run:
 
 ```bash
-curl -fsSL https://get.krythor.dev/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/LuxaGrid/Krythor/main/install.sh | bash
 ```
 
 **Windows** — open PowerShell and run:
 
 ```powershell
-iwr https://get.krythor.dev/install.ps1 | iex
+iwr https://raw.githubusercontent.com/LuxaGrid/Krythor/main/install.ps1 | iex
 ```
 
 The script will:
@@ -205,12 +205,12 @@ Open your terminal and paste the install command for your platform:
 
 **Mac or Linux:**
 ```bash
-curl -fsSL https://get.krythor.dev/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/LuxaGrid/Krythor/main/install.sh | bash
 ```
 
 **Windows (PowerShell):**
 ```powershell
-iwr https://get.krythor.dev/install.ps1 | iex
+iwr https://raw.githubusercontent.com/LuxaGrid/Krythor/main/install.ps1 | iex
 ```
 
 Watch the output — it will tell you what it's doing at each step. The whole process takes about 30–60 seconds depending on your internet speed.

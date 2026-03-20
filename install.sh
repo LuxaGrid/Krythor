@@ -3,7 +3,7 @@
 #  Krythor — One-line installer (Mac / Linux)
 #
 #  Install:
-#    curl -fsSL https://get.krythor.dev/install.sh | bash
+#    curl -fsSL https://raw.githubusercontent.com/LuxaGrid/Krythor/main/install.sh | bash
 #
 #  Update (after install):
 #    krythor update
@@ -198,7 +198,7 @@ DIR="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
 # Handle "krythor update" — re-runs the installer script
 if [ "\$1" = "update" ]; then
   echo "Checking for Krythor updates..."
-  UPDATE=1 curl -fsSL https://get.krythor.dev/install.sh | bash
+  UPDATE=1 curl -fsSL https://raw.githubusercontent.com/LuxaGrid/Krythor/main/install.sh | bash
   exit 0
 fi
 
