@@ -78,6 +78,14 @@ if ((Test-Path $InstallDir) -and -not $UpdateMode) {
 
 if (Test-Path $InstallDir) {
   Write-Step "Removing old version..."
+  # Stop any running Krythor process so the native .node binary is not locked
+  Get-Process -Name 'node' -ErrorAction SilentlyContinue | Where-Object {
+    $_.Path -like "*$InstallDir*" -or $_.MainModule.FileName -like "*$InstallDir*"
+  } | ForEach-Object {
+    Write-Warn "Stopping running Krythor process (PID $($_.Id))..."
+    Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
+  }
+  Start-Sleep -Milliseconds 500
   Remove-Item -Recurse -Force $InstallDir
 }
 
