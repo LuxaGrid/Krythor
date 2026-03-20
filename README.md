@@ -153,7 +153,6 @@ Download the zip for your platform from the [Releases page](https://github.com/L
 |------|----------|
 | `krythor-win-x64.zip` | Windows 64-bit |
 | `krythor-linux-x64.zip` | Linux 64-bit |
-| `krythor-linux-arm64.zip` | Linux ARM64 |
 | `krythor-macos-x64.zip` | macOS Intel |
 | `krythor-macos-arm64.zip` | macOS Apple Silicon (M1/M2/M3) |
 
@@ -233,7 +232,7 @@ krythor
 
 Krythor will start a local server on your computer. You'll see output like:
 ```
-Krythor gateway running at http://localhost:47200
+✓ Krythor is running  →  http://127.0.0.1:47200
 ```
 
 ---
@@ -373,6 +372,14 @@ You need to add at least one AI provider in the Models tab before Krythor can re
 **Windows SmartScreen warning on the .exe installer**
 This is expected — the installer is currently unsigned. Click "More info" then "Run anyway". Or use the PowerShell one-liner instead, which doesn't trigger this warning.
 
+**"Gateway did not start" / ERR_DLOPEN_FAILED**
+Your Node.js version doesn't match the compiled database module. Run:
+```powershell
+cd C:\Users\YourName\.krythor
+npm rebuild better-sqlite3
+```
+Then run `krythor` again. Fresh installs handle this automatically.
+
 ---
 
 ## 🧠 Supported Providers
@@ -422,15 +429,18 @@ pnpm doctor     # run diagnostics
 
 ## 📦 Distribution
 
-```bash
-# Full release (build + bundle + exe + installer)
-node build-release.js
+Releases are built automatically by GitHub Actions when a version tag is pushed:
 
-# Or step by step:
+```bash
+node scripts/tag-release.js 1.2.1   # bump version, tag, push — triggers CI
+```
+
+To build a local distribution bundle manually:
+
+```bash
 pnpm build
-node bundle.js           # creates krythor-dist/
-node build-exe.js        # creates krythor.exe (Windows SEA)
-node build-installer.js  # creates Krythor-Setup-{version}.exe
+node bundle.js                       # creates krythor-dist-{platform}/
+node build-installer.js              # creates Krythor-Setup-{version}.exe (Windows only)
 ```
 
 ---
