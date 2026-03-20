@@ -78,15 +78,28 @@ if ((Test-Path $InstallDir) -and -not $UpdateMode) {
 
 if (Test-Path $InstallDir) {
   Write-Step "Removing old version..."
-  # Stop any running Krythor process so the native .node binary is not locked
-  Get-Process -Name 'node' -ErrorAction SilentlyContinue | Where-Object {
-    $_.Path -like "*$InstallDir*" -or $_.MainModule.FileName -like "*$InstallDir*"
-  } | ForEach-Object {
-    Write-Warn "Stopping running Krythor process (PID $($_.Id))..."
-    Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
+  # Kill any node.exe running from the install dir (holds better_sqlite3.node locked)
+  $nodePath = Join-Path $InstallDir 'runtime\node.exe'
+  Get-Process -Name 'node' -ErrorAction SilentlyContinue | ForEach-Object {
+    try {
+      $exe = $_.MainModule.FileName
+      if ($exe -like "*$InstallDir*") {
+        Write-Warn "Stopping Krythor process (PID $($_.Id))..."
+        Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
+      }
+    } catch { }
   }
-  Start-Sleep -Milliseconds 500
-  Remove-Item -Recurse -Force $InstallDir
+  # Also kill by matching the exact bundled node.exe path
+  Get-Process -Name 'node' -ErrorAction SilentlyContinue | Where-Object {
+    try { $_.MainModule.FileName -eq $nodePath } catch { $false }
+  } | Stop-Process -Force -ErrorAction SilentlyContinue
+  Start-Sleep -Milliseconds 800
+  # Use cmd rd which releases handles more aggressively than Remove-Item
+  & cmd /c "rd /s /q `"$InstallDir`"" 2>&1 | Out-Null
+  if (Test-Path $InstallDir) {
+    # Last resort: Remove-Item
+    Remove-Item -Recurse -Force $InstallDir -ErrorAction SilentlyContinue
+  }
 }
 
 # ── Download ──────────────────────────────────────────────────────────────────
