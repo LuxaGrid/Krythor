@@ -45,7 +45,7 @@ case "$OS" in
     echo -e "${RED}✗ Unsupported OS: $OS${RESET}"
     echo "  Krythor supports macOS and Linux."
     echo "  Windows users: open PowerShell and run:"
-    echo "    iwr https://get.krythor.dev/install.ps1 | iex"
+    echo "    iwr https://raw.githubusercontent.com/LuxaGrid/Krythor/main/install.ps1 | iex"
     exit 1
     ;;
 esac

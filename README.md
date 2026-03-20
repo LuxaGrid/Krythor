@@ -38,6 +38,7 @@ This is **AI you can operate**.
 
 * **Multi-model routing** — OpenAI, Anthropic, Ollama, LM Studio, GGUF (llama-server), and OpenAI-compatible APIs
 * **Automatic fallback** — seamless provider failover
+* **Dual-auth support** — connect cloud providers with an API key or via OAuth in the app — your choice
 * **Persistent memory** — semantic + keyword retrieval across sessions
 * **Agent system** — custom prompts, memory scope, and model preferences
 * **Skills** — reusable task templates with structured routing hints
@@ -61,7 +62,7 @@ Krythor is built on a local-first principle:
 
 - **Your data never leaves your machine** unless you configure a cloud AI provider (OpenAI, Anthropic). Even then, only the content of your requests is sent — nothing else.
 - **No telemetry.** Krythor does not collect usage data, crash reports, or analytics of any kind.
-- **No accounts required.** You do not need to create an account to use Krythor. Cloud provider API keys are stored locally in your OS user profile.
+- **No accounts required.** You do not need to create an account to use Krythor. Cloud provider credentials (API keys and OAuth tokens) are stored encrypted in your OS user profile — never in the cloud.
 - **Transparent model selection.** Every run shows which model was used, why it was chosen, and whether a fallback occurred. Nothing is hidden.
 - **Open source.** The full source is on GitHub. You can read, audit, and build it yourself.
 
@@ -263,19 +264,23 @@ Krythor needs to know which AI to use. You have two options:
 
 #### Option B — Use a cloud AI (OpenAI or Anthropic)
 
-These require an API key from the provider. You pay for what you use.
+These require an account with the provider. You pay for what you use.
 
-**For OpenAI (ChatGPT/GPT-4):**
-1. Go to **https://platform.openai.com** and create an account
+Krythor supports two ways to connect — pick whichever suits you:
+
+**API Key** (works in the terminal setup wizard and the app)
+1. Create an account at **https://platform.openai.com** (OpenAI) or **https://console.anthropic.com** (Anthropic)
 2. Go to API Keys and create a new key
-3. In Krythor, add a provider, choose **openai**, paste your key
+3. In Krythor, add a provider, choose **openai** or **anthropic**, and paste your key
 
-**For Anthropic (Claude):**
-1. Go to **https://console.anthropic.com** and create an account
-2. Go to API Keys and create a new key
-3. In Krythor, add a provider, choose **anthropic**, paste your key
+**OAuth / in-app sign-in** (sign in with your browser — no key to copy-paste)
+1. In the Krythor dashboard, go to the **Models** tab
+2. Click **+ add provider**, choose **openai** or **anthropic**
+3. Select **Connect with OAuth** and follow the browser prompts
 
-> **Your API keys are stored encrypted on your computer.** They are never sent anywhere except directly to the AI provider when you make a request.
+> If you chose "Connect with OAuth later" during setup, you'll see a reminder banner in the Models tab — just click **Connect OAuth** to finish.
+
+> **Your credentials are stored encrypted on your computer.** They are never sent anywhere except directly to the AI provider when you make a request.
 
 ---
 
@@ -372,14 +377,14 @@ This is expected — the installer is currently unsigned. Click "More info" then
 
 ## 🧠 Supported Providers
 
-| Provider | Type | Cost | API Key Required |
-|----------|------|------|-----------------|
-| Ollama | Local | Free | No |
-| LM Studio | Local | Free | No |
-| llama-server (GGUF) | Local | Free | No |
-| OpenAI (GPT-4o, o1, etc.) | Cloud | Pay per use | Yes |
-| Anthropic (Claude) | Cloud | Pay per use | Yes |
-| Any OpenAI-compatible API | Cloud/Local | Varies | Optional |
+| Provider | Type | Cost | Auth |
+|----------|------|------|------|
+| Ollama | Local | Free | None required |
+| LM Studio | Local | Free | None required |
+| llama-server (GGUF) | Local | Free | None required |
+| OpenAI (GPT-4o, o1, etc.) | Cloud | Pay per use | API key or OAuth |
+| Anthropic (Claude) | Cloud | Pay per use | API key or OAuth |
+| Any OpenAI-compatible API | Cloud/Local | Varies | Optional API key |
 
 Krythor auto-detects Ollama and LM Studio on first launch.
 
@@ -453,6 +458,7 @@ To uninstall: remove the application folder (`~/.krythor`) and the data folder a
 * [x] Windows installer (Inno Setup)
 * [x] Transparent execution (selectionReason, fallbackOccurred in all run paths)
 * [x] One-line curl/PowerShell installers
+* [x] Dual-auth system (API key + OAuth) for cloud providers
 * [ ] Code signing (OV certificate — eliminates SmartScreen warning)
 * [ ] Auto-updater UI
 * [ ] macOS / Linux native installers
