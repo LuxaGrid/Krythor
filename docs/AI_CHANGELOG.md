@@ -1,3 +1,155 @@
+# AI Changelog — Pass 2026-03-21 (Batch 3: Remaining Gaps)
+
+**Model:** Claude Sonnet 4.6
+**Pass type:** Batch 3 — 9 feature items across control UI, gateway, launcher
+
+---
+
+## Summary (this pass)
+
+### ITEM 1: Models tab — Test + Enable/Disable buttons — DONE
+
+**Files:** `packages/control/src/components/ModelsPanel.tsx`, `packages/control/src/api.ts`
+
+- "Test" button per provider — calls `POST /api/providers/:id/test`, shows latency + pass/fail inline
+- "Enable/Disable" toggle per provider — calls `POST /api/providers/:id { isEnabled }` via `updateProviderMeta()`
+- Both results are shown inline without a page reload
+- Existing Add / Delete / Ping / Set Default / OAuth buttons preserved
+
+---
+
+### ITEM 2: Agents tab — no changes needed — ALREADY COMPLETE
+
+The Agents tab already had New / Edit / Delete / Run buttons fully wired end-to-end from a prior pass. No new code needed.
+
+---
+
+### ITEM 3: Memory tab improvements — DONE
+
+**Files:** `packages/control/src/components/MemoryPanel.tsx`, `packages/control/src/api.ts`
+
+- **Export** button — calls `GET /api/memory/export`, triggers JSON file download (`krythor-memory-export-<date>.json`)
+- **Bulk Prune** modal — filters: olderThan (ISO date), tag, source; calls `DELETE /api/memory?<filters>`; at least one filter required; pinned entries preserved
+- **Detailed stats** — `sizeEstimateBytes` shown in footer via `GET /api/memory/stats`
+- Search already existed; no change needed
+
+---
+
+### ITEM 4: Dashboard tab — DONE
+
+**Files:** `packages/control/src/components/DashboardPanel.tsx` (new), `packages/control/src/App.tsx`, `packages/control/src/api.ts`
+
+- New Dashboard tab (10th tab) using `GET /api/dashboard`
+- 8 stat cards: uptime, providerCount, modelCount, agentCount, memoryEntries, conversationCount, totalTokensUsed, activeWarnings
+- Active warnings rendered as amber alert blocks when present
+- Last heartbeat JSON shown when present
+- Auto-refreshes every 30 seconds; manual refresh button
+- No charting library — plain Tailwind card layout
+
+---
+
+### ITEM 5: Skills tab improvements — DONE
+
+**Files:** `packages/control/src/components/SkillsPanel.tsx`, `packages/control/src/api.ts`
+
+- Built-in skills loaded from `GET /api/skills/builtins` and shown in right panel when no user skill is selected; each has a **Run** button
+- **Run** button per user skill opens a `RunSkillDialog` modal — input textarea, calls `POST /api/skills/:id/run`, shows output inline
+- Built-in Run button shows an informational message (builtins have no run endpoint)
+
+---
+
+### ITEM 6: Local model discovery — DONE
+
+**Files:** `packages/gateway/src/routes/local-models.ts` (new), `packages/gateway/src/server.ts`, `packages/control/src/components/ModelsPanel.tsx`, `packages/control/src/api.ts`
+
+- `GET /api/local-models` — probes Ollama (`:11434/api/tags`), LM Studio (`:1234/v1/models`), and llama-server (`:8080/health`) with 2s timeouts each; returns `{ ollama, lmStudio, llamaServer }` with detected status and models list
+- "Discover local" button in Models tab header — shows detection panel; each detected server has a "pre-fill form →" shortcut that populates the Add Provider form
+
+---
+
+### ITEM 7: TUI improvements — DONE
+
+**File:** `start.js`
+
+- Command input line at the bottom of the TUI screen on every frame
+- Typed characters accumulate in a buffer; Backspace removes last char
+- Single-key shortcuts: `r` = refresh, `s` = status line, `h` = help, Escape = clear buffer
+- Any other text + Enter sends the input to `POST /api/command` and shows the response inline (reads auth token from `app-config.json` in the data dir)
+- `q` and Ctrl+C/Ctrl+D still quit immediately without needing Enter
+- Help screen lists all available commands
+
+---
+
+### ITEM 8: Integration test skeleton — DONE
+
+**File:** `packages/gateway/src/e2e.test.ts` (new)
+
+- 5 end-to-end tests that bind the Fastify server on real port 47299
+- Test 1: `/health` returns 200 via a real TCP `fetch()` to `127.0.0.1:47299`
+- Test 2: `GET /api/providers` returns an array when authenticated
+- Test 3: `GET /api/providers` returns 401 when no token is provided
+- Test 4: `GET /api/agents` returns an array when authenticated
+- Test 5: `POST /api/command` with no providers returns a clear error, not a crash
+- All 191 tests pass (186 existing + 5 new); no regressions
+
+---
+
+### ITEM 9: AI_CHANGELOG.md update — DONE
+
+This entry.
+
+---
+
+## Build Status (Batch 3)
+
+All changes compile cleanly with `pnpm build`.
+
+| Package | Tests | Delta |
+|---|---|---|
+| guard | 10 | 0 |
+| skills | 10 | 0 |
+| memory | 64 | 0 |
+| models | 49 | 0 |
+| core | 98 | 0 |
+| setup | 31 | 0 |
+| gateway | 191 | +5 (e2e.test.ts ×5) |
+| **Total** | **453** | **+5** |
+
+All 186 previous gateway tests pass. No regressions.
+
+---
+
+## Commits (this pass)
+
+1. `feat(gateway,control): ITEM 1+6 Models tab — Test/Enable/Disable buttons + local model discovery`
+2. `feat(control): ITEM 3 Memory tab — Export button, bulk Prune modal, detailed stats`
+3. `feat(control): ITEM 4 Dashboard tab — stat cards, auto-refresh every 30s`
+4. `feat(control): ITEM 5 Skills tab — built-in skills section + Run button per skill`
+5. `feat(launcher): ITEM 7 TUI command input line — commands + inline chat mode`
+6. `feat(gateway): ITEM 8 E2E integration test skeleton on real port 47299`
+7. `docs(changelog): ITEM 9 Batch 3 AI_CHANGELOG.md update`
+
+---
+
+## What Was Skipped and Why
+
+- **ITEM 2 (Agents tab)**: No changes needed — fully editable with New/Edit/Delete/Run from a prior pass.
+
+---
+
+## What Remains
+
+### From this batch
+All 9 items (ITEM 1–9) are complete (ITEM 2 was already done).
+
+### Future work
+- Code signing (OV certificate) — requires purchasing cert; out of scope for AI passes
+- Docker image — deferred
+- Live provider tests (`pnpm test:live`) — requires real credentials
+- npm global publish — bin field + publish workflow
+
+---
+
 # AI Changelog — Pass 2026-03-21 (Batch 2: Later Gaps)
 
 **Model:** Claude Sonnet 4.6
