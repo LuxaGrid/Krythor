@@ -1,3 +1,78 @@
+# AI Changelog — Pass 2026-03-21 (Phase 1)
+
+**Model:** Claude Sonnet 4.6
+**Pass type:** Phase 1 implementation — missing core parity
+
+---
+
+## Phase 1 Summary (this pass)
+
+### P1-1: New providers in setup wizard — DONE (prior pass)
+OpenRouter, Groq, Venice, Z.AI were already added to `PROVIDER_RECOMMENDATIONS`
+and `configureProvider()` in the previous pass. All four use `openai-compat`
+internally. Labels: "Best Multi-Model Access", "Fastest Inference", "Most Private",
+"Best for Google Models". Curated model lists and key URLs included.
+
+### P1-2: LM Studio + llama-server auto-detection — DONE (prior pass)
+`SystemProbe.ts` already probes both on default ports (1234, 8080) with 1500ms
+timeout; `lmStudioDetected`, `lmStudioBaseUrl`, `lmStudioModels`,
+`llamaServerDetected`, `llamaServerBaseUrl` are present on `ProbeResult`.
+`SetupWizard.ts` shows detected servers in `printProbe()` and has full
+`configureProvider()` branches for both (live model fetch for LM Studio,
+manual entry for llama-server).
+
+### P1-3: Workspace templates on first setup — DONE (prior pass)
+`Installer.installTemplates()` copies `docs/templates/*.md` to
+`<dataDir>/templates/` without overwriting user edits.
+Called from `SetupWizard.run()` on first setup. The four template files
+(AGENTS.md, SOUL.md, TOOLS.md, MEMORY.md) exist in `docs/templates/`.
+
+### P1-4: Improve krythor repair — DONE (this pass)
+Normalized all six repair checks to emit PASS / WARN / FAIL with consistent
+label-width layout and inline fix hints. Extended local-type allowlist in
+check 6 to include `openai-compat` so generic compat providers without
+credentials don't generate spurious warnings.
+
+### P1-5: OpenRouter live model fetch in wizard — DONE (prior pass)
+`configureProvider()` for openrouter fetches `https://openrouter.ai/api/v1/models`
+with a 5000ms timeout, extracts up to 50 model IDs, and falls back to the
+curated list on network failure.
+
+### P1-6: GET /api/templates route — DONE (this pass, updated)
+Route existed but returned `{name, path, content}`. Updated to return
+`{name, filename, size, description}` per spec. `description` is extracted
+from the first H1 heading or first non-empty line of each `.md` file.
+
+### P1-7: krythor status --json flag — DONE (prior pass)
+`runStatus()` in `start.js` checks for `--json` and emits the raw health
+payload as JSON to stdout. Exit 0 on success, exit 1 on error.
+
+### P1-8: AI_CHANGELOG.md update — DONE (this pass)
+This section.
+
+---
+
+## Build Status (Phase 1 close)
+
+All changes compile cleanly with `pnpm build`.
+All tests pass: 93 tests across 11 test files.
+
+---
+
+## What Remains for the Next Pass
+
+### Phase 2 (not yet started)
+- Exec tool (largest functional gap — agents cannot run local commands)
+- Hot config reload (fs.watch is done; SIGHUP-triggered reload is not)
+- Hybrid BM25+vector memory search
+- npm global publish (`bin` field + publish workflow)
+- SSH remote access documentation
+
+### Phase 1 items confirmed complete
+All 8 P1 items are implemented and tested. No regressions.
+
+---
+
 # AI Changelog — Pass 2026-03-21
 
 **Model:** Claude Sonnet 4.6
