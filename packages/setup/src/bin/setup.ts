@@ -228,6 +228,138 @@ if (args.includes('doctor')) {
     }
     console.log('');
 
+    // ── Migration integrity check ────────────────────────────────────────────
+    // Open the DB (read-only) and compare applied migrations against SQL files on disk.
+    // ITEM 7: Doctor — Migration integrity
+    console.log(fmt.head('Migrations'));
+    {
+      const { existsSync: existsSyncMig, readdirSync } = await import('fs');
+      const { join: joinMig } = await import('path');
+
+      const dbPath = joinMig(sys.dataDir, 'memory', 'memory.db');
+      if (!existsSyncMig(dbPath)) {
+        console.log(fmt.dim('  memory.db not found — migrations will run on first start'));
+      } else {
+        try {
+          // Dynamically load better-sqlite3 — it may not be available in all envs
+          const Database = (await import('better-sqlite3')).default;
+          const db = new Database(dbPath, { readonly: true });
+
+          // Read applied migrations from the tracking table
+          let appliedVersions: Set<number> = new Set();
+          try {
+            const rows = db.prepare('SELECT version FROM schema_migrations').all() as { version: number }[];
+            appliedVersions = new Set(rows.map((r: { version: number }) => r.version));
+          } catch { /* table may not exist yet */ }
+
+          // Find SQL migration files on disk — located in packages/memory/src/db/migrations/
+          // Walk up from __dirname to find the packages directory
+          const candidates = [
+            joinMig(__dirname, '..', '..', '..', '..', 'packages', 'memory', 'src', 'db', 'migrations'),
+            joinMig(__dirname, '..', '..', '..', 'memory', 'src', 'db', 'migrations'),
+            joinMig(__dirname, '..', '..', 'memory', 'dist', 'db', 'migrations'),
+          ];
+          let migrationsDir: string | undefined;
+          for (const c of candidates) {
+            if (existsSyncMig(c)) { migrationsDir = c; break; }
+          }
+
+          let expectedTotal = 0;
+          if (migrationsDir) {
+            try {
+              const files = readdirSync(migrationsDir).filter((f: string) => f.endsWith('.sql'));
+              expectedTotal = files.length;
+            } catch {}
+          }
+
+          const appliedCount = appliedVersions.size;
+
+          if (expectedTotal === 0) {
+            // Can't find migration files on disk — report applied count only
+            console.log(fmt.ok(`Migrations: ${appliedCount} applied`));
+            console.log(fmt.dim('  (migration SQL files not found — cannot verify total)'));
+          } else if (appliedCount >= expectedTotal) {
+            console.log(fmt.ok(`Migrations: ${appliedCount}/${expectedTotal} applied`));
+          } else {
+            console.log(fmt.warn(`Migrations: ${appliedCount}/${expectedTotal} applied — run: krythor repair`));
+            console.log(fmt.dim('  Missing migrations will be applied automatically on next gateway start.'));
+          }
+
+          db.close();
+        } catch (err) {
+          console.log(fmt.dim(`  Could not inspect migrations: ${err instanceof Error ? err.message : String(err)}`));
+        }
+      }
+    }
+    console.log('');
+
+    // ── Stale agent model references ─────────────────────────────────────────
+    // ITEM 9: Doctor — stale agent detection
+    // Check if any agent references a model that is not in any configured provider.
+    console.log(fmt.head('Agents — Model References'));
+    {
+      const { existsSync: existsSyncAgents, readFileSync: readFileSyncAgents } = await import('fs');
+      const { join: joinAgents } = await import('path');
+
+      const agentsPath = joinAgents(sys.configDir, 'agents.json');
+      const providersPath = joinAgents(sys.configDir, 'providers.json');
+
+      if (!existsSyncAgents(agentsPath) || !existsSyncAgents(providersPath)) {
+        console.log(fmt.dim('  Config not found — skipping stale agent check'));
+      } else {
+        try {
+          const rawAgents = JSON.parse(readFileSyncAgents(agentsPath, 'utf-8'));
+          const rawProviders = JSON.parse(readFileSyncAgents(providersPath, 'utf-8'));
+
+          const agentList = Array.isArray(rawAgents) ? rawAgents : [];
+          // Build a set of all known model IDs across all providers
+          let allModels: Set<string> = new Set();
+          try {
+            const providerArr = Array.isArray(rawProviders)
+              ? rawProviders
+              : (rawProviders?.providers ?? []);
+            for (const p of providerArr) {
+              if (p && Array.isArray(p.models)) {
+                for (const m of p.models) {
+                  if (typeof m === 'string') allModels.add(m);
+                }
+              }
+            }
+          } catch {}
+
+          if (allModels.size === 0) {
+            console.log(fmt.dim('  No models configured — cannot check agent model references'));
+          } else {
+            const staleAgents: Array<{ name: string; modelId: string }> = [];
+            for (const agent of agentList) {
+              if (!agent || typeof agent !== 'object') continue;
+              const modelId = (agent as Record<string, unknown>)['modelId'];
+              if (typeof modelId === 'string' && modelId.length > 0) {
+                if (!allModels.has(modelId)) {
+                  const name = typeof (agent as Record<string, unknown>)['name'] === 'string'
+                    ? (agent as Record<string, unknown>)['name'] as string
+                    : 'unknown';
+                  staleAgents.push({ name, modelId });
+                }
+              }
+            }
+
+            if (staleAgents.length === 0) {
+              console.log(fmt.ok(`All ${agentList.length} agent(s) reference valid models`));
+            } else {
+              for (const { name, modelId } of staleAgents) {
+                console.log(fmt.warn(`Agent '${name}' references model '${modelId}' which is not in any configured provider`));
+                console.log(fmt.dim('    Fix: update the agent\'s model in the Control UI → Agents tab'));
+              }
+            }
+          }
+        } catch (err) {
+          console.log(fmt.dim(`  Could not check agent model references: ${err instanceof Error ? err.message : String(err)}`));
+        }
+      }
+    }
+    console.log('');
+
     // ── Summary ─────────────────────────────────────────────────────────────
     console.log(fmt.head('Summary'));
     let criticalIssues = 0;
