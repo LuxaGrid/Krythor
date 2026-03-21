@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import type { MemoryEngine } from '@krythor/memory';
 import type { ModelEngine } from '@krythor/models';
+import type { ExecTool } from '../tools/ExecTool.js';
 import type {
   AgentDefinition,
   AgentRun,
@@ -10,6 +11,40 @@ import type {
 } from './types.js';
 
 type EventEmitter = (event: AgentEvent) => void;
+
+// ── Tool-call constants ───────────────────────────────────────────────────────
+
+/** Maximum number of tool-call iterations per run (prevents infinite loops). */
+const MAX_TOOL_CALL_ITERATIONS = 3;
+
+/** Regex that finds a JSON tool-call block anywhere in a model response. */
+const TOOL_CALL_RE = /\{[\s\S]*?"tool"\s*:\s*"exec"[\s\S]*?\}/;
+
+/**
+ * Attempt to extract a structured exec tool call from a model response.
+ * Returns null if no valid call is found.
+ *
+ * Expected format (embedded anywhere in the response text):
+ *   {"tool":"exec","command":"git","args":["status"]}
+ */
+function extractExecCall(response: string): { command: string; args: string[] } | null {
+  const match = response.match(TOOL_CALL_RE);
+  if (!match) return null;
+  try {
+    const parsed = JSON.parse(match[0]) as Record<string, unknown>;
+    if (
+      parsed['tool'] === 'exec' &&
+      typeof parsed['command'] === 'string' &&
+      parsed['command'].length > 0
+    ) {
+      const args = Array.isArray(parsed['args'])
+        ? (parsed['args'] as unknown[]).filter(a => typeof a === 'string').map(String)
+        : [];
+      return { command: parsed['command'] as string, args };
+    }
+  } catch { /* malformed JSON — ignore */ }
+  return null;
+}
 
 /**
  * Optional callback invoked after each completed or failed run.
@@ -68,6 +103,7 @@ export class AgentRunner {
     private readonly memory: MemoryEngine | null,
     private readonly models: ModelEngine | null,
     private readonly recordLearning?: LearningRecorder,
+    private readonly execTool?: ExecTool | null,
   ) {}
 
   // ── Private helpers ────────────────────────────────────────────────────────
@@ -129,6 +165,54 @@ export class AgentRunner {
     messages.push({ role: 'user', content: input.input, timestamp: Date.now() });
 
     return messages;
+  }
+
+  /**
+   * Execute a single tool-call loop iteration for the `run()` method.
+   * If the model response contains a structured exec call and an ExecTool is
+   * available, runs the command and appends a tool-result message to `messages`.
+   * Returns true if a tool call was handled (caller should do another model turn).
+   */
+  private async handleToolCall(
+    response: string,
+    messages: AgentMessage[],
+    agentId: string,
+    runId: string,
+    emit: EventEmitter,
+  ): Promise<boolean> {
+    if (!this.execTool) return false;
+    const call = extractExecCall(response);
+    if (!call) return false;
+
+    let toolResult: string;
+    try {
+      const result = await this.execTool.run(call.command, call.args, {}, 'agent', agentId);
+      toolResult = [
+        `Tool result for exec "${call.command} ${call.args.join(' ')}":`,
+        `Exit code: ${result.exitCode}`,
+        result.stdout ? `stdout:\n${result.stdout.slice(0, 4000)}` : '(no stdout)',
+        result.stderr ? `stderr:\n${result.stderr.slice(0, 1000)}` : '',
+      ].filter(Boolean).join('\n');
+    } catch (err) {
+      toolResult = `Tool exec failed: ${err instanceof Error ? err.message : String(err)}`;
+    }
+
+    const toolMsg: AgentMessage = {
+      role: 'user',
+      content: toolResult,
+      timestamp: Date.now(),
+    };
+    messages.push(toolMsg);
+
+    emit({
+      type: 'run:turn',
+      runId,
+      agentId,
+      payload: { turn: -1, message: toolMsg },
+      timestamp: Date.now(),
+    });
+
+    return true;
   }
 
   private shouldContinue(response: string): boolean {
@@ -242,7 +326,57 @@ export class AgentRunner {
         run.output = response.content;
         turn++;
 
-        if (!this.shouldContinue(response.content)) {
+        // ── Tool-call loop ────────────────────────────────────────────────
+        // If the model response contains a structured exec call, execute it
+        // (capped at MAX_TOOL_CALL_ITERATIONS to prevent runaway loops),
+        // then call the model again with the tool result injected.
+        let toolIteration = 0;
+        while (toolIteration < MAX_TOOL_CALL_ITERATIONS && !stopped) {
+          const lastMsg = messages[messages.length - 1];
+          if (!lastMsg || lastMsg.role !== 'assistant') break;
+          const handled = await this.handleToolCall(
+            lastMsg.content,
+            messages,
+            agent.id,
+            runId,
+            emit,
+          );
+          if (!handled) break;
+
+          // Call the model again with the tool result
+          const toolTurnSignal = withTimeout(controller.signal, INFERENCE_TIMEOUT_MS);
+          const toolResponse = await this.models.infer(
+            {
+              messages: messages.map(m => ({ role: m.role, content: m.content })),
+              model: effectiveModel,
+              providerId: agent.providerId,
+              temperature: agent.temperature,
+              maxTokens: agent.maxTokens,
+            },
+            { agentModelId: effectiveModel },
+            toolTurnSignal.signal,
+          );
+          toolTurnSignal.clear();
+
+          const toolAssistantMsg: AgentMessage = {
+            role: 'assistant',
+            content: toolResponse.content,
+            timestamp: Date.now(),
+          };
+          messages.push(toolAssistantMsg);
+          run.output = toolResponse.content;
+          emit({
+            type: 'run:turn',
+            runId,
+            agentId: agent.id,
+            payload: { turn, message: toolAssistantMsg },
+            timestamp: Date.now(),
+          });
+          toolIteration++;
+        }
+        // ── End tool-call loop ────────────────────────────────────────────
+
+        if (!this.shouldContinue(run.output ?? response.content)) {
           break;
         }
 

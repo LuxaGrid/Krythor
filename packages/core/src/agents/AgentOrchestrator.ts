@@ -3,6 +3,7 @@ import { join } from 'path';
 import { homedir } from 'os';
 import type { MemoryEngine } from '@krythor/memory';
 import type { ModelEngine } from '@krythor/models';
+import type { ExecTool } from '../tools/ExecTool.js';
 import { AgentRegistry } from './AgentRegistry.js';
 import { AgentRunner } from './AgentRunner.js';
 import type { LearningRecorder } from './AgentRunner.js';
@@ -69,11 +70,21 @@ export class AgentOrchestrator extends EventEmitter {
     private readonly models: ModelEngine | null,
     configDir?: string,
     recordLearning?: LearningRecorder,
+    execTool?: ExecTool | null,
   ) {
     super();
     const dir = configDir ?? getConfigDir();
     this.registry = new AgentRegistry(dir);
-    this.runner = new AgentRunner(memory, models, recordLearning);
+    this.runner = new AgentRunner(memory, models, recordLearning, execTool);
+  }
+
+  /**
+   * Wire in an ExecTool after construction (called from server.ts after both
+   * orchestrator and execTool are initialized). Replaces the runner instance
+   * so subsequent runs have access to exec capabilities.
+   */
+  setExecTool(execTool: ExecTool): void {
+    this.runner = new AgentRunner(this.memory, this.models, undefined, execTool);
   }
 
   // ── Agent CRUD ─────────────────────────────────────────────────────────────
