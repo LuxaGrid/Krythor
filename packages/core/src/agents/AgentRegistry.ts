@@ -31,6 +31,7 @@ export class AgentRegistry {
       temperature: input.temperature,
       maxTokens: input.maxTokens,
       tags: input.tags ?? [],
+      ...(input.allowedTools !== undefined && { allowedTools: input.allowedTools }),
       createdAt: now,
       updatedAt: now,
     };
@@ -55,6 +56,7 @@ export class AgentRegistry {
       ...(input.temperature !== undefined && { temperature: input.temperature }),
       ...(input.maxTokens !== undefined && { maxTokens: input.maxTokens }),
       ...(input.tags !== undefined && { tags: input.tags }),
+      ...(input.allowedTools !== undefined && { allowedTools: input.allowedTools === null ? undefined : input.allowedTools }),
       updatedAt: Date.now(),
     };
 

@@ -14,6 +14,12 @@ export interface AgentDefinition {
   temperature?: number;
   maxTokens?: number;
   tags: string[];
+  /**
+   * Optional allowlist of tool names this agent is permitted to call.
+   * When undefined or empty, all tools are allowed (default behaviour).
+   * Example: ["web_search", "web_fetch"]
+   */
+  allowedTools?: string[];
   createdAt: number;
   updatedAt: number;
 }
@@ -58,6 +64,7 @@ export interface CreateAgentInput {
   temperature?: number;
   maxTokens?: number;
   tags?: string[];
+  allowedTools?: string[];
 }
 
 export interface UpdateAgentInput {
@@ -71,6 +78,7 @@ export interface UpdateAgentInput {
   temperature?: number;
   maxTokens?: number;
   tags?: string[];
+  allowedTools?: string[] | null;
 }
 
 export interface RunAgentInput {
