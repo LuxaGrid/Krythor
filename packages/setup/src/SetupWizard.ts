@@ -89,7 +89,8 @@ export class SetupWizard {
     this.printProbe(sys);
 
     if (!sys.nodeVersionOk) {
-      console.log(fmt.err(`Node ${sys.nodeVersion} detected. Krythor requires Node 18+. Aborting.`));
+      console.log(fmt.err(`Node ${sys.nodeVersion} detected. Krythor requires Node 20+. Aborting.`));
+      console.log(fmt.dim('  Download Node.js 20 LTS at: https://nodejs.org'));
       process.exit(1);
     }
 
@@ -157,9 +158,24 @@ export class SetupWizard {
     });
 
     // 7. Done — print setup summary
-    console.log(fmt.head('Setup Complete'));
-    console.log(fmt.ok('Configuration saved to:  ' + sys.configDir));
-    console.log(fmt.ok('Data directory:          ' + sys.dataDir));
+    // Only print "Setup Complete" if a provider was actually configured.
+    // If the user skipped, print an honest partial-success message with a clear CTA.
+    const providerConfigured = providerType !== 'skip' && firstModel !== undefined;
+    if (providerConfigured) {
+      console.log(fmt.head('Setup Complete'));
+      console.log(fmt.ok('Configuration saved to:  ' + sys.configDir));
+      console.log(fmt.ok('Data directory:          ' + sys.dataDir));
+    } else {
+      console.log(fmt.head('Setup Incomplete'));
+      console.log(fmt.warn('No AI provider was configured.'));
+      console.log(fmt.dim('  Krythor will start but cannot run any AI tasks until you add a provider.'));
+      console.log(fmt.dim('  To add a provider:'));
+      console.log(fmt.dim('    1. Open the Control UI at http://127.0.0.1:47200'));
+      console.log(fmt.dim('    2. Go to the Models tab'));
+      console.log(fmt.dim('    3. Click "Add Provider" and paste your API key'));
+      console.log(fmt.dim('  Or run setup again:  pnpm setup'));
+      console.log(fmt.dim(`  Config saved to: ${sys.configDir}`));
+    }
     console.log('');
     console.log(fmt.dim('  What happens next:'));
     console.log(fmt.dim('    1. Krythor Gateway starts (or you can start it manually)'));
@@ -172,8 +188,8 @@ export class SetupWizard {
     console.log(fmt.dim('    pnpm setup        — re-run setup wizard'));
     console.log('');
 
-    // Recommendation-aware summary
-    if (providerType !== 'skip') {
+    // Recommendation-aware summary (only when a provider was actually configured)
+    if (providerConfigured) {
       const rec = PROVIDER_RECOMMENDATIONS[providerType];
       console.log(fmt.dim('  Setup summary:'));
       console.log(fmt.dim(`    Primary AI  : ${providerType}${rec?.recommendation_label ? ` (${rec.recommendation_label})` : ''}`));
