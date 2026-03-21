@@ -36,15 +36,18 @@ This is **AI you can operate**.
 
 ## ✨ Features
 
-* **Multi-model routing** — OpenAI, Anthropic, Ollama, LM Studio, GGUF (llama-server), and OpenAI-compatible APIs
-* **Automatic fallback** — seamless provider failover
+* **Multi-model routing** — OpenAI, Anthropic, Ollama, LM Studio, GGUF (llama-server), OpenRouter, Groq, Venice, and any OpenAI-compatible API
+* **Automatic fallback** — seamless provider failover with circuit breaker
 * **Dual-auth support** — connect cloud providers with an API key or via OAuth in the app — your choice
-* **Persistent memory** — semantic + keyword retrieval across sessions
-* **Agent system** — custom prompts, memory scope, and model preferences
+* **Persistent memory** — BM25 + semantic hybrid retrieval across sessions
+* **Agent system** — custom prompts, memory scope, and model preferences per agent
 * **Skills** — reusable task templates with structured routing hints
-* **Guard engine** — policy-based allow/deny control
+* **Guard engine** — policy-based allow/deny control per operation
+* **Tool system** — exec (local commands), web_search (DuckDuckGo), web_fetch (URL content)
 * **Transparent execution** — see exactly which model ran, why, and fallback behavior
-* **Heartbeat monitoring** — background provider health tracking
+* **Heartbeat monitoring** — background provider health tracking and anomaly detection
+* **Terminal dashboard** — `krythor tui` for a live status view without a browser
+* **Auto-update check** — notified at startup when a newer release is available
 * **Local-first** — all data stays on your machine
 
 ---
@@ -384,6 +387,70 @@ Krythor auto-detects Ollama and LM Studio on first launch.
 
 ---
 
+## 🔌 Quick API Reference
+
+All API endpoints are served at `http://127.0.0.1:47200`. Most require a Bearer token (auto-injected into the control UI, or found in `app-config.json`).
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/health` | Public | Status, version, provider/model/agent counts, data dirs |
+| GET | `/ready` | Public | Readiness check — 200 OK or 503 Not Ready |
+| POST | `/api/command` | Required | Send a command to the default agent |
+| GET | `/api/models` | Required | List all configured models |
+| GET | `/api/providers` | Required | List providers (safe summary — no secrets) |
+| POST | `/api/providers/:id/test` | Required | Test a provider with a minimal inference |
+| GET | `/api/agents` | Required | List all defined agents |
+| POST | `/api/agents` | Required | Create a new agent |
+| GET | `/api/memory` | Required | Search agent memory |
+| GET | `/api/tools` | Required | List available tools (exec, web_search, web_fetch) |
+| POST | `/api/tools/exec` | Required | Execute a local command (allowlist-checked) |
+| POST | `/api/tools/web_search` | Required | Search the web via DuckDuckGo |
+| POST | `/api/tools/web_fetch` | Required | Fetch a URL as plain text |
+| GET | `/api/skills` | Required | List registered skills |
+| GET | `/api/stats` | Required | Token usage for this session |
+| GET | `/api/conversations` | Required | List recent conversations |
+| POST | `/api/config/reload` | Required | Reload providers.json without restart |
+| GET | `/api/heartbeat/status` | Required | Heartbeat status and active warnings |
+| GET | `/api/templates` | Required | List workspace template files |
+
+---
+
+## 🛠️ Tools
+
+Krythor agents can use three built-in tools via a structured JSON call in their response:
+
+### exec — local command execution
+
+```json
+{"tool":"exec","command":"git","args":["status"]}
+```
+
+Runs an allowlisted local command. Default allowlist: `ls, pwd, echo, cat, grep, find, git, node, python, python3, npm, pnpm`. Guard-engine checked before execution.
+
+Direct API: `POST /api/tools/exec`
+
+### web_search — DuckDuckGo search
+
+```json
+{"tool":"web_search","query":"latest Node.js LTS release"}
+```
+
+Searches using the DuckDuckGo Instant Answer API. No API key required. Returns up to 10 results with title, URL, and snippet. Read-only — always allowed.
+
+Direct API: `POST /api/tools/web_search`
+
+### web_fetch — fetch a URL
+
+```json
+{"tool":"web_fetch","url":"https://nodejs.org/en/about/releases"}
+```
+
+Fetches a URL and returns plain text (HTML stripped). Content truncated at 10,000 characters. Read-only — always allowed.
+
+Direct API: `POST /api/tools/web_fetch`
+
+---
+
 ## 🏗️ Project Structure
 
 ```
@@ -447,19 +514,23 @@ To uninstall: remove the application folder (`~/.krythor`) and the data folder a
 ## 🗺️ Roadmap
 
 * [x] Local-first runtime
-* [x] Multi-provider model routing with automatic fallback
-* [x] Persistent memory system
-* [x] Agent system
+* [x] Multi-provider model routing with automatic fallback and circuit breaker
+* [x] Persistent memory system with BM25 + semantic hybrid search
+* [x] Agent system with tool-call loop (exec, web_search, web_fetch)
 * [x] Production hardening (crash recovery, structured logging, circuit breaker)
 * [x] Cross-platform distribution (Windows, macOS, Linux)
 * [x] Windows installer (Inno Setup)
 * [x] Transparent execution (selectionReason, fallbackOccurred in all run paths)
 * [x] One-line curl/PowerShell installers
 * [x] Dual-auth system (API key + OAuth) for cloud providers
+* [x] Guard engine (policy-based allow/deny per operation)
+* [x] Tool system (exec, web_search, web_fetch)
+* [x] Terminal dashboard (krythor tui)
+* [x] Auto-update check on startup
 * [ ] Code signing (OV certificate — eliminates SmartScreen warning)
-* [ ] Auto-updater UI
+* [ ] Auto-updater UI (download and replace in-place)
 * [ ] macOS / Linux native installers
-* [ ] Expanded observability
+* [ ] Docker image
 
 ---
 
