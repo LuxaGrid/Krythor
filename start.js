@@ -62,6 +62,57 @@ async function isPortInUse() {
   });
 }
 
+// ── krythor status ─────────────────────────────────────────────────────────
+// Quick health summary — hits /health and prints key metrics.
+// Exit 0 if gateway responds, exit 1 if not reachable.
+async function runStatus() {
+  const g = '\x1b[32m';
+  const y = '\x1b[33m';
+  const r = '\x1b[31m';
+  const d = '\x1b[2m';
+  const rs = '\x1b[0m';
+
+  process.stdout.write(`${d}  Checking gateway at http://${HOST}:${PORT}…${rs} `);
+  try {
+    const resp = await fetch(`http://${HOST}:${PORT}/health`, { signal: AbortSignal.timeout(2000) });
+    if (!resp.ok) {
+      console.log(`${r}FAIL${rs} (HTTP ${resp.status})`);
+      process.exit(1);
+    }
+    const data = await resp.json();
+    console.log(`${g}OK${rs}`);
+    console.log('');
+    console.log(`  ${d}Version${rs}        ${g}${data.version ?? '?'}${rs}`);
+    console.log(`  ${d}Node${rs}           ${data.nodeVersion ?? '?'}`);
+    console.log(`  ${d}Providers${rs}      ${data.models?.providerCount ?? 0}`);
+    console.log(`  ${d}Models${rs}         ${data.models?.modelCount ?? 0}`);
+    console.log(`  ${d}Agents${rs}         ${data.agents?.agentCount ?? 0}`);
+    console.log(`  ${d}Memory${rs}         ${data.memory?.entryCount ?? 0} entries`);
+    const embOk = data.memory?.embeddingDegraded === false;
+    console.log(`  ${d}Embedding${rs}      ${embOk ? `${g}active${rs} (${data.memory?.embeddingProvider ?? '?'})` : `${y}keyword-only${rs}`}`);
+    const hb = data.heartbeat;
+    console.log(`  ${d}Heartbeat${rs}      ${hb?.enabled ? `${g}enabled${rs}` : `${y}disabled${rs}`}${hb?.lastRun ? ` — last run: ${hb.lastRun}` : ''}`);
+    if (data.firstRun) {
+      console.log('');
+      console.log(`  ${y}⚠  First run — no providers configured.${rs}`);
+      console.log(`  ${d}  Run: krythor setup${rs}`);
+    }
+    if (data.dataDir) {
+      console.log('');
+      console.log(`  ${d}Data dir:   ${data.dataDir}${rs}`);
+      console.log(`  ${d}Config dir: ${data.configDir}${rs}`);
+    }
+    console.log('');
+    process.exit(0);
+  } catch {
+    console.log(`${r}not running${rs}`);
+    console.log('');
+    console.log(`  ${d}Start with: krythor${rs}`);
+    console.log('');
+    process.exit(1);
+  }
+}
+
 // ── krythor repair ─────────────────────────────────────────────────────────
 // Verify that all runtime components are healthy:
 //   1. Bundled Node runtime exists and executes
@@ -152,8 +203,13 @@ if (process.argv.includes('setup')) {
   process.exit(0);
 }
 
-// ── Allow `node start.js repair` to run the health check ──────────────────
-if (process.argv.includes('repair')) {
+// ── Allow `node start.js status` as a quick health summary ────────────────
+if (process.argv.includes('status')) {
+  runStatus().catch(e => {
+    console.error('\x1b[31mFatal:\x1b[0m', e.message);
+    process.exit(1);
+  });
+} else if (process.argv.includes('repair')) {
   runRepair().catch(e => {
     console.error('\x1b[31mFatal:\x1b[0m', e.message);
     process.exit(1);
@@ -222,12 +278,14 @@ async function main() {
     console.log(`  Open \x1b[36mhttp://${HOST}:${PORT}\x1b[0m in your browser to get started.`);
     console.log(`  First time? Run the setup wizard:  krythor setup`);
     console.log('');
-    // Show data location so users know where their data lives
-    const dataDir = process.platform === 'win32'
-      ? (process.env['LOCALAPPDATA'] || require('path').join(require('os').homedir(), 'AppData', 'Local')) + '\\Krythor'
-      : process.platform === 'darwin'
-        ? require('path').join(require('os').homedir(), 'Library', 'Application Support', 'Krythor')
-        : require('path').join(require('os').homedir(), '.local', 'share', 'krythor');
+    // Show data location so users know where their data lives.
+    // Respects KRYTHOR_DATA_DIR override if set.
+    const dataDir = process.env['KRYTHOR_DATA_DIR'] ||
+      (process.platform === 'win32'
+        ? (process.env['LOCALAPPDATA'] || require('path').join(require('os').homedir(), 'AppData', 'Local')) + '\\Krythor'
+        : process.platform === 'darwin'
+          ? require('path').join(require('os').homedir(), 'Library', 'Application Support', 'Krythor')
+          : require('path').join(require('os').homedir(), '.local', 'share', 'krythor'));
     console.log(`\x1b[2m  Control UI:  http://${HOST}:${PORT}\x1b[0m`);
     console.log(`\x1b[2m  Your data:   ${dataDir}\x1b[0m`);
     console.log(`\x1b[2m  Diagnostics: krythor doctor\x1b[0m`);
