@@ -3,6 +3,7 @@ import type { MemoryEngine, CreateMemoryInput, UpdateMemoryInput, MemoryScope } 
 import type { ModelEngine } from '@krythor/models';
 import type { GuardEngine } from '@krythor/guard';
 import { sendError } from '../errors.js';
+import { createHash } from 'crypto';
 
 export function registerMemoryRoutes(app: FastifyInstance, memory: MemoryEngine, models?: ModelEngine, guard?: GuardEngine): void {
 
@@ -27,13 +28,136 @@ export function registerMemoryRoutes(app: FastifyInstance, memory: MemoryEngine,
     return reply.send(results);
   });
 
-  // GET /api/memory/stats
+  // GET /api/memory/stats — total entries, oldest/newest date, size estimate
   app.get('/api/memory/stats', async (_req, reply) => {
     if (guard) {
       const verdict = guard.check({ operation: 'memory:read', source: 'user' });
       if (!verdict.allowed) return reply.code(403).send({ error: 'GUARD_DENIED', reason: verdict.reason });
     }
-    return reply.send(memory.stats());
+    const base = memory.stats();
+    // Retrieve all entries for date range + size estimate (low overhead — metadata only)
+    const all = memory.store.queryEntries({ limit: 1_000_000 });
+    const oldest = all.length > 0
+      ? new Date(Math.min(...all.map(e => e.created_at))).toISOString()
+      : null;
+    const newest = all.length > 0
+      ? new Date(Math.max(...all.map(e => e.created_at))).toISOString()
+      : null;
+    // Size estimate: sum of title + content byte lengths
+    const sizeBytes = all.reduce((sum, e) => sum + Buffer.byteLength(e.title + e.content, 'utf-8'), 0);
+    return reply.send({
+      ...base,
+      oldest,
+      newest,
+      sizeEstimateBytes: sizeBytes,
+    });
+  });
+
+  // GET /api/memory/export — export all entries as JSON array (auth required)
+  app.get('/api/memory/export', async (_req, reply) => {
+    if (guard) {
+      const verdict = guard.check({ operation: 'memory:read', source: 'user' });
+      if (!verdict.allowed) return reply.code(403).send({ error: 'GUARD_DENIED', reason: verdict.reason });
+    }
+    const all = memory.store.queryEntries({ limit: 1_000_000 });
+    const exported = all.map(e => ({
+      id:        e.id,
+      content:   e.content,
+      tags:      memory.store.getTagsForEntry(e.id),
+      source:    e.source,
+      createdAt: new Date(e.created_at).toISOString(),
+      updatedAt: new Date(e.last_used).toISOString(),
+      // Extra fields preserved for round-trip fidelity
+      title:       e.title,
+      scope:       e.scope,
+      scope_id:    e.scope_id,
+      importance:  e.importance,
+      pinned:      e.pinned,
+    }));
+    return reply
+      .header('Content-Disposition', 'attachment; filename="krythor-memory-export.json"')
+      .send(exported);
+  });
+
+  // POST /api/memory/import — import memory entries, no duplicates by content hash (auth required)
+  app.post('/api/memory/import', {
+    config: { rateLimit: { max: 5, timeWindow: 60_000 } },
+    schema: {
+      body: {
+        type: 'array',
+        items: {
+          type: 'object',
+          required: ['content', 'source'],
+          properties: {
+            id:        { type: 'string' },
+            content:   { type: 'string', minLength: 1, maxLength: 500000 },
+            tags:      { type: 'array', items: { type: 'string' } },
+            source:    { type: 'string' },
+            createdAt: { type: 'string' },
+            updatedAt: { type: 'string' },
+            title:     { type: 'string' },
+            scope:     { type: 'string', enum: ['session', 'user', 'agent', 'workspace', 'skill'] },
+            scope_id:  { type: 'string' },
+            importance:{ type: 'number', minimum: 0, maximum: 1 },
+            pinned:    { type: 'boolean' },
+          },
+          additionalProperties: false,
+        },
+      },
+    },
+  }, async (req, reply) => {
+    if (guard) {
+      const verdict = guard.check({ operation: 'memory:write', source: 'user' });
+      if (!verdict.allowed) return reply.code(403).send({ error: 'GUARD_DENIED', reason: verdict.reason });
+    }
+
+    const items = req.body as Array<{
+      id?: string;
+      content: string;
+      tags?: string[];
+      source: string;
+      createdAt?: string;
+      updatedAt?: string;
+      title?: string;
+      scope?: string;
+      scope_id?: string;
+      importance?: number;
+      pinned?: boolean;
+    }>;
+
+    // Build content-hash set from existing entries to detect duplicates
+    const existingEntries = memory.store.queryEntries({ limit: 1_000_000 });
+    const existingHashes = new Set(
+      existingEntries.map(e => createHash('sha256').update(e.content).digest('hex'))
+    );
+
+    let imported = 0;
+    let skipped = 0;
+
+    for (const item of items) {
+      const contentHash = createHash('sha256').update(item.content).digest('hex');
+      if (existingHashes.has(contentHash)) {
+        skipped++;
+        continue;
+      }
+      existingHashes.add(contentHash); // prevent duplicates within the import batch too
+      try {
+        memory.create({
+          title:      item.title ?? item.content.slice(0, 80),
+          content:    item.content,
+          scope:      (item.scope as MemoryScope) ?? 'user',
+          scope_id:   item.scope_id,
+          source:     item.source,
+          importance: item.importance ?? 0.5,
+          tags:       item.tags ?? [],
+        });
+        imported++;
+      } catch {
+        skipped++;
+      }
+    }
+
+    return reply.send({ imported, skipped, total: items.length });
   });
 
   // GET /api/memory/:id
@@ -98,6 +222,53 @@ export function registerMemoryRoutes(app: FastifyInstance, memory: MemoryEngine,
     if (!existing) return reply.code(404).send({ error: 'Not found' });
     const updated = memory.update(req.params.id, req.body as UpdateMemoryInput);
     return reply.send(updated);
+  });
+
+  // DELETE /api/memory — bulk delete with query params: olderThan=<ISO date>, tag=<string>, source=<string>
+  // At least one filter is required to prevent accidental full wipes.
+  app.delete('/api/memory', async (req, reply) => {
+    if (guard) {
+      const verdict = guard.check({ operation: 'memory:write', source: 'user' });
+      if (!verdict.allowed) return reply.code(403).send({ error: 'GUARD_DENIED', reason: verdict.reason });
+    }
+
+    const q = req.query as Record<string, string>;
+    const { olderThan, tag, source } = q;
+
+    if (!olderThan && !tag && !source) {
+      return reply.code(400).send({
+        error: 'MISSING_FILTER',
+        message: 'At least one filter is required: olderThan, tag, or source',
+      });
+    }
+
+    // Parse olderThan as ISO date → ms timestamp
+    let olderThanMs: number | undefined;
+    if (olderThan) {
+      const ts = Date.parse(olderThan);
+      if (isNaN(ts)) {
+        return reply.code(400).send({ error: 'INVALID_DATE', message: 'olderThan must be a valid ISO date string' });
+      }
+      olderThanMs = ts;
+    }
+
+    // Query candidates matching the filters
+    const candidates = memory.store.queryEntries({
+      ...(tag    && { tags: [tag] }),
+      limit: 1_000_000,
+    });
+
+    let deleted = 0;
+    for (const entry of candidates) {
+      const matchesOlderThan = olderThanMs ? entry.created_at < olderThanMs : true;
+      const matchesSource    = source      ? entry.source === source         : true;
+      if (matchesOlderThan && matchesSource) {
+        memory.delete(entry.id);
+        deleted++;
+      }
+    }
+
+    return reply.send({ deleted });
   });
 
   // DELETE /api/memory/:id
