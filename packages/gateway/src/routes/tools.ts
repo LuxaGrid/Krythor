@@ -1,16 +1,22 @@
 import type { FastifyInstance } from 'fastify';
 import type { GuardEngine } from '@krythor/guard';
-import { ExecTool, ExecDeniedError, ExecTimeoutError } from '@krythor/core';
+import { ExecTool, ExecDeniedError, ExecTimeoutError, WebSearchTool, WebFetchTool, TOOL_REGISTRY } from '@krythor/core';
 import { sendError } from '../errors.js';
 import { logger } from '../logger.js';
 
 // ─── Tools routes ─────────────────────────────────────────────────────────────
 //
-// GET  /api/tools          — list available tool info (exec tool + allowlist)
-// POST /api/tools/exec     — execute a command (guard-checked, allowlist-checked)
+// GET  /api/tools               — list tool registry (exec + web_search + web_fetch)
+// POST /api/tools/exec          — execute a command (guard-checked, allowlist-checked)
+// POST /api/tools/web_search    — search the web via DuckDuckGo
+// POST /api/tools/web_fetch     — fetch a URL and return plain text
 //
 // All routes require auth (handled by the global preHandler in server.ts).
 //
+
+// Singleton instances for the read-only tools (stateless, safe to share)
+const webSearchTool = new WebSearchTool();
+const webFetchTool  = new WebFetchTool();
 
 export function registerToolRoutes(
   app: FastifyInstance,
@@ -18,20 +24,28 @@ export function registerToolRoutes(
   execTool: ExecTool,
 ): void {
 
-  // GET /api/tools — describe available tools
+  // GET /api/tools — full tool registry
   app.get('/api/tools', async (_req, reply) => {
-    return reply.send({
-      tools: [
-        {
-          name: 'exec',
-          description: 'Execute a local command. Commands must be in the allowlist.',
-          allowlist: execTool.getAllowlist(),
+    // Enrich exec entry with the live allowlist from the execTool instance
+    const tools = TOOL_REGISTRY.map(entry => {
+      if (entry.name === 'exec') {
+        return {
+          ...entry,
+          allowlist:        execTool.getAllowlist(),
           defaultTimeoutMs: 30_000,
-          maxTimeoutMs: 300_000,
-          endpoint: 'POST /api/tools/exec',
-        },
-      ],
+          maxTimeoutMs:     300_000,
+          endpoint:         'POST /api/tools/exec',
+        };
+      }
+      if (entry.name === 'web_search') {
+        return { ...entry, timeoutMs: 5_000, endpoint: 'POST /api/tools/web_search' };
+      }
+      if (entry.name === 'web_fetch') {
+        return { ...entry, timeoutMs: 8_000, maxContentChars: 10_000, endpoint: 'POST /api/tools/web_fetch' };
+      }
+      return entry;
     });
+    return reply.send({ tools });
   });
 
   // POST /api/tools/exec — execute a command
@@ -96,6 +110,81 @@ export function registerToolRoutes(
       const message = err instanceof Error ? err.message : 'Exec failed';
       logger.warn('Exec tool: command failed', { command, error: message, requestId: req.id });
       return sendError(reply, 500, 'EXEC_FAILED', message);
+    }
+  });
+
+  // POST /api/tools/web_search — search via DuckDuckGo Instant Answer API
+  app.post('/api/tools/web_search', {
+    config: {
+      rateLimit: { max: 60, timeWindow: 60_000 },
+    },
+    schema: {
+      body: {
+        type: 'object',
+        required: ['query'],
+        properties: {
+          query: { type: 'string', minLength: 1, maxLength: 500 },
+        },
+        additionalProperties: false,
+      },
+    },
+  }, async (req, reply) => {
+    const { query } = req.body as { query: string };
+
+    try {
+      const result = await webSearchTool.search(query);
+      logger.info('Web search tool: search completed', {
+        query,
+        resultCount: result.results.length,
+        requestId: req.id,
+      });
+      return reply.send(result);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Web search failed';
+      logger.warn('Web search tool: search failed', { query, error: message, requestId: req.id });
+      return sendError(reply, 502, 'WEB_SEARCH_FAILED', message,
+        'The DuckDuckGo API did not respond. Try again shortly.');
+    }
+  });
+
+  // POST /api/tools/web_fetch — fetch a URL and return plain text
+  app.post('/api/tools/web_fetch', {
+    config: {
+      rateLimit: { max: 30, timeWindow: 60_000 },
+    },
+    schema: {
+      body: {
+        type: 'object',
+        required: ['url'],
+        properties: {
+          url: { type: 'string', minLength: 7, maxLength: 2048 },
+        },
+        additionalProperties: false,
+      },
+    },
+  }, async (req, reply) => {
+    const { url } = req.body as { url: string };
+
+    try {
+      const result = await webFetchTool.fetch(url);
+      logger.info('Web fetch tool: fetch completed', {
+        url,
+        contentLength: result.contentLength,
+        truncated: result.truncated,
+        requestId: req.id,
+      });
+      return reply.send(result);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Web fetch failed';
+      logger.warn('Web fetch tool: fetch failed', { url, error: message, requestId: req.id });
+
+      // Unsupported scheme is a client error (400), not a gateway error (502)
+      if (message.includes('Unsupported URL scheme')) {
+        return sendError(reply, 400, 'INVALID_URL', message,
+          'Only http:// and https:// URLs are supported.');
+      }
+      return sendError(reply, 502, 'WEB_FETCH_FAILED', message,
+        'The URL could not be fetched. Check the URL or try again shortly.');
     }
   });
 }

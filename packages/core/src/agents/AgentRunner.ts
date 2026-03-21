@@ -2,6 +2,8 @@ import { randomUUID } from 'crypto';
 import type { MemoryEngine } from '@krythor/memory';
 import type { ModelEngine } from '@krythor/models';
 import type { ExecTool } from '../tools/ExecTool.js';
+import { WebSearchTool } from '../tools/WebSearchTool.js';
+import { WebFetchTool } from '../tools/WebFetchTool.js';
 import type {
   AgentDefinition,
   AgentRun,
@@ -18,33 +20,52 @@ type EventEmitter = (event: AgentEvent) => void;
 const MAX_TOOL_CALL_ITERATIONS = 3;
 
 /** Regex that finds a JSON tool-call block anywhere in a model response. */
-const TOOL_CALL_RE = /\{[\s\S]*?"tool"\s*:\s*"exec"[\s\S]*?\}/;
+const TOOL_CALL_RE = /\{[\s\S]*?"tool"\s*:\s*"(?:exec|web_search|web_fetch)"[\s\S]*?\}/;
+
+// ── Tool-call extraction types ────────────────────────────────────────────────
+
+type ExecCall       = { tool: 'exec';       command: string; args: string[] };
+type WebSearchCall  = { tool: 'web_search'; query: string };
+type WebFetchCall   = { tool: 'web_fetch';  url: string };
+type AnyToolCall    = ExecCall | WebSearchCall | WebFetchCall;
 
 /**
- * Attempt to extract a structured exec tool call from a model response.
+ * Attempt to extract a structured tool call from a model response.
  * Returns null if no valid call is found.
  *
- * Expected format (embedded anywhere in the response text):
+ * Supported formats:
  *   {"tool":"exec","command":"git","args":["status"]}
+ *   {"tool":"web_search","query":"latest Node.js release"}
+ *   {"tool":"web_fetch","url":"https://example.com"}
  */
-function extractExecCall(response: string): { command: string; args: string[] } | null {
+function extractToolCall(response: string): AnyToolCall | null {
   const match = response.match(TOOL_CALL_RE);
   if (!match) return null;
   try {
     const parsed = JSON.parse(match[0]) as Record<string, unknown>;
-    if (
-      parsed['tool'] === 'exec' &&
-      typeof parsed['command'] === 'string' &&
-      parsed['command'].length > 0
-    ) {
+    const tool = parsed['tool'];
+
+    if (tool === 'exec' && typeof parsed['command'] === 'string' && parsed['command'].length > 0) {
       const args = Array.isArray(parsed['args'])
         ? (parsed['args'] as unknown[]).filter(a => typeof a === 'string').map(String)
         : [];
-      return { command: parsed['command'] as string, args };
+      return { tool: 'exec', command: parsed['command'] as string, args };
+    }
+
+    if (tool === 'web_search' && typeof parsed['query'] === 'string' && parsed['query'].length > 0) {
+      return { tool: 'web_search', query: parsed['query'] as string };
+    }
+
+    if (tool === 'web_fetch' && typeof parsed['url'] === 'string' && parsed['url'].length > 0) {
+      return { tool: 'web_fetch', url: parsed['url'] as string };
     }
   } catch { /* malformed JSON — ignore */ }
   return null;
 }
+
+// Singleton tool instances — read-only, stateless, safe to share
+const webSearchTool = new WebSearchTool();
+const webFetchTool  = new WebFetchTool();
 
 /**
  * Optional callback invoked after each completed or failed run.
@@ -169,8 +190,8 @@ export class AgentRunner {
 
   /**
    * Execute a single tool-call loop iteration for the `run()` method.
-   * If the model response contains a structured exec call and an ExecTool is
-   * available, runs the command and appends a tool-result message to `messages`.
+   * Detects exec, web_search, and web_fetch tool calls in the model response,
+   * executes the appropriate tool, and appends the result as a user message.
    * Returns true if a tool call was handled (caller should do another model turn).
    */
   private async handleToolCall(
@@ -180,21 +201,60 @@ export class AgentRunner {
     runId: string,
     emit: EventEmitter,
   ): Promise<boolean> {
-    if (!this.execTool) return false;
-    const call = extractExecCall(response);
+    const call = extractToolCall(response);
     if (!call) return false;
 
     let toolResult: string;
-    try {
-      const result = await this.execTool.run(call.command, call.args, {}, 'agent', agentId);
-      toolResult = [
-        `Tool result for exec "${call.command} ${call.args.join(' ')}":`,
-        `Exit code: ${result.exitCode}`,
-        result.stdout ? `stdout:\n${result.stdout.slice(0, 4000)}` : '(no stdout)',
-        result.stderr ? `stderr:\n${result.stderr.slice(0, 1000)}` : '',
-      ].filter(Boolean).join('\n');
-    } catch (err) {
-      toolResult = `Tool exec failed: ${err instanceof Error ? err.message : String(err)}`;
+
+    if (call.tool === 'exec') {
+      // When ExecTool is not wired in, treat the tool-call JSON as plain text
+      // (backward-compatible: callers that don't provide ExecTool see no change)
+      if (!this.execTool) return false;
+      {
+        try {
+          const result = await this.execTool.run(call.command, call.args, {}, 'agent', agentId);
+          toolResult = [
+            `Tool result for exec "${call.command} ${call.args.join(' ')}":`,
+            `Exit code: ${result.exitCode}`,
+            result.stdout ? `stdout:\n${result.stdout.slice(0, 4000)}` : '(no stdout)',
+            result.stderr ? `stderr:\n${result.stderr.slice(0, 1000)}` : '',
+          ].filter(Boolean).join('\n');
+        } catch (err) {
+          toolResult = `Tool exec failed: ${err instanceof Error ? err.message : String(err)}`;
+        }
+      }
+    } else if (call.tool === 'web_search') {
+      try {
+        const result = await webSearchTool.search(call.query);
+        if (result.results.length === 0) {
+          toolResult = `Web search for "${call.query}" returned no results.`;
+        } else {
+          toolResult = [
+            `Web search results for "${call.query}" (source: duckduckgo):`,
+            ...result.results.map((r, i) =>
+              `${i + 1}. ${r.title}\n   URL: ${r.url}\n   ${r.snippet}`,
+            ),
+          ].join('\n\n');
+        }
+      } catch (err) {
+        toolResult = `Tool web_search failed: ${err instanceof Error ? err.message : String(err)}`;
+      }
+    } else if (call.tool === 'web_fetch') {
+      try {
+        const result = await webFetchTool.fetch(call.url);
+        toolResult = [
+          `Web fetch result for ${call.url}:`,
+          result.truncated
+            ? `(content truncated at ${result.content.length} chars — original: ${result.contentLength} chars)`
+            : `(${result.contentLength} chars)`,
+          '',
+          result.content,
+        ].join('\n');
+      } catch (err) {
+        toolResult = `Tool web_fetch failed: ${err instanceof Error ? err.message : String(err)}`;
+      }
+    } else {
+      return false;
     }
 
     const toolMsg: AgentMessage = {
