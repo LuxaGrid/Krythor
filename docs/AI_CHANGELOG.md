@@ -1,3 +1,183 @@
+# AI Changelog — Pass 2026-03-21 (Batch 2: Later Gaps)
+
+**Model:** Claude Sonnet 4.6
+**Pass type:** Batch 2 — 8 feature items + changelog across models, memory, core, gateway
+
+---
+
+## Summary (this pass)
+
+### ITEM 1: Provider priority ordering + per-provider retry config — DONE
+
+**Files:** `packages/models/src/types.ts`, `packages/models/src/config/validate.ts`, `packages/models/src/ModelRouter.ts`, `packages/gateway/src/routes/providers.ts`
+
+- Added `priority?: number` (default 0) and `maxRetries?: number` (default 2) to `ProviderConfig`
+- `validateProviderConfig()` parses both new fields; `maxRetries` is clamped to non-negative integer
+- `ModelRouter.resolve()` and `resolveExcluding()` sort providers by `priority` descending; ties broken by default-provider flag
+- `inferWithRetry()` reads `cfg.maxRetries` per provider instead of a single global constant
+- `GET /api/providers` response now includes `priority` and `maxRetries` fields
+- New `POST /api/providers/:id` endpoint — accepts `{ priority?, maxRetries?, isEnabled?, isDefault? }`, returns updated provider summary, 404 for unknown provider, 400 for empty body
+
+Tests: 3 new tests in `providers.item1.test.ts` (fields present in GET, 404, 400)
+
+---
+
+### ITEM 2: Memory export/import — DONE
+
+**File:** `packages/gateway/src/routes/memory.ts`
+
+- `GET /api/memory/export` — returns all memory entries as a JSON array with `{ id, content, tags, source, createdAt, updatedAt }`
+- `POST /api/memory/import` — accepts array of entries; deduplicates by SHA-256 hash of content; rejects entries with empty content; returns `{ imported, skipped, total }`
+- Import uses `crypto.createHash('sha256')` from Node built-ins — no external deps
+
+Tests: 5 new tests in `memory.export.test.ts` (200, array shape, required fields, import counts, dedup skips duplicate)
+
+---
+
+### ITEM 3: Memory pruning controls — DONE
+
+**File:** `packages/gateway/src/routes/memory.ts`
+
+- `DELETE /api/memory` — bulk delete with query filters: `olderThan` (ISO date string), `tag`, `source`; at least one filter required (400 otherwise)
+- Invalid `olderThan` date format returns 400
+- `GET /api/memory/stats` enhanced to include `oldest` (ISO string or null), `newest` (ISO string or null), `sizeEstimateBytes` (number)
+
+Tests: 4 new tests in `memory.export.test.ts` (missing filter=400, invalid date=400, valid source filter=200, stats shape has oldest/newest/sizeEstimateBytes)
+
+---
+
+### ITEM 4: Session naming and pinning — DONE
+
+**Files:** `packages/memory/src/db/migrations/006_conversation_name_pin.sql` (new), `packages/memory/src/db/ConversationStore.ts`, `packages/gateway/src/routes/conversations.ts`
+
+- Migration 006: `ALTER TABLE conversations ADD COLUMN name TEXT`, `ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0`, index on `(pinned DESC, updated_at DESC)`
+- `Conversation` interface gains `name?: string | null` and `pinned: boolean`
+- `listConversations()` now orders by `pinned DESC, updated_at DESC, id DESC`
+- New `updateConversation(id, {name?, pinned?})` method on `ConversationStore`
+- `PATCH /api/conversations/:id` extended to accept `name` (string | null) and `pinned` (boolean); changed `required: ['title']` to `minProperties: 1`
+
+Tests: 5 new tests in `conversations.item4.test.ts` (set name, set pinned, 404 for nonexistent, 400 for empty body, pinned conversations appear first in list)
+
+---
+
+### ITEM 5: Agent chaining/handoff — DONE
+
+**Files:** `packages/core/src/agents/AgentRunner.ts`, `packages/core/src/agents/AgentOrchestrator.ts`, `packages/gateway/src/routes/agents.ts`
+
+- `AgentRunner` detects `{"handoff":"<agentId>","message":"..."}` directive in model responses
+- Handoffs dispatched via `HandoffResolver` callback (closure from `AgentOrchestrator`) — no circular dependency
+- Capped at `MAX_HANDOFFS = 3`
+- `TOOL_CALL_RE` broadened to match any tool name (supports custom tools)
+- `GET /api/agents/:id/run?message=<text>` — runs agent, returns `{ output, modelUsed, status, runId }`
+- `AgentOrchestrator.rebuildRunner()` preserves all resolver wiring across `setExecTool()` calls
+
+Tests: 2 new tests in `agents.item5.test.ts` (404 for nonexistent agent, 400 when message missing)
+
+---
+
+### ITEM 6: User-defined tools (webhook type) — DONE
+
+**Files:** `packages/core/src/tools/WebhookTool.ts` (new), `packages/core/src/tools/CustomToolStore.ts` (new), `packages/gateway/src/routes/tools.custom.ts` (new), `packages/gateway/src/server.ts`
+
+- `WebhookTool.run(tool, input)` — POSTs agent input to configured URL with optional custom headers and body template; 10s timeout; returns response text
+- `CustomToolStore` — persists tools to `<configDir>/custom-tools.json`; methods: `list()`, `get(name)`, `add(tool)`, `remove(name)`; uses `atomicWriteJSON` for safe writes
+- `GET /api/tools/custom` — list all user-defined tools
+- `POST /api/tools/custom` — register new tool (201)
+- `DELETE /api/tools/custom/:name` — remove tool (204 or 404)
+- `CustomToolDispatcher` callback wired into `AgentOrchestrator` — dispatches custom tool calls without circular deps
+
+Tests: 3 new tests in `tools.custom.test.ts` (GET returns array, POST creates tool, DELETE 204/404)
+
+---
+
+### ITEM 7: Tool permission scoping per agent — DONE
+
+**Files:** `packages/core/src/agents/types.ts`, `packages/core/src/agents/AgentRegistry.ts`, `packages/core/src/agents/AgentRunner.ts`, `packages/gateway/src/routes/agents.ts`
+
+- `AgentDefinition` and `CreateAgentInput` gain `allowedTools?: string[]`
+- `UpdateAgentInput` gains `allowedTools?: string[] | null` (null clears to unrestricted)
+- `AgentRegistry.create()` persists `allowedTools` when provided
+- `AgentRegistry.update()` handles null (clear) and array (set) cases
+- `AgentRunner.handleToolCall()` checks `allowedTools` before execution — returns denial message when tool not permitted
+- `POST /api/agents` schema extended with `allowedTools` array field
+- `PATCH /api/agents/:id` schema extended with `allowedTools` (array or null)
+
+Tests: 3 new tests in `agents.item7.test.ts` (create with allowedTools, PATCH to update, PATCH null to clear)
+
+---
+
+### ITEM 8: Dashboard improvements — DONE
+
+**Files:** `packages/gateway/src/routes/dashboard.ts` (new), `packages/gateway/src/server.ts`
+
+- `GET /api/dashboard` — single endpoint consolidating all system metrics:
+  `{ uptime, version, providerCount, modelCount, agentCount, memoryEntries, conversationCount, totalTokensUsed, activeWarnings, lastHeartbeat }`
+- `uptime` — milliseconds since server start
+- `lastHeartbeat` — `null` when heartbeat disabled, `null | HeartbeatRunRecord` when enabled
+- Auth required (uses existing guard)
+- Registered after heartbeat instantiation to respect server.ts initialization order
+
+Tests: 4 new tests in `dashboard.test.ts` (200, all required fields + types, uptime > 0, auth required)
+
+---
+
+### ITEM 9: AI_CHANGELOG.md update — DONE
+
+This entry.
+
+---
+
+## Build Status (Batch 2)
+
+All changes compile cleanly with `pnpm build`.
+
+| Package | Tests | Delta |
+|---|---|---|
+| guard | 10 | 0 |
+| skills | 10 | 0 |
+| memory | 64 | 0 |
+| models | 49 | 0 |
+| core | 98 | 0 |
+| setup | 31 | 0 |
+| gateway | 186 | +33 (providers.item1 ×3, memory.export ×9, conversations.item4 ×5, agents.item5 ×2, tools.custom ×3, agents.item7 ×3, dashboard ×4, plus integration.test.ts updated ×2) |
+| **Total** | **448** | **+33** |
+
+All 415 previous tests pass. No regressions.
+
+---
+
+## Commits (this pass)
+
+1. `feat(models,gateway): ITEM 1 provider priority ordering + per-provider retry config`
+2. `feat(gateway): ITEM 2+3 memory export/import + pruning controls`
+3. `feat(memory,gateway): ITEM 4 session naming and pinning (migration 006)`
+4. `feat(core,gateway): ITEM 5 agent chaining/handoff via HandoffResolver callback`
+5. `feat(core,gateway): ITEM 6 user-defined webhook tools + CustomToolStore`
+6. `feat(core,gateway): ITEM 7 tool permission scoping per agent (allowedTools)`
+7. `feat(gateway): ITEM 8 GET /api/dashboard consolidated stats`
+8. `docs(changelog): ITEM 9 Batch 2 AI_CHANGELOG.md update`
+
+---
+
+## What Was Skipped and Why
+
+None — all 8 code items (ITEM 1–8) and ITEM 9 (docs) were implemented. No risky items encountered.
+
+---
+
+## What Remains
+
+### From this batch
+All 9 items (ITEM 1–9) are complete.
+
+### Future work (ongoing phase plan)
+- Code signing (OV certificate) — requires purchasing cert; out of scope for AI passes
+- Docker image — deferred
+- Live provider tests (`pnpm test:live`) — requires real credentials
+- npm global publish — bin field + publish workflow
+
+---
+
 # AI Changelog — Pass 2026-03-21 (Batch 1: Immediate Gaps)
 
 **Model:** Claude Sonnet 4.6
