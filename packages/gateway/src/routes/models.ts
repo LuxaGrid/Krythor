@@ -65,9 +65,23 @@ export function registerModelRoutes(
   guard?: GuardEngine,
 ): void {
 
-  // GET /api/models — list all models across all providers (with badges)
+  // GET /api/models — list all models across all providers (with badges + provider info)
+  // Returns ModelInfo enriched with provider name, type, and default status.
   app.get('/api/models', async (_req, reply) => {
-    return reply.send(models.listModels());
+    const modelList = models.listModels();
+    const providers = models.listProviders();
+    const providerMap = new Map(providers.map(p => [p.id, p]));
+
+    const enriched = modelList.map(m => {
+      const provider = providerMap.get(m.providerId);
+      return {
+        ...m,
+        provider:     provider?.name ?? m.providerId,
+        providerType: provider?.type ?? 'unknown',
+        isDefault:    provider?.isDefault ?? false,
+      };
+    });
+    return reply.send(enriched);
   });
 
   // GET /api/models/stats

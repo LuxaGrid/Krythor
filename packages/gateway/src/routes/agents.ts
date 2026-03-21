@@ -10,8 +10,15 @@ interface SequentialBody { agentIds: string[]; input: string }
 export function registerAgentRoutes(app: FastifyInstance, orchestrator: AgentOrchestrator, guard?: GuardEngine): void {
 
   // GET /api/agents
+  // Returns agents with a systemPromptPreview (first 100 chars) for list views.
+  // The full systemPrompt is still included for detail views (/api/agents/:id).
   app.get('/api/agents', async (_req, reply) => {
-    return reply.send(orchestrator.listAgents());
+    const agents = orchestrator.listAgents();
+    const enriched = agents.map(a => ({
+      ...a,
+      systemPromptPreview: a.systemPrompt.slice(0, 100) + (a.systemPrompt.length > 100 ? '…' : ''),
+    }));
+    return reply.send(enriched);
   });
 
   // GET /api/agents/stats
