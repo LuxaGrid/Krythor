@@ -423,12 +423,13 @@ async function runRepair() {
 // ── krythor tui ────────────────────────────────────────────────────────────
 // Lightweight terminal dashboard. Polls /health every 5 seconds and re-renders.
 // Shows: gateway status, provider list, recent memory entries, last 5 commands.
-// Press q to quit. Uses only Node.js built-ins (readline, process.stdout).
+// Commands: q (quit), r (refresh), s (status), h (help), or type a message to chat.
+// Uses only Node.js built-ins (readline, process.stdout).
 
 async function runTui() {
   const readline = require('readline');
 
-  // Put terminal in raw mode so we can detect 'q' without Enter
+  // Put terminal in raw mode so we can detect individual keypresses
   if (process.stdin.isTTY) {
     readline.emitKeypressEvents(process.stdin);
     process.stdin.setRawMode(true);
@@ -437,29 +438,43 @@ async function runTui() {
   let running = true;
   let lastData = null;
   let tick = 0;
+  let inputBuf = '';          // current command buffer being typed
+  let lastResponse = null;    // last inline response to show
+  let sending = false;        // true while a command is being dispatched
 
-  // Exit on 'q', Ctrl+C, or Ctrl+D
-  process.stdin.on('keypress', (str, key) => {
-    if (
-      str === 'q' ||
-      (key && key.ctrl && (key.name === 'c' || key.name === 'd'))
-    ) {
-      running = false;
-      cleanup();
-      process.exit(0);
-    }
-  });
+  /** Read the auth token from the gateway's app-config.json for API calls. */
+  function getTuiToken() {
+    try {
+      const path = require('path');
+      const fs = require('fs');
+      const cfgPath = path.join(getDataDirForUpdates(), 'config', 'app-config.json');
+      const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf-8'));
+      return cfg.authToken || cfg.token || null;
+    } catch { return null; }
+  }
 
   function cleanup() {
     if (process.stdin.isTTY) {
       try { process.stdin.setRawMode(false); } catch {}
     }
     process.stdout.write('\x1b[?25h'); // show cursor
+    process.stdout.write('\n');
   }
 
   function cls() {
     process.stdout.write('\x1b[2J\x1b[H');
   }
+
+  const HELP_TEXT = [
+    'TUI commands:',
+    '  q         — quit',
+    '  r         — refresh now',
+    '  s         — show status line',
+    '  h         — show this help',
+    '  <message> — send message to gateway (/api/command)',
+    '  Enter     — submit typed command/message',
+    '  Backspace — delete last character',
+  ];
 
   function render(data) {
     const g  = '\x1b[32m';
@@ -474,7 +489,7 @@ async function runTui() {
     process.stdout.write('\x1b[?25l'); // hide cursor
 
     const now = new Date().toLocaleTimeString();
-    process.stdout.write(`${c}${b}  KRYTHOR TUI${rs}${d}  —  ${now}  —  press q to quit${rs}\n`);
+    process.stdout.write(`${c}${b}  KRYTHOR TUI${rs}${d}  —  ${now}  —  q=quit  r=refresh  h=help${rs}\n`);
     process.stdout.write(`${d}  ─────────────────────────────────────────────────────${rs}\n`);
     process.stdout.write('\n');
 
@@ -483,56 +498,165 @@ async function runTui() {
       process.stdout.write(`${d}  Start with: krythor${rs}\n`);
       process.stdout.write('\n');
       process.stdout.write(`${d}  Retrying every 5 seconds…${rs}\n`);
+    } else {
+      // Status
+      const statusColor = data.status === 'ok' ? g : r;
+      process.stdout.write(`  ${b}Gateway${rs}   ${statusColor}${data.status || 'unknown'}${rs}  ${d}v${data.version || '?'}${rs}  ${d}(Node ${data.nodeVersion || '?'})${rs}\n`);
+
+      // Providers / Models
+      const prov = data.models || {};
+      const provColor = (prov.providerCount || 0) > 0 ? g : y;
+      process.stdout.write(`  ${b}Providers${rs} ${provColor}${prov.providerCount || 0}${rs} configured  ${d}${prov.modelCount || 0} models${rs}\n`);
+
+      // Agents
+      const ag = data.agents || {};
+      process.stdout.write(`  ${b}Agents${rs}    ${g}${ag.agentCount || 0}${rs} defined${ag.activeRunCount > 0 ? `  ${y}${ag.activeRunCount} running${rs}` : ''}\n`);
+
+      // Memory
+      const mem = data.memory || {};
+      process.stdout.write(`  ${b}Memory${rs}    ${mem.entryCount || 0} entries`);
+      if (mem.embeddingDegraded === false) {
+        process.stdout.write(`  ${g}embedding active${rs}`);
+      } else {
+        process.stdout.write(`  ${d}keyword-only${rs}`);
+      }
+      process.stdout.write('\n');
+
+      // Heartbeat
+      const hb = data.heartbeat || {};
+      process.stdout.write(`  ${b}Heartbeat${rs} ${hb.enabled ? g + 'enabled' : d + 'disabled'}${rs}`);
+      if (hb.lastRun) process.stdout.write(`  ${d}last: ${hb.lastRun}${rs}`);
+      if (hb.warnings && hb.warnings.length > 0) process.stdout.write(`  ${y}${hb.warnings.length} warning(s)${rs}`);
+      process.stdout.write('\n');
+
+      // Tokens
+      if (typeof data.totalTokens === 'number') {
+        process.stdout.write(`  ${b}Tokens${rs}    ${data.totalTokens.toLocaleString()} this session\n`);
+      }
+
+      process.stdout.write('\n');
+
+      // First-run / no providers warning
+      if (data.firstRun || (prov.providerCount || 0) === 0) {
+        process.stdout.write(`  ${y}No providers configured.${rs}  Run: ${b}krythor setup${rs}\n`);
+        process.stdout.write('\n');
+      }
+
+      process.stdout.write(`${d}  ─────────────────────────────────────────────────────${rs}\n`);
+      process.stdout.write(`${d}  http://${HOST}:${PORT}  |  ${data.dataDir || ''}${rs}\n`);
+      process.stdout.write(`${d}  Polling every 5s  •  tick #${tick}${rs}\n`);
+    }
+
+    // Inline response area
+    if (lastResponse) {
+      process.stdout.write('\n');
+      process.stdout.write(`${d}  ─────────────────────────────────────────────────────${rs}\n`);
+      const lines = lastResponse.split('\n').slice(0, 6);
+      lines.forEach(line => process.stdout.write(`  ${line}\n`));
+    }
+
+    // Command input line at the bottom
+    process.stdout.write('\n');
+    process.stdout.write(`${d}  ─────────────────────────────────────────────────────${rs}\n`);
+    if (sending) {
+      process.stdout.write(`  ${d}Sending…${rs}\n`);
+    } else {
+      process.stdout.write(`  ${d}>${rs} ${inputBuf}${g}▌${rs}\n`);
+    }
+  }
+
+  async function dispatchCommand(cmd) {
+    const trimmed = cmd.trim();
+    if (!trimmed) return;
+
+    if (trimmed === 'q') { running = false; cleanup(); process.exit(0); }
+    if (trimmed === 'h') { lastResponse = HELP_TEXT.join('\n'); return; }
+    if (trimmed === 'r') { lastResponse = null; await poll(); return; }
+    if (trimmed === 's') {
+      if (lastData) {
+        const m = lastData.models || {};
+        lastResponse = `status: ${lastData.status}  v${lastData.version}  providers:${m.providerCount || 0}  models:${m.modelCount || 0}`;
+      } else {
+        lastResponse = 'Gateway not reachable.';
+      }
       return;
     }
 
-    // Status
-    const statusColor = data.status === 'ok' ? g : r;
-    process.stdout.write(`  ${b}Gateway${rs}   ${statusColor}${data.status || 'unknown'}${rs}  ${d}v${data.version || '?'}${rs}  ${d}(Node ${data.nodeVersion || '?'})${rs}\n`);
-
-    // Providers / Models
-    const prov = data.models || {};
-    const provColor = (prov.providerCount || 0) > 0 ? g : y;
-    process.stdout.write(`  ${b}Providers${rs} ${provColor}${prov.providerCount || 0}${rs} configured  ${d}${prov.modelCount || 0} models${rs}\n`);
-
-    // Agents
-    const ag = data.agents || {};
-    process.stdout.write(`  ${b}Agents${rs}    ${g}${ag.agentCount || 0}${rs} defined${ag.activeRunCount > 0 ? `  ${y}${ag.activeRunCount} running${rs}` : ''}\n`);
-
-    // Memory
-    const mem = data.memory || {};
-    process.stdout.write(`  ${b}Memory${rs}    ${mem.entryCount || 0} entries`);
-    if (mem.embeddingDegraded === false) {
-      process.stdout.write(`  ${g}embedding active${rs}`);
-    } else {
-      process.stdout.write(`  ${d}keyword-only${rs}`);
+    // Treat as a chat message — send to /api/command
+    const token = getTuiToken();
+    const headers = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    sending = true;
+    render(lastData);
+    try {
+      const resp = await fetch(`http://${HOST}:${PORT}/api/command`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ input: trimmed }),
+        signal: AbortSignal.timeout(30_000),
+      });
+      const body = await resp.json();
+      if (resp.ok) {
+        const out = body.output || body.error || JSON.stringify(body);
+        lastResponse = out.slice(0, 500) + (out.length > 500 ? '…' : '');
+      } else {
+        lastResponse = `Error: ${body.error || `HTTP ${resp.status}`}`;
+      }
+    } catch (err) {
+      lastResponse = `Request failed: ${err.message || err}`;
+    } finally {
+      sending = false;
     }
-    process.stdout.write('\n');
-
-    // Heartbeat
-    const hb = data.heartbeat || {};
-    process.stdout.write(`  ${b}Heartbeat${rs} ${hb.enabled ? g + 'enabled' : d + 'disabled'}${rs}`);
-    if (hb.lastRun) process.stdout.write(`  ${d}last: ${hb.lastRun}${rs}`);
-    if (hb.warnings && hb.warnings.length > 0) process.stdout.write(`  ${y}${hb.warnings.length} warning(s)${rs}`);
-    process.stdout.write('\n');
-
-    // Tokens
-    if (typeof data.totalTokens === 'number') {
-      process.stdout.write(`  ${b}Tokens${rs}    ${data.totalTokens.toLocaleString()} this session\n`);
-    }
-
-    process.stdout.write('\n');
-
-    // First-run / no providers warning
-    if (data.firstRun || (prov.providerCount || 0) === 0) {
-      process.stdout.write(`  ${y}No providers configured.${rs}  Run: ${b}krythor setup${rs}\n`);
-      process.stdout.write('\n');
-    }
-
-    process.stdout.write(`${d}  ─────────────────────────────────────────────────────${rs}\n`);
-    process.stdout.write(`${d}  http://${HOST}:${PORT}  |  ${data.dataDir || ''}${rs}\n`);
-    process.stdout.write(`${d}  Polling every 5s  •  tick #${tick}${rs}\n`);
   }
+
+  // Keypress handler — accumulate input or act on special keys
+  process.stdin.on('keypress', (str, key) => {
+    if (!key) return;
+
+    // Ctrl+C / Ctrl+D — always quit
+    if (key.ctrl && (key.name === 'c' || key.name === 'd')) {
+      running = false; cleanup(); process.exit(0);
+    }
+
+    // Enter — dispatch current buffer
+    if (key.name === 'return' || key.name === 'enter') {
+      const cmd = inputBuf;
+      inputBuf = '';
+      void dispatchCommand(cmd).then(() => { if (running) render(lastData); });
+      return;
+    }
+
+    // Backspace — remove last char
+    if (key.name === 'backspace') {
+      if (inputBuf.length > 0) {
+        inputBuf = inputBuf.slice(0, -1);
+        render(lastData);
+      }
+      return;
+    }
+
+    // Escape — clear buffer and response
+    if (key.name === 'escape') {
+      inputBuf = '';
+      lastResponse = null;
+      render(lastData);
+      return;
+    }
+
+    // Printable character — append to buffer
+    if (str && str.length === 1 && str.charCodeAt(0) >= 32) {
+      inputBuf += str;
+      render(lastData);
+    }
+  });
+
+  function cleanup_exit() {
+    cleanup();
+    process.exit(0);
+  }
+
+  process.on('SIGINT', cleanup_exit);
+  process.on('SIGTERM', cleanup_exit);
 
   async function poll() {
     try {
