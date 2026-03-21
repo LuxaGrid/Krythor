@@ -1,3 +1,216 @@
+# AI Changelog — Pass 2026-03-21 (Phase 3 finish + Phase 4 start)
+
+**Model:** Claude Sonnet 4.6
+**Pass type:** Phase 3 remaining items (P3-7 through P3-10) + Phase 4 items (P4-1 through P4-4)
+
+---
+
+## Summary (this pass)
+
+### P3-9: ToolRegistry — DONE
+
+New file: `packages/core/src/tools/ToolRegistry.ts`
+
+Central registry of all available agent tools:
+
+| Tool | requiresGuard | alwaysAllowed |
+|---|---|---|
+| `exec` | true | false |
+| `web_search` | false | true |
+| `web_fetch` | false | true |
+
+`GET /api/tools` now returns the full registry (enriched for exec with live allowlist, defaultTimeoutMs, maxTimeoutMs). This is the foundation for per-agent tool enablement in future.
+
+Exported from `@krythor/core` as `TOOL_REGISTRY`, `getToolEntry`, `ToolEntry`, `ToolParameter`.
+
+---
+
+### P3-7: WebSearchTool — DONE
+
+New file: `packages/core/src/tools/WebSearchTool.ts`
+
+- DuckDuckGo Instant Answer API (`https://api.duckduckgo.com/?q=...&format=json&no_html=1&skip_disambig=1`)
+- 5000ms timeout (`WEB_SEARCH_TIMEOUT_MS`)
+- Returns: `{ query, source: 'duckduckgo', results: [{ title, url, snippet }] }` (max 10)
+- Handles: abstract card, RelatedTopics, nested disambiguation groups (skipped)
+- Empty query → empty results (no throw)
+- Network failure or non-OK HTTP → throws
+
+Integrated into `AgentRunner.handleToolCall()`: detects `{"tool":"web_search","query":"..."}` in model response, runs search, injects result as user message, calls model again.
+
+Gateway:
+- `POST /api/tools/web_search` — auth required, rate-limited 60 req/min, body `{ query: string }`
+- Returns DDG response shape or 502 `WEB_SEARCH_FAILED`
+
+Tests: 9 unit tests in `WebSearchTool.test.ts` (constants, empty input, results shape, abstract card, 10-result cap, skip nested groups, non-ok HTTP, network failure)
+
+---
+
+### P3-8: WebFetchTool — DONE
+
+New file: `packages/core/src/tools/WebFetchTool.ts`
+
+- Accepts only `http://` and `https://` URLs (other schemes throw immediately, no network call)
+- HTML stripping: removes `<script>` and `<style>` blocks entirely, strips all remaining tags, decodes common HTML entities, normalizes whitespace
+- Content is returned as plain text; JSON/plain text returned as-is
+- 8000ms timeout (`WEB_FETCH_TIMEOUT_MS`)
+- 10,000 char limit (`WEB_FETCH_MAX_CHARS`) with truncation notice
+- Returns: `{ url, content, contentLength, truncated }`
+
+Integrated into `AgentRunner.handleToolCall()`: detects `{"tool":"web_fetch","url":"..."}` in model response, fetches, injects content as user message.
+
+Gateway:
+- `POST /api/tools/web_fetch` — auth required, rate-limited 30 req/min, body `{ url: string }`
+- Scheme errors → 400 `INVALID_URL`; network/HTTP errors → 502 `WEB_FETCH_FAILED`
+
+Tests: 14 unit tests in `WebFetchTool.test.ts` (constants, scheme validation, HTML stripping, script/style removal, plain text pass-through, truncation, error handling)
+
+---
+
+### AgentRunner tool-call loop expansion — DONE
+
+`AgentRunner.handleToolCall()` expanded to dispatch three tool types:
+
+- `exec` → `ExecTool.run()` (existing; still requires ExecTool to be wired; if missing, returns false — backward compatible)
+- `web_search` → `WebSearchTool.search()` (singleton, always available)
+- `web_fetch` → `WebFetchTool.fetch()` (singleton, always available)
+
+`TOOL_CALL_RE` updated to match all three tool names.
+
+`extractToolCall()` replaces `extractExecCall()` — returns a discriminated union type:
+- `{ tool: 'exec', command, args }`
+- `{ tool: 'web_search', query }`
+- `{ tool: 'web_fetch', url }`
+
+Gateway tests: 9 new tests in `tools.web.test.ts` — tool registry completeness, web_search/web_fetch validation, mock-fetch success shapes, `alwaysAllowed` flags.
+
+---
+
+### P4-1: Auto-update check — DONE
+
+Added to `start.js`:
+
+- `checkForUpdate()` — async function, fires in background at startup; never awaited before startup completes
+- Hits `https://api.github.com/repos/LuxaGrid/Krythor/releases/latest` with 4s timeout
+- Caches result for 24h in `<dataDir>/update-check.json` — avoids hitting GitHub on every launch
+- Uses `compareSemver()` (simple MAJOR.MINOR.PATCH comparison, no external deps)
+- When update available: prints `Update available: vX.Y.Z — run: krythor update`
+- Shown after "already running" check AND after gateway starts successfully
+- `--no-update-check` flag skips the check entirely
+
+---
+
+### P3-10: TUI (terminal dashboard) — DONE
+
+Added to `start.js` as `runTui()` function. Invoked via `krythor tui`.
+
+Features:
+- Polls `GET /health` every 5 seconds
+- Renders: gateway status, version, provider/model count, agent count and active runs, memory entry count + embedding status, heartbeat enabled/last run/warnings, session token count, first-run warning
+- Shows data dir and gateway URL in footer
+- "not reachable" state shown gracefully when gateway is offline
+- Raw mode keyboard input (readline): press q, Ctrl+C, or Ctrl+D to exit
+- Uses only Node.js built-ins (readline, process.stdout, fetch)
+- Hides cursor while active; restores on exit
+
+---
+
+### krythor update command — DONE
+
+Added to `start.js`. Prints platform-specific one-line update instructions:
+- Mac/Linux: `curl -fsSL ... | bash`
+- Windows: `iwr ... | iex`
+
+This is intentional: the update mechanism is the one-line installer (re-run it). No in-place binary patching.
+
+---
+
+### P4-3: Wizard completion summary — DONE
+
+`packages/setup/src/SetupWizard.ts` — replaced the brief "Useful commands" section with a comprehensive "What You Can Do Now" block:
+
+- All 7 available commands listed with descriptions (`krythor`, `status`, `tui`, `doctor`, `repair`, `setup`, `update`)
+- 9 key API endpoints with method, path, and description
+- Where to find config, data, templates, and docs (GETTING_STARTED.md, CONFIG_REFERENCE.md)
+- "What happens next" steps preserved
+
+---
+
+### P4-2: CHANGELOG.md — DONE
+
+`CHANGELOG.md` rewritten to Keep a Changelog format covering:
+- `[Unreleased]` — all new items from this pass
+- `[1.3.5]` — Phase 3 control UI APIs pass
+- `[1.3.0]` — Phase 2 ExecTool, hot reload, TokenTracker, built-in skills
+- `[1.2.0]` — Phase 0+1: krythor status/repair, KRYTHOR_DATA_DIR, wizard improvements, doctor
+- `[1.0.0]` — full initial release: all subsystems documented with Added sections
+
+---
+
+### P4-4: README improvements — DONE
+
+- Feature list updated: added OpenRouter, Groq, Venice, tool system, TUI, auto-update check
+- New "Quick API Reference" section: table of 18 key endpoints with auth and description
+- New "Tools" section: documents exec, web_search, web_fetch with JSON call format examples
+- Roadmap updated: marked tool system, TUI, auto-update, guard engine as complete; added Docker image as upcoming
+
+---
+
+## Build Status (Phase 3 finish + Phase 4 start)
+
+All changes compile cleanly with `pnpm build`.
+
+| Package | Tests | Delta |
+|---|---|---|
+| guard | 10 | 0 |
+| skills | 10 | 0 |
+| memory | 64 | 0 |
+| models | 49 | 0 |
+| core | 98 | +16 (WebSearchTool + WebFetchTool tests) |
+| setup | 31 | 0 |
+| gateway | 135 | +9 (tools.web.test.ts) |
+| **Total** | **397** | **+25** |
+
+All 366 previous tests pass. No regressions.
+
+---
+
+## Commits (this pass)
+
+1. `feat(core,gateway): P3-7/P3-8/P3-9 WebSearchTool, WebFetchTool, ToolRegistry`
+2. `feat(launcher): P4-1 auto-update check + P3-10 TUI + krythor update command`
+3. `feat(setup): P4-3 strengthen wizard completion summary`
+4. `docs: P4-2 CHANGELOG.md full history + P4-4 README improvements`
+5. `docs(changelog): P4-5 update AI_CHANGELOG.md for Phase 3 finish + Phase 4 start`
+
+---
+
+## What Remains for the Next Pass
+
+### Phase 3 — all planned items complete
+
+- P3-7 WebSearchTool ✓
+- P3-8 WebFetchTool ✓
+- P3-9 ToolRegistry ✓
+- P3-10 TUI ✓
+
+### Phase 4 — items complete this pass
+
+- P4-1 Auto-update check ✓
+- P4-2 CHANGELOG.md ✓
+- P4-3 Wizard completion summary ✓
+- P4-4 README improvements ✓
+- P4-5 AI_CHANGELOG.md ✓ (this entry)
+
+### Phase 4 — items not started
+
+- **Code signing**: OV certificate to eliminate Windows SmartScreen warning. Requires purchasing certificate from DigiCert/Sectigo. Out of scope for AI pass.
+- **Auto-updater UI**: in-place binary replacement via `krythor update`. Currently `krythor update` prints the one-line installer instructions. Full in-place update would require download + verify + replace + restart logic.
+- **Docker image**: `Dockerfile` for gateway. Low risk, medium effort. Deferred.
+- **Live provider tests** (`pnpm test:live`): Deferred — requires real credentials.
+
+---
+
 # AI Changelog — Pass 2026-03-21 (Phase 2 finish + Phase 3)
 
 **Model:** Claude Sonnet 4.6
