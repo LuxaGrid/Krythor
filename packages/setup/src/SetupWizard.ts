@@ -252,27 +252,45 @@ export class SetupWizard {
       console.log(fmt.dim(`  Config saved to: ${sys.configDir}`));
     }
     console.log('');
+
+    // ── What you can do now ────────────────────────────────────────────────
+    console.log(fmt.head('What You Can Do Now'));
+    console.log('');
+    console.log(fmt.dim('  Available commands:'));
+    console.log(fmt.ok ('    krythor              — start the gateway and open the Control UI'));
+    console.log(fmt.ok ('    krythor status        — quick health check of the running gateway'));
+    console.log(fmt.ok ('    krythor tui           — terminal dashboard (polls gateway every 5s)'));
+    console.log(fmt.ok ('    krythor doctor        — full diagnostics report'));
+    console.log(fmt.ok ('    krythor repair        — check runtime components and credentials'));
+    console.log(fmt.ok ('    krythor setup         — re-run this setup wizard'));
+    console.log(fmt.ok ('    krythor update        — update to the latest release'));
+    console.log('');
+    console.log(fmt.dim('  Key API endpoints (after gateway starts at http://127.0.0.1:47200):'));
+    console.log(fmt.dim('    GET  /health              — status, versions, provider/model count'));
+    console.log(fmt.dim('    GET  /ready               — readiness check (200 = ready, 503 = not)'));
+    console.log(fmt.dim('    POST /api/command         — send a command to the default agent'));
+    console.log(fmt.dim('    GET  /api/models          — list all configured models'));
+    console.log(fmt.dim('    GET  /api/agents          — list all defined agents'));
+    console.log(fmt.dim('    GET  /api/memory          — search agent memory'));
+    console.log(fmt.dim('    GET  /api/tools           — list available tools (exec, web_search, web_fetch)'));
+    console.log(fmt.dim('    GET  /api/stats           — token usage for this session'));
+    console.log('');
+    console.log(fmt.dim('  Where to find things:'));
+    console.log(fmt.dim(`    Config:     ${sys.configDir}`));
+    console.log(fmt.dim(`    Data:       ${sys.dataDir}`));
+    console.log(fmt.dim(`    Templates:  ${sys.dataDir}/templates/`));
+    console.log(fmt.dim('    Docs:       docs/GETTING_STARTED.md, docs/CONFIG_REFERENCE.md'));
+    console.log('');
     console.log(fmt.dim('  What happens next:'));
-    console.log(fmt.dim('    1. Krythor Gateway starts (or you can start it manually)'));
+    console.log(fmt.dim('    1. Krythor Gateway starts (or start manually with: krythor)'));
     console.log(fmt.dim('    2. Your browser opens the Control UI at http://127.0.0.1:47200'));
     console.log(fmt.dim('    3. Type a command in the input box to run your first agent'));
-    console.log('');
-    console.log(fmt.dim('  Useful commands:'));
-    console.log(fmt.dim('    pnpm start        — start the gateway'));
-    console.log(fmt.dim('    pnpm doctor       — run diagnostics'));
-    console.log(fmt.dim('    pnpm setup        — re-run setup wizard'));
-    console.log('');
-    console.log(fmt.dim('  Workspace templates (edit these to customize your agent):'));
-    console.log(fmt.dim(`    ${sys.dataDir}/templates/AGENTS.md  — agent identity and rules`));
-    console.log(fmt.dim(`    ${sys.dataDir}/templates/SOUL.md    — values and tone`));
-    console.log(fmt.dim(`    ${sys.dataDir}/templates/MEMORY.md  — long-term memory starter`));
-    console.log(fmt.dim(`    ${sys.dataDir}/templates/TOOLS.md   — environment notes`));
     console.log('');
 
     // Recommendation-aware summary (only when a provider was actually configured)
     if (providerConfigured) {
       const rec = PROVIDER_RECOMMENDATIONS[providerType];
-      console.log(fmt.dim('  Setup summary:'));
+      console.log(fmt.dim('  Configuration summary:'));
       console.log(fmt.dim(`    Primary AI  : ${providerType}${rec?.recommendation_label ? ` (${rec.recommendation_label})` : ''}`));
       if (firstModel) {
         console.log(fmt.dim(`    Model       : ${firstModel}`));
