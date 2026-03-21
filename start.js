@@ -561,6 +561,492 @@ async function runTui() {
   }, 5000);
 }
 
+// ── Daemon / process-management helpers ───────────────────────────────────
+//
+// krythor start --daemon  — spawn gateway detached; write PID to <dataDir>/krythor.pid
+// krythor stop            — kill the PID from krythor.pid; remove the file
+// krythor restart         — stop then start --daemon
+//
+// On plain `krythor start` (no --daemon): existing foreground behaviour unchanged.
+
+function getPidFile() {
+  return require('path').join(getDataDirForUpdates(), 'krythor.pid');
+}
+
+async function runDaemon() {
+  const fs = require('fs');
+  const path = require('path');
+
+  // If already running, abort gracefully
+  if (await isKrythorRunning()) {
+    console.log('\x1b[32m  Krythor is already running.\x1b[0m');
+    console.log(`  Control UI: http://${HOST}:${PORT}`);
+    process.exit(0);
+  }
+
+  console.log('\x1b[36m  KRYTHOR\x1b[0m — Starting daemon…');
+
+  const logFile = path.join(require('os').tmpdir(), 'krythor-gateway.log');
+  const logStream = fs.openSync(logFile, 'w');
+
+  const child = spawn(NODE_BIN, [gatewayDist], {
+    stdio: ['ignore', logStream, logStream],
+    detached: true,
+  });
+  child.unref();
+
+  // Wait up to 10 seconds for gateway to respond
+  let ready = false;
+  for (let i = 0; i < 14; i++) {
+    await new Promise(r => setTimeout(r, 700));
+    if (await isKrythorRunning()) { ready = true; break; }
+  }
+
+  if (!ready) {
+    console.error('\x1b[31m  Gateway did not start within 10 seconds.\x1b[0m');
+    try {
+      const log = fs.readFileSync(logFile, 'utf-8').trim();
+      if (log) {
+        console.error('  Gateway output:');
+        log.split('\n').slice(-10).forEach(l => console.error('    ' + l));
+      }
+    } catch {}
+    process.exit(1);
+  }
+
+  // Write PID file
+  const pidFile = getPidFile();
+  try {
+    fs.mkdirSync(path.dirname(pidFile), { recursive: true });
+    fs.writeFileSync(pidFile, String(child.pid), 'utf-8');
+  } catch { /* PID file write is best-effort */ }
+
+  console.log(`\x1b[32m  Krythor started (PID ${child.pid})\x1b[0m`);
+  console.log(`  Control UI: http://${HOST}:${PORT}`);
+  console.log(`  Stop with:  krythor stop`);
+  console.log('');
+}
+
+async function runStop() {
+  const fs = require('fs');
+  const pidFile = getPidFile();
+
+  // First try reading PID from file
+  let pid;
+  try {
+    const raw = fs.readFileSync(pidFile, 'utf-8').trim();
+    pid = parseInt(raw, 10);
+  } catch { /* no PID file — attempt to find by port */ }
+
+  if (!pid || isNaN(pid)) {
+    // No PID file — check if gateway is running at all
+    if (!await isKrythorRunning()) {
+      console.log('\x1b[33m  Krythor is not running.\x1b[0m');
+      process.exit(0);
+    }
+    console.log('\x1b[33m  No PID file found. If Krythor is running in foreground, press Ctrl+C in that terminal.\x1b[0m');
+    process.exit(1);
+  }
+
+  try {
+    process.kill(pid, 'SIGTERM');
+  } catch (e) {
+    // Process may already be gone
+    console.log('\x1b[33m  Process not found (may have already stopped).\x1b[0m');
+  }
+
+  // Remove PID file
+  try { fs.unlinkSync(pidFile); } catch {}
+
+  // Wait briefly to confirm it stopped
+  await new Promise(r => setTimeout(r, 800));
+  if (await isKrythorRunning()) {
+    console.log('\x1b[33m  Gateway is still responding — it may take a moment to shut down.\x1b[0m');
+  } else {
+    console.log(`\x1b[32m  Krythor stopped\x1b[0m`);
+  }
+}
+
+async function runRestart() {
+  await runStop();
+  await new Promise(r => setTimeout(r, 1000));
+  await runDaemon();
+}
+
+// ── krythor backup ─────────────────────────────────────────────────────────
+// Creates a timestamped archive of the data directory.
+// Windows: PowerShell Compress-Archive; Mac/Linux: zip or tar.
+
+async function runBackup() {
+  const fs = require('fs');
+  const path = require('path');
+  const cp = require('child_process');
+
+  const outputArg = (() => {
+    const idx = process.argv.indexOf('--output');
+    if (idx !== -1 && process.argv[idx + 1]) return process.argv[idx + 1];
+    return null;
+  })();
+
+  const dataDir = getDataDirForUpdates();
+  if (!fs.existsSync(dataDir)) {
+    console.error('\x1b[31m  Data directory not found:\x1b[0m', dataDir);
+    process.exit(1);
+  }
+
+  // Build timestamped filename
+  const now = new Date();
+  const ts = now.getFullYear() + '-' +
+    String(now.getMonth() + 1).padStart(2, '0') + '-' +
+    String(now.getDate()).padStart(2, '0') + '-' +
+    String(now.getHours()).padStart(2, '0') +
+    String(now.getMinutes()).padStart(2, '0') +
+    String(now.getSeconds()).padStart(2, '0');
+  const archiveName = `krythor-backup-${ts}`;
+  const destDir = outputArg || process.cwd();
+
+  console.log('\x1b[36m  KRYTHOR\x1b[0m — Backup');
+  console.log(`  Source: ${dataDir}`);
+
+  let archivePath;
+
+  if (process.platform === 'win32') {
+    archivePath = path.join(destDir, `${archiveName}.zip`);
+    try {
+      cp.execSync(
+        `powershell -NoProfile -Command "Compress-Archive -Path '${dataDir}' -DestinationPath '${archivePath}' -Force"`,
+        { stdio: 'pipe' }
+      );
+    } catch (e) {
+      console.error('\x1b[31m  Backup failed:\x1b[0m', e.message || String(e));
+      process.exit(1);
+    }
+  } else {
+    // Prefer zip; fall back to tar
+    let useZip = false;
+    try { cp.execSync('which zip', { stdio: 'pipe' }); useZip = true; } catch {}
+    if (useZip) {
+      archivePath = path.join(destDir, `${archiveName}.zip`);
+      try {
+        cp.execSync(`zip -r "${archivePath}" "${dataDir}"`, { stdio: 'pipe' });
+      } catch (e) {
+        console.error('\x1b[31m  Backup failed:\x1b[0m', e.message || String(e));
+        process.exit(1);
+      }
+    } else {
+      archivePath = path.join(destDir, `${archiveName}.tar.gz`);
+      try {
+        cp.execSync(`tar -czf "${archivePath}" -C "${path.dirname(dataDir)}" "${path.basename(dataDir)}"`, { stdio: 'pipe' });
+      } catch (e) {
+        console.error('\x1b[31m  Backup failed:\x1b[0m', e.message || String(e));
+        process.exit(1);
+      }
+    }
+  }
+
+  // Report size
+  let sizeStr = '';
+  try {
+    const bytes = fs.statSync(archivePath).size;
+    if (bytes > 1024 * 1024) sizeStr = ` (${(bytes / 1024 / 1024).toFixed(1)} MB)`;
+    else sizeStr = ` (${Math.round(bytes / 1024)} KB)`;
+  } catch {}
+
+  console.log(`\x1b[32m  Backup saved to:\x1b[0m ${archivePath}${sizeStr}`);
+  console.log('');
+  process.exit(0);
+}
+
+// ── krythor uninstall ──────────────────────────────────────────────────────
+// Removes the install directory (~/.krythor on Mac/Linux; the Krythor app folder
+// on Windows). User data at LOCALAPPDATA\Krythor is always preserved.
+
+async function runUninstall() {
+  const fs = require('fs');
+  const path = require('path');
+  const readline = require('readline');
+
+  // Determine install dir (where start.js lives) vs data dir (where data lives)
+  const installDir = __dirname;
+  const dataDir = getDataDirForUpdates();
+
+  console.log('\x1b[36m  KRYTHOR\x1b[0m — Uninstall');
+  console.log('');
+
+  // Compute what will be removed
+  console.log(`  This will remove the Krythor installation at:`);
+  console.log(`    ${installDir}`);
+  console.log('');
+  console.log(`  Your data at:`);
+  console.log(`    ${dataDir}`);
+  console.log(`  is \x1b[32mpreserved\x1b[0m — it will not be touched.`);
+  console.log('');
+
+  // Prompt
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  const answer = await new Promise(resolve => {
+    rl.question('  Continue? [y/N] ', ans => { rl.close(); resolve(ans.trim().toLowerCase()); });
+  });
+
+  if (answer !== 'y') {
+    console.log('  Uninstall cancelled.');
+    process.exit(0);
+  }
+
+  // Stop daemon if running
+  const pidFile = getPidFile();
+  try {
+    const raw = fs.readFileSync(pidFile, 'utf-8').trim();
+    const pid = parseInt(raw, 10);
+    if (!isNaN(pid)) {
+      try { process.kill(pid, 'SIGTERM'); } catch {}
+      console.log(`  Stopped running gateway (PID ${pid}).`);
+    }
+    try { fs.unlinkSync(pidFile); } catch {}
+  } catch { /* no PID file — fine */ }
+
+  // Remove install directory
+  try {
+    fs.rmSync(installDir, { recursive: true, force: true });
+    console.log(`  Removed: ${installDir}`);
+  } catch (e) {
+    console.error(`\x1b[31m  Failed to remove ${installDir}:\x1b[0m ${e.message}`);
+    console.log('  You may need to remove it manually.');
+  }
+
+  console.log('');
+  console.log('\x1b[32m  Krythor has been uninstalled.\x1b[0m');
+  console.log('');
+  if (process.platform === 'win32') {
+    console.log('  To complete removal, also remove the PATH entry in:');
+    console.log('    Settings > System > About > Advanced system settings > Environment Variables');
+    console.log('  Remove the entry pointing to the Krythor bin/ folder.');
+  } else {
+    console.log('  To complete removal, remove any PATH entry in your shell config:');
+    console.log('    ~/.bashrc, ~/.zshrc, or ~/.profile');
+    console.log('  Look for a line containing "krythor" or the path above.');
+  }
+  console.log('');
+  process.exit(0);
+}
+
+// ── krythor help ───────────────────────────────────────────────────────────
+// Prints a list of all available commands, or detailed help for one command.
+
+const COMMAND_HELP = {
+  start: {
+    summary: 'Start the Krythor gateway (foreground)',
+    detail: [
+      'Usage: krythor [start] [--daemon] [--no-browser] [--no-update-check]',
+      '',
+      '  (no flags)       Start in foreground. Press Ctrl+C to stop.',
+      '  --daemon         Start as a detached background process.',
+      '                   Writes PID to <dataDir>/krythor.pid.',
+      '  --no-browser     Do not open the Control UI in the browser.',
+      '  --no-update-check  Skip the GitHub update check at startup.',
+    ],
+  },
+  stop: {
+    summary: 'Stop the background daemon',
+    detail: [
+      'Usage: krythor stop',
+      '',
+      'Reads the PID from <dataDir>/krythor.pid and sends SIGTERM.',
+      'Removes the PID file after stopping.',
+      '',
+      'If no PID file exists and the gateway is not responding, reports not running.',
+    ],
+  },
+  restart: {
+    summary: 'Restart the background daemon (stop + start --daemon)',
+    detail: [
+      'Usage: krythor restart',
+      '',
+      'Stops the running daemon (if any), then starts a new one.',
+      'Equivalent to: krythor stop && krythor start --daemon',
+    ],
+  },
+  status: {
+    summary: 'Quick health check of the running gateway',
+    detail: [
+      'Usage: krythor status [--json]',
+      '',
+      'Hits GET /health and prints: version, providers, models, agents,',
+      'memory entry count, embedding status, heartbeat status, data dir.',
+      '',
+      '  --json   Emit raw health payload as JSON (useful for scripting).',
+      '',
+      'Exit 0 if gateway responds, exit 1 if not reachable.',
+    ],
+  },
+  tui: {
+    summary: 'Terminal dashboard — live status view',
+    detail: [
+      'Usage: krythor tui',
+      '',
+      'Polls GET /health every 5 seconds and renders a live dashboard.',
+      'Shows: gateway status, providers, models, agents, memory, heartbeat, tokens.',
+      '',
+      'Press q, Ctrl+C, or Ctrl+D to exit.',
+      'Works even when the gateway is offline — shows a reconnecting state.',
+    ],
+  },
+  update: {
+    summary: 'Print one-line update instructions',
+    detail: [
+      'Usage: krythor update',
+      '',
+      'Prints the platform-specific one-line installer command to update Krythor.',
+      'Run that command to download and install the latest release.',
+      '',
+      'Your data, settings, and memory are always preserved during updates.',
+    ],
+  },
+  repair: {
+    summary: 'Check runtime components and credentials',
+    detail: [
+      'Usage: krythor repair',
+      '',
+      'Checks:',
+      '  1. Bundled Node runtime — exists and executes',
+      '  2. better-sqlite3 native module — loads under bundled Node',
+      '  3. Gateway health endpoint — responds (if already running)',
+      '  4. providers.json — exists and is valid JSON',
+      '  5. Provider count — warns if zero',
+      '  6. Per-provider credentials — API key or OAuth present',
+      '',
+      'Exit 0 if all checks pass, exit 1 if any fail.',
+    ],
+  },
+  setup: {
+    summary: 'Run the interactive setup wizard',
+    detail: [
+      'Usage: krythor setup',
+      '',
+      'Guides you through:',
+      '  - Provider selection (Anthropic, OpenAI, Ollama, etc.)',
+      '  - API key or OAuth configuration',
+      '  - Model selection',
+      '  - Default agent creation',
+      '  - Gateway launch',
+      '',
+      'Safe to re-run — will ask before overwriting existing config.',
+    ],
+  },
+  doctor: {
+    summary: 'Full diagnostics report',
+    detail: [
+      'Usage: krythor doctor',
+      '',
+      'Checks:',
+      '  - Node.js version',
+      '  - Config directory and files',
+      '  - providers.json — count, auth, per-provider status',
+      '  - agents.json — count',
+      '  - Memory database — exists, size',
+      '  - Gateway — running, version, provider count',
+      '  - Embedding — active or keyword-only',
+      '  - Migration integrity',
+      '  - Stale agent model references',
+      '',
+      'Prints PASS / WARN / FAIL per check. Exit 1 on critical issues.',
+    ],
+  },
+  backup: {
+    summary: 'Create a timestamped backup of the data directory',
+    detail: [
+      'Usage: krythor backup [--output <dir>]',
+      '',
+      '  --output <dir>   Save backup to <dir> instead of current directory.',
+      '',
+      'Creates a zip or tar.gz of <dataDir> with a timestamped filename:',
+      '  krythor-backup-YYYY-MM-DD-HHmmss.zip',
+      '',
+      'Windows: uses PowerShell Compress-Archive.',
+      'Mac/Linux: uses zip (falls back to tar).',
+      '',
+      'Prints the backup path and file size when complete.',
+    ],
+  },
+  uninstall: {
+    summary: 'Remove the Krythor installation',
+    detail: [
+      'Usage: krythor uninstall',
+      '',
+      'Stops the daemon (if running), then removes the Krythor install directory.',
+      '',
+      'Your data at:',
+      `  Windows: %LOCALAPPDATA%\\Krythor`,
+      `  macOS:   ~/Library/Application Support/Krythor`,
+      `  Linux:   ~/.local/share/krythor`,
+      'is PRESERVED — it is never deleted by uninstall.',
+      '',
+      'After uninstalling, also remove the PATH entry from your shell config.',
+    ],
+  },
+  help: {
+    summary: 'Print this help text',
+    detail: [
+      'Usage: krythor help [<command>]',
+      '',
+      'Without arguments: lists all commands with short descriptions.',
+      'With a command name: prints detailed help for that command.',
+      '',
+      'Examples:',
+      '  krythor help',
+      '  krythor help start',
+      '  krythor help doctor',
+    ],
+  },
+};
+
+function runHelp() {
+  const d  = '\x1b[2m';
+  const g  = '\x1b[32m';
+  const c  = '\x1b[36m';
+  const b  = '\x1b[1m';
+  const rs = '\x1b[0m';
+
+  // Check if a specific command was requested: `krythor help <cmd>`
+  const helpCmdArg = process.argv[3]; // argv[2] === 'help', argv[3] is the sub-command
+
+  if (helpCmdArg && COMMAND_HELP[helpCmdArg]) {
+    const info = COMMAND_HELP[helpCmdArg];
+    console.log(`${c}  KRYTHOR${rs} — ${b}${helpCmdArg}${rs}`);
+    console.log('');
+    console.log(`  ${info.summary}`);
+    console.log('');
+    for (const line of info.detail) {
+      console.log(line ? `  ${line}` : '');
+    }
+    console.log('');
+    process.exit(0);
+  }
+
+  if (helpCmdArg) {
+    console.log(`\x1b[31m  Unknown command:\x1b[0m ${helpCmdArg}`);
+    console.log(`  Run \x1b[36mkrythor help\x1b[0m to see all commands.`);
+    console.log('');
+    process.exit(1);
+  }
+
+  // Full command listing
+  const versionTag = KRYTHOR_VERSION ? ` v${KRYTHOR_VERSION}` : '';
+  console.log(`${c}  KRYTHOR${rs}${d}${versionTag}${rs} — Local-first AI command platform`);
+  console.log('');
+  console.log(`${b}  Available commands:${rs}`);
+  console.log('');
+  const maxLen = Math.max(...Object.keys(COMMAND_HELP).map(k => k.length));
+  for (const [cmd, info] of Object.entries(COMMAND_HELP)) {
+    console.log(`  ${g}${cmd.padEnd(maxLen)}${rs}  ${d}${info.summary}${rs}`);
+  }
+  console.log('');
+  console.log(`${d}  Run \x1b[0m\x1b[36mkrythor help <command>\x1b[0m${d} for detailed usage.${rs}`);
+  console.log(`${d}  Gateway UI: http://${HOST}:${PORT}${rs}`);
+  console.log('');
+  process.exit(0);
+}
+
 // ── Allow `node start.js doctor` as an alias for the doctor command ────────
 if (process.argv.includes('doctor')) {
   const doctorScript = join(__dirname, 'packages', 'setup', 'dist', 'bin', 'setup.js');
@@ -602,6 +1088,38 @@ else if (process.argv.includes('update')) {
   console.log('');
   process.exit(0);
 }
+// ── krythor stop ───────────────────────────────────────────────────────────
+else if (process.argv.includes('stop')) {
+  runStop().catch(e => {
+    console.error('\x1b[31mFatal:\x1b[0m', e.message);
+    process.exit(1);
+  });
+}
+// ── krythor restart ────────────────────────────────────────────────────────
+else if (process.argv.includes('restart')) {
+  runRestart().catch(e => {
+    console.error('\x1b[31mFatal:\x1b[0m', e.message);
+    process.exit(1);
+  });
+}
+// ── krythor backup ─────────────────────────────────────────────────────────
+else if (process.argv.includes('backup')) {
+  runBackup().catch(e => {
+    console.error('\x1b[31mFatal:\x1b[0m', e.message);
+    process.exit(1);
+  });
+}
+// ── krythor uninstall ──────────────────────────────────────────────────────
+else if (process.argv.includes('uninstall')) {
+  runUninstall().catch(e => {
+    console.error('\x1b[31mFatal:\x1b[0m', e.message);
+    process.exit(1);
+  });
+}
+// ── krythor help ───────────────────────────────────────────────────────────
+else if (process.argv.includes('help')) {
+  runHelp();
+}
 // ── Allow `node start.js status` as a quick health summary ────────────────
 else if (process.argv.includes('status')) {
   runStatus().catch(e => {
@@ -614,6 +1132,12 @@ else if (process.argv.includes('status')) {
     process.exit(1);
   });
   // runRepair handles process.exit internally — do not call main()
+} else if (process.argv.includes('--daemon')) {
+  // krythor start --daemon
+  runDaemon().catch(e => {
+    console.error('\x1b[31mFatal:\x1b[0m', e.message);
+    process.exit(1);
+  });
 } else {
   main().catch(err => {
     console.error('\x1b[31mFatal:\x1b[0m', err.message);

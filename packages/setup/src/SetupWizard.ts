@@ -258,12 +258,18 @@ export class SetupWizard {
     console.log('');
     console.log(fmt.dim('  Available commands:'));
     console.log(fmt.ok ('    krythor              — start the gateway and open the Control UI'));
+    console.log(fmt.ok ('    krythor start --daemon — start gateway in the background'));
+    console.log(fmt.ok ('    krythor stop          — stop the background daemon'));
+    console.log(fmt.ok ('    krythor restart       — restart the background daemon'));
     console.log(fmt.ok ('    krythor status        — quick health check of the running gateway'));
     console.log(fmt.ok ('    krythor tui           — terminal dashboard (polls gateway every 5s)'));
     console.log(fmt.ok ('    krythor doctor        — full diagnostics report'));
     console.log(fmt.ok ('    krythor repair        — check runtime components and credentials'));
+    console.log(fmt.ok ('    krythor backup        — create a timestamped backup of your data'));
     console.log(fmt.ok ('    krythor setup         — re-run this setup wizard'));
     console.log(fmt.ok ('    krythor update        — update to the latest release'));
+    console.log(fmt.ok ('    krythor uninstall     — remove the Krythor installation'));
+    console.log(fmt.ok ('    krythor help          — print all commands with descriptions'));
     console.log('');
     console.log(fmt.dim('  Key API endpoints (after gateway starts at http://127.0.0.1:47200):'));
     console.log(fmt.dim('    GET  /health              — status, versions, provider/model count'));
