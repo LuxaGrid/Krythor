@@ -50,6 +50,7 @@ export function registerAgentRoutes(app: FastifyInstance, orchestrator: AgentOrc
           temperature:  { type: 'number', minimum: 0, maximum: 2 },
           maxTokens:    { type: 'number', minimum: 1 },
           tags:         { type: 'array', items: { type: 'string', minLength: 1, maxLength: 50 }, maxItems: 20 },
+          allowedTools: { type: 'array', items: { type: 'string', minLength: 1, maxLength: 100 }, maxItems: 50 },
         },
         additionalProperties: false,
       },
@@ -75,6 +76,10 @@ export function registerAgentRoutes(app: FastifyInstance, orchestrator: AgentOrc
           temperature:  { type: 'number', minimum: 0, maximum: 2 },
           maxTokens:    { type: 'number', minimum: 1 },
           tags:         { type: 'array', items: { type: 'string', minLength: 1, maxLength: 50 }, maxItems: 20 },
+          allowedTools: { oneOf: [
+            { type: 'array', items: { type: 'string', minLength: 1, maxLength: 100 }, maxItems: 50 },
+            { type: 'null' },
+          ] },
         },
         additionalProperties: false,
       },
@@ -95,6 +100,43 @@ export function registerAgentRoutes(app: FastifyInstance, orchestrator: AgentOrc
       return reply.code(204).send();
     } catch (err) {
       return reply.code(404).send({ error: err instanceof Error ? err.message : 'Not found' });
+    }
+  });
+
+  // GET /api/agents/:id/run — run an agent with ?message= query param (ITEM 5)
+  // Separate from the command route; intended for simple scripting/curl usage.
+  app.get<{ Params: { id: string }; Querystring: { message?: string } }>('/api/agents/:id/run', {
+    config: { rateLimit: { max: 30, timeWindow: 60_000 } },
+  }, async (req, reply) => {
+    const agent = orchestrator.getAgent(req.params.id);
+    if (!agent) return reply.code(404).send({ error: 'Agent not found' });
+
+    const message = req.query.message;
+    if (!message || message.trim().length === 0) {
+      return reply.code(400).send({ error: 'message query parameter is required' });
+    }
+
+    if (guard) {
+      const verdict = guard.check({
+        operation: 'agent:run',
+        source: 'user',
+        sourceId: req.params.id,
+        content: message,
+      });
+      if (!verdict.allowed) {
+        return reply.code(403).send({ error: 'Guard denied agent run', reason: verdict.reason, guardVerdict: verdict });
+      }
+    }
+
+    try {
+      const run = await orchestrator.runAgent(req.params.id, { input: message });
+      return reply.send({ output: run.output ?? '', modelUsed: run.modelUsed, status: run.status, runId: run.id });
+    } catch (err) {
+      if (err instanceof RunQueueFullError) {
+        reply.header('Retry-After', '30');
+        return reply.code(429).send({ error: err.message });
+      }
+      return reply.code(500).send({ error: err instanceof Error ? err.message : 'Run failed' });
     }
   });
 

@@ -6,7 +6,7 @@ import type { ModelEngine } from '@krythor/models';
 import type { ExecTool } from '../tools/ExecTool.js';
 import { AgentRegistry } from './AgentRegistry.js';
 import { AgentRunner } from './AgentRunner.js';
-import type { LearningRecorder } from './AgentRunner.js';
+import type { LearningRecorder, HandoffResolver, CustomToolDispatcher } from './AgentRunner.js';
 import type {
   AgentDefinition,
   AgentRun,
@@ -65,6 +65,9 @@ export class AgentOrchestrator extends EventEmitter {
   // Queue of resolve functions waiting for a run slot
   private readonly waitQueue: Array<{ resolve: () => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }> = [];
 
+  private handoffResolver: HandoffResolver | null = null;
+  private customToolDispatcher: CustomToolDispatcher | null = null;
+
   constructor(
     private readonly memory: MemoryEngine | null,
     private readonly models: ModelEngine | null,
@@ -75,7 +78,27 @@ export class AgentOrchestrator extends EventEmitter {
     super();
     const dir = configDir ?? getConfigDir();
     this.registry = new AgentRegistry(dir);
-    this.runner = new AgentRunner(memory, models, recordLearning, execTool);
+    this.runner = new AgentRunner(memory, models, recordLearning, execTool ?? null, null, null);
+    // Wire the handoff resolver — dispatches {"handoff":"<id>","message":"..."} to another agent
+    this.handoffResolver = async (targetAgentId: string, message: string): Promise<string | null> => {
+      const agent = this.registry.getById(targetAgentId);
+      if (!agent) return null;
+      const run = await this.runner.run(agent, { input: message }, (evt) => this.emit('agent:event', evt));
+      return run.output ?? null;
+    };
+    this.rebuildRunner(recordLearning, execTool ?? null);
+  }
+
+  /** Rebuild runner with all current wired dependencies. */
+  private rebuildRunner(recordLearning?: LearningRecorder, execTool?: ExecTool | null): void {
+    this.runner = new AgentRunner(
+      this.memory,
+      this.models,
+      recordLearning,
+      execTool ?? null,
+      this.handoffResolver,
+      this.customToolDispatcher,
+    );
   }
 
   /**
@@ -84,7 +107,23 @@ export class AgentOrchestrator extends EventEmitter {
    * so subsequent runs have access to exec capabilities.
    */
   setExecTool(execTool: ExecTool): void {
-    this.runner = new AgentRunner(this.memory, this.models, undefined, execTool);
+    this.runner = new AgentRunner(
+      this.memory,
+      this.models,
+      undefined,
+      execTool,
+      this.handoffResolver,
+      this.customToolDispatcher,
+    );
+  }
+
+  /**
+   * Wire in a CustomToolDispatcher after construction (called from server.ts
+   * after both orchestrator and CustomToolStore are initialized).
+   */
+  setCustomToolDispatcher(dispatcher: CustomToolDispatcher): void {
+    this.customToolDispatcher = dispatcher;
+    this.rebuildRunner();
   }
 
   // ── Agent CRUD ─────────────────────────────────────────────────────────────

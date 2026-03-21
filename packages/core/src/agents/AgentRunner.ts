@@ -19,15 +19,40 @@ type EventEmitter = (event: AgentEvent) => void;
 /** Maximum number of tool-call iterations per run (prevents infinite loops). */
 const MAX_TOOL_CALL_ITERATIONS = 3;
 
+/** Maximum number of agent handoffs per run (prevents cycles). */
+const MAX_HANDOFFS = 3;
+
 /** Regex that finds a JSON tool-call block anywhere in a model response. */
-const TOOL_CALL_RE = /\{[\s\S]*?"tool"\s*:\s*"(?:exec|web_search|web_fetch)"[\s\S]*?\}/;
+const TOOL_CALL_RE = /\{[\s\S]*?"tool"\s*:\s*"[^"]*"[\s\S]*?\}/;
+
+/** Regex that detects a handoff directive: {"handoff":"<agentId>","message":"<msg>"} */
+const HANDOFF_RE  = /\{[\s\S]*?"handoff"\s*:\s*"[^"]*"[\s\S]*?\}/;
 
 // ── Tool-call extraction types ────────────────────────────────────────────────
 
 type ExecCall       = { tool: 'exec';       command: string; args: string[] };
 type WebSearchCall  = { tool: 'web_search'; query: string };
 type WebFetchCall   = { tool: 'web_fetch';  url: string };
-type AnyToolCall    = ExecCall | WebSearchCall | WebFetchCall;
+type CustomCall     = { tool: 'custom';     name: string;   input: string };
+type AnyToolCall    = ExecCall | WebSearchCall | WebFetchCall | CustomCall;
+
+/**
+ * Attempt to extract a handoff directive from a model response.
+ * Format: {"handoff":"<agentId>","message":"<msg>"}
+ * Returns { agentId, message } or null.
+ */
+function extractHandoff(response: string): { agentId: string; message: string } | null {
+  const match = response.match(HANDOFF_RE);
+  if (!match) return null;
+  try {
+    const parsed = JSON.parse(match[0]) as Record<string, unknown>;
+    if (typeof parsed['handoff'] === 'string' && parsed['handoff'].length > 0 &&
+        typeof parsed['message'] === 'string') {
+      return { agentId: parsed['handoff'] as string, message: parsed['message'] as string };
+    }
+  } catch { /* malformed JSON — ignore */ }
+  return null;
+}
 
 /**
  * Attempt to extract a structured tool call from a model response.
@@ -59,6 +84,11 @@ function extractToolCall(response: string): AnyToolCall | null {
     if (tool === 'web_fetch' && typeof parsed['url'] === 'string' && parsed['url'].length > 0) {
       return { tool: 'web_fetch', url: parsed['url'] as string };
     }
+
+    // Custom webhook tool — any other tool name with an "input" field
+    if (typeof tool === 'string' && tool.length > 0 && typeof parsed['input'] === 'string') {
+      return { tool: 'custom', name: tool, input: parsed['input'] as string };
+    }
   } catch { /* malformed JSON — ignore */ }
   return null;
 }
@@ -66,6 +96,21 @@ function extractToolCall(response: string): AnyToolCall | null {
 // Singleton tool instances — read-only, stateless, safe to share
 const webSearchTool = new WebSearchTool();
 const webFetchTool  = new WebFetchTool();
+
+// ── Handoff type ─────────────────────────────────────────────────────────────
+
+/**
+ * Optional callback supplied by AgentOrchestrator so AgentRunner can dispatch
+ * handoffs without a circular dependency.  Returns the response string from the
+ * target agent, or null if the target agent does not exist.
+ */
+export type HandoffResolver = (targetAgentId: string, message: string) => Promise<string | null>;
+
+/**
+ * Optional callback for dispatching custom webhook tool calls.
+ * Returns the response string or throws on error.
+ */
+export type CustomToolDispatcher = (toolName: string, input: string, agentId: string) => Promise<string | null>;
 
 /**
  * Optional callback invoked after each completed or failed run.
@@ -125,6 +170,8 @@ export class AgentRunner {
     private readonly models: ModelEngine | null,
     private readonly recordLearning?: LearningRecorder,
     private readonly execTool?: ExecTool | null,
+    private readonly handoffResolver?: HandoffResolver | null,
+    private readonly customToolDispatcher?: CustomToolDispatcher | null,
   ) {}
 
   // ── Private helpers ────────────────────────────────────────────────────────
@@ -200,9 +247,20 @@ export class AgentRunner {
     agentId: string,
     runId: string,
     emit: EventEmitter,
+    allowedTools?: string[],
   ): Promise<boolean> {
     const call = extractToolCall(response);
     if (!call) return false;
+
+    // ITEM 7: Check allowedTools before executing any tool call
+    const effectiveToolName = call.tool === 'custom' ? call.name : call.tool;
+    if (allowedTools && allowedTools.length > 0 && !allowedTools.includes(effectiveToolName)) {
+      const toolResult = `Tool "${effectiveToolName}" is not allowed for this agent. Allowed tools: ${allowedTools.join(', ')}.`;
+      const toolMsg: AgentMessage = { role: 'user', content: toolResult, timestamp: Date.now() };
+      messages.push(toolMsg);
+      emit({ type: 'run:turn', runId, agentId, payload: { turn: -1, message: toolMsg }, timestamp: Date.now() });
+      return true; // handled (let the model see the denial and respond)
+    }
 
     let toolResult: string;
 
@@ -252,6 +310,21 @@ export class AgentRunner {
         ].join('\n');
       } catch (err) {
         toolResult = `Tool web_fetch failed: ${err instanceof Error ? err.message : String(err)}`;
+      }
+    } else if (call.tool === 'custom') {
+      if (!this.customToolDispatcher) {
+        toolResult = `Tool "${call.name}" called but no custom tool dispatcher is configured.`;
+      } else {
+        try {
+          const result = await this.customToolDispatcher(call.name, call.input, agentId);
+          if (result === null) {
+            toolResult = `Tool "${call.name}" is not registered as a custom tool.`;
+          } else {
+            toolResult = `Tool result for "${call.name}":\n${result}`;
+          }
+        } catch (err) {
+          toolResult = `Tool "${call.name}" failed: ${err instanceof Error ? err.message : String(err)}`;
+        }
       }
     } else {
       return false;
@@ -400,6 +473,7 @@ export class AgentRunner {
             agent.id,
             runId,
             emit,
+            agent.allowedTools,
           );
           if (!handled) break;
 
@@ -435,6 +509,27 @@ export class AgentRunner {
           toolIteration++;
         }
         // ── End tool-call loop ────────────────────────────────────────────
+
+        // ── Handoff detection ─────────────────────────────────────────────
+        // If the model response contains a handoff directive and a resolver is
+        // available, dispatch the message to the target agent and return its
+        // response as the final output.  Capped at MAX_HANDOFFS per run.
+        let handoffCount = 0;
+        let currentOutput = run.output ?? response.content;
+        while (handoffCount < MAX_HANDOFFS && this.handoffResolver && !stopped) {
+          const handoff = extractHandoff(currentOutput);
+          if (!handoff) break;
+          const handoffResult = await this.handoffResolver(handoff.agentId, handoff.message);
+          if (handoffResult === null) {
+            // Target agent not found — treat as a normal response
+            currentOutput = `Handoff to agent "${handoff.agentId}" failed: agent not found.`;
+          } else {
+            currentOutput = handoffResult;
+          }
+          run.output = currentOutput;
+          handoffCount++;
+        }
+        // ── End handoff detection ─────────────────────────────────────────
 
         if (!this.shouldContinue(run.output ?? response.content)) {
           break;
