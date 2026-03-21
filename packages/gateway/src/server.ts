@@ -4,7 +4,7 @@ import fastifyWebsocket from '@fastify/websocket';
 import fastifyStatic from '@fastify/static';
 import fastifyRateLimit from '@fastify/rate-limit';
 import { join } from 'path';
-import { existsSync, readFileSync } from 'fs';
+import { existsSync, readFileSync, readdirSync } from 'fs';
 import { homedir, networkInterfaces } from 'os';
 import { KrythorCore, AgentOrchestrator } from '@krythor/core';
 import { MemoryEngine, GuardDecisionStore, OllamaEmbeddingProvider } from '@krythor/memory';
@@ -441,6 +441,27 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
   registerSkillRoutes(app, skillRegistry, guard, skillRunner);
   registerRecommendRoutes(app, models, recommender, guard);
   registerStreamWs(app, core, () => authCfg.token, guard);
+
+  // Templates endpoint — lists workspace template files available in the user's data dir.
+  // Returns file names and content so the UI can display or scaffold them.
+  // Authenticated — templates may contain user-edited personal context.
+  app.get('/api/templates', async (_req, reply) => {
+    const templatesDir = join(dataDir, 'templates');
+    if (!existsSync(templatesDir)) {
+      return reply.send({ templates: [] });
+    }
+    let files: string[];
+    try { files = readdirSync(templatesDir).filter(f => f.endsWith('.md')); }
+    catch { return reply.send({ templates: [] }); }
+
+    const templates = files.map(file => {
+      const filePath = join(templatesDir, file);
+      let content = '';
+      try { content = readFileSync(filePath, 'utf-8'); } catch {}
+      return { name: file, path: filePath, content };
+    });
+    return reply.send({ templates });
+  });
 
   // Health check — intentionally public (no auth required).
   // The token is returned here so the browser UI can bootstrap itself without

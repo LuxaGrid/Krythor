@@ -152,6 +152,17 @@ export class SetupWizard {
     // 3. Ensure directories
     installer.ensureDirs(sys.dataDir);
 
+    // 3b. Install workspace templates on first setup (not update)
+    // Templates are copied to <dataDir>/templates/ — users can edit them freely.
+    // Never overwrites existing files so user edits survive re-runs.
+    const installedTemplates = installer.installTemplates(sys.dataDir);
+    if (installedTemplates.length > 0) {
+      console.log(fmt.ok(`Workspace templates installed to: ${sys.dataDir}/templates/`));
+      for (const f of installedTemplates) {
+        console.log(fmt.dim(`    ${f}`));
+      }
+    }
+
     // 4. Create default agent
     installer.writeDefaultAgent();
     console.log(fmt.ok('Default "Krythor" agent created.'));
@@ -250,6 +261,12 @@ export class SetupWizard {
     console.log(fmt.dim('    pnpm start        — start the gateway'));
     console.log(fmt.dim('    pnpm doctor       — run diagnostics'));
     console.log(fmt.dim('    pnpm setup        — re-run setup wizard'));
+    console.log('');
+    console.log(fmt.dim('  Workspace templates (edit these to customize your agent):'));
+    console.log(fmt.dim(`    ${sys.dataDir}/templates/AGENTS.md  — agent identity and rules`));
+    console.log(fmt.dim(`    ${sys.dataDir}/templates/SOUL.md    — values and tone`));
+    console.log(fmt.dim(`    ${sys.dataDir}/templates/MEMORY.md  — long-term memory starter`));
+    console.log(fmt.dim(`    ${sys.dataDir}/templates/TOOLS.md   — environment notes`));
     console.log('');
 
     // Recommendation-aware summary (only when a provider was actually configured)

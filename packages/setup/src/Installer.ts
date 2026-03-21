@@ -164,6 +164,51 @@ export class Installer {
     copyFileSync(backupPath, dbFilePath);
   }
 
+  /**
+   * Install workspace template files (AGENTS.md, SOUL.md, TOOLS.md, MEMORY.md)
+   * to the user's data directory under a `templates/` subdirectory.
+   *
+   * Only copies files that do not already exist — never overwrites user edits.
+   * Returns a list of files that were actually installed.
+   *
+   * @param dataDir   The Krythor data directory (parent of config/).
+   * @param sourceDir Path to the docs/templates/ directory in the package tree.
+   *                  Defaults to looking relative to this file's location.
+   */
+  installTemplates(dataDir: string, sourceDir?: string): string[] {
+    // Locate source templates: walk up from __dirname to find docs/templates/
+    const candidateSourceDirs = [
+      sourceDir,
+      join(__dirname, '..', '..', '..', '..', 'docs', 'templates'),
+      join(__dirname, '..', '..', '..', 'docs', 'templates'),
+    ].filter(Boolean) as string[];
+
+    let resolvedSource: string | undefined;
+    for (const d of candidateSourceDirs) {
+      if (existsSync(d)) { resolvedSource = d; break; }
+    }
+    if (!resolvedSource) return []; // templates not found — non-fatal
+
+    const destDir = join(dataDir, 'templates');
+    mkdirSync(destDir, { recursive: true });
+
+    const installed: string[] = [];
+    let entries: string[];
+    try { entries = readdirSync(resolvedSource); } catch { return []; }
+
+    for (const file of entries) {
+      if (!file.endsWith('.md')) continue;
+      const dest = join(destDir, file);
+      if (existsSync(dest)) continue; // never overwrite user edits
+      try {
+        copyFileSync(join(resolvedSource, file), dest);
+        installed.push(file);
+      } catch { /* non-fatal */ }
+    }
+
+    return installed;
+  }
+
   writeStartScript(gatewayDistPath: string, scriptDir: string): void {
     mkdirSync(scriptDir, { recursive: true });
     if (process.platform === 'win32') {
