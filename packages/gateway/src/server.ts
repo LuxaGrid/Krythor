@@ -6,7 +6,7 @@ import fastifyRateLimit from '@fastify/rate-limit';
 import { join } from 'path';
 import { existsSync, readFileSync, readdirSync, watch as fsWatch } from 'fs';
 import { homedir, networkInterfaces } from 'os';
-import { KrythorCore, AgentOrchestrator } from '@krythor/core';
+import { KrythorCore, AgentOrchestrator, ExecTool } from '@krythor/core';
 import { MemoryEngine, GuardDecisionStore, OllamaEmbeddingProvider } from '@krythor/memory';
 import { ModelEngine, ModelRecommender, PreferenceStore } from '@krythor/models';
 import { GuardEngine } from '@krythor/guard';
@@ -21,6 +21,7 @@ import { registerConfigRoute } from './routes/config.js';
 import { registerConversationRoutes } from './routes/conversations.js';
 import { registerSkillRoutes } from './routes/skills.js';
 import { registerRecommendRoutes } from './routes/recommend.js';
+import { registerToolRoutes } from './routes/tools.js';
 import { registerStreamWs } from './ws/stream.js';
 import { HeartbeatEngine, type HeartbeatRunRecord, type HeartbeatInsight } from './heartbeat/HeartbeatEngine.js';
 import { logger } from './logger.js';
@@ -342,6 +343,26 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
     }
   }
 
+  // GET /api/stats — per-provider token usage for this session (auth required)
+  app.get('/api/stats', async (_req, reply) => {
+    return reply.send(models.tokenTracker.snapshot());
+  });
+
+  // POST /api/config/reload — manual trigger for hot config reload (auth required)
+  app.post('/api/config/reload', async (_req, reply) => {
+    try {
+      models.reloadProviders();
+      const s = models.stats();
+      const msg = `Provider config reloaded — ${s.providerCount} provider${s.providerCount !== 1 ? 's' : ''} active`;
+      logger.info(msg, { providerCount: s.providerCount, modelCount: s.modelCount });
+      return reply.send({ ok: true, message: msg, providerCount: s.providerCount, modelCount: s.modelCount });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.warn('Manual config reload failed', { error: message });
+      return reply.code(500).send({ ok: false, message: `Reload failed: ${message}` });
+    }
+  });
+
   // Initialise recommendation engine with persistent preference store
   const preferenceStore = new PreferenceStore(join(dataDir, 'config'));
   const recommender = new ModelRecommender(models, preferenceStore);
@@ -466,6 +487,10 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
     },
   );
 
+  // Exec tool — allows agents/users to run allowlisted local commands.
+  // Guard engine is wired in so 'command:execute' operations are policy-checked.
+  const execTool = new ExecTool(guard);
+
   // Register routes
   registerCommandRoute(app, core, orchestrator, broadcast, guard, convStore);
   registerMemoryRoutes(app, memory, models, guard);
@@ -476,6 +501,7 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
   registerConversationRoutes(app, convStore, guard);
   registerSkillRoutes(app, skillRegistry, guard, skillRunner);
   registerRecommendRoutes(app, models, recommender, guard);
+  registerToolRoutes(app, guard, execTool);
   registerStreamWs(app, core, () => authCfg.token, guard);
 
   // Templates endpoint — lists workspace template files available in the user's data dir.
@@ -548,6 +574,7 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
         version: core.identity.meta.version,
       },
       firstRun: modelStats.providerCount === 0 && agentStats.agentCount === 0,
+      totalTokens: models.tokenTracker.totalTokens(),
       // Location fields help users find their data — safe to expose on loopback-only endpoint.
       dataDir,
       configDir: join(dataDir, 'config'),
