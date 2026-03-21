@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   listProviders, addProvider, deleteProvider, pingProvider, updateProvider, refreshModels,
+  testProvider, updateProviderMeta, discoverLocalModels,
   getEmbeddings, activateEmbedding, deactivateEmbedding,
   getProviderCapabilities, connectOAuth, disconnectOAuth,
   type Provider, type PingResult, type Health, type ProviderCapabilities, type AuthMethod,
+  type ProviderTestResult, type LocalModelDiscovery,
 } from '../api.ts';
 
 const PROVIDER_TYPES = ['ollama', 'openai', 'anthropic', 'openai-compat', 'gguf'];
@@ -85,6 +87,15 @@ export function ModelsPanel({ health }: Props) {
   const [refreshing, setRefreshing]     = useState<Record<string, boolean>>({});
   const [pinging, setPinging]           = useState<Record<string, boolean>>({});
   const [refreshedModels, setRefreshedModels] = useState<Record<string, string[]>>({});
+
+  // Provider test results (per-provider)
+  const [testResults, setTestResults]   = useState<Record<string, ProviderTestResult>>({});
+  const [testing, setTesting]           = useState<Record<string, boolean>>({});
+  const [toggling, setToggling]         = useState<Record<string, boolean>>({});
+  // Local model discovery
+  const [discovering, setDiscovering]   = useState(false);
+  const [discovered, setDiscovered]     = useState<LocalModelDiscovery | null>(null);
+  const [showDiscovery, setShowDiscovery] = useState(false);
 
   // OAuth connect panel state (per-provider)
   const [oauthPanel, setOauthPanel]     = useState<string | null>(null); // provider id
@@ -187,6 +198,43 @@ export function ModelsPanel({ health }: Props) {
       load();
     } catch { /* ignore */ }
     finally { setRefreshing(r => ({ ...r, [id]: false })); }
+  };
+
+  // ── Test provider ─────────────────────────────────────────────────────────
+
+  const handleTest = async (id: string) => {
+    setTesting(t => ({ ...t, [id]: true }));
+    try {
+      const result = await testProvider(id);
+      setTestResults(r => ({ ...r, [id]: result }));
+    } catch {
+      setTestResults(r => ({ ...r, [id]: { ok: false, latencyMs: 0, error: 'Request failed' } }));
+    } finally {
+      setTesting(t => ({ ...t, [id]: false }));
+    }
+  };
+
+  // ── Enable / Disable provider ─────────────────────────────────────────────
+
+  const handleToggleEnabled = async (id: string, currentEnabled: boolean) => {
+    setToggling(t => ({ ...t, [id]: true }));
+    try {
+      await updateProviderMeta(id, { isEnabled: !currentEnabled });
+      setProviders(prev => prev.map(p => p.id === id ? { ...p, isEnabled: !currentEnabled } : p));
+    } catch { /* ignore */ }
+    finally { setToggling(t => ({ ...t, [id]: false })); }
+  };
+
+  // ── Discover local models ─────────────────────────────────────────────────
+
+  const handleDiscover = async () => {
+    setDiscovering(true);
+    setShowDiscovery(true);
+    try {
+      const result = await discoverLocalModels();
+      setDiscovered(result);
+    } catch { /* ignore */ }
+    finally { setDiscovering(false); }
   };
 
   // ── Set default ───────────────────────────────────────────────────────────
@@ -305,11 +353,108 @@ export function ModelsPanel({ health }: Props) {
       {/* Header */}
       <div className="p-3 border-b border-zinc-800 flex items-center justify-between">
         <span className="text-xs text-zinc-500">{providers.length} provider{providers.length !== 1 ? 's' : ''}</span>
-        <button
-          onClick={() => { setShowAdd(s => !s); setAddError(null); }}
-          className="text-xs text-brand-400 hover:text-brand-300 transition-colors"
-        >+ add provider</button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleDiscover}
+            disabled={discovering}
+            className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+            title="Probe Ollama, LM Studio, and llama-server on default ports"
+          >
+            {discovering ? 'Probing…' : 'Discover local'}
+          </button>
+          <button
+            onClick={() => { setShowAdd(s => !s); setAddError(null); }}
+            className="text-xs text-brand-400 hover:text-brand-300 transition-colors"
+          >+ add provider</button>
+        </div>
       </div>
+
+      {/* Local model discovery results */}
+      {showDiscovery && (
+        <div className="p-3 border-b border-zinc-800 bg-zinc-900/30 space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-zinc-400 font-medium">Local Model Discovery</p>
+            <button onClick={() => setShowDiscovery(false)} className="text-zinc-600 hover:text-zinc-300 text-xs">×</button>
+          </div>
+          {discovering && <p className="text-xs text-zinc-600">Probing local servers…</p>}
+          {discovered && !discovering && (
+            <div className="space-y-1.5 text-xs">
+              <div className="flex items-center gap-2">
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${discovered.ollama.detected ? 'bg-emerald-400' : 'bg-zinc-700'}`} />
+                <span className="text-zinc-400">Ollama</span>
+                <span className="text-zinc-600">{discovered.ollama.baseUrl}</span>
+                {discovered.ollama.detected && (
+                  <span className="text-emerald-500">{discovered.ollama.models.length} models</span>
+                )}
+                {!discovered.ollama.detected && <span className="text-zinc-700">not running</span>}
+                {discovered.ollama.detected && (
+                  <button
+                    onClick={() => {
+                      setShowAdd(true);
+                      setForm(f => ({
+                        ...f, type: 'ollama',
+                        endpoint: discovered.ollama.baseUrl,
+                        name: 'Ollama (local)',
+                        authMethod: 'none',
+                      }));
+                      setShowDiscovery(false);
+                    }}
+                    className="ml-auto text-brand-400 hover:text-brand-300 text-xs"
+                  >pre-fill form →</button>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${discovered.lmStudio.detected ? 'bg-emerald-400' : 'bg-zinc-700'}`} />
+                <span className="text-zinc-400">LM Studio</span>
+                <span className="text-zinc-600">{discovered.lmStudio.baseUrl}</span>
+                {discovered.lmStudio.detected && (
+                  <span className="text-emerald-500">{discovered.lmStudio.models.length} models</span>
+                )}
+                {!discovered.lmStudio.detected && <span className="text-zinc-700">not running</span>}
+                {discovered.lmStudio.detected && (
+                  <button
+                    onClick={() => {
+                      setShowAdd(true);
+                      setForm(f => ({
+                        ...f, type: 'openai-compat',
+                        endpoint: `${discovered.lmStudio.baseUrl}/v1`,
+                        name: 'LM Studio',
+                        authMethod: 'none',
+                      }));
+                      setShowDiscovery(false);
+                    }}
+                    className="ml-auto text-brand-400 hover:text-brand-300 text-xs"
+                  >pre-fill form →</button>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${discovered.llamaServer.detected ? 'bg-emerald-400' : 'bg-zinc-700'}`} />
+                <span className="text-zinc-400">llama-server</span>
+                <span className="text-zinc-600">{discovered.llamaServer.baseUrl}</span>
+                {discovered.llamaServer.detected
+                  ? <span className="text-emerald-500">running</span>
+                  : <span className="text-zinc-700">not running</span>
+                }
+                {discovered.llamaServer.detected && (
+                  <button
+                    onClick={() => {
+                      setShowAdd(true);
+                      setForm(f => ({
+                        ...f, type: 'gguf',
+                        endpoint: discovered.llamaServer.baseUrl,
+                        name: 'llama-server (local)',
+                        authMethod: 'none',
+                      }));
+                      setShowDiscovery(false);
+                    }}
+                    className="ml-auto text-brand-400 hover:text-brand-300 text-xs"
+                  >pre-fill form →</button>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* OAuth pending CTAs — shown for providers where the user chose "connect OAuth later" */}
       {providers.filter(p => p.setupHint === 'oauth_available').map(p => (
@@ -503,6 +648,17 @@ export function ModelsPanel({ health }: Props) {
                       </div>
                     )}
 
+                    {/* Test result */}
+                    {testResults[p.id] && (
+                      <div className="mt-0.5">
+                        <p className={`text-xs ${testResults[p.id]!.ok ? 'text-emerald-400' : 'text-red-400'}`}>
+                          {testResults[p.id]!.ok
+                            ? `✓ test ok (${testResults[p.id]!.latencyMs}ms)`
+                            : `✗ test failed: ${testResults[p.id]!.error ?? 'error'}`}
+                        </p>
+                      </div>
+                    )}
+
                     {/* Refreshed models */}
                     {refreshedModels[p.id] && (
                       <p className="text-xs mt-0.5 text-zinc-500">
@@ -567,6 +723,24 @@ export function ModelsPanel({ health }: Props) {
                     {!p.isDefault && (
                       <button onClick={() => handleSetDefault(p.id)} className="text-xs px-2 py-1 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-zinc-400 transition-colors">default</button>
                     )}
+                    <button
+                      onClick={() => handleToggleEnabled(p.id, p.isEnabled !== false)}
+                      disabled={!!toggling[p.id]}
+                      className={`text-xs px-2 py-1 rounded-lg transition-colors disabled:opacity-40 ${
+                        p.isEnabled !== false
+                          ? 'bg-zinc-800 hover:bg-amber-950/30 hover:text-amber-400 text-zinc-400'
+                          : 'bg-amber-950/30 text-amber-400 hover:bg-zinc-800 hover:text-zinc-400'
+                      }`}
+                      title={p.isEnabled !== false ? 'Disable provider' : 'Enable provider'}
+                    >
+                      {p.isEnabled !== false ? 'disable' : 'enable'}
+                    </button>
+                    <button
+                      onClick={() => handleTest(p.id)}
+                      disabled={!!testing[p.id]}
+                      className="text-xs px-2 py-1 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-zinc-400 transition-colors disabled:opacity-40 flex items-center gap-1"
+                      title="Send a test inference to this provider"
+                    >{testing[p.id] ? <Spinner /> : 'test'}</button>
 
                     {/* OAuth: show Connect or Disconnect based on current state */}
                     {typeCaps.supportsOAuth && !isOAuthConnected && (

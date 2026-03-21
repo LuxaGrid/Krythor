@@ -265,6 +265,32 @@ export const unpinMemory  = (id: string) => req<MemoryEntry>('POST', `/memory/${
 export const memoryStats  = () => req<MemoryStats>('GET', '/memory/stats');
 export const pruneMemory     = (maxEntries?: number) => req<{ deleted: number; totalEntries: number }>('POST', '/memory/prune', maxEntries !== undefined ? { maxEntries } : {});
 export const summarizeMemory = (scope?: string, batchSize?: number) => req<{ summarized: number; summaryEntryId?: string; totalEntries: number }>('POST', '/memory/summarize', { scope, batchSize });
+export const pruneMemoryBulk = (filters: { olderThan?: string; tag?: string; source?: string }) => {
+  const qs = new URLSearchParams(
+    Object.fromEntries(Object.entries(filters).filter(([, v]) => v !== undefined) as [string, string][])
+  );
+  return req<{ deleted: number }>('DELETE', `/memory?${qs.toString()}`);
+};
+export const exportMemory = async (): Promise<void> => {
+  const res = await fetch(`${BASE}/memory/export`, {
+    headers: _gatewayToken ? { Authorization: `Bearer ${_gatewayToken}` } : {},
+  });
+  if (!res.ok) throw new Error(`Export failed: ${res.status}`);
+  const data = await res.json();
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `krythor-memory-export-${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+};
+export const memoryStatsDetailed = () => req<MemoryStatsDetailed>('GET', '/memory/stats');
+export interface MemoryStatsDetailed extends MemoryStats {
+  oldest?: string | null;
+  newest?: string | null;
+  sizeEstimateBytes?: number;
+}
 
 export interface MemoryEntry {
   id: string; title: string; content: string; scope: string;
@@ -283,9 +309,25 @@ export const addProvider    = (p: Omit<Provider,'id'>) => req<Provider>('POST', 
 export const updateProvider = (id: string, patch: Partial<Provider>) => req<Provider>('PATCH', `/models/providers/${id}`, patch);
 export const deleteProvider = (id: string) => req<void>('DELETE', `/models/providers/${id}`);
 export const pingProvider   = (id: string) => req<PingResult>('POST', `/models/providers/${id}/ping`);
+export const testProvider   = (id: string) => req<ProviderTestResult>('POST', `/providers/${id}/test`);
+export const updateProviderMeta = (id: string, patch: { priority?: number; maxRetries?: number; isEnabled?: boolean; isDefault?: boolean }) =>
+  req<ProviderSummary>('POST', `/providers/${id}`, patch);
 export const refreshModels  = (id: string) => req<{ models: string[] }>('POST', `/models/providers/${id}/refresh`);
 export const listModels     = () => req<ModelInfo[]>('GET', '/models');
 export const getProviderCapabilities = () => req<Record<string, ProviderCapabilities>>('GET', '/models/capabilities');
+export const discoverLocalModels = () => req<LocalModelDiscovery>('GET', '/local-models');
+
+export interface ProviderTestResult { ok: boolean; latencyMs: number; model?: string; response?: string; error?: string }
+export interface ProviderSummary {
+  id: string; name: string; type: string; endpoint?: string; authMethod?: string;
+  modelCount: number; isDefault?: boolean; isEnabled?: boolean;
+  priority?: number; maxRetries?: number; setupHint?: string;
+}
+export interface LocalModelDiscovery {
+  ollama:      { detected: boolean; baseUrl: string; models: string[] };
+  lmStudio:    { detected: boolean; baseUrl: string; models: string[] };
+  llamaServer: { detected: boolean; baseUrl: string };
+}
 
 // OAuth routes
 export const connectOAuth = (
@@ -450,10 +492,35 @@ export const reportOverride = (taskType: string, suggestedModelId: string, chose
   req<void>('POST', '/recommend/override', { taskType, suggestedModelId, chosenModelId }).catch(() => {});
 
 // ── Skills ────────────────────────────────────────────────────────────────────
-export const listSkills  = () => req<Skill[]>('GET', '/skills');
-export const createSkill = (s: CreateSkillInput) => req<Skill>('POST', '/skills', s);
-export const updateSkill = (id: string, patch: Partial<CreateSkillInput>) => req<Skill>('PATCH', `/skills/${id}`, patch);
-export const deleteSkill = (id: string) => req<void>('DELETE', `/skills/${id}`);
+export const listSkills    = () => req<Skill[]>('GET', '/skills');
+export const listBuiltinSkills = () => req<BuiltinSkill[]>('GET', '/skills/builtins');
+export const createSkill   = (s: CreateSkillInput) => req<Skill>('POST', '/skills', s);
+export const updateSkill   = (id: string, patch: Partial<CreateSkillInput>) => req<Skill>('PATCH', `/skills/${id}`, patch);
+export const deleteSkill   = (id: string) => req<void>('DELETE', `/skills/${id}`);
+export const runSkill      = (id: string, input: string) => req<SkillRunResult>('POST', `/skills/${id}/run`, { input });
+
+export interface BuiltinSkill {
+  builtinId: string; name: string; description: string; systemPrompt: string; tags: string[];
+}
+export interface SkillRunResult {
+  skillId: string; output: string; modelUsed?: string; durationMs: number; status: string;
+}
+
+// ── Dashboard ─────────────────────────────────────────────────────────────────
+export const getDashboard = () => req<Dashboard>('GET', '/dashboard');
+
+export interface Dashboard {
+  uptime: number;
+  version: string;
+  providerCount: number;
+  modelCount: number;
+  agentCount: number;
+  memoryEntries: number;
+  conversationCount: number;
+  totalTokensUsed: number;
+  activeWarnings: unknown[];
+  lastHeartbeat: unknown | null;
+}
 
 export interface SkillTaskProfile {
   taskCategories?: string[];

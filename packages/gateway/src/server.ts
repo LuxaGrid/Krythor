@@ -25,6 +25,7 @@ import { registerRecommendRoutes } from './routes/recommend.js';
 import { registerToolRoutes } from './routes/tools.js';
 import { registerCustomToolRoutes } from './routes/tools.custom.js';
 import { registerProviderRoutes } from './routes/providers.js';
+import { registerLocalModelsRoute } from './routes/local-models.js';
 import { registerStreamWs } from './ws/stream.js';
 import { registerDashboardRoute } from './routes/dashboard.js';
 import { HeartbeatEngine, type HeartbeatRunRecord, type HeartbeatInsight } from './heartbeat/HeartbeatEngine.js';
@@ -549,6 +550,7 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
   registerToolRoutes(app, guard, execTool);
   registerCustomToolRoutes(app, customToolStore, guard);
   registerProviderRoutes(app, models);
+  registerLocalModelsRoute(app);
   registerConfigPortabilityRoutes(app, models);
   registerStreamWs(app, core, () => authCfg.token, guard);
 
