@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { listMemory, createMemory, updateMemory, deleteMemory, pinMemory, unpinMemory, pruneMemory, summarizeMemory, type MemoryEntry, type MemorySearchResult, type Health } from '../api.ts';
+import { listMemory, createMemory, updateMemory, deleteMemory, pinMemory, unpinMemory, pruneMemory, summarizeMemory, pruneMemoryBulk, exportMemory, memoryStatsDetailed, type MemoryEntry, type MemorySearchResult, type Health, type MemoryStatsDetailed } from '../api.ts';
 
 const SCOPES = ['all', 'session', 'user', 'agent', 'workspace', 'skill'];
 const PAGE_SIZE = 20;
@@ -169,6 +169,94 @@ interface MemoryPanelProps {
   health?: Health | null;
 }
 
+// ── Prune Modal ────────────────────────────────────────────────────────────
+
+interface PruneModalProps {
+  onClose: () => void;
+  onPruned: (deleted: number) => void;
+}
+
+function PruneModal({ onClose, onPruned }: PruneModalProps) {
+  const [olderThan, setOlderThan] = useState('');
+  const [tag, setTag]             = useState('');
+  const [source, setSource]       = useState('');
+  const [pruning, setPruning]     = useState(false);
+  const [error, setError]         = useState('');
+
+  const handleBackdrop = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.target === e.currentTarget) onClose();
+  };
+
+  const handlePrune = async () => {
+    if (!olderThan && !tag && !source) {
+      setError('At least one filter is required.');
+      return;
+    }
+    setError('');
+    setPruning(true);
+    try {
+      const result = await pruneMemoryBulk({
+        ...(olderThan && { olderThan }),
+        ...(tag && { tag }),
+        ...(source && { source }),
+      });
+      onPruned(result.deleted);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Prune failed');
+    } finally {
+      setPruning(false);
+    }
+  };
+
+  const INPUT_CLS = 'w-full bg-zinc-800 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 placeholder-zinc-600 outline-none focus:border-brand-600 focus:ring-1 focus:ring-brand-600/30 transition-colors';
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={handleBackdrop}>
+      <div className="bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl w-[440px] max-w-[95vw] overflow-hidden">
+        <div className="px-5 pt-5 pb-3 border-b border-zinc-800 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-zinc-100">Prune Memory</h2>
+          <button onClick={onClose} className="text-zinc-600 hover:text-zinc-300 text-lg leading-none transition-colors">×</button>
+        </div>
+        <div className="px-5 py-4 space-y-3">
+          <p className="text-xs text-zinc-500 leading-relaxed">
+            Delete memory entries matching the filters below. At least one filter is required.
+            Pinned entries are always preserved.
+          </p>
+          <div>
+            <label className="block text-xs text-zinc-500 mb-1">Older than (ISO date)</label>
+            <input
+              value={olderThan}
+              onChange={e => setOlderThan(e.target.value)}
+              placeholder="e.g. 2025-01-01T00:00:00Z"
+              className={INPUT_CLS}
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-zinc-500 mb-1">Tag</label>
+            <input value={tag} onChange={e => setTag(e.target.value)} placeholder="e.g. session" className={INPUT_CLS} />
+          </div>
+          <div>
+            <label className="block text-xs text-zinc-500 mb-1">Source</label>
+            <input value={source} onChange={e => setSource(e.target.value)} placeholder="e.g. agent" className={INPUT_CLS} />
+          </div>
+          {error && <p className="text-red-400 text-xs">{error}</p>}
+          <div className="flex justify-end gap-2 pt-1">
+            <button onClick={onClose} className="px-3 py-1.5 text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-400 rounded-lg transition-colors">Cancel</button>
+            <button
+              onClick={handlePrune}
+              disabled={pruning}
+              className="px-3 py-1.5 text-xs bg-red-700 hover:bg-red-600 disabled:opacity-50 text-white rounded-lg transition-colors"
+            >
+              {pruning ? 'Pruning…' : 'Prune'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function MemoryPanel({ health }: MemoryPanelProps) {
   const [results, setResults]   = useState<MemorySearchResult[]>([]);
   const [scope, setScope]       = useState('all');
@@ -182,6 +270,20 @@ export function MemoryPanel({ health }: MemoryPanelProps) {
   const [pruneResult, setPruneResult] = useState<{ deleted: number } | null>(null);
   const [summarizing, setSummarizing] = useState(false);
   const [summarizeResult, setSummarizeResult] = useState<{ summarized: number } | null>(null);
+  const [showPruneModal, setShowPruneModal] = useState(false);
+  const [exporting, setExporting]   = useState(false);
+  const [detailedStats, setDetailedStats] = useState<MemoryStatsDetailed | null>(null);
+
+  // Load detailed memory stats
+  useEffect(() => {
+    memoryStatsDetailed().then(setDetailedStats).catch(() => {});
+  }, []);
+
+  const handleExport = async () => {
+    setExporting(true);
+    try { await exportMemory(); } catch { /* ignore */ }
+    finally { setExporting(false); }
+  };
 
   const load = useCallback(async (pageOffset = 0, searchText = search, scopeValue = scope) => {
     setLoading(true);
@@ -287,6 +389,15 @@ export function MemoryPanel({ health }: MemoryPanelProps) {
           initial={editing ?? undefined}
           onSave={handleFormSave}
           onClose={() => { setShowForm(false); setEditing(null); }}
+        />
+      )}
+      {showPruneModal && (
+        <PruneModal
+          onClose={() => setShowPruneModal(false)}
+          onPruned={(deleted) => {
+            setPruneResult({ deleted });
+            void load(0);
+          }}
         />
       )}
       {health?.memory?.embeddingDegraded && (
@@ -416,11 +527,13 @@ export function MemoryPanel({ health }: MemoryPanelProps) {
             ? `${health.memory.totalEntries.toLocaleString()} total`
             : `${filtered.length} shown${hasMore ? '+' : ''}`}
         </span>
-        {health?.memory.totalEntries !== undefined && (
-          <span className="text-zinc-800">·</span>
+        {detailedStats?.sizeEstimateBytes !== undefined && (
+          <span className="text-zinc-800" title="Estimated storage size">
+            · {(detailedStats.sizeEstimateBytes / 1024).toFixed(1)}KB
+          </span>
         )}
         {health?.memory.embeddingProvider && (
-          <span className="text-zinc-700">{health.memory.embeddingProvider}</span>
+          <span className="text-zinc-700 ml-1">{health.memory.embeddingProvider}</span>
         )}
         {health?.memory !== undefined && (
           <>
@@ -439,12 +552,27 @@ export function MemoryPanel({ health }: MemoryPanelProps) {
             <span className="text-emerald-600">{pruneResult.deleted} pruned</span>
           )}
           <button
+            onClick={handleExport}
+            disabled={exporting}
+            title="Export all memory entries as JSON"
+            className="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 rounded text-zinc-500 hover:text-zinc-300 transition-colors"
+          >
+            {exporting ? '…' : 'export'}
+          </button>
+          <button
             onClick={handleSummarize}
             disabled={summarizing}
             title="Consolidate lowest-importance entries using AI"
             className="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 rounded text-zinc-500 hover:text-zinc-300 transition-colors"
           >
             {summarizing ? '…' : 'summarize'}
+          </button>
+          <button
+            onClick={() => setShowPruneModal(true)}
+            title="Delete entries by filter (date, tag, source)"
+            className="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 rounded text-zinc-500 hover:text-zinc-300 transition-colors"
+          >
+            bulk prune
           </button>
           <button
             onClick={handlePrune}
