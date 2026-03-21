@@ -1,5 +1,7 @@
 export { ModelEngine } from './ModelEngine.js';
 export { TokenTracker } from './TokenTracker.js';
+export { parseProviderList, validateProviderConfig } from './config/validate.js';
+export type { ProviderValidationResult } from './config/validate.js';
 export type { ProviderTokenStats, SessionStats, TotalStats, StatsSnapshot } from './TokenTracker.js';
 export { TaskClassifier } from './TaskClassifier.js';
 export type { TaskType, ClassificationResult } from './TaskClassifier.js';
