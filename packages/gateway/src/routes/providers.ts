@@ -5,9 +5,12 @@ import type { ModelEngine } from '@krythor/models';
 //
 // P3-3: GET /api/providers — list all configured providers with status info.
 //        Returns a safe summary that NEVER includes API keys or OAuth tokens.
+//        Now also includes priority and maxRetries fields.
 //
 // P3-2: POST /api/providers/:id/test — live inference test against a provider.
 //        Sends a minimal "Say: ok" message and returns latency + response.
+//
+// ITEM1: POST /api/providers/:id — update priority, maxRetries, isEnabled, isDefault.
 //
 
 export function registerProviderRoutes(app: FastifyInstance, models: ModelEngine): void {
@@ -28,6 +31,8 @@ export function registerProviderRoutes(app: FastifyInstance, models: ModelEngine
         modelCount,
         isDefault:  p.isDefault,
         isEnabled:  p.isEnabled,
+        priority:   p.priority   ?? 0,
+        maxRetries: p.maxRetries ?? 2,
       };
       // Only include setupHint when present — it drives UI CTAs
       if (p.setupHint) entry['setupHint'] = p.setupHint;
@@ -35,6 +40,56 @@ export function registerProviderRoutes(app: FastifyInstance, models: ModelEngine
     });
 
     return reply.send(result);
+  });
+
+  // POST /api/providers/:id — update priority, maxRetries, isEnabled, isDefault (auth required)
+  app.post<{ Params: { id: string } }>('/api/providers/:id', {
+    schema: {
+      body: {
+        type: 'object',
+        properties: {
+          priority:   { type: 'number' },
+          maxRetries: { type: 'integer', minimum: 0, maximum: 10 },
+          isEnabled:  { type: 'boolean' },
+          isDefault:  { type: 'boolean' },
+        },
+        additionalProperties: false,
+        minProperties: 1,
+      },
+    },
+  }, async (req, reply) => {
+    const provider = models.listProviders().find(p => p.id === req.params.id);
+    if (!provider) {
+      return reply.code(404).send({ error: 'Provider not found' });
+    }
+
+    const updates = req.body as {
+      priority?:   number;
+      maxRetries?: number;
+      isEnabled?:  boolean;
+      isDefault?:  boolean;
+    };
+
+    try {
+      const updated = models.updateProvider(req.params.id, updates);
+      const modelInfos = models.listModels();
+      const modelCount = modelInfos.filter(m => m.providerId === updated.id).length;
+      return reply.send({
+        id:         updated.id,
+        name:       updated.name,
+        type:       updated.type,
+        endpoint:   updated.endpoint,
+        authMethod: updated.authMethod,
+        modelCount,
+        isDefault:  updated.isDefault,
+        isEnabled:  updated.isEnabled,
+        priority:   updated.priority   ?? 0,
+        maxRetries: updated.maxRetries ?? 2,
+        ...(updated.setupHint && { setupHint: updated.setupHint }),
+      });
+    } catch (err) {
+      return reply.code(500).send({ error: err instanceof Error ? err.message : 'Update failed' });
+    }
   });
 
   // POST /api/providers/:id/test — live inference smoke test

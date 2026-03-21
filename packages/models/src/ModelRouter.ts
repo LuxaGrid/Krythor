@@ -17,9 +17,10 @@ import { CircuitBreaker, CircuitOpenError } from './CircuitBreaker.js';
 //   - Latency tracked inside each circuit breaker (last 50 calls)
 //
 
-const MAX_RETRIES      = 2;   // total attempts = 1 initial + 2 retries
-const RETRY_BASE_MS    = 500; // 500ms → 1000ms (+ jitter)
-const RETRY_JITTER_MS  = 100; // up to 100ms of random jitter per retry
+/** Global fallback for max retries — overridden per-provider via config.maxRetries */
+const DEFAULT_MAX_RETRIES = 2;   // total attempts = 1 initial + 2 retries
+const RETRY_BASE_MS       = 500; // 500ms → 1000ms (+ jitter)
+const RETRY_JITTER_MS     = 100; // up to 100ms of random jitter per retry
 
 export class ModelRouter {
   private readonly breakers = new Map<string, CircuitBreaker>();
@@ -160,26 +161,42 @@ export class ModelRouter {
       if (found) return { ...found, selectionReason: `agent override modelId=${context.agentModelId}` };
     }
 
-    // 4. Walk all enabled providers in order, skipping those with open circuits.
-    //    This replaces the old "default provider OR first enabled" logic with a
-    //    single ordered pass: default provider first, then the rest.
+    // 4. Walk all enabled providers sorted by priority (desc), with default first
+    //    when priorities are tied.  Skip providers with open circuits.
     const enabled = this.registry.listEnabled();
+    const configs = this.registry.listConfigs();
     const defaultProvider = this.registry.getDefaultProvider();
-    const ordered = defaultProvider
-      ? [defaultProvider, ...enabled.filter(p => p.id !== defaultProvider.id)]
-      : enabled;
+
+    // Build priority-sorted order: higher priority first.
+    // When priorities are equal, the default provider wins; then stable insertion order.
+    const ordered = [...enabled].sort((a, b) => {
+      const cfgA = configs.find(c => c.id === a.id);
+      const cfgB = configs.find(c => c.id === b.id);
+      const priA = cfgA?.priority ?? 0;
+      const priB = cfgB?.priority ?? 0;
+      if (priB !== priA) return priB - priA;                   // higher priority wins
+      const isDefA = a.id === defaultProvider?.id ? 1 : 0;
+      const isDefB = b.id === defaultProvider?.id ? 1 : 0;
+      return isDefB - isDefA;                                   // default wins tie
+    });
 
     for (const provider of ordered) {
       const breaker = this.breakers.get(provider.id);
       if (breaker?.isOpen()) continue; // skip tripped providers
-      const reason = provider.id === defaultProvider?.id ? 'default provider' : 'first available enabled provider';
+      const cfg = configs.find(c => c.id === provider.id);
+      const isDefault = provider.id === defaultProvider?.id;
+      const reason = isDefault
+        ? 'default provider'
+        : cfg && (cfg.priority ?? 0) > 0
+          ? `priority=${cfg.priority ?? 0}`
+          : 'first available enabled provider';
       return { provider, model: this.resolveModel(provider, request.model), selectionReason: reason };
     }
 
-    // All circuits open — use default anyway and let the error surface naturally
+    // All circuits open — use highest-priority anyway and let the error surface naturally
     if (ordered.length > 0) {
       const p = ordered[0]!;
-      return { provider: p, model: this.resolveModel(p, request.model), selectionReason: 'all circuits open — using default as last resort' };
+      return { provider: p, model: this.resolveModel(p, request.model), selectionReason: 'all circuits open — using highest-priority as last resort' };
     }
 
     throw new Error('No model provider is configured or enabled. Add a provider via /api/models/providers.');
@@ -258,10 +275,16 @@ export class ModelRouter {
 
     // Walk enabled providers in priority order, skip excluded and open circuits
     const enabled = this.registry.listEnabled();
+    const configs = this.registry.listConfigs();
     const defaultProvider = this.registry.getDefaultProvider();
-    const ordered = defaultProvider
-      ? [defaultProvider, ...enabled.filter(p => p.id !== defaultProvider.id)]
-      : enabled;
+    const ordered = [...enabled].sort((a, b) => {
+      const cfgA = configs.find(c => c.id === a.id);
+      const cfgB = configs.find(c => c.id === b.id);
+      const priA = cfgA?.priority ?? 0;
+      const priB = cfgB?.priority ?? 0;
+      if (priB !== priA) return priB - priA;
+      return (b.id === defaultProvider?.id ? 1 : 0) - (a.id === defaultProvider?.id ? 1 : 0);
+    });
 
     for (const provider of ordered) {
       if (exclude.has(provider.id)) continue;
@@ -274,17 +297,20 @@ export class ModelRouter {
 
   private async inferWithRetry(provider: BaseProvider, request: InferenceRequest, signal?: AbortSignal): Promise<InferenceResponse> {
     const breaker = this.getBreaker(provider.id);
+    // Per-provider maxRetries from config, fallback to global default
+    const cfg = this.registry.listConfigs().find(c => c.id === provider.id);
+    const maxRetries = typeof cfg?.maxRetries === 'number' ? cfg.maxRetries : DEFAULT_MAX_RETRIES;
     let lastError: unknown;
 
-    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
       if (attempt > 0) {
         // Exponential backoff with jitter — do not retry if the signal is already aborted
         if (signal?.aborted) throw lastError;
-        const base  = RETRY_BASE_MS * Math.pow(2, attempt - 1); // 500ms, 1000ms
+        const base  = RETRY_BASE_MS * Math.pow(2, attempt - 1); // 500ms, 1000ms, ...
         const jitter = Math.random() * RETRY_JITTER_MS;
         const errMsg = lastError instanceof Error ? lastError.message : String(lastError);
         if (this.warnFn) {
-          this.warnFn('[ModelRouter] Retrying inference', { providerId: provider.id, attempt, maxRetries: MAX_RETRIES, delayMs: Math.round(base + jitter), error: errMsg });
+          this.warnFn('[ModelRouter] Retrying inference', { providerId: provider.id, attempt, maxRetries, delayMs: Math.round(base + jitter), error: errMsg });
         }
         await sleep(base + jitter, signal);
       }

@@ -75,6 +75,8 @@ export function validateProviderConfig(raw: unknown): ProviderValidationResult {
     models:       Array.isArray(r['models'])
       ? (r['models'] as unknown[]).filter(m => typeof m === 'string') as string[]
       : [],
+    priority:     typeof r['priority'] === 'number' ? r['priority'] : 0,
+    maxRetries:   typeof r['maxRetries'] === 'number' ? Math.max(0, Math.round(r['maxRetries'])) : 2,
     setupHint:    typeof r['setupHint'] === 'string' ? r['setupHint'] : undefined,
   };
 

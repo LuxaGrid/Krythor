@@ -44,6 +44,17 @@ export interface ProviderConfig {
   isEnabled: boolean;
   models: string[];          // list of available model IDs
   /**
+   * Provider priority — higher values are preferred during routing.
+   * Default: 0.  When two providers are both eligible, the one with
+   * the higher priority value is selected first.
+   */
+  priority?: number;
+  /**
+   * Maximum number of retry attempts for this provider (on transient errors).
+   * Default: 2 (1 initial + 2 retries).
+   */
+  maxRetries?: number;
+  /**
    * Onboarding hint written by the setup wizard when a user skips auth setup.
    * 'oauth_available' — provider supports OAuth; UI should surface a connect CTA.
    * Cleared (set to undefined) once the provider is fully authenticated.
