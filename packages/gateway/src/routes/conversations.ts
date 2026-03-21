@@ -59,24 +59,41 @@ export function registerConversationRoutes(app: FastifyInstance, store: Conversa
     return reply.send(withIdleStatus(conv));
   });
 
-  // PATCH /api/conversations/:id — update title
+  // PATCH /api/conversations/:id — update title, name, and/or pinned (ITEM 4)
   app.patch<{ Params: { id: string } }>('/api/conversations/:id', {
     schema: {
       body: {
         type: 'object',
-        required: ['title'],
         properties: {
-          title: { type: 'string', minLength: 1, maxLength: 200 },
+          title:  { type: 'string', minLength: 1, maxLength: 200 },
+          name:   { type: ['string', 'null'], maxLength: 200 },
+          pinned: { type: 'boolean' },
         },
         additionalProperties: false,
+        minProperties: 1,
       },
     },
   }, async (req, reply) => {
-    const { title } = req.body as { title: string };
     const conv = store.getConversation(req.params.id);
     if (!conv) return reply.code(404).send({ error: 'Conversation not found' });
-    store.updateConversationTitle(req.params.id, title);
-    return reply.send({ ...conv, title });
+
+    const body = req.body as { title?: string; name?: string | null; pinned?: boolean };
+
+    // Update title separately if provided (uses existing updateConversationTitle)
+    if (body.title !== undefined) {
+      store.updateConversationTitle(req.params.id, body.title);
+    }
+
+    // Update name + pinned via new updateConversation
+    let updated = store.getConversation(req.params.id) ?? conv;
+    if (body.name !== undefined || body.pinned !== undefined) {
+      updated = store.updateConversation(req.params.id, {
+        ...(body.name   !== undefined && { name:   body.name }),
+        ...(body.pinned !== undefined && { pinned: body.pinned }),
+      }) ?? updated;
+    }
+
+    return reply.send(withIdleStatus(updated));
   });
 
   // DELETE /api/conversations/:id

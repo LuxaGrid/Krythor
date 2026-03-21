@@ -9,6 +9,10 @@ import { randomUUID } from 'crypto';
 export interface Conversation {
   id: string;
   title: string;
+  /** User-defined name override. When set, UIs should prefer this over `title`. */
+  name?: string | null;
+  /** When true, this conversation is pinned and appears first in listings. */
+  pinned: boolean;
   agentId: string | null;
   createdAt: number;
   updatedAt: number;
@@ -29,6 +33,8 @@ export interface Message {
 interface ConversationRow {
   id: string;
   title: string;
+  name?: string | null;
+  pinned: number;
   agent_id: string | null;
   created_at: number;
   updated_at: number;
@@ -48,6 +54,8 @@ function rowToConversation(row: ConversationRow): Conversation {
   return {
     id: row.id,
     title: row.title,
+    name: row.name ?? null,
+    pinned: row.pinned === 1,
     agentId: row.agent_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -96,15 +104,16 @@ export class ConversationStore {
     const now = Date.now();
     const id = randomUUID();
     this.db.prepare(`
-      INSERT INTO conversations (id, title, agent_id, created_at, updated_at)
-      VALUES (@id, @title, @agentId, @now, @now)
+      INSERT INTO conversations (id, title, name, pinned, agent_id, created_at, updated_at)
+      VALUES (@id, @title, NULL, 0, @agentId, @now, @now)
     `).run({ id, title: 'New Chat', agentId: agentId ?? null, now });
-    return { id, title: 'New Chat', agentId: agentId ?? null, createdAt: now, updatedAt: now };
+    return { id, title: 'New Chat', name: null, pinned: false, agentId: agentId ?? null, createdAt: now, updatedAt: now };
   }
 
   listConversations(): Conversation[] {
+    // Pinned first, then by updatedAt desc — per ITEM 4 spec
     const rows = this.db.prepare(`
-      SELECT * FROM conversations ORDER BY updated_at DESC, id DESC
+      SELECT * FROM conversations ORDER BY pinned DESC, updated_at DESC, id DESC
     `).all() as ConversationRow[];
     return rows.map(rowToConversation);
   }
@@ -118,6 +127,28 @@ export class ConversationStore {
     const now = Date.now();
     this.db.prepare(`UPDATE conversations SET title = @title, updated_at = @now WHERE id = @id`)
       .run({ id, title, now });
+  }
+
+  /** Update name and/or pinned state of a conversation. */
+  updateConversation(id: string, updates: { name?: string | null; pinned?: boolean }): Conversation | null {
+    const sets: string[] = [];
+    const params: Record<string, unknown> = { id };
+
+    if (updates.name !== undefined) {
+      sets.push('name = @name');
+      params['name'] = updates.name ?? null;
+    }
+    if (updates.pinned !== undefined) {
+      sets.push('pinned = @pinned');
+      params['pinned'] = updates.pinned ? 1 : 0;
+    }
+
+    if (sets.length === 0) return this.getConversation(id);
+
+    params['now'] = Date.now();
+    sets.push('updated_at = @now');
+    this.db.prepare(`UPDATE conversations SET ${sets.join(', ')} WHERE id = @id`).run(params);
+    return this.getConversation(id);
   }
 
   touchConversation(id: string): void {

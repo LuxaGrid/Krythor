@@ -36,21 +36,21 @@ describe('MigrationRunner — user_version', () => {
     const db = new Database(dbPath);
     const runner = new MigrationRunner(db);
     const result = runner.run(dbPath);
-    // We have 5 migration files (001, 002, 003, 004, 005)
-    expect(result.total).toBe(5);
-    expect(result.applied).toBe(5);
-    expect(result.userVersion).toBe(5);
-    expect(runner.getUserVersion()).toBe(5);
+    // We have 6 migration files (001, 002, 003, 004, 005, 006)
+    expect(result.total).toBe(6);
+    expect(result.applied).toBe(6);
+    expect(result.userVersion).toBe(6);
+    expect(runner.getUserVersion()).toBe(6);
     db.close();
   });
 
-  it('getAppliedVersions returns all 3 versions after a fresh run', () => {
+  it('getAppliedVersions returns all versions after a fresh run', () => {
     const tmpDir = mkdtempSync(join(tmpdir(), 'migration-applied-'));
     const dbPath = join(tmpDir, 'test.db');
     const db = new Database(dbPath);
     const runner = new MigrationRunner(db);
     runner.run(dbPath);
-    expect(runner.getAppliedVersions().size).toBe(5);
+    expect(runner.getAppliedVersions().size).toBe(6);
     db.close();
   });
 
@@ -62,7 +62,7 @@ describe('MigrationRunner — user_version', () => {
     runner.run(dbPath);
     const second = runner.run(dbPath);
     expect(second.applied).toBe(0);
-    expect(second.userVersion).toBe(5);
+    expect(second.userVersion).toBe(6);
     db.close();
   });
 
@@ -73,7 +73,7 @@ describe('MigrationRunner — user_version', () => {
     const runner = new MigrationRunner(db);
     const result = runner.run(dbPath);
     expect(runner.getUserVersion()).toBe(result.userVersion);
-    expect(result.userVersion).toBe(result.total); // all 5 applied → version 5
+    expect(result.userVersion).toBe(result.total); // all 6 applied → version 6
     db.close();
   });
 });
