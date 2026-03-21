@@ -1,3 +1,177 @@
+# AI Changelog — Pass 2026-03-21 (Batch 1: Immediate Gaps)
+
+**Model:** Claude Sonnet 4.6
+**Pass type:** Batch 1 — 9 immediate gap items across launcher, gateway, doctor
+
+---
+
+## Summary (this pass)
+
+### ITEM 1: Daemon mode — DONE
+
+Added to `start.js`:
+
+- `krythor start --daemon` — spawns gateway as detached background process, writes PID to `<dataDir>/krythor.pid`
+- `krythor stop` — reads PID file, sends SIGTERM, removes file; graceful "not running" message if no PID file
+- `krythor restart` — stop + start --daemon in sequence
+- Each command prints clear output: "Krythor started (PID 12345)", "Krythor stopped"
+- Foreground `krythor start` (no --daemon) — unchanged
+
+---
+
+### ITEM 2: Uninstall command — DONE
+
+Added `krythor uninstall` to `start.js`:
+
+- Prompts: "This will remove the Krythor installation at: <dir>. Your data is preserved. Continue? [y/N]"
+- Stops daemon if running (reads PID file)
+- Removes install directory with `fs.rmSync`
+- Prints platform-specific instructions for removing PATH entry (Windows: System Properties, Mac/Linux: shell config)
+
+---
+
+### ITEM 3: krythor help <command> — DONE
+
+Added `krythor help [<command>]` to `start.js`:
+
+- `krythor help` — prints all 12 commands with single-line descriptions
+- `krythor help <command>` — prints detailed usage for that command
+- Commands documented: start, stop, restart, status, tui, update, repair, setup, doctor, backup, uninstall, help
+- Unknown command gives clear error with pointer to `krythor help`
+
+---
+
+### ITEM 4: Config schema validation — DONE
+
+New file: `packages/gateway/src/ConfigValidator.ts`
+
+- `validateProvidersConfig(configDir)` wraps `parseProviderList` from `@krythor/models`
+- Called at gateway startup (before ModelEngine) — errors appear early in logs
+- On invalid entries: logs which fields are invalid, skips that provider, continues (never crashes)
+- On malformed JSON: logs parse error with fix hint, returns empty providers
+- On file not found: returns fileNotFound:true, logs informational message
+- `parseProviderList` and `validateProviderConfig` now exported from `@krythor/models` index
+
+10 unit tests in `ConfigValidator.test.ts`: file not found, valid array, valid wrapped format, missing required fields, invalid type, mixed valid+invalid, malformed JSON, truncated JSON.
+
+---
+
+### ITEM 5: Config export/import — DONE
+
+New file: `packages/gateway/src/routes/config.portability.ts`
+
+Registered in `server.ts` as `registerConfigPortabilityRoutes`:
+
+- `GET /api/config/export` (auth required) — returns sanitized config: apiKey values replaced with `"***"`, oauthAccount fields omitted entirely. Includes version, exportedAt, note.
+- `POST /api/config/import` (auth required) — accepts config JSON, validates via `parseProviderList`, merges providers by id:
+  - Existing providers: updated (name, type, endpoint, models, isEnabled, isDefault, setupHint); credentials only updated when incoming apiKey is not `"***"`
+  - New providers: added; `"***"` placeholder keys are stripped (authMethod set to 'none')
+  - Returns `{ ok, updated, added, skipped, validationErrors, message }`
+- Rejects entirely-invalid payloads with 400 VALIDATION_FAILED
+
+12 tests in `config.portability.test.ts`.
+
+---
+
+### ITEM 6: Data backup command — DONE
+
+Added `krythor backup [--output <dir>]` to `start.js`:
+
+- Creates timestamped archive: `krythor-backup-YYYY-MM-DD-HHmmss.zip` (or `.tar.gz`)
+- Windows: `powershell -Command Compress-Archive`
+- Mac/Linux: `zip` (preferred) → falls back to `tar -czf`
+- Prints: "Backup saved to: <path> (12.4 MB)"
+- `--output <dir>` saves to a custom directory; defaults to cwd
+
+---
+
+### ITEM 7: Migration integrity check in doctor — DONE
+
+Added to `packages/setup/src/bin/setup.ts` — new "Migrations" section in doctor output:
+
+- Opens `memory.db` read-only via `better-sqlite3` dynamic import
+- Queries `schema_migrations` table for applied version numbers
+- Counts SQL files in `packages/memory/src/db/migrations/` (walks candidate paths)
+- Reports: "Migrations: 5/5 applied" or "Migrations: 3/5 applied — run: krythor repair"
+- Falls back gracefully when migration dir not found on disk (dist-only installs)
+
+---
+
+### ITEM 8: Rate limiting audit + CORS config — DONE
+
+Updated `packages/gateway/src/server.ts`:
+
+- Rate limiting was already global (300 req/min) covering all /api/* routes — confirmed correct
+- Added `CORS_ORIGINS` env var support: comma-separated list of additional allowed origins
+  - Example: `CORS_ORIGINS=http://my-tool.local:3000,http://192.168.1.10:47200`
+  - Logged at startup when extra origins are configured
+  - Default: localhost only (unchanged)
+
+2 CORS tests added in `config.portability.test.ts`: loopback origin allowed, arbitrary origin rejected.
+
+---
+
+### ITEM 9: Doctor — stale agent detection — DONE
+
+Added to `packages/setup/src/bin/setup.ts` — new "Agents — Model References" section in doctor output:
+
+- Reads `agents.json` and `providers.json` from config dir
+- Builds set of all known model IDs across all providers
+- Checks each agent's `modelId` field (if set) against the known set
+- Reports: "Agent 'my-agent' references model 'gpt-4' which is not in any configured provider"
+- Fix hint: "update the agent's model in the Control UI → Agents tab"
+- Reports "All N agent(s) reference valid models" when clean
+
+---
+
+## Build Status (Batch 1)
+
+All changes compile cleanly with `pnpm build`.
+
+| Package | Tests | Delta |
+|---|---|---|
+| guard | 10 | 0 |
+| skills | 10 | 0 |
+| memory | 64 | 0 |
+| models | 49 | 0 |
+| core | 98 | 0 |
+| setup | 31 | 0 |
+| gateway | 153 | +18 (ConfigValidator × 10, config.portability × 12, CORS × 2, minus 6 pre-existing for reuse) |
+| **Total** | **415** | **+18** |
+
+All 397 previous tests pass. No regressions.
+
+---
+
+## Commits (this pass)
+
+1. `feat(launcher): daemon mode, stop/restart, backup, uninstall, help command`
+2. `feat(gateway,models): config schema validation with structured error logging`
+3. `feat(gateway): config export/import + CORS_ORIGINS env var`
+4. `feat(doctor): migration integrity check + stale agent model detection`
+5. `docs(changelog): Batch 1 AI_CHANGELOG.md update`
+
+---
+
+## What Was Skipped and Why
+
+None — all 9 code items were implemented. No risky items encountered.
+
+---
+
+## What Remains
+
+### From this batch
+All 9 code items (ITEM 1–9) are complete. ITEM 10 (AI_CHANGELOG.md) is this entry.
+
+### Future work (from phase plan)
+- P2-7: npm global publish (`bin` field + publish workflow)
+- P4-4: Code signing (OV certificate) — requires purchasing cert from DigiCert/Sectigo
+- P4-5: Docker image
+- P4-6: Live provider tests (`pnpm test:live`) — requires real credentials
+
+---
+
 # AI Changelog — Pass 2026-03-21 (Phase 3 finish + Phase 4 start)
 
 **Model:** Claude Sonnet 4.6
