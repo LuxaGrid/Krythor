@@ -1,4 +1,6 @@
 export { KrythorCore } from './KrythorCore.js';
+export { ExecTool, ExecDeniedError, ExecTimeoutError, DEFAULT_EXEC_ALLOWLIST, DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS } from './tools/ExecTool.js';
+export type { ExecOptions, ExecResult } from './tools/ExecTool.js';
 export { atomicWrite, atomicWriteJSON } from './config/atomicWrite.js';
 export {
   parseAgentList,
