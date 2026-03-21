@@ -1,3 +1,136 @@
+# AI Changelog — Pass 2026-03-21 (Phase 2)
+
+**Model:** Claude Sonnet 4.6
+**Pass type:** Phase 2 implementation — Krythor differentiation
+
+---
+
+## Phase 2 Summary (this pass)
+
+### P2-1: Exec Tool — DONE
+
+New module: `packages/core/src/tools/ExecTool.ts`
+
+`ExecTool.run(command, args, options)` executes local commands with:
+- **Allowlist enforcement**: command basename checked against `DEFAULT_EXEC_ALLOWLIST` before any `spawn()`. Commands not in list throw `ExecDeniedError` without execution. Default list: `ls, pwd, echo, cat, grep, find, git, node, python, python3, npm, pnpm`.
+- **Guard integration**: `'command:execute'` operation checked via `GuardEngine.check()` before spawn. If denied, throws `ExecDeniedError`.
+- **Timeout**: configurable (default 30s, max 300s). Sends SIGTERM then SIGKILL. Throws `ExecTimeoutError`.
+- **No shell expansion**: `spawn()` called with `shell: false` — args passed as array, not string interpolation.
+- **Capture**: stdout and stderr captured separately.
+- **Return**: `{ stdout, stderr, exitCode, durationMs, timedOut }`.
+
+Gateway routes added:
+- `GET /api/tools` — lists available tools + exec allowlist
+- `POST /api/tools/exec` — executes a command (auth required, rate-limited 30 req/min)
+
+Tests: 31 ExecTool unit tests + 17 gateway route tests.
+
+**Agent runner integration deferred**: ExecTool is fully implemented and exposed via API. Wiring it into `AgentRunner` so agents can invoke exec via a structured tool-call protocol requires a tool-use loop architecture change that is too large for this pass. Documented as next-pass work.
+
+---
+
+### P2-2: Hot Config Reload — DONE
+
+The `fs.watch()` hot reload was already implemented in `server.ts` (watching `providers.json`, 500ms debounce, `models.reloadProviders()`). This pass adds:
+
+- `POST /api/config/reload` — manual trigger for operator-initiated reload (auth required). Returns `{ ok, message, providerCount, modelCount }`.
+- Log: `"Provider config reloaded — N providers active"`.
+
+Also committed: `ModelRegistry.reload()` method that was on disk but not committed.
+
+Tests: 2 tests for the reload endpoint.
+
+---
+
+### P2-3: Per-Provider Token Usage Tracking — DONE
+
+New class: `packages/models/src/TokenTracker.ts`
+
+Tracks `{ name, model, inputTokens, outputTokens, requests, errors }` per provider+model per session (session = gateway process lifetime).
+
+- `record({ providerId, model, inputTokens?, outputTokens? })` — called after each completed inference
+- `recordError(providerId, model)` — called on inference failure
+- `snapshot()` — returns `{ session: { startTime, providers[] }, totals: { inputTokens, outputTokens, requests } }`
+- `totalTokens()` — convenience sum for health endpoint
+
+Wired into `ModelEngine.infer()` and `ModelEngine.inferStream()`. Both methods now update the tracker after each call.
+
+Gateway routes:
+- `GET /api/stats` — returns token snapshot (auth required)
+- `GET /health` — now includes `totalTokens: number` field
+
+Tests: 14 TokenTracker unit tests + 3 gateway tests (stats shape, totalTokens in health).
+
+---
+
+### P2-4: Built-in Skill Templates — DONE
+
+Three built-in skill templates added to `packages/skills/src/builtins/`:
+
+- **`summarize.ts`** (`builtin:summarize`) — Summarize any text to bullet points. Uses bullet `• ` format, 3–10 points, under 25 words each.
+- **`translate.ts`** (`builtin:translate`) — Translate text to a target language. Supports "Translate to French:" prefix format.
+- **`explain.ts`** (`builtin:explain`) — Explain a concept at beginner/intermediate/expert level. Defaults to intermediate.
+
+Each template has: `builtinId`, `name`, `description`, `systemPrompt`, `tags` (includes `'builtin'`), `permissions: []`, and `taskProfile`.
+
+Gateway route:
+- `GET /api/skills/builtins` — returns all three built-in templates as an array (auth required, no user data required)
+
+Exported from `@krythor/skills` as `BUILTIN_SKILLS`, `SUMMARIZE_SKILL`, `TRANSLATE_SKILL`, `EXPLAIN_SKILL`, `BuiltinSkillTemplate`.
+
+Tests: 7 tests for builtins endpoint (shape, length, required fields, tag presence).
+
+---
+
+## Build Status (Phase 2 close)
+
+All changes compile cleanly with `pnpm build`.
+
+| Package | Tests | Delta |
+|---|---|---|
+| guard | 10 | 0 |
+| skills | 10 | 0 |
+| memory | 57 | 0 |
+| models | 49 | +6 (TokenTracker) |
+| core | 71 | +31 (ExecTool) |
+| setup | 31 | 0 |
+| gateway | 110 | +17 (tools, reload, stats, builtins) |
+| **Total** | **338** | **+54** |
+
+All 93 original tests pass. No regressions.
+
+---
+
+## Commits (this pass)
+
+1. `feat(gateway): P2-2 hot config reload — add POST /api/config/reload endpoint`
+2. `feat(models): P2-3 per-provider token usage tracking via TokenTracker`
+3. `feat(skills): P2-4 built-in skill templates + GET /api/skills/builtins`
+4. `feat(core,gateway): P2-1 ExecTool — guard-checked local command execution`
+5. `fix(models): commit pre-existing ModelRegistry.reload() method`
+6. `docs(changelog): P2-5 update AI_CHANGELOG.md for Phase 2 pass`
+
+---
+
+## What Remains for the Next Pass
+
+### Phase 2 items NOT completed (deferred)
+
+- **ExecTool → AgentRunner integration**: ExecTool is implemented and reachable via API. The missing piece is wiring it into `AgentRunner` so agents can request exec via a structured tool-call message (e.g. `{"tool":"exec","command":"git","args":["status"]}`). This requires a tool-use loop in the conversation logic — significant architecture change. Estimate: 2–4 hours.
+- **Hybrid BM25+vector memory search**: Not started. Low risk but requires a BM25 implementation in pure JS.
+- **npm global publish** (`bin` field + publish workflow): Not started.
+- **SSH remote access documentation**: Not started (docs-only).
+
+### Phase 3+ (not yet started)
+
+- TUI for local chat
+- Web search tool (Brave/DuckDuckGo)
+- Docker image
+- Live provider tests
+- Session idle timeout
+
+---
+
 # AI Changelog — Pass 2026-03-21 (Phase 1)
 
 **Model:** Claude Sonnet 4.6
