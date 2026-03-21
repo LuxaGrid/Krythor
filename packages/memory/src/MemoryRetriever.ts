@@ -67,8 +67,11 @@ export class MemoryRetriever {
         }
         // When isStub, semanticSim stays 0 so it doesn't pollute the score
 
-        const textMatchScore = query.text
-          ? this.textMatchScore(entry, query.text)
+        // Prefer taskText for rich scoring (full phrase passed by the caller);
+        // fall back to query.text if taskText is absent.
+        const scoringText = taskText ?? query.text;
+        const textMatchScore = scoringText
+          ? this.textMatchScore(entry, scoringText)
           : 0;
 
         return {
@@ -102,16 +105,74 @@ export class MemoryRetriever {
 
   // ── Private ──────────────────────────────────────────────────────────────
 
+  /**
+   * BM25-inspired multi-word text match scorer.
+   *
+   * Scoring tiers:
+   *   1.0  — exact phrase match in title
+   *   0.85 — exact phrase match in body
+   *   0.55–0.75 — all query words present (proportional to coverage; boost for title hits)
+   *   0.10–0.40 — partial word coverage (proportional to fraction of query words matched)
+   *   0.00 — no words matched
+   *
+   * When multiple words are in the query, each is checked independently in title
+   * and body. Title hits receive a 1.5× term weight bonus (title is more authoritative).
+   * Coverage score = weighted hits / weighted total (0–1), scaled to the tier.
+   */
   private textMatchScore(entry: MemoryEntry, text: string): number {
-    const needle = text.toLowerCase();
-    const haystack = `${entry.title} ${entry.content}`.toLowerCase();
+    const needle = text.toLowerCase().trim();
+    if (!needle) return 0;
 
-    if (entry.title.toLowerCase().includes(needle)) return 1.0;
-    if (haystack.includes(needle)) return 0.6;
+    const titleLower   = entry.title.toLowerCase();
+    const contentLower = entry.content.toLowerCase();
+    const haystack     = `${titleLower} ${contentLower}`;
 
-    // Word-level partial match
-    const words = needle.split(/\s+/).filter(Boolean);
-    const matches = words.filter(w => haystack.includes(w)).length;
-    return words.length > 0 ? matches / words.length * 0.4 : 0;
+    // Tier 1: exact phrase in title
+    if (titleLower.includes(needle)) return 1.0;
+
+    // Tier 2: exact phrase in body
+    if (contentLower.includes(needle)) return 0.85;
+
+    // Tokenise query into individual words (ignore stop-words of length ≤ 2)
+    const words = needle.split(/\s+/).filter(w => w.length > 2);
+    if (words.length === 0) {
+      // All words were stop-words — fall back to simple inclusion check
+      return haystack.includes(needle) ? 0.3 : 0;
+    }
+
+    // For each query word, check title (weight 1.5) and body (weight 1.0)
+    const TITLE_WEIGHT = 1.5;
+    let weightedHits   = 0;
+    let weightedTotal  = 0;
+
+    for (const word of words) {
+      const inTitle   = titleLower.includes(word);
+      const inContent = contentLower.includes(word);
+
+      // A word found anywhere counts as a hit; title hit gets the bonus weight
+      if (inTitle) {
+        weightedHits  += TITLE_WEIGHT;
+        weightedTotal += TITLE_WEIGHT;
+      } else if (inContent) {
+        weightedHits  += 1.0;
+        weightedTotal += 1.0;
+      } else {
+        weightedTotal += 1.0; // miss
+      }
+    }
+
+    if (weightedTotal === 0) return 0;
+    const coverage = weightedHits / weightedTotal; // 0–1
+
+    // Tier 3: all words matched → high confidence partial phrase
+    if (coverage >= 1.0) {
+      // Scale 0.55–0.75 based on title ratio for tie-breaking
+      const titleHits = words.filter(w => titleLower.includes(w)).length / words.length;
+      return 0.55 + titleHits * 0.20;
+    }
+
+    // Tier 4: partial word coverage → proportional low score
+    // Scale 0.05–0.40 so even 1/5 words gives a small signal
+    return 0.05 + coverage * 0.35;
   }
 }
