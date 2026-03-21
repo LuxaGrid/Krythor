@@ -46,6 +46,12 @@ function readPackageVersion(): string {
 export const KRYTHOR_VERSION = readPackageVersion();
 
 function getDataDir(): string {
+  // KRYTHOR_DATA_DIR allows users to relocate Krythor's data directory.
+  // Useful for backups, multi-user setups, and testing.
+  // Must match the same env var in SystemProbe.ts and start.js.
+  if (process.env['KRYTHOR_DATA_DIR']) {
+    return process.env['KRYTHOR_DATA_DIR'];
+  }
   if (process.platform === 'win32') {
     return join(process.env['LOCALAPPDATA'] ?? join(homedir(), 'AppData', 'Local'), 'Krythor');
   }
@@ -79,6 +85,12 @@ export function warnIfNetworkExposed(host: string): void {
 
 export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
   const dataDir = getDataDir();
+  // Log the resolved data directory immediately — helps users find their config.
+  logger.info('Krythor Gateway initializing', {
+    dataDir,
+    configDir: join(dataDir, 'config'),
+    dataDirOverridden: !!process.env['KRYTHOR_DATA_DIR'],
+  });
 
   // Load or generate the auth token before the server starts.
   const authCfg = loadOrCreateToken(join(dataDir, 'config'));
@@ -268,6 +280,22 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
     logger.info('Embedding provider registered', { provider: embeddingProvider.name });
   }
 
+  // Log provider load status at startup — surface actionable warnings when no providers
+  // are configured or when entries were skipped due to validation errors.
+  const providerStats = models.stats();
+  if (providerStats.providerCount === 0) {
+    logger.warn(
+      'No AI providers configured — inference will fail until a provider is added. ' +
+      'Run: krythor setup  OR  open the Models tab in the Control UI.',
+    );
+  } else {
+    logger.info('Providers loaded', {
+      providerCount: providerStats.providerCount,
+      modelCount:    providerStats.modelCount,
+      hasDefault:    providerStats.hasDefault,
+    });
+  }
+
   // Log embedding status so startup logs always record whether semantic search is active
   const embStatus = memory.embeddingStatus();
   if (embStatus.degraded) {
@@ -442,6 +470,9 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
         version: core.identity.meta.version,
       },
       firstRun: modelStats.providerCount === 0 && agentStats.agentCount === 0,
+      // Location fields help users find their data — safe to expose on loopback-only endpoint.
+      dataDir,
+      configDir: join(dataDir, 'config'),
       // Token is intentionally NOT included here — it is injected into index.html
       // at serve time so the UI can bootstrap without exposing it on a public endpoint.
     };
