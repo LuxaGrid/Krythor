@@ -11,6 +11,7 @@ import { SkillsPanel } from './components/SkillsPanel.tsx';
 import { EventStream } from './components/EventStream.tsx';
 import { MissionControlPanel } from './components/MissionControlPanel.tsx';
 import { WorkflowPanel } from './components/WorkflowPanel.tsx';
+import { DashboardPanel } from './components/DashboardPanel.tsx';
 import { OnboardingWizard } from './components/OnboardingWizard.tsx';
 import { DegradedBanner } from './components/DegradedBanner.tsx';
 
@@ -26,18 +27,19 @@ export const AppConfigContext = createContext<AppConfigCtx>({
 export const useAppConfig = () => useContext(AppConfigContext);
 
 // ── Tabs ──────────────────────────────────────────────────────────────────
-type Tab = 'command' | 'agents' | 'skills' | 'memory' | 'models' | 'guard' | 'events' | 'mission' | 'workflow';
+type Tab = 'command' | 'agents' | 'skills' | 'memory' | 'models' | 'guard' | 'events' | 'mission' | 'workflow' | 'dashboard';
 
 const TABS: { id: Tab; label: string }[] = [
-  { id: 'command',  label: 'Command'         },
-  { id: 'agents',   label: 'Agents'          },
-  { id: 'skills',   label: 'Skills'          },
-  { id: 'memory',   label: 'Memory'          },
-  { id: 'models',   label: 'Models'          },
-  { id: 'guard',    label: 'Guard'           },
-  { id: 'events',   label: 'Events'          },
-  { id: 'mission',  label: 'Mission Control' },
-  { id: 'workflow', label: 'Workflow'        },
+  { id: 'command',   label: 'Command'         },
+  { id: 'agents',    label: 'Agents'          },
+  { id: 'skills',    label: 'Skills'          },
+  { id: 'memory',    label: 'Memory'          },
+  { id: 'models',    label: 'Models'          },
+  { id: 'guard',     label: 'Guard'           },
+  { id: 'events',    label: 'Events'          },
+  { id: 'mission',   label: 'Mission Control' },
+  { id: 'workflow',  label: 'Workflow'        },
+  { id: 'dashboard', label: 'Dashboard'       },
 ];
 
 // ── About Dialog ──────────────────────────────────────────────────────────
@@ -272,7 +274,7 @@ function AppInner({ onTokenReady }: { onTokenReady: (token: string) => void }) {
 
   // ── Global keyboard shortcuts ────────────────────────────────────────────
   useEffect(() => {
-    const tabOrder: Tab[] = ['command', 'agents', 'skills', 'memory', 'models', 'guard', 'events', 'mission', 'workflow'];
+    const tabOrder: Tab[] = ['command', 'agents', 'skills', 'memory', 'models', 'guard', 'events', 'mission', 'workflow', 'dashboard'];
 
     const handler = (e: KeyboardEvent) => {
       // Ignore when typing in an input/textarea (except for modal-close)
@@ -373,8 +375,9 @@ function AppInner({ onTokenReady }: { onTokenReady: (token: string) => void }) {
           <div className={`h-full ${tab === 'events'   ? 'block' : 'hidden'}`}>
             <EventStream events={events} onClear={clearEvents} />
           </div>
-          <div className={`h-full ${tab === 'mission'  ? 'block' : 'hidden'}`}><MissionControlPanel /></div>
-          <div className={`h-full ${tab === 'workflow' ? 'block' : 'hidden'}`}><WorkflowPanel /></div>
+          <div className={`h-full ${tab === 'mission'   ? 'block' : 'hidden'}`}><MissionControlPanel /></div>
+          <div className={`h-full ${tab === 'workflow'  ? 'block' : 'hidden'}`}><WorkflowPanel /></div>
+          <div className={`h-full ${tab === 'dashboard' ? 'block' : 'hidden'}`}><DashboardPanel /></div>
         </div>
       </div>
     </AppConfigContext.Provider>
