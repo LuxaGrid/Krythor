@@ -17,6 +17,10 @@ export interface ProbeResult {
 }
 
 function getConfigDir(): string {
+  // If KRYTHOR_DATA_DIR is set, config lives under it.
+  if (process.env['KRYTHOR_DATA_DIR']) {
+    return join(process.env['KRYTHOR_DATA_DIR'], 'config');
+  }
   if (process.platform === 'win32') {
     return join(process.env['LOCALAPPDATA'] ?? join(homedir(), 'AppData', 'Local'), 'Krythor', 'config');
   }
@@ -27,6 +31,11 @@ function getConfigDir(): string {
 }
 
 function getDataDir(): string {
+  // KRYTHOR_DATA_DIR allows users to relocate Krythor's data directory.
+  // Useful for backups, multi-user setups, and testing.
+  if (process.env['KRYTHOR_DATA_DIR']) {
+    return process.env['KRYTHOR_DATA_DIR'];
+  }
   if (process.platform === 'win32') {
     return join(process.env['LOCALAPPDATA'] ?? join(homedir(), 'AppData', 'Local'), 'Krythor');
   }
@@ -67,7 +76,7 @@ export async function probe(): Promise<ProbeResult> {
 
   return {
     nodeVersion,
-    nodeVersionOk: major >= 18,
+    nodeVersionOk: major >= 20,
     platform: process.platform,
     dataDir,
     configDir,
