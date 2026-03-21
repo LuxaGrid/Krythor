@@ -1,3 +1,164 @@
+# AI Changelog — Pass 2026-03-21 (Phase 2 finish + Phase 3)
+
+**Model:** Claude Sonnet 4.6
+**Pass type:** Phase 2 remaining items + Phase 3 control UI APIs
+
+---
+
+## Summary (this pass)
+
+### P2-remaining-1: ExecTool → AgentRunner structured tool-call integration — DONE
+
+`AgentRunner.run()` now supports a single-turn tool-call loop:
+
+- Pattern matched in model response: `{"tool":"exec","command":"<cmd>","args":[...]}`
+- If ExecTool is injected and the command passes allowlist + guard, it is executed
+- stdout/stderr/exitCode injected as a user message and model is called again
+- Capped at `MAX_TOOL_CALL_ITERATIONS = 3` to prevent infinite loops
+- `ExecDeniedError` and `ExecTimeoutError` caught gracefully; error message injected as tool result
+- Wire-up: `AgentOrchestrator.setExecTool()` replaces the runner after both are constructed. Called in `server.ts`.
+
+Tests: 5 new `AgentRunner.toolcall.test.ts` tests covering: no tool call, valid call, missing execTool passthrough, iteration cap, denied command handling.
+
+---
+
+### P2-remaining-2: Hybrid memory search improvement — DONE
+
+`MemoryRetriever.textMatchScore()` replaced with a BM25-inspired weighted multi-word scorer:
+
+| Score | Condition |
+|---|---|
+| 1.00 | Exact phrase match in title |
+| 0.85 | Exact phrase match in body |
+| 0.55–0.75 | All query words present (title-hit bonus applied) |
+| 0.05–0.40 | Partial word coverage (proportional) |
+| 0.00 | No words matched |
+
+Title hits receive a 1.5× weight bonus. Stop-words (≤ 2 chars) filtered before word matching.
+
+Also: `textMatchScore` now uses `taskText` (full caller phrase) when available, falling back to `query.text`. This means the rich phrase from `AgentRunner.buildMemoryContext()` drives scoring even when the SQL pre-filter uses a shorter keyword.
+
+Semantic search (embedding provider) is completely unaffected.
+
+Tests: 7 new `MemoryRetriever.test.ts` tests covering all scoring tiers.
+
+---
+
+### P3-1: Session idle timeout — DONE
+
+`GET /api/conversations` and `GET /api/conversations/:id` now return two computed fields:
+- `sessionAgeMs`: milliseconds since last activity (`now - updatedAt`)
+- `isIdle`: `true` when `sessionAgeMs >= 1,800,000` (30 minutes)
+
+Data-only change — nothing is ever deleted or modified. The 30-minute threshold matches the phase plan spec.
+
+Tests: 4 tests covering list shape, fresh conversation not-idle, single GET shape, threshold constant.
+
+---
+
+### P3-2: POST /api/providers/:id/test — DONE
+
+New endpoint that sends a minimal `"Say: ok"` inference call to the named provider and returns:
+```json
+{ "ok": true, "latencyMs": 142, "model": "llama3.2", "response": "ok" }
+```
+or on failure:
+```json
+{ "ok": false, "latencyMs": 30, "error": "connection refused" }
+```
+
+Rate-limited to 10 req/min. Returns 404 for unknown providers, 400 if disabled or no models configured.
+
+Tests: 2 tests (404 for nonexistent provider, ok:false shape verified).
+
+---
+
+### P3-3: GET /api/providers — DONE
+
+New endpoint listing all configured providers with status info. Never exposes API keys or OAuth tokens.
+
+Shape: `[{ id, name, type, endpoint, authMethod, modelCount, isDefault, isEnabled, setupHint? }]`
+
+This is distinct from `GET /api/models/providers` (which masks API keys but returns full ProviderConfig). `/api/providers` returns only the safe summary fields for UI control panels.
+
+Tests: 4 tests (array type, required fields, no secrets, boolean types).
+
+---
+
+### P3-4: GET /api/models enrichment — DONE
+
+`GET /api/models` previously returned `ModelInfo[]` with `providerId` but without provider name or type. Now enriched with:
+- `provider`: display name of the provider (was `providerId` only)
+- `providerType`: `ollama | openai | anthropic | openai-compat | gguf`
+- `isDefault`: whether the provider is the default
+
+All existing fields preserved (badges, isAvailable, circuitState, contextWindow, etc).
+
+Tests: 3 tests for enriched shape + backward compatibility.
+
+---
+
+### P3-5: GET /api/agents — systemPromptPreview — DONE
+
+`GET /api/agents` now includes `systemPromptPreview`: first 100 chars of `systemPrompt` + `…` when truncated. Full `systemPrompt` still returned.
+
+Tests: 4 tests (array type, required fields including preview, truncation at 100 chars, cleanup).
+
+---
+
+## Build Status (Phase 2+3 pass)
+
+All changes compile cleanly with `pnpm build`.
+
+| Package | Tests | Delta |
+|---|---|---|
+| guard | 10 | 0 |
+| skills | 10 | 0 |
+| memory | 64 | +7 (MemoryRetriever) |
+| models | 49 | 0 |
+| core | 76 | +5 (tool-call loop) |
+| setup | 31 | 0 |
+| gateway | 126 | +16 (providers, models.p3, conversations.idle) |
+| **Total** | **366** | **+28** |
+
+All 338 original tests pass. No regressions.
+
+---
+
+## Commits (this pass)
+
+1. `feat(gateway): P3-3 GET /api/providers + P3-2 POST /api/providers/:id/test`
+2. `feat(gateway): P3-4 enrich GET /api/models + P3-5 systemPromptPreview in GET /api/agents`
+3. `feat(gateway): P3-1 session idle timeout metadata on conversation endpoints`
+4. `feat(memory): P2-remaining-2 BM25-inspired hybrid text scoring in MemoryRetriever`
+5. `feat(core): P2-remaining-1 ExecTool structured tool-call loop in AgentRunner`
+6. `docs(changelog): P3-6 update AI_CHANGELOG.md for Phase 2 finish + Phase 3 pass`
+
+---
+
+## What Remains for the Next Pass
+
+### Phase 2 items (all done this pass)
+
+All Phase 2 remaining items are now implemented:
+- ExecTool → AgentRunner integration ✓
+- Hybrid BM25 memory search ✓
+
+### Phase 3 items remaining
+
+- **P3-7: npm global publish** — `bin` field + publish workflow
+- **SSH remote access documentation** — docs-only, deferred
+
+### Phase 3 items completed this pass
+
+- P3-1: Session idle timeout ✓
+- P3-2: Provider test endpoint ✓
+- P3-3: GET /api/providers ✓
+- P3-4: GET /api/models enrichment ✓
+- P3-5: GET /api/agents systemPromptPreview ✓
+
+---
+
 # AI Changelog — Pass 2026-03-21 (Phase 2)
 
 **Model:** Claude Sonnet 4.6
