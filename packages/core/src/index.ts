@@ -7,6 +7,9 @@ export { WebFetchTool, WEB_FETCH_MAX_CHARS, WEB_FETCH_TIMEOUT_MS } from './tools
 export type { WebFetchResult } from './tools/WebFetchTool.js';
 export { TOOL_REGISTRY, getToolEntry } from './tools/ToolRegistry.js';
 export type { ToolEntry, ToolParameter } from './tools/ToolRegistry.js';
+export { WebhookTool } from './tools/WebhookTool.js';
+export type { CustomToolDefinition, HttpMethod } from './tools/WebhookTool.js';
+export { CustomToolStore } from './tools/CustomToolStore.js';
 export { atomicWrite, atomicWriteJSON } from './config/atomicWrite.js';
 export {
   parseAgentList,
@@ -21,7 +24,7 @@ export type { SoulMetadata } from './SystemIdentityProvider.js';
 export { AgentOrchestrator, RunQueueFullError } from './agents/AgentOrchestrator.js';
 export { AgentRegistry } from './agents/AgentRegistry.js';
 export { AgentRunner } from './agents/AgentRunner.js';
-export type { LearningSignal, LearningRecorder } from './agents/AgentRunner.js';
+export type { LearningSignal, LearningRecorder, HandoffResolver, CustomToolDispatcher } from './agents/AgentRunner.js';
 
 export type { CommandResult } from './KrythorCore.js';
 export type {

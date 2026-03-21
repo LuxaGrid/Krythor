@@ -6,7 +6,7 @@ import fastifyRateLimit from '@fastify/rate-limit';
 import { join } from 'path';
 import { existsSync, readFileSync, readdirSync, watch as fsWatch } from 'fs';
 import { homedir, networkInterfaces } from 'os';
-import { KrythorCore, AgentOrchestrator, ExecTool } from '@krythor/core';
+import { KrythorCore, AgentOrchestrator, ExecTool, CustomToolStore, WebhookTool } from '@krythor/core';
 import { MemoryEngine, GuardDecisionStore, OllamaEmbeddingProvider } from '@krythor/memory';
 import { ModelEngine, ModelRecommender, PreferenceStore } from '@krythor/models';
 import { GuardEngine } from '@krythor/guard';
@@ -23,8 +23,10 @@ import { registerConversationRoutes } from './routes/conversations.js';
 import { registerSkillRoutes } from './routes/skills.js';
 import { registerRecommendRoutes } from './routes/recommend.js';
 import { registerToolRoutes } from './routes/tools.js';
+import { registerCustomToolRoutes } from './routes/tools.custom.js';
 import { registerProviderRoutes } from './routes/providers.js';
 import { registerStreamWs } from './ws/stream.js';
+import { registerDashboardRoute } from './routes/dashboard.js';
 import { HeartbeatEngine, type HeartbeatRunRecord, type HeartbeatInsight } from './heartbeat/HeartbeatEngine.js';
 import { logger } from './logger.js';
 import { loadOrCreateToken, verifyToken } from './auth.js';
@@ -523,6 +525,17 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
   // orchestrator was constructed before execTool is available).
   orchestrator.setExecTool(execTool);
 
+  // Custom tool store — persists user-defined webhook tools to custom-tools.json
+  const customToolStore = new CustomToolStore(join(dataDir, 'config'));
+  const webhookTool = new WebhookTool();
+
+  // Wire custom tool dispatcher into orchestrator so agents can call webhook tools
+  orchestrator.setCustomToolDispatcher(async (toolName: string, input: string) => {
+    const tool = customToolStore.get(toolName);
+    if (!tool) return null;
+    return webhookTool.run(tool, input);
+  });
+
   // Register routes
   registerCommandRoute(app, core, orchestrator, broadcast, guard, convStore);
   registerMemoryRoutes(app, memory, models, guard);
@@ -534,6 +547,7 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
   registerSkillRoutes(app, skillRegistry, guard, skillRunner);
   registerRecommendRoutes(app, models, recommender, guard);
   registerToolRoutes(app, guard, execTool);
+  registerCustomToolRoutes(app, customToolStore, guard);
   registerProviderRoutes(app, models);
   registerConfigPortabilityRoutes(app, models);
   registerStreamWs(app, core, () => authCfg.token, guard);
@@ -657,6 +671,10 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
   if (process.env['NODE_ENV'] !== 'test') {
     heartbeat.start();
   }
+
+  // Dashboard route is registered after heartbeat is instantiated so it can
+  // reference heartbeat directly (avoids a late-binding closure or re-export).
+  registerDashboardRoute(app, models, memory, orchestrator, heartbeat);
 
   app.addHook('onClose', async () => {
     heartbeat.stop();
