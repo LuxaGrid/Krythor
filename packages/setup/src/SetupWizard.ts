@@ -34,28 +34,64 @@ export const PROVIDER_RECOMMENDATIONS: Record<string, ProviderRecommendation> = 
     priority_rank:            2,
     recommended_for_onboarding: true,
   },
+  openrouter: {
+    recommendation_label:     'Best Multi-Model Access',
+    recommendation_reason:    'Single API key accesses 200+ models from Anthropic, OpenAI, Google, Meta, and more.',
+    priority_rank:            3,
+    recommended_for_onboarding: true,
+  },
+  groq: {
+    recommendation_label:     'Fastest Inference',
+    recommendation_reason:    'Groq delivers extremely fast token throughput — great for interactive use.',
+    priority_rank:            4,
+    recommended_for_onboarding: true,
+  },
   kimi: {
     recommendation_label:     'Best for Large Context',
     recommendation_reason:    'Kimi supports very long context windows — ideal for long documents and code review.',
-    priority_rank:            3,
+    priority_rank:            5,
     recommended_for_onboarding: true,
   },
   minimax: {
     recommendation_label:     'Best Value',
     recommendation_reason:    'MiniMax offers strong performance at a lower cost.',
-    priority_rank:            4,
+    priority_rank:            6,
+    recommended_for_onboarding: true,
+  },
+  venice: {
+    recommendation_label:     'Most Private',
+    recommendation_reason:    'Venice is privacy-focused — prompts and responses are not logged or used for training.',
+    priority_rank:            7,
+    recommended_for_onboarding: true,
+  },
+  'z.ai': {
+    recommendation_label:     'Best for Google Models',
+    recommendation_reason:    'Z.AI provides access to Gemini and other Google AI models.',
+    priority_rank:            8,
     recommended_for_onboarding: true,
   },
   ollama: {
     recommendation_label:     undefined,
     recommendation_reason:    'Free and fully local — no API key needed.',
-    priority_rank:            5,
+    priority_rank:            9,
     recommended_for_onboarding: true,
+  },
+  lmstudio: {
+    recommendation_label:     undefined,
+    recommendation_reason:    'LM Studio — run local GGUF models with a desktop GUI.',
+    priority_rank:            10,
+    recommended_for_onboarding: false,
+  },
+  llamaserver: {
+    recommendation_label:     undefined,
+    recommendation_reason:    'llama-server (llama.cpp) — high-performance local GGUF inference.',
+    priority_rank:            11,
+    recommended_for_onboarding: false,
   },
   'openai-compat': {
     recommendation_label:     undefined,
-    recommendation_reason:    'Any OpenAI-compatible API (LM Studio, Together, etc.).',
-    priority_rank:            6,
+    recommendation_reason:    'Any OpenAI-compatible API (Together AI, Fireworks, custom endpoints, etc.).',
+    priority_rank:            12,
     recommended_for_onboarding: false,
   },
 };
@@ -130,14 +166,42 @@ export class SetupWizard {
     }
     console.log('');
 
-    // Default: if Ollama is detected, prefer it (local = free); otherwise prefer Anthropic
-    const defaultProviderIdx = sys.ollamaDetected ? 4 : 0; // ollama is index 4, anthropic is 0
-    const providerOptions = ['anthropic', 'openai', 'kimi', 'minimax', 'ollama', 'openai-compat', 'skip'] as const;
-    const providerType = await choose(
+    // Build provider list — show detected local providers prominently
+    // Local servers always appear in the list; their labels include "(detected)" when running
+    const ollamaLabel   = sys.ollamaDetected     ? 'ollama (detected — running)'     : 'ollama';
+    const lmStudioLabel = sys.lmStudioDetected   ? 'lmstudio (detected — running)'   : sys.hasExistingConfig ? 'lmstudio' : undefined;
+    const llamaLabel    = sys.llamaServerDetected ? 'llamaserver (detected — running)' : sys.hasExistingConfig ? 'llamaserver' : undefined;
+
+    // Core provider list (always shown)
+    const coreProviders = [
+      'anthropic', 'openai', 'openrouter', 'groq',
+      'kimi', 'minimax', 'venice', 'z.ai',
+      ollamaLabel,
+    ];
+    // Local servers: always shown if detected; shown only for experienced users otherwise
+    if (lmStudioLabel) coreProviders.push(lmStudioLabel);
+    if (llamaLabel)    coreProviders.push(llamaLabel);
+    coreProviders.push('openai-compat', 'skip');
+
+    // Map display labels back to canonical IDs
+    const labelToType: Record<string, string> = {
+      [ollamaLabel]: 'ollama',
+    };
+    if (lmStudioLabel) labelToType[lmStudioLabel] = 'lmstudio';
+    if (llamaLabel)    labelToType[llamaLabel]     = 'llamaserver';
+
+    // Determine smart default
+    let defaultProviderIdx = 0; // anthropic
+    if (sys.ollamaDetected)     defaultProviderIdx = coreProviders.indexOf(ollamaLabel);
+    else if (sys.lmStudioDetected && lmStudioLabel) defaultProviderIdx = coreProviders.indexOf(lmStudioLabel);
+    else if (sys.llamaServerDetected && llamaLabel) defaultProviderIdx = coreProviders.indexOf(llamaLabel);
+
+    const providerLabel = await choose(
       'Which AI provider would you like to configure?',
-      providerOptions as unknown as string[],
+      coreProviders,
       defaultProviderIdx,
     );
+    const providerType = labelToType[providerLabel] ?? providerLabel;
 
     let firstModel: string | undefined;
     if (providerType !== 'skip') {
@@ -228,6 +292,15 @@ export class SetupWizard {
     console.log(sys.ollamaDetected
       ? fmt.ok(`Ollama detected at ${sys.ollamaBaseUrl}`)
       : fmt.dim('  Ollama not detected (not required)'));
+    if (sys.lmStudioDetected) {
+      const modelHint = sys.lmStudioModels.length > 0
+        ? ` — ${sys.lmStudioModels.length} model(s) loaded`
+        : '';
+      console.log(fmt.ok(`LM Studio detected at ${sys.lmStudioBaseUrl}${modelHint}`));
+    }
+    if (sys.llamaServerDetected) {
+      console.log(fmt.ok(`llama-server detected at ${sys.llamaServerBaseUrl}`));
+    }
     if (sys.hasExistingConfig) {
       console.log(fmt.warn('Existing config found at ' + sys.configDir));
     }
@@ -395,6 +468,159 @@ export class SetupWizard {
         'abab6.5g-chat',          // legacy general
       ], 'MiniMax-Text-01')];
 
+    } else if (type === 'openrouter') {
+      // ── OpenRouter — unified gateway for 200+ models ──────────────────────
+      endpoint = 'https://openrouter.ai/api/v1';
+      name = 'OpenRouter';
+      authMethod = 'api_key';
+      console.log(fmt.dim('  OpenRouter gives you access to 200+ models with a single API key.'));
+      console.log(fmt.dim('  Get your API key at: https://openrouter.ai/keys'));
+      apiKey = await ask('  API Key: ');
+
+      // Try to fetch the live model list from OpenRouter (no auth needed)
+      let liveModels: string[] = [];
+      process.stdout.write(fmt.dim('  Fetching model list from OpenRouter… '));
+      try {
+        const res = await fetch('https://openrouter.ai/api/v1/models', { signal: AbortSignal.timeout(5000) });
+        if (res.ok) {
+          const data = await res.json() as { data?: Array<{ id: string; name?: string }> };
+          liveModels = (data.data ?? [])
+            .map(m => m.id)
+            .filter(id => typeof id === 'string' && id.length > 0)
+            .slice(0, 50); // Limit to top 50 for display
+          console.log(`${liveModels.length} models available.`);
+        } else {
+          console.log('unavailable — using curated list.');
+        }
+      } catch {
+        console.log('offline — using curated list.');
+      }
+
+      const curatedModels = [
+        'anthropic/claude-sonnet-4-5',      // recommended
+        'anthropic/claude-opus-4-5',
+        'anthropic/claude-haiku-4-5',
+        'openai/gpt-4.1',
+        'openai/gpt-4.1-mini',
+        'google/gemini-2.5-pro',
+        'google/gemini-2.5-flash',
+        'meta-llama/llama-3.3-70b-instruct',
+        'deepseek/deepseek-r1',
+        'mistralai/mistral-large',
+        'qwen/qwen-2.5-72b-instruct',
+      ];
+      const modelChoices = liveModels.length > 0 ? liveModels : curatedModels;
+      models = [await pickModel(modelChoices, modelChoices[0]!)];
+
+    } else if (type === 'groq') {
+      // ── Groq — fast inference, OpenAI-compatible ──────────────────────────
+      endpoint = 'https://api.groq.com/openai/v1';
+      name = 'Groq';
+      authMethod = 'api_key';
+      console.log(fmt.dim('  Groq delivers extremely fast inference on open-weight models.'));
+      console.log(fmt.dim('  Get your API key at: https://console.groq.com/keys'));
+      apiKey = await ask('  API Key: ');
+      models = [await pickModel([
+        'llama-3.3-70b-versatile',       // recommended — fast + capable
+        'llama-3.1-8b-instant',          // fastest / cheapest
+        'llama-3.3-70b-specdec',         // speculative decoding
+        'mixtral-8x7b-32768',            // Mixtral — long context
+        'gemma2-9b-it',                  // Google Gemma 2
+        'qwen-qwq-32b',                  // Qwen QwQ reasoning
+        'deepseek-r1-distill-llama-70b', // DeepSeek R1 distill
+        'compound-beta',                 // Groq compound (beta)
+      ], 'llama-3.3-70b-versatile')];
+
+    } else if (type === 'venice') {
+      // ── Venice — privacy-focused inference ────────────────────────────────
+      endpoint = 'https://api.venice.ai/api/v1';
+      name = 'Venice';
+      authMethod = 'api_key';
+      console.log(fmt.dim('  Venice is privacy-focused — prompts are not logged or used for training.'));
+      console.log(fmt.dim('  Get your API key at: https://venice.ai/settings/api'));
+      apiKey = await ask('  API Key: ');
+      models = [await pickModel([
+        'venice-uncensored',       // recommended — Venice flagship
+        'llama-3.3-70b',           // Meta Llama 3.3
+        'mistral-31-24b',          // Mistral
+        'qwen-2.5-72b',            // Alibaba Qwen 2.5
+        'deepseek-r1-671b',        // DeepSeek R1 reasoning
+        'llama-3.2-3b',            // small / fast
+      ], 'venice-uncensored')];
+
+    } else if (type === 'z.ai') {
+      // ── Z.AI — Google Gemini and other models ────────────────────────────
+      endpoint = 'https://api.z.ai/api/v1';
+      name = 'Z.AI';
+      authMethod = 'api_key';
+      console.log(fmt.dim('  Z.AI provides access to Gemini and other Google AI models via OpenAI-compatible API.'));
+      console.log(fmt.dim('  Get your API key at: https://z.ai/api-access'));
+      apiKey = await ask('  API Key: ');
+      models = [await pickModel([
+        'gemini-2.5-pro',          // recommended — most capable
+        'gemini-2.5-flash',        // fast + affordable
+        'gemini-2.0-flash',        // previous flash generation
+        'gemini-2.0-pro',          // previous pro generation
+      ], 'gemini-2.5-pro')];
+
+    } else if (type === 'lmstudio') {
+      // ── LM Studio — local GGUF models via OpenAI-compatible API ──────────
+      const url = await ask(`  Base URL [${sys.lmStudioBaseUrl}]: `);
+      endpoint = url || sys.lmStudioBaseUrl;
+      name = 'LM Studio';
+      authMethod = 'none';
+
+      // Use models already fetched during probe (if server was running at probe time)
+      let liveModels: string[] = sys.lmStudioModels ?? [];
+
+      // Re-fetch if user changed the URL or if we don't have models yet
+      if (liveModels.length === 0 || url) {
+        try {
+          const res = await fetch(`${endpoint}/v1/models`, { signal: AbortSignal.timeout(2000) });
+          if (res.ok) {
+            const data = await res.json() as { data?: Array<{ id: string }> };
+            liveModels = (data.data ?? []).map(m => m.id);
+          }
+        } catch { /* LM Studio not running — OK */ }
+      }
+
+      if (liveModels.length > 0) {
+        console.log(fmt.ok(`Found ${liveModels.length} loaded model(s) in LM Studio.`));
+        models = [await pickModel(liveModels, liveModels[0]!)];
+      } else {
+        console.log(fmt.dim('  LM Studio is not running or has no model loaded.'));
+        console.log(fmt.dim('  Load a model in LM Studio first, then enter its name below.'));
+        const modelInput = await ask('  Model name (or leave blank): ');
+        models = modelInput ? [modelInput] : [];
+      }
+
+    } else if (type === 'llamaserver') {
+      // ── llama-server (llama.cpp) — high-performance local GGUF inference ─
+      const url = await ask(`  Base URL [${sys.llamaServerBaseUrl}]: `);
+      endpoint = url || sys.llamaServerBaseUrl;
+      name = 'llama-server';
+      authMethod = 'none';
+
+      // llama-server's OpenAI-compat endpoint reports a single loaded model
+      let liveModels: string[] = [];
+      try {
+        const res = await fetch(`${endpoint}/v1/models`, { signal: AbortSignal.timeout(2000) });
+        if (res.ok) {
+          const data = await res.json() as { data?: Array<{ id: string }> };
+          liveModels = (data.data ?? []).map(m => m.id);
+        }
+      } catch { /* not running — fine */ }
+
+      if (liveModels.length > 0) {
+        console.log(fmt.ok(`Found loaded model: ${liveModels[0]}`));
+        models = [await pickModel(liveModels, liveModels[0]!)];
+      } else {
+        console.log(fmt.dim('  llama-server is not running or model name could not be fetched.'));
+        console.log(fmt.dim('  Enter the model filename or ID (e.g., my-model.gguf):'));
+        const modelInput = await ask('  Model name (or leave blank): ');
+        models = modelInput ? [modelInput] : [];
+      }
+
     } else {
       // ── openai-compat ──────────────────────────────────────────────────────
       endpoint = await ask('  Base URL: ');
@@ -411,8 +637,10 @@ export class SetupWizard {
       }
     }
 
-    // kimi and minimax use the openai-compat provider type internally
-    const providerType = (type === 'kimi' || type === 'minimax') ? 'openai-compat' : type;
+    // Map wizard-specific types to internal provider types
+    // kimi, minimax, openrouter, groq, venice, z.ai, lmstudio, llamaserver all use openai-compat internally
+    const openAiCompatTypes = ['kimi', 'minimax', 'openrouter', 'groq', 'venice', 'z.ai', 'lmstudio', 'llamaserver'];
+    const providerType = openAiCompatTypes.includes(type) ? 'openai-compat' : type;
 
     installer.addProvider({
       name,

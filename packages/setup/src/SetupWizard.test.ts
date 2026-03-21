@@ -11,12 +11,18 @@ import { PROVIDER_RECOMMENDATIONS } from './SetupWizard.js';
 //
 
 describe('PROVIDER_RECOMMENDATIONS metadata', () => {
-  it('includes all six provider types', () => {
+  it('includes all provider types', () => {
     expect(PROVIDER_RECOMMENDATIONS).toHaveProperty('anthropic');
     expect(PROVIDER_RECOMMENDATIONS).toHaveProperty('openai');
+    expect(PROVIDER_RECOMMENDATIONS).toHaveProperty('openrouter');
+    expect(PROVIDER_RECOMMENDATIONS).toHaveProperty('groq');
     expect(PROVIDER_RECOMMENDATIONS).toHaveProperty('kimi');
     expect(PROVIDER_RECOMMENDATIONS).toHaveProperty('minimax');
+    expect(PROVIDER_RECOMMENDATIONS).toHaveProperty('venice');
+    expect(PROVIDER_RECOMMENDATIONS).toHaveProperty('z.ai');
     expect(PROVIDER_RECOMMENDATIONS).toHaveProperty('ollama');
+    expect(PROVIDER_RECOMMENDATIONS).toHaveProperty('lmstudio');
+    expect(PROVIDER_RECOMMENDATIONS).toHaveProperty('llamaserver');
     expect(PROVIDER_RECOMMENDATIONS).toHaveProperty('openai-compat');
   });
 
@@ -64,20 +70,25 @@ describe('PROVIDER_RECOMMENDATIONS metadata', () => {
     }
   });
 
-  it('smart default (index 0) maps to anthropic when Ollama not detected', () => {
-    // The wizard uses index 0 when ollamaDetected is false.
-    // Provider order is: ['anthropic', 'openai', 'kimi', 'minimax', 'ollama', 'openai-compat', 'skip']
-    const providerOptions = ['anthropic', 'openai', 'kimi', 'minimax', 'ollama', 'openai-compat', 'skip'];
-    const defaultWhenNoOllama = providerOptions[0];
-    expect(defaultWhenNoOllama).toBe('anthropic');
+  it('smart default is anthropic when no local servers detected', () => {
+    // When no local servers are detected, index 0 = anthropic
+    const providerOptions = [
+      'anthropic', 'openai', 'openrouter', 'groq',
+      'kimi', 'minimax', 'venice', 'z.ai',
+      'ollama', 'openai-compat', 'skip',
+    ];
+    const defaultWhenNoLocal = providerOptions[0];
+    expect(defaultWhenNoLocal).toBe('anthropic');
     expect(PROVIDER_RECOMMENDATIONS['anthropic']!.recommendation_label).toBe('Best Overall / Recommended');
   });
 
-  it('smart default (index 4) maps to ollama when Ollama is detected', () => {
-    // The wizard uses index 4 when ollamaDetected is true.
-    const providerOptions = ['anthropic', 'openai', 'kimi', 'minimax', 'ollama', 'openai-compat', 'skip'];
-    const defaultWhenOllama = providerOptions[4];
-    expect(defaultWhenOllama).toBe('ollama');
+  it('ollama is in the provider list', () => {
+    const providerOptions = [
+      'anthropic', 'openai', 'openrouter', 'groq',
+      'kimi', 'minimax', 'venice', 'z.ai',
+      'ollama', 'openai-compat', 'skip',
+    ];
+    expect(providerOptions).toContain('ollama');
   });
 
   it('kimi and minimax are recommended_for_onboarding', () => {
@@ -85,9 +96,24 @@ describe('PROVIDER_RECOMMENDATIONS metadata', () => {
     expect(PROVIDER_RECOMMENDATIONS['minimax']!.recommended_for_onboarding).toBe(true);
   });
 
-  it('kimi has higher priority rank than minimax', () => {
+  it('kimi has higher priority rank than minimax (lower number = higher priority)', () => {
     expect(PROVIDER_RECOMMENDATIONS['kimi']!.priority_rank)
       .toBeLessThan(PROVIDER_RECOMMENDATIONS['minimax']!.priority_rank);
+  });
+
+  it('openrouter and groq are recommended_for_onboarding', () => {
+    expect(PROVIDER_RECOMMENDATIONS['openrouter']!.recommended_for_onboarding).toBe(true);
+    expect(PROVIDER_RECOMMENDATIONS['groq']!.recommended_for_onboarding).toBe(true);
+  });
+
+  it('venice and z.ai are recommended_for_onboarding', () => {
+    expect(PROVIDER_RECOMMENDATIONS['venice']!.recommended_for_onboarding).toBe(true);
+    expect(PROVIDER_RECOMMENDATIONS['z.ai']!.recommended_for_onboarding).toBe(true);
+  });
+
+  it('lmstudio and llamaserver are not recommended_for_onboarding', () => {
+    expect(PROVIDER_RECOMMENDATIONS['lmstudio']!.recommended_for_onboarding).toBe(false);
+    expect(PROVIDER_RECOMMENDATIONS['llamaserver']!.recommended_for_onboarding).toBe(false);
   });
 });
 
