@@ -242,7 +242,7 @@ export const exportConversation = async (id: string, format: 'json' | 'markdown'
 };
 
 // ── Memory ─────────────────────────────────────────────────────────────────
-export const listMemory = (params?: { text?: string; scope?: string; limit?: number; offset?: number }) => {
+export const listMemory = (params?: { text?: string; scope?: string; tags?: string; limit?: number; offset?: number }) => {
   const qs = params ? '?' + new URLSearchParams(Object.fromEntries(
     Object.entries(params).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)])
   )).toString() : '';
@@ -286,6 +286,7 @@ export const exportMemory = async (): Promise<void> => {
   URL.revokeObjectURL(url);
 };
 export const memoryStatsDetailed = () => req<MemoryStatsDetailed>('GET', '/memory/stats');
+export const listMemoryTags = () => req<{ tags: string[] }>('GET', '/memory/tags');
 export interface MemoryStatsDetailed extends MemoryStats {
   oldest?: string | null;
   newest?: string | null;

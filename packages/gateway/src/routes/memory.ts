@@ -53,6 +53,23 @@ export function registerMemoryRoutes(app: FastifyInstance, memory: MemoryEngine,
     });
   });
 
+  // GET /api/memory/tags — returns unique tags across all memory entries (auth required)
+  // Used by the Memory tab UI to populate the tag filter dropdown.
+  app.get('/api/memory/tags', async (_req, reply) => {
+    if (guard) {
+      const verdict = guard.check({ operation: 'memory:read', source: 'user' });
+      if (!verdict.allowed) return reply.code(403).send({ error: 'GUARD_DENIED', reason: verdict.reason });
+    }
+    const all = memory.store.queryEntries({ limit: 1_000_000 });
+    const tagSet = new Set<string>();
+    for (const entry of all) {
+      const tags = memory.store.getTagsForEntry(entry.id);
+      for (const tag of tags) tagSet.add(tag);
+    }
+    const tags = Array.from(tagSet).sort();
+    return reply.send({ tags });
+  });
+
   // GET /api/memory/export — export all entries as JSON array (auth required)
   app.get('/api/memory/export', async (_req, reply) => {
     if (guard) {

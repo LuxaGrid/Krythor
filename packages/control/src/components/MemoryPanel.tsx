@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { listMemory, createMemory, updateMemory, deleteMemory, pinMemory, unpinMemory, pruneMemory, summarizeMemory, pruneMemoryBulk, exportMemory, memoryStatsDetailed, type MemoryEntry, type MemorySearchResult, type Health, type MemoryStatsDetailed } from '../api.ts';
+import { listMemory, createMemory, updateMemory, deleteMemory, pinMemory, unpinMemory, pruneMemory, summarizeMemory, pruneMemoryBulk, exportMemory, memoryStatsDetailed, listMemoryTags, type MemoryEntry, type MemorySearchResult, type Health, type MemoryStatsDetailed } from '../api.ts';
 
 const SCOPES = ['all', 'session', 'user', 'agent', 'workspace', 'skill'];
 const PAGE_SIZE = 20;
@@ -262,6 +262,8 @@ export function MemoryPanel({ health }: MemoryPanelProps) {
   const [scope, setScope]       = useState('all');
   const [loading, setLoading]   = useState(false);
   const [search, setSearch]     = useState('');
+  const [tagFilter, setTagFilter] = useState('all');
+  const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [offset, setOffset]     = useState(0);
   const [hasMore, setHasMore]   = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -274,9 +276,10 @@ export function MemoryPanel({ health }: MemoryPanelProps) {
   const [exporting, setExporting]   = useState(false);
   const [detailedStats, setDetailedStats] = useState<MemoryStatsDetailed | null>(null);
 
-  // Load detailed memory stats
+  // Load detailed memory stats + available tags
   useEffect(() => {
     memoryStatsDetailed().then(setDetailedStats).catch(() => {});
+    listMemoryTags().then(r => setAvailableTags(r.tags)).catch(() => {});
   }, []);
 
   const handleExport = async () => {
@@ -285,12 +288,13 @@ export function MemoryPanel({ health }: MemoryPanelProps) {
     finally { setExporting(false); }
   };
 
-  const load = useCallback(async (pageOffset = 0, searchText = search, scopeValue = scope) => {
+  const load = useCallback(async (pageOffset = 0, searchText = search, scopeValue = scope, tagValue = tagFilter) => {
     setLoading(true);
     try {
       const data = await listMemory({
         text: searchText || undefined,
         scope: scopeValue !== 'all' ? scopeValue : undefined,
+        tags: tagValue !== 'all' ? tagValue : undefined,
         limit: PAGE_SIZE,
         offset: pageOffset,
       });
@@ -303,7 +307,7 @@ export function MemoryPanel({ health }: MemoryPanelProps) {
       setOffset(pageOffset);
     } catch { /* ignore */ }
     finally { setLoading(false); }
-  }, [search, scope]);
+  }, [search, scope, tagFilter]);
 
   // Initial load and reload when scope changes — debounce handled separately for search
   useEffect(() => { setOffset(0); void load(0); }, [load]);
@@ -319,13 +323,20 @@ export function MemoryPanel({ health }: MemoryPanelProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search]);
 
-  // Immediate reload when scope changes (no debounce needed for a select)
+  // Immediate reload when scope or tag filter changes
   useEffect(() => {
     setOffset(0);
     setResults([]);
     void load(0, search, scope);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scope]);
+
+  useEffect(() => {
+    setOffset(0);
+    setResults([]);
+    void load(0, search, scope, tagFilter);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tagFilter]);
 
   const handleLoadMore = () => { void load(offset + PAGE_SIZE); };
 
@@ -424,6 +435,17 @@ export function MemoryPanel({ health }: MemoryPanelProps) {
         >
           {SCOPES.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
+        {availableTags.length > 0 && (
+          <select
+            value={tagFilter}
+            onChange={e => setTagFilter(e.target.value)}
+            className="bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1.5 text-xs text-zinc-300 outline-none focus:border-brand-600 focus:ring-1 focus:ring-brand-600/30 transition-colors"
+            title="Filter by tag"
+          >
+            <option value="all">all tags</option>
+            {availableTags.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+        )}
         <button
           onClick={() => load(0)}
           className="px-2 py-1 text-xs bg-zinc-800 hover:bg-zinc-700 rounded-lg text-zinc-300 transition-colors flex items-center gap-1"
