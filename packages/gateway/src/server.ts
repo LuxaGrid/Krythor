@@ -22,6 +22,7 @@ import { registerConversationRoutes } from './routes/conversations.js';
 import { registerSkillRoutes } from './routes/skills.js';
 import { registerRecommendRoutes } from './routes/recommend.js';
 import { registerToolRoutes } from './routes/tools.js';
+import { registerProviderRoutes } from './routes/providers.js';
 import { registerStreamWs } from './ws/stream.js';
 import { HeartbeatEngine, type HeartbeatRunRecord, type HeartbeatInsight } from './heartbeat/HeartbeatEngine.js';
 import { logger } from './logger.js';
@@ -491,6 +492,11 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
   // Guard engine is wired in so 'command:execute' operations are policy-checked.
   const execTool = new ExecTool(guard);
 
+  // Wire ExecTool into the orchestrator so agents can use structured tool calls.
+  // Must be done after both are constructed (ExecTool depends on guard,
+  // orchestrator was constructed before execTool is available).
+  orchestrator.setExecTool(execTool);
+
   // Register routes
   registerCommandRoute(app, core, orchestrator, broadcast, guard, convStore);
   registerMemoryRoutes(app, memory, models, guard);
@@ -502,6 +508,7 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
   registerSkillRoutes(app, skillRegistry, guard, skillRunner);
   registerRecommendRoutes(app, models, recommender, guard);
   registerToolRoutes(app, guard, execTool);
+  registerProviderRoutes(app, models);
   registerStreamWs(app, core, () => authCfg.token, guard);
 
   // Templates endpoint — lists workspace template files available in the user's data dir.
