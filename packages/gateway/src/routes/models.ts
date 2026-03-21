@@ -4,6 +4,7 @@ import { getCapabilities, PROVIDER_CAPABILITIES } from '@krythor/models';
 import type { MemoryEngine } from '@krythor/memory';
 import type { GuardEngine } from '@krythor/guard';
 import { OllamaEmbeddingProvider } from '@krythor/memory';
+import { validateString, validateUrl, MAX_NAME_LEN, MAX_ENDPOINT_LEN, MAX_API_KEY_LEN } from '../validate.js';
 
 /**
  * Validate a provider endpoint URL.
@@ -123,6 +124,19 @@ export function registerModelRoutes(
     },
   }, async (req, reply) => {
     const body = req.body as Omit<ProviderConfig, 'id'>;
+
+    // Input length validation
+    const nameCheck = validateString(body.name, 'name', MAX_NAME_LEN, true);
+    if (nameCheck.error) return reply.code(400).send({ error: nameCheck.error });
+
+    const endpointCheck = validateString(body.endpoint, 'endpoint', MAX_ENDPOINT_LEN, true);
+    if (endpointCheck.error) return reply.code(400).send({ error: endpointCheck.error });
+
+    if (body.apiKey) {
+      const apiKeyCheck = validateString(body.apiKey, 'apiKey', MAX_API_KEY_LEN, false);
+      if (apiKeyCheck.error) return reply.code(400).send({ error: apiKeyCheck.error });
+    }
+
     const endpointErr = validateEndpointUrl(body.endpoint);
     if (endpointErr) return reply.code(400).send({ error: endpointErr });
 
@@ -174,7 +188,18 @@ export function registerModelRoutes(
     },
   }, async (req, reply) => {
     const body = req.body as Partial<Omit<ProviderConfig, 'id'>>;
+    // Input length validation for any provided fields
+    if (body.name) {
+      const nameCheck = validateString(body.name, 'name', MAX_NAME_LEN, false);
+      if (nameCheck.error) return reply.code(400).send({ error: nameCheck.error });
+    }
+    if (body.apiKey) {
+      const apiKeyCheck = validateString(body.apiKey, 'apiKey', MAX_API_KEY_LEN, false);
+      if (apiKeyCheck.error) return reply.code(400).send({ error: apiKeyCheck.error });
+    }
     if (body.endpoint) {
+      const epCheck = validateString(body.endpoint, 'endpoint', MAX_ENDPOINT_LEN, false);
+      if (epCheck.error) return reply.code(400).send({ error: epCheck.error });
       const endpointErr = validateEndpointUrl(body.endpoint);
       if (endpointErr) return reply.code(400).send({ error: endpointErr });
     }

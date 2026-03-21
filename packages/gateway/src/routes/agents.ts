@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { AgentOrchestrator, CreateAgentInput, UpdateAgentInput, RunAgentInput } from '@krythor/core';
 import { RunQueueFullError } from '@krythor/core';
 import type { GuardEngine } from '@krythor/guard';
+import { validateString, MAX_NAME_LEN, MAX_DESCRIPTION_LEN, MAX_SYSTEM_PROMPT_LEN } from '../validate.js';
 
 interface ParallelJob { agentId: string; input: RunAgentInput }
 interface ParallelBody { jobs: ParallelJob[] }
@@ -56,7 +57,21 @@ export function registerAgentRoutes(app: FastifyInstance, orchestrator: AgentOrc
       },
     },
   }, async (req, reply) => {
-    const agent = orchestrator.createAgent(req.body as CreateAgentInput);
+    const body = req.body as CreateAgentInput;
+    // Length validation (Fastify minLength/maxLength catches schema violations but
+    // we add explicit checks here so error messages are user-friendly)
+    const nameCheck = validateString(body.name, 'name', MAX_NAME_LEN, true);
+    if (nameCheck.error) return reply.code(400).send({ error: nameCheck.error });
+    const descCheck = validateString(body.description, 'description', MAX_DESCRIPTION_LEN, false);
+    if (descCheck.error) return reply.code(400).send({ error: descCheck.error });
+    const spCheck = validateString(body.systemPrompt, 'systemPrompt', MAX_SYSTEM_PROMPT_LEN, true);
+    if (spCheck.error) return reply.code(400).send({ error: spCheck.error });
+    const agent = orchestrator.createAgent({
+      ...body,
+      name:         nameCheck.value || body.name,
+      description:  descCheck.value  || body.description,
+      systemPrompt: spCheck.value    || body.systemPrompt,
+    });
     return reply.code(201).send(agent);
   });
 
@@ -85,8 +100,21 @@ export function registerAgentRoutes(app: FastifyInstance, orchestrator: AgentOrc
       },
     },
   }, async (req, reply) => {
+    const body = req.body as UpdateAgentInput;
+    if (body.name !== undefined) {
+      const nameCheck = validateString(body.name, 'name', MAX_NAME_LEN, false);
+      if (nameCheck.error) return reply.code(400).send({ error: nameCheck.error });
+    }
+    if (body.description !== undefined) {
+      const descCheck = validateString(body.description, 'description', MAX_DESCRIPTION_LEN, false);
+      if (descCheck.error) return reply.code(400).send({ error: descCheck.error });
+    }
+    if (body.systemPrompt !== undefined) {
+      const spCheck = validateString(body.systemPrompt, 'systemPrompt', MAX_SYSTEM_PROMPT_LEN, false);
+      if (spCheck.error) return reply.code(400).send({ error: spCheck.error });
+    }
     try {
-      const agent = orchestrator.updateAgent(req.params.id, req.body as UpdateAgentInput);
+      const agent = orchestrator.updateAgent(req.params.id, body);
       return reply.send(agent);
     } catch (err) {
       return reply.code(404).send({ error: err instanceof Error ? err.message : 'Not found' });

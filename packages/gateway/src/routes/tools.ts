@@ -3,6 +3,7 @@ import type { GuardEngine } from '@krythor/guard';
 import { ExecTool, ExecDeniedError, ExecTimeoutError, WebSearchTool, WebFetchTool, TOOL_REGISTRY } from '@krythor/core';
 import { sendError } from '../errors.js';
 import { logger } from '../logger.js';
+import { validateUrl } from '../validate.js';
 
 // ─── Tools routes ─────────────────────────────────────────────────────────────
 //
@@ -164,6 +165,13 @@ export function registerToolRoutes(
     },
   }, async (req, reply) => {
     const { url } = req.body as { url: string };
+
+    // Validate scheme before sending any network request — rejects file://, javascript:, data:, etc.
+    const urlErr = validateUrl(url, 'url');
+    if (urlErr) {
+      return sendError(reply, 400, 'INVALID_URL', urlErr,
+        'Only http:// and https:// URLs are supported.');
+    }
 
     try {
       const result = await webFetchTool.fetch(url);
