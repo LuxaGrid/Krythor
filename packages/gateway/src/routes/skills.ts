@@ -1,11 +1,16 @@
 import type { FastifyInstance } from 'fastify';
 import type { SkillRegistry, SkillRunner, CreateSkillInput, UpdateSkillInput } from '@krythor/skills';
-import { SkillConcurrencyError, SkillPermissionError, SkillTimeoutError } from '@krythor/skills';
+import { SkillConcurrencyError, SkillPermissionError, SkillTimeoutError, BUILTIN_SKILLS } from '@krythor/skills';
 import type { GuardEngine } from '@krythor/guard';
 import { sendError } from '../errors.js';
 import { logger } from '../logger.js';
 
 export function registerSkillRoutes(app: FastifyInstance, skills: SkillRegistry, guard: GuardEngine, runner: SkillRunner): void {
+
+  // GET /api/skills/builtins — list built-in skill templates (no user data required)
+  app.get('/api/skills/builtins', async (_req, reply) => {
+    return reply.send(BUILTIN_SKILLS);
+  });
 
   // GET /api/skills — list skills, optionally filtered by tags
   app.get('/api/skills', async (req, reply) => {

@@ -145,3 +145,38 @@ describe('DELETE /api/skills/:id', () => {
     expect([403, 404]).toContain(res.statusCode)
   })
 })
+
+describe('GET /api/skills/builtins', () => {
+  it('returns the three built-in skill templates', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/skills/builtins',
+      headers: { authorization: `Bearer ${authToken}`, host: HOST },
+    })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body) as unknown[]
+    expect(Array.isArray(body)).toBe(true)
+    expect(body).toHaveLength(3)
+    const names = (body as Array<Record<string, unknown>>).map(s => s.name)
+    expect(names).toContain('Summarize')
+    expect(names).toContain('Translate')
+    expect(names).toContain('Explain')
+  })
+
+  it('each builtin skill has required fields', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/skills/builtins',
+      headers: { authorization: `Bearer ${authToken}`, host: HOST },
+    })
+    const body = JSON.parse(res.body) as Array<Record<string, unknown>>
+    for (const skill of body) {
+      expect(typeof skill.builtinId).toBe('string')
+      expect(typeof skill.name).toBe('string')
+      expect(typeof skill.description).toBe('string')
+      expect(typeof skill.systemPrompt).toBe('string')
+      expect(Array.isArray(skill.tags)).toBe(true)
+      expect((skill.tags as string[]).includes('builtin')).toBe(true)
+    }
+  })
+})
