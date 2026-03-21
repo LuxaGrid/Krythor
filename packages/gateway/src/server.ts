@@ -18,6 +18,7 @@ import { registerModelRoutes } from './routes/models.js';
 import { registerAgentRoutes } from './routes/agents.js';
 import { registerGuardRoutes } from './routes/guard.js';
 import { registerConfigRoute } from './routes/config.js';
+import { registerConfigPortabilityRoutes } from './routes/config.portability.js';
 import { registerConversationRoutes } from './routes/conversations.js';
 import { registerSkillRoutes } from './routes/skills.js';
 import { registerRecommendRoutes } from './routes/recommend.js';
@@ -30,6 +31,7 @@ import { loadOrCreateToken, verifyToken } from './auth.js';
 import { registerErrorHandler } from './errors.js';
 import { redactErrorMessage } from './redact.js';
 import { checkReadiness } from './readiness.js';
+import { validateProvidersConfig } from './ConfigValidator.js';
 
 export const GATEWAY_PORT = 47200;
 export const GATEWAY_HOST = '127.0.0.1';
@@ -132,13 +134,23 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
   // Global error handler — formats all unhandled throws as { code, message, hint?, requestId? }
   registerErrorHandler(app);
 
-  // CORS — restrict to loopback origins only. Rejects cross-origin requests from
+  // CORS — restrict to loopback origins only by default. Rejects cross-origin requests from
   // arbitrary websites, preventing DNS rebinding and CSRF-style attacks.
+  // Set CORS_ORIGINS env var to allow additional origins (comma-separated).
+  // Example: CORS_ORIGINS=http://my-tool.local:3000,http://192.168.1.10:47200
+  const defaultOrigins = [
+    `http://127.0.0.1:${GATEWAY_PORT}`,
+    `http://localhost:${GATEWAY_PORT}`,
+  ];
+  const extraOrigins = process.env['CORS_ORIGINS']
+    ? process.env['CORS_ORIGINS'].split(',').map(o => o.trim()).filter(Boolean)
+    : [];
+  const corsOrigins = [...defaultOrigins, ...extraOrigins];
+  if (extraOrigins.length > 0) {
+    logger.info('CORS: additional origins allowed via CORS_ORIGINS env var', { extraOrigins });
+  }
   await app.register(fastifyCors, {
-    origin: [
-      `http://127.0.0.1:${GATEWAY_PORT}`,
-      `http://localhost:${GATEWAY_PORT}`,
-    ],
+    origin: corsOrigins,
     methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
     credentials: false,
   });
@@ -243,6 +255,20 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
       }
       serveIndex(req, reply as unknown as Parameters<typeof serveIndex>[1]);
     });
+  }
+
+  // Validate providers.json at startup — log clear errors for invalid/skipped entries.
+  // This runs before ModelEngine so errors appear early in the log output.
+  const configValidation = validateProvidersConfig(join(dataDir, 'config'));
+  if (configValidation.fileNotFound) {
+    logger.info('ConfigValidator: providers.json not found — will be created on first setup');
+  } else if (configValidation.malformedJson) {
+    logger.warn('ConfigValidator: providers.json has JSON syntax errors — no providers loaded');
+  } else if (configValidation.skippedCount > 0) {
+    logger.warn(
+      `ConfigValidator: ${configValidation.skippedCount} provider(s) skipped — ` +
+      'fix or remove invalid entries in providers.json, then restart or POST /api/config/reload',
+    );
   }
 
   // Initialise subsystems — MemoryEngine opens a single shared SQLite connection;
@@ -509,6 +535,7 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
   registerRecommendRoutes(app, models, recommender, guard);
   registerToolRoutes(app, guard, execTool);
   registerProviderRoutes(app, models);
+  registerConfigPortabilityRoutes(app, models);
   registerStreamWs(app, core, () => authCfg.token, guard);
 
   // Templates endpoint — lists workspace template files available in the user's data dir.
