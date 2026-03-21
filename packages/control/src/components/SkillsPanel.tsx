@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  listSkills, createSkill, updateSkill, deleteSkill, listProviders,
-  type Skill, type CreateSkillInput, type Provider,
+  listSkills, listBuiltinSkills, createSkill, updateSkill, deleteSkill, listProviders, runSkill,
+  type Skill, type CreateSkillInput, type Provider, type BuiltinSkill,
 } from '../api.ts';
 
 const INPUT_CLS = 'w-full bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1.5 text-xs text-zinc-200 placeholder-zinc-600 outline-none focus:border-brand-600 focus:ring-1 focus:ring-brand-600/30 transition-colors';
@@ -161,8 +161,89 @@ function SkillFormPanel({
   );
 }
 
+// ── Run Skill Dialog ───────────────────────────────────────────────────────
+
+interface RunSkillDialogProps {
+  skill: Skill | BuiltinSkill;
+  onClose: () => void;
+}
+
+function RunSkillDialog({ skill, onClose }: RunSkillDialogProps) {
+  const [input, setInput]   = useState('');
+  const [running, setRunning] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+  const [error, setError]   = useState<string | null>(null);
+
+  const handleBackdrop = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.target === e.currentTarget) onClose();
+  };
+
+  const isBuiltin = !('id' in skill) || !('version' in skill);
+
+  const handleRun = async () => {
+    if (!input.trim()) return;
+    setRunning(true);
+    setResult(null);
+    setError(null);
+    try {
+      if (isBuiltin) {
+        // Builtins don't have a run endpoint — show an info message
+        setResult('Built-in skills run via the Command tab when selected as active skill. Use the "Run" input in the Command panel to invoke them.');
+        return;
+      }
+      const res = await runSkill((skill as Skill).id, input.trim());
+      setResult(res.output ?? '(no output)');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Run failed');
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={handleBackdrop}>
+      <div className="bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl w-[520px] max-w-[95vw] overflow-hidden">
+        <div className="px-5 pt-5 pb-3 border-b border-zinc-800 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-zinc-100">Run: {skill.name}</h2>
+          <button onClick={onClose} className="text-zinc-600 hover:text-zinc-300 text-lg leading-none transition-colors">×</button>
+        </div>
+        <div className="px-5 py-4 space-y-3">
+          <textarea
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleRun(); }}
+            placeholder="Input for this skill…"
+            rows={3}
+            className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 placeholder-zinc-600 outline-none focus:border-brand-600 focus:ring-1 focus:ring-brand-600/30 transition-colors resize-none"
+          />
+          <div className="flex gap-2">
+            <button
+              onClick={handleRun}
+              disabled={running || !input.trim()}
+              className="px-3 py-1.5 text-xs bg-brand-600 hover:bg-brand-500 disabled:opacity-50 text-white rounded-lg transition-colors"
+            >
+              {running ? 'Running…' : 'Run'}
+            </button>
+            <button onClick={onClose} className="px-3 py-1.5 text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-400 rounded-lg transition-colors">Close</button>
+          </div>
+          {error && <p className="text-red-400 text-xs bg-red-950/30 rounded-lg p-2">{error}</p>}
+          {result && (
+            <div>
+              <p className="text-xs text-zinc-500 mb-1">Output</p>
+              <pre className="text-xs text-zinc-300 bg-zinc-800/50 rounded-lg p-3 whitespace-pre-wrap leading-relaxed border border-zinc-800 max-h-60 overflow-y-auto">
+                {result}
+              </pre>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function SkillsPanel() {
   const [skills, setSkills]         = useState<Skill[]>([]);
+  const [builtins, setBuiltins]     = useState<BuiltinSkill[]>([]);
   const [providers, setProviders]   = useState<Provider[]>([]);
   const [loading, setLoading]       = useState(true);
   const [filterTag, setFilterTag]   = useState('');
@@ -170,14 +251,20 @@ export function SkillsPanel() {
   const [showForm, setShowForm]     = useState(false);
   const [editing, setEditing]       = useState<Skill | null>(null);
   const [selected, setSelected]     = useState<Skill | null>(null);
+  const [runningSkill, setRunningSkill] = useState<Skill | BuiltinSkill | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [s, p] = await Promise.all([listSkills(), listProviders().catch(() => [] as Provider[])]);
+      const [s, p, b] = await Promise.all([
+        listSkills(),
+        listProviders().catch(() => [] as Provider[]),
+        listBuiltinSkills().catch(() => [] as BuiltinSkill[]),
+      ]);
       setSkills(s);
       setProviders(p);
+      setBuiltins(b);
     } catch { /* ignore */ }
     finally { setLoading(false); }
   }, []);
@@ -239,6 +326,9 @@ export function SkillsPanel() {
 
   return (
     <div className="flex h-full">
+      {runningSkill && (
+        <RunSkillDialog skill={runningSkill} onClose={() => setRunningSkill(null)} />
+      )}
       {/* Left sidebar — skill list */}
       <div className="w-56 shrink-0 border-r border-zinc-800 flex flex-col">
         {/* Toolbar */}
@@ -361,6 +451,7 @@ export function SkillsPanel() {
 
         <div className="p-2 border-t border-zinc-800 text-xs text-zinc-700">
           {skills.length} skill{skills.length !== 1 ? 's' : ''}
+          {builtins.length > 0 && ` + ${builtins.length} built-in`}
           {filterTag ? ` · tag: ${filterTag}` : ''}
         </div>
       </div>
@@ -393,10 +484,16 @@ export function SkillsPanel() {
                   <p className="text-xs text-zinc-600 mt-1">model: {selected.modelId}</p>
                 )}
               </div>
-              <button
-                onClick={() => openEdit(selected)}
-                className="px-2 py-1 rounded-lg text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-400 transition-colors shrink-0"
-              >Edit</button>
+              <div className="flex gap-1 shrink-0">
+                <button
+                  onClick={() => setRunningSkill(selected)}
+                  className="px-2 py-1 rounded-lg text-xs bg-brand-700 hover:bg-brand-600 text-white transition-colors"
+                >Run</button>
+                <button
+                  onClick={() => openEdit(selected)}
+                  className="px-2 py-1 rounded-lg text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-400 transition-colors"
+                >Edit</button>
+              </div>
             </div>
             <div>
               <p className="text-xs text-zinc-600 mb-1 uppercase tracking-wider">System Prompt</p>
@@ -406,9 +503,36 @@ export function SkillsPanel() {
             </div>
           </div>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center gap-2 text-center px-8">
-            <p className="text-zinc-600 text-sm">Select a skill from the list</p>
-            <p className="text-zinc-700 text-xs">or create a new one with <span className="text-brand-400">+ new</span></p>
+          <div className="flex-1 overflow-y-auto">
+            {/* Builtins section — shown when no user skill is selected */}
+            {builtins.length > 0 && (
+              <div className="p-4 space-y-3">
+                <p className="text-xs text-zinc-500 uppercase tracking-wider font-medium">Built-in Skills</p>
+                <div className="space-y-2">
+                  {builtins.map(b => (
+                    <div key={b.builtinId} className="bg-zinc-800/40 border border-zinc-700/50 rounded-lg p-3 flex items-start gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium text-zinc-300">{b.name}</p>
+                        <p className="text-xs text-zinc-600 mt-0.5">{b.description}</p>
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {b.tags.map(t => (
+                            <span key={t} className="text-[10px] bg-zinc-700/50 text-zinc-500 px-1 rounded">{t}</span>
+                          ))}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => setRunningSkill(b as unknown as Skill)}
+                        className="px-2 py-1 rounded text-xs bg-brand-800/60 hover:bg-brand-700/60 text-brand-400 transition-colors shrink-0"
+                      >Run</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div className="flex flex-col items-center justify-center py-8 gap-2 text-center px-8">
+              <p className="text-zinc-600 text-sm">Select a skill from the list</p>
+              <p className="text-zinc-700 text-xs">or create a new one with <span className="text-brand-400">+ new</span></p>
+            </div>
           </div>
         )}
       </div>
