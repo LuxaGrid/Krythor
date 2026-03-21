@@ -134,17 +134,24 @@ async function runStatus() {
 }
 
 // ── krythor repair ─────────────────────────────────────────────────────────
-// Verify that all runtime components are healthy:
+// Verify that all runtime components are healthy.
+// Each check prints PASS / WARN / FAIL with a fix suggestion on failure.
 //   1. Bundled Node runtime exists and executes
 //   2. better-sqlite3 native module loads under the bundled Node
 //   3. Gateway health endpoint responds (if already running)
-//   4. providers.json exists and is valid JSON
-//   5. At least one provider is configured
+//   4. providers.json exists and is parseable JSON
+//   5. At least one provider is configured (zero-provider warning)
 //   6. All enabled providers have credentials (API key or OAuth)
 async function runRepair() {
   const fs = require('fs');
   const os = require('os');
   const path = require('path');
+
+  // ANSI helpers
+  const PASS  = '\x1b[32mPASS\x1b[0m';
+  const WARN  = '\x1b[33mWARN\x1b[0m';
+  const FAIL  = '\x1b[31mFAIL\x1b[0m';
+  const check = (label) => process.stdout.write(`  ${label.padEnd(28)} ... `);
 
   console.log('\x1b[36m  KRYTHOR\x1b[0m — Repair / Health Check');
   console.log('');
@@ -153,29 +160,32 @@ async function runRepair() {
   const fixes = []; // Suggested fix commands to print at the end
 
   // ── Check 1: bundled runtime ────────────────────────────────────────────
-  process.stdout.write('  Bundled Node runtime ... ');
+  check('Bundled Node runtime');
   if (!existsSync(BUNDLED_NODE)) {
-    console.log('\x1b[31mMISSING\x1b[0m');
+    console.log(`${FAIL}  — runtime/ folder missing`);
     console.log(`    Expected: ${BUNDLED_NODE}`);
-    console.log('    The runtime/ folder was not found. Re-download or reinstall Krythor.');
+    console.log('    Fix: Re-download or reinstall Krythor.');
+    fixes.push('Re-download Krythor — the runtime/ folder was not found');
     allOk = false;
   } else {
     try {
       const ver = execSync(`"${NODE_BIN}" --version`, { encoding: 'utf-8' }).trim();
-      console.log(`\x1b[32mOK\x1b[0m  (${ver})`);
+      console.log(`${PASS}  (${ver})`);
     } catch (e) {
-      console.log('\x1b[31mFAIL\x1b[0m');
+      console.log(`${FAIL}  — could not execute`);
       console.log(`    Error: ${e.message}`);
+      fixes.push('Re-download Krythor — the bundled Node binary could not be executed');
       allOk = false;
     }
   }
 
   // ── Check 2: better-sqlite3 loads ──────────────────────────────────────
-  process.stdout.write('  better-sqlite3 module  ... ');
+  check('better-sqlite3 module');
   const sqliteDir = join(__dirname, 'node_modules', 'better-sqlite3');
   if (!existsSync(sqliteDir)) {
-    console.log('\x1b[31mMISSING\x1b[0m');
-    console.log('    node_modules/better-sqlite3 not found. Re-download or reinstall Krythor.');
+    console.log(`${FAIL}  — module not found`);
+    console.log('    node_modules/better-sqlite3 not found.');
+    fixes.push('Re-download or reinstall Krythor — better-sqlite3 is missing');
     allOk = false;
   } else {
     try {
@@ -183,27 +193,27 @@ async function runRepair() {
         `"${NODE_BIN}" -e "require('./node_modules/better-sqlite3')"`,
         { cwd: __dirname, stdio: 'pipe', encoding: 'utf-8' }
       );
-      console.log('\x1b[32mOK\x1b[0m');
+      console.log(PASS);
     } catch (e) {
-      console.log('\x1b[31mFAIL\x1b[0m');
+      console.log(`${FAIL}  — failed to load`);
       const msg = (e.stderr || e.message || '').toString().split('\n')[0];
       console.log(`    Error: ${msg}`);
       console.log('    The native module may need to be recompiled for this runtime.');
-      console.log('    Run the installer again to recompile, or contact support.');
+      fixes.push('Run the installer again to recompile better-sqlite3, or contact support');
       allOk = false;
     }
   }
 
   // ── Check 3: gateway health (only if already running) ──────────────────
-  process.stdout.write('  Gateway health endpoint ... ');
+  check('Gateway health endpoint');
   if (await isKrythorRunning()) {
-    console.log(`\x1b[32mOK\x1b[0m  (http://${HOST}:${PORT}/health)`);
+    console.log(`${PASS}  (http://${HOST}:${PORT}/health)`);
   } else {
-    console.log('\x1b[2mnot running\x1b[0m  (start with: krythor)');
+    console.log(`\x1b[2mSKIP\x1b[0m  — not running (start with: krythor)`);
     // Not a failure — gateway not running is expected during repair
   }
 
-  // ── Check 4: providers.json exists and is valid JSON ───────────────────
+  // ── Check 4: providers.json exists and is parseable JSON ───────────────
   const dataDir = process.env['KRYTHOR_DATA_DIR'] ||
     (process.platform === 'win32'
       ? path.join(process.env['LOCALAPPDATA'] || path.join(os.homedir(), 'AppData', 'Local'), 'Krythor')
@@ -213,12 +223,12 @@ async function runRepair() {
   const configDir = path.join(dataDir, 'config');
   const providersPath = path.join(configDir, 'providers.json');
 
-  process.stdout.write('  providers.json         ... ');
+  check('providers.json');
   let providerList = [];
   if (!existsSync(providersPath)) {
-    console.log('\x1b[33mMISSING\x1b[0m');
+    console.log(`${WARN}  — file not found`);
     console.log('    providers.json not found — no providers configured.');
-    fixes.push('Run: krythor setup');
+    fixes.push('Run: krythor setup  — providers.json is missing');
     allOk = false;
   } else {
     try {
@@ -229,22 +239,21 @@ async function runRepair() {
       } else if (raw && typeof raw === 'object' && Array.isArray(raw.providers)) {
         providerList = raw.providers;
       }
-      console.log('\x1b[32mOK\x1b[0m  (valid JSON)');
+      console.log(`${PASS}  (valid JSON, ${providerList.length} provider(s))`);
     } catch (e) {
-      console.log('\x1b[31mINVALID JSON\x1b[0m');
+      console.log(`${FAIL}  — invalid JSON`);
       console.log(`    Error: ${e.message}`);
       console.log(`    File: ${providersPath}`);
-      fixes.push('Fix providers.json (check for syntax errors) or run: krythor setup');
+      fixes.push('Fix providers.json (syntax error) or run: krythor setup');
       allOk = false;
     }
   }
 
   // ── Check 5: at least one provider configured ──────────────────────────
   if (existsSync(providersPath) && providerList.length === 0) {
-    process.stdout.write('  Provider count         ... ');
-    console.log('\x1b[33mWARN\x1b[0m');
-    console.log('    providers.json is empty — no providers configured.');
-    console.log('    Krythor will start but cannot run AI tasks.');
+    check('Provider count');
+    console.log(`${WARN}  — zero providers configured`);
+    console.log('    providers.json is empty — Krythor will start but cannot run AI tasks.');
     fixes.push('Add a provider: krythor setup  OR  open Models tab in the Control UI');
   }
 
@@ -264,9 +273,10 @@ async function runRepair() {
       if (authMethod === 'api_key') {
         const hasKey = typeof p.apiKey === 'string' && p.apiKey.length > 0;
         if (hasKey) {
-          console.log(`    \x1b[32m✓\x1b[0m ${name} — API key present`);
+          console.log(`    ${PASS}  ${name} — API key present`);
         } else {
-          console.log(`    \x1b[31m✗\x1b[0m ${name} — API key MISSING`);
+          console.log(`    ${FAIL}  ${name} — API key MISSING`);
+          console.log(`            Fix: krythor setup  OR  Models tab → edit provider`);
           fixes.push(`Add API key for "${name}": krythor setup  OR  Models tab → edit provider`);
           credWarnings++;
           allOk = false;
@@ -277,30 +287,33 @@ async function runRepair() {
         if (hasToken) {
           const expired = oa.expiresAt && oa.expiresAt < Date.now();
           if (expired) {
-            console.log(`    \x1b[33m⚠\x1b[0m ${name} — OAuth token EXPIRED`);
+            console.log(`    ${WARN}  ${name} — OAuth token EXPIRED`);
+            console.log(`            Fix: open Models tab → OAuth to reconnect`);
             fixes.push(`Reconnect OAuth for "${name}": open Models tab → OAuth`);
             credWarnings++;
           } else {
-            console.log(`    \x1b[32m✓\x1b[0m ${name} — OAuth connected`);
+            console.log(`    ${PASS}  ${name} — OAuth connected`);
           }
         } else {
-          console.log(`    \x1b[33m⚠\x1b[0m ${name} — OAuth not connected`);
-          fixes.push(`Connect OAuth for "${name}": open Models tab → OAuth`);
+          console.log(`    ${WARN}  ${name} — OAuth not connected`);
+          console.log(`            Fix: open Models tab → OAuth to connect`);
+          fixes.push(`Connect OAuth for "${name}": open the Models tab → OAuth`);
           credWarnings++;
         }
       } else if (authMethod === 'none') {
-        const localTypes = ['ollama', 'gguf'];
-        if (localTypes.includes(p.type)) {
-          console.log(`    \x1b[32m✓\x1b[0m ${name} — local provider (no auth required)`);
+        const localTypes = ['ollama', 'gguf', 'openai-compat'];
+        if (localTypes.includes(p.type) || !p.type) {
+          console.log(`    ${PASS}  ${name} — local/compat provider (no auth required)`);
         } else {
-          console.log(`    \x1b[33m⚠\x1b[0m ${name} — no auth configured (cloud provider without credentials)`);
+          console.log(`    ${WARN}  ${name} — no auth configured (cloud provider without credentials)`);
+          console.log(`            Fix: krythor setup  OR  Models tab → add credentials`);
           fixes.push(`Add credentials for "${name}": krythor setup  OR  Models tab`);
           credWarnings++;
         }
       }
     }
     if (credWarnings > 0) {
-      console.log(`    \x1b[33m${credWarnings} provider(s) need attention\x1b[0m`);
+      console.log(`\n    \x1b[33m${credWarnings} provider(s) need attention\x1b[0m`);
     }
   }
 
