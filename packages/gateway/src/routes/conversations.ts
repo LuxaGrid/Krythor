@@ -2,15 +2,33 @@ import type { FastifyInstance } from 'fastify';
 import type { ConversationStore } from '@krythor/memory';
 import type { GuardEngine } from '@krythor/guard';
 
+/** Conversations are considered idle after this many milliseconds without activity. */
+const SESSION_IDLE_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes
+
+/**
+ * Enrich a raw Conversation object with session-idle metadata.
+ * This is a read-only computed field — the underlying data is never modified.
+ */
+function withIdleStatus(conv: { id: string; title: string; agentId: string | null; createdAt: number; updatedAt: number }) {
+  const now = Date.now();
+  const sessionAgeMs = now - conv.updatedAt;
+  const isIdle = sessionAgeMs >= SESSION_IDLE_THRESHOLD_MS;
+  return {
+    ...conv,
+    sessionAgeMs,
+    isIdle,
+  };
+}
+
 export function registerConversationRoutes(app: FastifyInstance, store: ConversationStore, guard?: GuardEngine): void {
 
-  // GET /api/conversations — list all
+  // GET /api/conversations — list all, with idle status metadata
   app.get('/api/conversations', async (_req, reply) => {
     if (guard) {
       const verdict = guard.check({ operation: 'conversation:read', source: 'user' });
       if (!verdict.allowed) return reply.code(403).send({ error: 'GUARD_DENIED', reason: verdict.reason });
     }
-    return reply.send(store.listConversations());
+    return reply.send(store.listConversations().map(withIdleStatus));
   });
 
   // POST /api/conversations — create new
@@ -30,7 +48,7 @@ export function registerConversationRoutes(app: FastifyInstance, store: Conversa
     return reply.code(201).send(conv);
   });
 
-  // GET /api/conversations/:id — get single conversation
+  // GET /api/conversations/:id — get single conversation with session age metadata
   app.get<{ Params: { id: string } }>('/api/conversations/:id', async (req, reply) => {
     if (guard) {
       const verdict = guard.check({ operation: 'conversation:read', source: 'user' });
@@ -38,7 +56,7 @@ export function registerConversationRoutes(app: FastifyInstance, store: Conversa
     }
     const conv = store.getConversation(req.params.id);
     if (!conv) return reply.code(404).send({ error: 'Conversation not found' });
-    return reply.send(conv);
+    return reply.send(withIdleStatus(conv));
   });
 
   // PATCH /api/conversations/:id — update title
