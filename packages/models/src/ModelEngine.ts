@@ -2,6 +2,7 @@ import { join } from 'path';
 import { homedir } from 'os';
 import { ModelRegistry } from './ModelRegistry.js';
 import { ModelRouter } from './ModelRouter.js';
+import { TokenTracker } from './TokenTracker.js';
 import type {
   ProviderConfig,
   OAuthAccount,
@@ -32,6 +33,7 @@ function getConfigDir(): string {
 export class ModelEngine {
   readonly registry: ModelRegistry;
   readonly router: ModelRouter;
+  readonly tokenTracker: TokenTracker;
 
   constructor(
     configDir?: string,
@@ -41,9 +43,18 @@ export class ModelEngine {
     const dir = configDir ?? getConfigDir();
     this.registry = new ModelRegistry(dir);
     this.router = new ModelRouter(this.registry, warnFn, infoFn);
+    this.tokenTracker = new TokenTracker();
   }
 
   // ── Provider management ───────────────────────────────────────────────────
+
+  /**
+   * Reload providers from disk without process restart.
+   * Used by the gateway's config file watcher (hot reload).
+   */
+  reloadProviders(): void {
+    this.registry.reload();
+  }
 
   addProvider(input: Omit<ProviderConfig, 'id'>): ProviderConfig {
     return this.registry.addProvider(input);
@@ -114,11 +125,48 @@ export class ModelEngine {
   // ── Inference ─────────────────────────────────────────────────────────────
 
   async infer(request: InferenceRequest, context?: RoutingContext, signal?: AbortSignal): Promise<InferenceResponse> {
-    return this.router.infer(request, context, signal);
+    try {
+      const response = await this.router.infer(request, context, signal);
+      this.tokenTracker.record({
+        providerId:    response.providerId,
+        model:         response.model,
+        inputTokens:   response.promptTokens,
+        outputTokens:  response.completionTokens,
+      });
+      return response;
+    } catch (err) {
+      // Best-effort: resolve provider/model for error tracking
+      try {
+        const resolved = this.router.resolve(request, context ?? {});
+        this.tokenTracker.recordError(resolved.provider.id, resolved.model);
+      } catch { /* ignore resolution failure during error tracking */ }
+      throw err;
+    }
   }
 
   async *inferStream(request: InferenceRequest, context?: RoutingContext, signal?: AbortSignal): AsyncGenerator<StreamChunk> {
-    yield* this.router.inferStream(request, context, signal);
+    // Streaming token counts are not reliably surfaced by all providers.
+    // We still record the request attempt for the stats counter.
+    let providerId = '';
+    let model = '';
+    let hasError = false;
+    try {
+      for await (const chunk of this.router.inferStream(request, context, signal)) {
+        if (chunk.model) model = chunk.model;
+        yield chunk;
+      }
+    } catch (err) {
+      hasError = true;
+      throw err;
+    } finally {
+      if (providerId || model) {
+        if (hasError) {
+          this.tokenTracker.recordError(providerId || 'unknown', model || 'unknown');
+        } else {
+          this.tokenTracker.record({ providerId: providerId || 'unknown', model: model || 'unknown' });
+        }
+      }
+    }
   }
 
   // ── Status ────────────────────────────────────────────────────────────────
