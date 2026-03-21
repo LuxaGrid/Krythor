@@ -4,7 +4,7 @@ import fastifyWebsocket from '@fastify/websocket';
 import fastifyStatic from '@fastify/static';
 import fastifyRateLimit from '@fastify/rate-limit';
 import { join } from 'path';
-import { existsSync, readFileSync, readdirSync } from 'fs';
+import { existsSync, readFileSync, readdirSync, watch as fsWatch } from 'fs';
 import { homedir, networkInterfaces } from 'os';
 import { KrythorCore, AgentOrchestrator } from '@krythor/core';
 import { MemoryEngine, GuardDecisionStore, OllamaEmbeddingProvider } from '@krythor/memory';
@@ -306,6 +306,42 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
     logger.info('Embedding ready', { provider: embStatus.providerName });
   }
 
+  // ── Hot config reload ───────────────────────────────────────────────────────
+  // Watch providers.json for changes and reload without restarting the process.
+  // Uses fs.watch() (built-in, no extra deps). Debounced to 500ms to avoid
+  // spurious double-fires from editors that write atomically (write + rename).
+  if (process.env['NODE_ENV'] !== 'test') {
+    const providersFile = join(dataDir, 'config', 'providers.json');
+    let reloadDebounce: ReturnType<typeof setTimeout> | undefined;
+    try {
+      fsWatch(join(dataDir, 'config'), (eventType, filename) => {
+        if (filename !== 'providers.json') return;
+        if (reloadDebounce) clearTimeout(reloadDebounce);
+        reloadDebounce = setTimeout(() => {
+          try {
+            models.reloadProviders();
+            const s = models.stats();
+            logger.info('Hot reload: providers.json changed — providers reloaded', {
+              providerCount: s.providerCount,
+              modelCount:    s.modelCount,
+            });
+            if (s.providerCount === 0) {
+              logger.warn('Hot reload: no providers configured after reload — inference will fail');
+            }
+          } catch (err) {
+            logger.warn('Hot reload: failed to reload providers.json', {
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }, 500);
+      });
+      logger.info('Config watcher active', { watching: providersFile });
+    } catch {
+      // fs.watch() can fail on some platforms or in restricted environments — non-fatal
+      logger.info('Config watcher unavailable — manual restart required for config changes');
+    }
+  }
+
   // Initialise recommendation engine with persistent preference store
   const preferenceStore = new PreferenceStore(join(dataDir, 'config'));
   const recommender = new ModelRecommender(models, preferenceStore);
@@ -443,7 +479,8 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
   registerStreamWs(app, core, () => authCfg.token, guard);
 
   // Templates endpoint — lists workspace template files available in the user's data dir.
-  // Returns file names and content so the UI can display or scaffold them.
+  // Returns { name, filename, size, description } for each .md file in <dataDir>/templates/.
+  // `description` is extracted from the first H1 heading (# Title) or the first non-empty line.
   // Authenticated — templates may contain user-edited personal context.
   app.get('/api/templates', async (_req, reply) => {
     const templatesDir = join(dataDir, 'templates');
@@ -457,8 +494,28 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
     const templates = files.map(file => {
       const filePath = join(templatesDir, file);
       let content = '';
-      try { content = readFileSync(filePath, 'utf-8'); } catch {}
-      return { name: file, path: filePath, content };
+      let size = 0;
+      try {
+        content = readFileSync(filePath, 'utf-8');
+        size = Buffer.byteLength(content, 'utf-8');
+      } catch {}
+
+      // Extract description: first H1 heading or first non-empty line
+      let description = '';
+      for (const line of content.split('\n')) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        if (trimmed.startsWith('# ')) {
+          description = trimmed.slice(2).trim(); // strip "# " prefix
+        } else {
+          description = trimmed;
+        }
+        break;
+      }
+
+      // name = filename without .md extension (display name)
+      const name = file.replace(/\.md$/i, '');
+      return { name, filename: file, size, description };
     });
     return reply.send({ templates });
   });
