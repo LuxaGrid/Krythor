@@ -265,6 +265,20 @@ export class ModelRegistry {
     }
   }
 
+  /**
+   * Reload providers from disk without restarting the process.
+   *
+   * Called by the gateway's config watcher when providers.json changes.
+   * Replaces the in-memory provider list and provider instances with a
+   * fresh parse of the on-disk file. Existing circuit-breaker state in
+   * ModelRouter is preserved — this is intentional so a reload does not
+   * reset an open circuit for a provider that was already failing.
+   */
+  reload(): void {
+    this.providers.clear();
+    this.load();
+  }
+
   private save(): void {
     atomicWriteJSON(this.configPath, this.configs);
   }
