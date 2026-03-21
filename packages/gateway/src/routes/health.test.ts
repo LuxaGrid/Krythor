@@ -31,4 +31,19 @@ describe('GET /health', () => {
     expect(body.guard).toBeDefined()
     expect(body.agents).toBeDefined()
   })
+
+  it('includes dataDir and configDir in response', async () => {
+    const res = await app.inject({ method: 'GET', url: '/health' })
+    const body = JSON.parse(res.body) as Record<string, unknown>
+    expect(typeof body.dataDir).toBe('string')
+    expect(typeof body.configDir).toBe('string')
+    // configDir should be a subdirectory of dataDir
+    expect((body.configDir as string).startsWith(body.dataDir as string)).toBe(true)
+  })
+
+  it('includes firstRun flag indicating whether providers are configured', async () => {
+    const res = await app.inject({ method: 'GET', url: '/health' })
+    const body = JSON.parse(res.body) as Record<string, unknown>
+    expect(typeof body.firstRun).toBe('boolean')
+  })
 })
