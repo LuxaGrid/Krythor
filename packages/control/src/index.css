@@ -78,6 +78,15 @@
   --kr-status-error:    #f87171;   /* red-400 */
   --kr-status-stopped:  #fb923c;   /* orange-400 */
   --kr-status-done:     #34d399;   /* emerald-400 */
+
+  /* Command Center zone tokens */
+  --cc-crown:    #f59e0b;
+  --cc-forge:    #1eaeff;
+  --cc-archive:  #818cf8;
+  --cc-memory:   #93c5fd;
+  --cc-monitor:  #fb923c;
+  --cc-scene-bg: #0a0a12;
+  --cc-grid:     rgba(30,174,255,0.04);
 }
 
 /* Utility helpers that consume the tokens */
