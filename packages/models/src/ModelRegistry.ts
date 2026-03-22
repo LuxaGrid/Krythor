@@ -210,6 +210,27 @@ export class ModelRegistry {
 
   // ── Persistence ────────────────────────────────────────────────────────────
 
+  /**
+   * Apply ${ENV_VAR_NAME} substitution to string values in the JSON.
+   * Only string fields are affected. Missing env vars log a warning and leave
+   * the placeholder in place. This runs on the raw JSON string before parsing
+   * so the substitution is applied uniformly to all string fields.
+   */
+  private static substituteEnvVars(jsonStr: string): string {
+    return jsonStr.replace(/"\$\{([^}]+)\}"/g, (_match, varName: string) => {
+      const value = process.env[varName];
+      if (value === undefined) {
+        // Log a warning — missing env vars are a common config mistake
+        console.warn(
+          `[ModelRegistry] providers.json: env var \${${varName}} is not set — ` +
+          'leaving placeholder in place.',
+        );
+        return JSON.stringify(`\${${varName}}`);
+      }
+      return JSON.stringify(value);
+    });
+  }
+
   private load(): void {
     if (!existsSync(this.configPath)) {
       this.configs = [];
@@ -217,7 +238,11 @@ export class ModelRegistry {
     }
     try {
       const raw = readFileSync(this.configPath, 'utf-8');
-      const parsed = JSON.parse(raw) as unknown;
+      // Apply ${ENV_VAR} substitution before parsing — allows secrets to live in
+      // environment variables rather than being stored in providers.json.
+      // Example: { "apiKey": "${ANTHROPIC_API_KEY}" }
+      const substituted = ModelRegistry.substituteEnvVars(raw);
+      const parsed = JSON.parse(substituted) as unknown;
 
       const { providers, skipped, errors } = parseProviderList(parsed);
 
