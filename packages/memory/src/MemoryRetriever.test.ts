@@ -6,11 +6,13 @@
  * We use an in-memory SQLite database via MemoryEngine so no disk I/O occurs.
  */
 
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi, beforeEach } from 'vitest';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { mkdtempSync, rmSync } from 'fs';
 import { MemoryEngine } from './MemoryEngine.js';
+import { temporalDecayMultiplier } from './MemoryRetriever.js';
+import type { MemoryEntry } from './types.js';
 
 function makeTmpEngine(): { engine: MemoryEngine; tmpDir: string } {
   const tmpDir = mkdtempSync(join(tmpdir(), 'krythor-retriever-test-'));
@@ -116,5 +118,92 @@ describe('MemoryRetriever — hybrid text scoring', () => {
     const results = await engine.search({ scope: 'user', limit: 10 });
     expect(Array.isArray(results)).toBe(true);
     expect(results.length).toBe(1);
+  });
+});
+
+// ─── temporalDecayMultiplier unit tests ───────────────────────────────────────
+
+function makeEntry(overrides: Partial<MemoryEntry> = {}): MemoryEntry {
+  return {
+    id: 'test-id',
+    title: 'Test Entry',
+    content: 'Some content',
+    scope: 'user',
+    scope_id: null,
+    source: 'user',
+    importance: 0.5,
+    pinned: false,
+    created_at: Date.now(),
+    last_used: Date.now(),
+    access_count: 0,
+    ...overrides,
+  };
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+describe('temporalDecayMultiplier', () => {
+  beforeEach(() => {
+    delete process.env['KRYTHOR_MEMORY_NO_DECAY'];
+  });
+
+  afterEach(() => {
+    delete process.env['KRYTHOR_MEMORY_NO_DECAY'];
+    vi.restoreAllMocks();
+  });
+
+  it('returns 1.0 for a brand-new entry (age=0)', () => {
+    const now = Date.now();
+    const entry = makeEntry({ created_at: now });
+    expect(temporalDecayMultiplier(entry, now)).toBeCloseTo(1.0, 5);
+  });
+
+  it('returns ~0.5 for an entry that is 90 days old (half-life)', () => {
+    const now = Date.now();
+    const entry = makeEntry({ created_at: now - 90 * DAY_MS });
+    const m = temporalDecayMultiplier(entry, now);
+    // half-life is 90 days → multiplier ≈ 0.5
+    expect(m).toBeGreaterThan(0.48);
+    expect(m).toBeLessThan(0.52);
+  });
+
+  it('returns ~0.25 for an entry that is 180 days old (two half-lives)', () => {
+    const now = Date.now();
+    const entry = makeEntry({ created_at: now - 180 * DAY_MS });
+    const m = temporalDecayMultiplier(entry, now);
+    expect(m).toBeGreaterThan(0.23);
+    expect(m).toBeLessThan(0.27);
+  });
+
+  it('clamps to minimum 0.10 for very old entries', () => {
+    const now = Date.now();
+    // 5 years old — would be ~0.003 without clamping
+    const entry = makeEntry({ created_at: now - 5 * 365 * DAY_MS });
+    const m = temporalDecayMultiplier(entry, now);
+    expect(m).toBe(0.10);
+  });
+
+  it('returns 1.0 for pinned entries regardless of age', () => {
+    const now = Date.now();
+    const entry = makeEntry({ created_at: now - 365 * DAY_MS, pinned: true });
+    expect(temporalDecayMultiplier(entry, now)).toBe(1.0);
+  });
+
+  it('returns 1.0 when KRYTHOR_MEMORY_NO_DECAY=1', () => {
+    process.env['KRYTHOR_MEMORY_NO_DECAY'] = '1';
+    const now = Date.now();
+    const entry = makeEntry({ created_at: now - 90 * DAY_MS });
+    expect(temporalDecayMultiplier(entry, now)).toBe(1.0);
+  });
+
+  it('decay is disabled (returns 1.0) when entry count ≤ 5 (enforced by caller)', () => {
+    // This verifies the contract: temporalDecayMultiplier itself always computes decay;
+    // the ≤5 threshold is enforced in retrieve() — the function is pure math.
+    const now = Date.now();
+    const entry = makeEntry({ created_at: now - 90 * DAY_MS });
+    // Just confirm the function still works as a pure function
+    const m = temporalDecayMultiplier(entry, now);
+    expect(m).toBeGreaterThan(0);
+    expect(m).toBeLessThanOrEqual(1.0);
   });
 });

@@ -15,6 +15,32 @@ export interface RetrieveOptions {
   taskText?: string;   // used for semantic similarity if embedding available
 }
 
+// ─── Temporal decay ───────────────────────────────────────────────────────────
+
+/**
+ * Time-based decay multiplier for a memory entry.
+ *
+ * Pinned entries are exempt (multiplier = 1.0).
+ * The decay follows an exponential half-life: score × 2^(-age / HALF_LIFE_MS).
+ * Half-life is 90 days — an entry that is 90 days old retains ~50% of its score;
+ * one that is 180 days old retains ~25%.
+ *
+ * The multiplier is clamped to [0.10, 1.0] so very old entries still appear
+ * when they are the only relevant result.
+ *
+ * Set KRYTHOR_MEMORY_NO_DECAY=1 to disable completely.
+ */
+const DECAY_HALF_LIFE_MS = 90 * 24 * 60 * 60 * 1000; // 90 days in ms
+
+export function temporalDecayMultiplier(entry: import('./types.js').MemoryEntry, now: number): number {
+  if (process.env['KRYTHOR_MEMORY_NO_DECAY'] === '1') return 1.0;
+  if (entry.pinned) return 1.0;
+  const ageMs = Math.max(0, now - entry.created_at);
+  const multiplier = Math.pow(2, -ageMs / DECAY_HALF_LIFE_MS);
+  // Clamp: never below 0.10 so old entries can still surface
+  return Math.max(0.10, Math.min(1.0, multiplier));
+}
+
 // ─── MemoryRetriever ──────────────────────────────────────────────────────────
 
 export class MemoryRetriever {
@@ -74,10 +100,15 @@ export class MemoryRetriever {
           ? this.textMatchScore(entry, scoringText)
           : 0;
 
+        const rawScore = this.scorer.score(entry, { now, semanticSimilarity: semanticSim, textMatchScore });
+        // Apply temporal decay when there are enough results to discriminate.
+        // When only a few entries are returned we skip decay to avoid burying
+        // the only relevant result.  Threshold: >5 entries before decay kicks in.
+        const decay = entries.length > 5 ? temporalDecayMultiplier(entry, now) : 1.0;
         return {
           entry,
           tags: this.store.getTagsForEntry(entry.id),
-          score: this.scorer.score(entry, { now, semanticSimilarity: semanticSim, textMatchScore }),
+          score: rawScore * decay,
         };
       })
     );
