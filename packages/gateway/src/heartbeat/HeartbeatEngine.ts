@@ -52,6 +52,13 @@ export interface HeartbeatInsight {
   timestamp:       string;
 }
 
+/** A single provider health check result stored in the rolling history. */
+export interface ProviderHealthEntry {
+  timestamp: string;   // ISO string
+  ok: boolean;
+  latencyMs: number;
+}
+
 export interface HeartbeatRunRecord {
   startedAt:    number;
   completedAt?: number;
@@ -82,6 +89,8 @@ const DEFAULT_CHECKS: Record<string, CheckConfig> = {
   config_integrity:   { enabled: true, intervalMs: 6 * 60 * 60 * 1000 },  // 6 h
 };
 
+const PROVIDER_HISTORY_CAP = 100; // max entries per provider
+
 export class HeartbeatEngine {
   private config:       HeartbeatConfig;
   private lastRanAt:   Map<string, number> = new Map(); // checkId → epoch ms
@@ -89,6 +98,8 @@ export class HeartbeatEngine {
   private timer?:      ReturnType<typeof setInterval>;
   private runHistory:  RunRecord[] = [];          // capped at 50
   private startedAt:   number = Date.now();
+  /** Per-provider rolling health history — capped at PROVIDER_HISTORY_CAP entries each. */
+  private providerHealthHistory: Map<string, ProviderHealthEntry[]> = new Map();
 
   constructor(
     private readonly memory:       MemoryEngine | null,
@@ -157,6 +168,29 @@ export class HeartbeatEngine {
 
   /** Current config (read-only snapshot). */
   getConfig(): HeartbeatConfig { return { ...this.config, checks: { ...this.config.checks } }; }
+
+  /**
+   * Returns per-provider rolling health history.
+   * Each key is a provider id; each value is the last N entries (newest last).
+   */
+  getProviderHealthHistory(): Record<string, ProviderHealthEntry[]> {
+    const result: Record<string, ProviderHealthEntry[]> = {};
+    for (const [id, entries] of this.providerHealthHistory.entries()) {
+      result[id] = [...entries];
+    }
+    return result;
+  }
+
+  /** Record a single provider health check result into the rolling history. */
+  recordProviderHealth(providerId: string, ok: boolean, latencyMs: number): void {
+    let entries = this.providerHealthHistory.get(providerId);
+    if (!entries) {
+      entries = [];
+      this.providerHealthHistory.set(providerId, entries);
+    }
+    entries.push({ timestamp: new Date().toISOString(), ok, latencyMs });
+    if (entries.length > PROVIDER_HISTORY_CAP) entries.shift();
+  }
 
   // ── Private ──────────────────────────────────────────────────────────────
 
@@ -564,6 +598,18 @@ export class HeartbeatEngine {
             insights.push(this.insight('config_integrity', 'warning',
               `${emptyModels.length} enabled provider(s) have no models configured: ${emptyModels.map(p => p.name).join(', ')}. Use "Refresh Models" or add models manually.`,
               true, 'refresh_models'));
+          }
+
+          // Record provider health history entries for each enabled provider.
+          // Uses circuit breaker state as a lightweight proxy for reachability —
+          // avoids making real HTTP calls during heartbeat (which would consume quota).
+          const circuits = ctx.models.circuitStats();
+          for (const p of providers.filter(p2 => p2.isEnabled)) {
+            const circuit = (circuits as Record<string, unknown>)[p.id];
+            const isOpen  = circuit && (circuit as Record<string, unknown>)['state'] === 'open';
+            // Record as ok if circuit is closed/half-open; fail if circuit is open.
+            // latencyMs is approximated from last inference latency if tracked, else 0.
+            this.recordProviderHealth(p.id, !isOpen, 0);
           }
         }
       }

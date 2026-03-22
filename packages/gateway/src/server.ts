@@ -746,6 +746,13 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
     reply.code(result.ready ? 200 : 503).send(result);
   });
 
+  // GET /api/heartbeat/history — per-provider rolling health history (auth required).
+  // Returns last up to 100 health check entries per provider.
+  // Entries: { timestamp, ok, latencyMs }
+  app.get('/api/heartbeat/history', async () => {
+    return heartbeat.getProviderHealthHistory();
+  });
+
   // Heartbeat status — returns last run summary + active warnings.
   // Authenticated. Polled by the UI status bar to surface non-critical warnings.
   app.get('/api/heartbeat/status', async () => {
