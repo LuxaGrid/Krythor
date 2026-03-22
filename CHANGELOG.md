@@ -10,6 +10,59 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+
+#### Batch 4 — Items 3, 4, 6, 7 (2026-03-21)
+
+- **Token spend history** (`GET /api/stats/history`): `TokenTracker` extended with a ring buffer of last 1000 inferences; each entry has `{ timestamp, provider, model, inputTokens, outputTokens }`; endpoint returns `{ history, windowSize: 1000 }`; auth required
+- **Dashboard sparkline**: Dashboard tab now shows last 20 token datapoints as a unicode sparkline (`▁▂▃▄▅▆▇█` scaled to max value), labelled "Token usage (last 20 requests)"
+- **Remote gateway foundation** (`GET /api/gateway/info`): returns `{ version, platform, arch, nodeVersion, gatewayId, startTime, capabilities }`; `gatewayId` is a stable UUID persisted to `<configDir>/gateway-id.json`; `capabilities: ['exec','web_search','web_fetch','memory','agents','skills','tools']`; auth required
+- **Gateway peers placeholder** (`GET /api/gateway/peers`): returns `{ peers: [] }` — foundation for future multi-gateway mesh; auth required
+- **OAuth Pending badge**: providers with `setupHint='oauth_available'` now show an amber "OAuth Pending" badge inline in the Models tab provider list
+- **Provider Connect button**: each OAuth-pending provider shows a "Connect ↗" button that opens the correct provider dashboard URL in a new browser tab (Anthropic → `console.anthropic.com/settings/keys`; OpenAI → `platform.openai.com/api-keys`; others → provider endpoint)
+- **Honest OAuth copy in setup wizard**: "Connect with OAuth later" option text updated to "Connect with OAuth later — opens provider dashboard to get your API key" to set accurate expectations
+- **Web chat widget** (`GET /chat`): minimal self-contained HTML chat page served by the gateway; auth token injected at serve time as `window.__KRYTHOR_TOKEN__`; sends messages to `POST /api/command` via vanilla fetch; no React bundle required; also provides `packages/control/src/WebChat.tsx` React component
+
+#### Batch 4 — Items 1, 2, 5 (previously completed)
+
+- **Agent import/export**: `POST /api/agents/import` + `GET /api/agents/:id/export`; export includes all fields except internal timestamps; import deduplicates by name
+- **Memory tagging**: `GET /api/memory/tags` returns all distinct tags; memory search accepts `?tags=` filter; `PATCH /api/memory/:id` accepts `tags` array
+- **Input validation**: Fastify JSON Schema validation on all `POST`/`PATCH` bodies in agents, memory, guard, skills, tools routes; 400 `VALIDATION_FAILED` responses with field-level messages
+
+#### Batch 3 (2026-03-21)
+
+- **Models tab — Test + Enable/Disable buttons**: "Test" calls `POST /api/providers/:id/test` and shows latency inline; "Enable/Disable" toggle per provider
+- **Memory tab improvements**: Export button, bulk Prune modal with olderThan/tag/source filters, detailed stats showing `sizeEstimateBytes`
+- **Dashboard tab**: new tab (`GET /api/dashboard`) with 8 stat cards — uptime, providers, models, agents, memory entries, conversations, tokens used, active warnings; auto-refreshes every 30s
+- **Skills tab — built-in skills + Run button**: built-in skills panel from `GET /api/skills/builtins`; Run button per user skill opens dialog with input textarea
+- **Local model discovery**: `GET /api/local-models` probes Ollama/LM Studio/llama-server; "Discover local" button in Models tab with pre-fill shortcuts
+- **TUI command input**: command input line on every TUI frame; typed chars accumulate; single-key shortcuts (`r`, `s`, `h`, Escape); Enter sends to `/api/command`
+- **E2E integration test skeleton**: 5 tests on real port 47299
+
+#### Batch 2 (2026-03-21)
+
+- **Provider priority ordering** (`priority?: number`) and **per-provider retry config** (`maxRetries?: number`); `ModelRouter` sorts by priority descending; `POST /api/providers/:id` accepts both fields
+- **Memory export/import**: `GET /api/memory/export`, `POST /api/memory/import` with SHA-256 dedup
+- **Memory pruning controls**: `DELETE /api/memory` with `olderThan`/`tag`/`source` filters; `GET /api/memory/stats` enriched with `oldest`, `newest`, `sizeEstimateBytes`
+- **Session naming and pinning**: migration 006 adds `name` and `pinned` columns; `PATCH /api/conversations/:id` accepts both; list ordered by `pinned DESC, updated_at DESC`
+- **Agent chaining/handoff**: `{"handoff":"<agentId>","message":"..."}` directive in model responses; capped at 3 handoffs; `GET /api/agents/:id/run?message=<text>`
+- **User-defined webhook tools**: `WebhookTool` + `CustomToolStore`; `GET/POST /api/tools/custom`, `DELETE /api/tools/custom/:name`
+- **Tool permission scoping per agent**: `allowedTools?: string[]` on agent definition; `AgentRunner` enforces; `POST/PATCH /api/agents` schema extended
+- **Dashboard endpoint**: `GET /api/dashboard` consolidating all key system metrics
+
+#### Batch 1 (2026-03-21)
+
+- **Daemon mode**: `krythor start --daemon` spawns gateway detached, writes PID; `krythor stop` kills and removes PID file; `krythor restart`
+- **Data backup command**: `krythor backup [--output <dir>]` — zip/tar.gz of data directory
+- **Uninstall command**: `krythor uninstall` with confirmation prompt; preserves data directory
+- **`krythor help [<command>]`**: full command listing with single-line descriptions; detailed help per command
+- **Config schema validation**: `validateProvidersConfig()` at gateway startup — structured error logging for invalid/skipped entries
+- **Config export/import**: `GET /api/config/export` (secrets redacted), `POST /api/config/import` (merge with dedup)
+- **`CORS_ORIGINS` env var**: comma-separated additional allowed origins for CORS
+- **Doctor — migration integrity check**: checks `schema_migrations` table against SQL files; reports applied count
+- **Doctor — stale agent model detection**: flags agents referencing model IDs not in any configured provider
+
+#### Prior batches (web tools, TUI, auto-update)
+
 - **Tool system — web_search** (`WebSearchTool`): DuckDuckGo Instant Answer API, no key required, 5s timeout, up to 10 results; integrated into AgentRunner tool-call loop via `{"tool":"web_search","query":"..."}`; exposed at `POST /api/tools/web_search`
 - **Tool system — web_fetch** (`WebFetchTool`): fetch any HTTP/HTTPS URL as plain text (HTML stripped), 8s timeout, 10,000 char limit; integrated into AgentRunner tool-call loop via `{"tool":"web_fetch","url":"..."}`; exposed at `POST /api/tools/web_fetch`
 - **ToolRegistry**: central registry of all tools (exec, web_search, web_fetch) with name, description, parameters, `requiresGuard`, and `alwaysAllowed` fields; `GET /api/tools` returns the full registry

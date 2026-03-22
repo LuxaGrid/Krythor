@@ -1,3 +1,119 @@
+# AI Changelog — Pass 2026-03-21 (Batch 4: Remaining Items)
+
+**Model:** Claude Sonnet 4.6
+**Pass type:** Batch 4 — Items 3, 4, 6, 7, 8 (Items 1, 2, 5 were already done)
+
+---
+
+## Summary (this pass)
+
+### ITEM 3: Token spend history — DONE
+
+**Files:** `packages/models/src/TokenTracker.ts`, `packages/gateway/src/server.ts`, `packages/gateway/src/routes/stats.history.test.ts`, `packages/control/src/components/DashboardPanel.tsx`, `packages/control/src/api.ts`
+
+- `TokenTracker` extended with `InferenceRecord` interface and a ring buffer (`history: InferenceRecord[]`) of last 1000 non-error inferences
+- `record()` now appends `{ timestamp, provider, model, inputTokens, outputTokens }` to the buffer; trims to 1000 entries
+- `getHistory()` returns `{ history: InferenceRecord[], windowSize: 1000 }`
+- `reset()` also clears the history buffer
+- `GET /api/stats/history` (auth required) added to server.ts — returns history
+- `DashboardPanel`: fetches history alongside dashboard data via `Promise.all`; renders a 20-entry unicode sparkline (`▁▂▃▄▅▆▇█` scaled to max total tokens); shows empty-state message when no inferences recorded
+- `api.ts`: `InferenceRecord` interface + `getTokenHistory()` function added
+- 4 new tests in `stats.history.test.ts`
+
+---
+
+### ITEM 4: Remote gateway foundation — DONE
+
+**Files:** `packages/gateway/src/routes/gateway.ts` (new), `packages/gateway/src/server.ts`, `packages/gateway/src/routes/gateway.test.ts` (new)
+
+- `GET /api/gateway/info` (auth required): returns `{ version, platform, arch, nodeVersion, gatewayId, startTime, capabilities }`
+- `gatewayId`: stable UUID read from `<configDir>/gateway-id.json`; generated on first call via `randomUUID()` and written to disk
+- `startTime`: ISO string set at module import time (approximates gateway start)
+- `capabilities`: `['exec','web_search','web_fetch','memory','agents','skills','tools']`
+- `GET /api/gateway/peers` (auth required): returns `{ peers: [] }` placeholder
+- `registerGatewayRoutes(app, configDir)` registered in `server.ts` after heartbeat init
+- 4 new tests in `gateway.test.ts` (200 + all fields, capabilities, auth required, peers empty array)
+
+---
+
+### ITEM 6: OAuth clarity — DONE
+
+**Files:** `packages/control/src/components/ModelsPanel.tsx`, `packages/setup/src/SetupWizard.ts`, `README.md`
+
+- `ModelsPanel`: providers with `setupHint='oauth_available'` now show an "OAuth Pending" amber badge (border pill) in the provider name row
+- Each OAuth-pending provider shows a "Connect ↗" button that opens the correct provider dashboard URL in a new tab:
+  - anthropic → `https://console.anthropic.com/settings/keys`
+  - openai → `https://platform.openai.com/api-keys`
+  - others → provider endpoint base URL
+- `SetupWizard.ts`: OAuth option text updated to "Connect with OAuth later — opens provider dashboard to get your API key"; success message and inline hint updated
+- `README.md`: OAuth section rewritten to accurately describe current behavior (click to open provider dashboard) vs full browser OAuth flow (roadmap)
+
+---
+
+### ITEM 7: Embeddable web chat widget — DONE
+
+**Files:** `packages/control/src/WebChat.tsx` (new), `packages/gateway/src/server.ts`, `packages/gateway/src/routes/webchat.test.ts` (new)
+
+- `WebChat.tsx`: standalone React component — fixed-height scrollable message list, text input, Send button; authenticates with `window.__KRYTHOR_TOKEN__`; sends to `POST /api/command`; shows user/assistant/error messages inline; Enter key sends; Thinking… state while pending
+- `GET /chat` route added to `server.ts` (inside the UI static handler block): serves a minimal self-contained HTML page with inline styles + vanilla JS fetch loop; token injected at serve time; no React bundle required for the route
+- 2 tests in `webchat.test.ts`: returns 200 with `text/html`, body contains `__KRYTHOR_TOKEN__` and `/api/command`
+
+---
+
+### ITEM 8: Release polish — DONE
+
+**Files:** `CHANGELOG.md`, `docs/AI_CHANGELOG.md`, `README.md`
+
+- `CHANGELOG.md`: `[Unreleased]` section expanded with all Batch 1–4 changes grouped by batch
+- `README.md` feature list updated to reflect v1.5.0 capabilities: 22 bullet points covering token history, gateway identity, web chat, agent import/export, session management, config hot reload, daemon mode, backup, doctor/repair
+- `docs/AI_CHANGELOG.md`: this entry
+
+---
+
+## Build Status (Batch 4)
+
+All changes compile cleanly with `pnpm build`.
+
+| Package | Tests | Delta |
+|---|---|---|
+| guard | 10 | 0 |
+| skills | 10 | 0 |
+| memory | 64 | 0 |
+| models | 49 | 0 |
+| core | 98 | 0 |
+| setup | 31 | 0 |
+| gateway | 235 | +10 (stats.history ×4, gateway ×4, webchat ×2) |
+| **Total** | **497** | **+10** |
+
+All 225 previous gateway tests pass. No regressions.
+
+---
+
+## Commits (this pass)
+
+1. `feat(models,gateway,control): ITEM 3 token spend history ring buffer + sparkline`
+2. `feat(gateway): ITEM 4 remote gateway foundation — /api/gateway/info + /api/gateway/peers`
+3. `feat(control,setup): ITEM 6 OAuth clarity — pending badge, Connect button, honest copy`
+4. `feat(control,gateway): ITEM 7 embeddable web chat widget at GET /chat`
+5. `docs(changelog): ITEM 8 Batch 4 release polish — CHANGELOG.md, AI_CHANGELOG.md, README.md`
+
+---
+
+## What Was Skipped and Why
+
+- **Items 1, 2, 5**: already completed before this pass (stated in task brief)
+
+## What Remains
+
+### Future work
+- Code signing (OV certificate) — requires purchasing cert; out of scope
+- Docker image — deferred
+- Live provider tests (`pnpm test:live`) — requires real credentials
+- npm global publish — bin field + publish workflow
+- Full browser OAuth flow — current "OAuth" is click-to-open-dashboard; browser sign-in flow is on roadmap
+
+---
+
 # AI Changelog — Pass 2026-03-21 (Batch 3: Remaining Gaps)
 
 **Model:** Claude Sonnet 4.6

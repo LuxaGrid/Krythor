@@ -37,17 +37,28 @@ This is **AI you can operate**.
 ## ✨ Features
 
 * **Multi-model routing** — OpenAI, Anthropic, Ollama, LM Studio, GGUF (llama-server), OpenRouter, Groq, Venice, and any OpenAI-compatible API
-* **Automatic fallback** — seamless provider failover with circuit breaker
-* **Dual-auth support** — connect cloud providers with an API key or via OAuth in the app — your choice
-* **Persistent memory** — BM25 + semantic hybrid retrieval across sessions
-* **Agent system** — custom prompts, memory scope, and model preferences per agent
-* **Skills** — reusable task templates with structured routing hints
-* **Guard engine** — policy-based allow/deny control per operation
-* **Tool system** — exec (local commands), web_search (DuckDuckGo), web_fetch (URL content)
+* **Automatic fallback** — seamless provider failover with circuit breaker and per-provider retry config
+* **Provider priority ordering** — configure which providers are tried first
+* **Dual-auth support** — connect cloud providers with an API key; "Connect" button opens provider dashboard in a new tab
+* **Persistent memory** — BM25 + semantic hybrid retrieval across sessions with tagging, export/import, and bulk pruning
+* **Agent system** — custom prompts, memory scope, model preferences, tool permissions, chaining/handoff per agent
+* **Agent import/export** — share agent configs as JSON files
+* **Skills** — reusable task templates with structured routing hints and built-in templates (summarize, translate, explain)
+* **Guard engine** — policy-based allow/deny control per operation with persistent audit trail
+* **Tool system** — exec (local commands), web_search (DuckDuckGo), web_fetch (URL content), user-defined webhook tools
+* **Session management** — named conversations, pinning, idle detection, export as JSON/Markdown
+* **Token spend history** — ring buffer of last 1000 inferences; Dashboard shows sparkline of recent usage
+* **Gateway identity** — stable UUID per installation; capability manifest at `GET /api/gateway/info`
+* **Web chat widget** — embeddable chat page at `/chat`; no React bundle required
 * **Transparent execution** — see exactly which model ran, why, and fallback behavior
 * **Heartbeat monitoring** — background provider health tracking and anomaly detection
 * **Terminal dashboard** — `krythor tui` for a live status view without a browser
 * **Auto-update check** — notified at startup when a newer release is available
+* **Config hot reload** — `providers.json` watched with `fs.watch()`; `POST /api/config/reload` for manual trigger
+* **Config export/import** — portable provider config with secrets redacted
+* **Daemon mode** — `krythor start --daemon`, `krythor stop`, `krythor restart`
+* **Backup command** — `krythor backup` creates a timestamped archive of the data directory
+* **Doctor + Repair** — comprehensive diagnostics with migration integrity check and credential validation
 * **Local-first** — all data stays on your machine
 
 ---
