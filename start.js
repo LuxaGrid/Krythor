@@ -1313,6 +1313,161 @@ async function runRestart() {
   await runDaemon();
 }
 
+// ── krythor service install / uninstall ────────────────────────────────────
+// Registers Krythor as a system service so it starts automatically on login.
+// macOS:   launchd plist → ~/Library/LaunchAgents/ai.krythor.gateway.plist
+// Linux:   systemd user unit → ~/.config/systemd/user/krythor.service
+// Windows: Task Scheduler via schtasks.exe (run at logon, hidden window)
+
+async function runServiceInstall() {
+  const fs   = require('fs');
+  const path = require('path');
+  const os   = require('os');
+  const cp   = require('child_process');
+  const platform = process.platform;
+
+  const execPath = process.execPath;         // node binary running this
+  const scriptPath = __filename;             // this start.js
+  const krythorBin = (() => {
+    // Prefer the installed `krythor` bin if it exists alongside this script
+    const local = path.join(path.dirname(__filename), 'bin', 'krythor');
+    if (fs.existsSync(local)) return local;
+    return `"${execPath}" "${scriptPath}"`;
+  })();
+
+  if (platform === 'darwin') {
+    // macOS launchd — runs as user agent (starts at login, not boot)
+    const launchAgents = path.join(os.homedir(), 'Library', 'LaunchAgents');
+    const plistPath    = path.join(launchAgents, 'ai.krythor.gateway.plist');
+
+    fs.mkdirSync(launchAgents, { recursive: true });
+
+    const plist = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ai.krythor.gateway</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>${execPath}</string>
+    <string>${scriptPath}</string>
+    <string>--no-browser</string>
+    <string>--no-update-check</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>${path.join(os.homedir(), 'Library', 'Logs', 'krythor.log')}</string>
+  <key>StandardErrorPath</key>
+  <string>${path.join(os.homedir(), 'Library', 'Logs', 'krythor.error.log')}</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>${os.homedir()}</string>
+  </dict>
+</dict>
+</plist>`;
+
+    fs.writeFileSync(plistPath, plist, 'utf8');
+    cp.execSync(`launchctl load "${plistPath}"`, { stdio: 'inherit' });
+    console.log('\x1b[32m✓\x1b[0m Krythor registered as a launchd agent. It will start automatically at login.');
+    console.log(`  Plist: ${plistPath}`);
+
+  } else if (platform === 'linux') {
+    // Linux systemd user service
+    const systemdDir  = path.join(os.homedir(), '.config', 'systemd', 'user');
+    const unitPath    = path.join(systemdDir, 'krythor.service');
+
+    fs.mkdirSync(systemdDir, { recursive: true });
+
+    const unit = `[Unit]
+Description=Krythor Local AI Gateway
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=${execPath} ${scriptPath} --no-browser --no-update-check
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target
+`;
+
+    fs.writeFileSync(unitPath, unit, 'utf8');
+    cp.execSync('systemctl --user daemon-reload', { stdio: 'inherit' });
+    cp.execSync('systemctl --user enable krythor.service', { stdio: 'inherit' });
+    cp.execSync('systemctl --user start krythor.service', { stdio: 'inherit' });
+    console.log('\x1b[32m✓\x1b[0m Krythor registered as a systemd user service and started.');
+    console.log(`  Unit: ${unitPath}`);
+    console.log('  Use: systemctl --user status krythor.service');
+
+  } else if (platform === 'win32') {
+    // Windows Task Scheduler — run at logon for current user
+    const taskName = 'KrythorGateway';
+    const cmd = `schtasks /Create /TN "${taskName}" /TR "\\"${execPath}\\" \\"${scriptPath}\\" --no-browser --no-update-check" /SC ONLOGON /RL LIMITED /F /IT`;
+    cp.execSync(cmd, { stdio: 'inherit' });
+    console.log('\x1b[32m✓\x1b[0m Krythor registered in Windows Task Scheduler (runs at logon).');
+    console.log(`  Task name: ${taskName}`);
+    console.log('  Manage: Task Scheduler → Task Scheduler Library → KrythorGateway');
+
+  } else {
+    console.error(`\x1b[33m⚠\x1b[0m Service registration not supported on platform: ${platform}`);
+    process.exit(1);
+  }
+}
+
+async function runServiceUninstall() {
+  const fs   = require('fs');
+  const path = require('path');
+  const os   = require('os');
+  const cp   = require('child_process');
+  const platform = process.platform;
+
+  if (platform === 'darwin') {
+    const plistPath = path.join(os.homedir(), 'Library', 'LaunchAgents', 'ai.krythor.gateway.plist');
+    if (fs.existsSync(plistPath)) {
+      try { cp.execSync(`launchctl unload "${plistPath}"`, { stdio: 'ignore' }); } catch { /* already unloaded */ }
+      fs.rmSync(plistPath);
+      console.log('\x1b[32m✓\x1b[0m Krythor launchd agent removed.');
+    } else {
+      console.log('No launchd agent found (already uninstalled).');
+    }
+
+  } else if (platform === 'linux') {
+    const unitPath = path.join(os.homedir(), '.config', 'systemd', 'user', 'krythor.service');
+    try { cp.execSync('systemctl --user stop krythor.service', { stdio: 'ignore' }); } catch { /* ok */ }
+    try { cp.execSync('systemctl --user disable krythor.service', { stdio: 'ignore' }); } catch { /* ok */ }
+    if (fs.existsSync(unitPath)) {
+      fs.rmSync(unitPath);
+      cp.execSync('systemctl --user daemon-reload', { stdio: 'ignore' });
+      console.log('\x1b[32m✓\x1b[0m Krythor systemd service removed.');
+    } else {
+      console.log('No systemd service found (already uninstalled).');
+    }
+
+  } else if (platform === 'win32') {
+    try {
+      cp.execSync('schtasks /Delete /TN "KrythorGateway" /F', { stdio: 'inherit' });
+      console.log('\x1b[32m✓\x1b[0m Krythor removed from Windows Task Scheduler.');
+    } catch {
+      console.log('No scheduled task found (already uninstalled).');
+    }
+
+  } else {
+    console.error(`\x1b[33m⚠\x1b[0m Service management not supported on platform: ${platform}`);
+    process.exit(1);
+  }
+}
+
 // ── krythor backup ─────────────────────────────────────────────────────────
 // Creates a timestamped archive of the data directory.
 // Windows: PowerShell Compress-Archive; Mac/Linux: zip or tar.
@@ -1621,6 +1776,23 @@ const COMMAND_HELP = {
       'Prints the backup path and file size when complete.',
     ],
   },
+  service: {
+    summary: 'Register Krythor as a system service (auto-start at login)',
+    detail: [
+      'Usage: krythor service install',
+      '       krythor service uninstall',
+      '',
+      'install   — Registers Krythor to start automatically when you log in.',
+      '            macOS:   creates ~/Library/LaunchAgents/ai.krythor.gateway.plist',
+      '            Linux:   creates ~/.config/systemd/user/krythor.service',
+      '            Windows: creates a Task Scheduler entry (run at logon)',
+      '',
+      'uninstall — Removes the auto-start registration.',
+      '',
+      'After installing, Krythor starts silently in the background on login.',
+      'The gateway is still accessible at http://127.0.0.1:47200.',
+    ],
+  },
   uninstall: {
     summary: 'Remove the Krythor installation',
     detail: [
@@ -1791,6 +1963,26 @@ else if (process.argv.includes('uninstall')) {
     console.error('\x1b[31mFatal:\x1b[0m', e.message);
     process.exit(1);
   });
+}
+// ── krythor service install / uninstall ────────────────────────────────────
+else if (process.argv[2] === 'service') {
+  const sub = process.argv[3];
+  if (sub === 'install') {
+    runServiceInstall().catch(e => {
+      console.error('\x1b[31mFatal:\x1b[0m', e.message);
+      process.exit(1);
+    });
+  } else if (sub === 'uninstall') {
+    runServiceUninstall().catch(e => {
+      console.error('\x1b[31mFatal:\x1b[0m', e.message);
+      process.exit(1);
+    });
+  } else {
+    console.log('Usage:');
+    console.log('  krythor service install    Register Krythor to start automatically at login');
+    console.log('  krythor service uninstall  Remove the auto-start registration');
+    process.exit(0);
+  }
 }
 // ── krythor security-audit ─────────────────────────────────────────────────
 else if (process.argv[2] === 'security-audit') {

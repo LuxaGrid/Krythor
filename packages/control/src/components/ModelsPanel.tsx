@@ -33,6 +33,96 @@ const DEFAULT_ENDPOINTS: Record<string, string> = {
   'openai-compat': '',
 };
 
+// ── Provider quick-add presets ─────────────────────────────────────────────
+// Named providers that map to openai-compat internally but have guided setup.
+interface ProviderPreset {
+  id: string;
+  label: string;
+  tagline: string;
+  endpoint: string;
+  authMethod: 'api_key' | 'none';
+  models: string[];
+  keyHint: string;
+  dashboardUrl?: string;
+  dashboardLabel?: string;
+  color: string;
+}
+
+const PROVIDER_PRESETS: ProviderPreset[] = [
+  {
+    id: 'groq',
+    label: 'Groq',
+    tagline: 'Ultra-fast inference — fastest Llama & Mixtral available',
+    endpoint: 'https://api.groq.com/openai/v1',
+    authMethod: 'api_key',
+    models: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768', 'gemma2-9b-it'],
+    keyHint: 'Starts with gsk_',
+    dashboardUrl: 'https://console.groq.com/keys',
+    dashboardLabel: 'Open Groq Console ↗',
+    color: '#f97316',
+  },
+  {
+    id: 'openrouter',
+    label: 'OpenRouter',
+    tagline: '100+ models — one API key for GPT, Claude, Gemini, Llama',
+    endpoint: 'https://openrouter.ai/api/v1',
+    authMethod: 'api_key',
+    models: ['openai/gpt-4o', 'anthropic/claude-sonnet-4-5', 'google/gemini-2.5-pro', 'meta-llama/llama-3.3-70b-instruct', 'mistralai/mixtral-8x7b-instruct'],
+    keyHint: 'Starts with sk-or-',
+    dashboardUrl: 'https://openrouter.ai/keys',
+    dashboardLabel: 'Open OpenRouter ↗',
+    color: '#8b5cf6',
+  },
+  {
+    id: 'gemini',
+    label: 'Google Gemini',
+    tagline: 'Gemini 2.5 Pro — Google\'s frontier model via AI Studio',
+    endpoint: 'https://generativelanguage.googleapis.com/v1beta/openai',
+    authMethod: 'api_key',
+    models: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'],
+    keyHint: 'Starts with AIza',
+    dashboardUrl: 'https://aistudio.google.com/app/apikey',
+    dashboardLabel: 'Open AI Studio ↗',
+    color: '#4285f4',
+  },
+  {
+    id: 'venice',
+    label: 'Venice',
+    tagline: 'Privacy-first AI — no logs, no training on your data',
+    endpoint: 'https://api.venice.ai/api/v1',
+    authMethod: 'api_key',
+    models: ['llama-3.3-70b', 'llama-3.1-405b', 'mistral-31-24b', 'deepseek-r1-671b'],
+    keyHint: 'Venice API key',
+    dashboardUrl: 'https://venice.ai/settings/api',
+    dashboardLabel: 'Open Venice Settings ↗',
+    color: '#06b6d4',
+  },
+  {
+    id: 'kimi',
+    label: 'Kimi (Moonshot)',
+    tagline: 'Moonshot AI — 128K context, strong at long documents',
+    endpoint: 'https://api.moonshot.cn/v1',
+    authMethod: 'api_key',
+    models: ['moonshot-v1-128k', 'moonshot-v1-32k', 'moonshot-v1-8k'],
+    keyHint: 'Moonshot API key',
+    dashboardUrl: 'https://platform.moonshot.cn/console/api-keys',
+    dashboardLabel: 'Open Moonshot Console ↗',
+    color: '#ec4899',
+  },
+  {
+    id: 'mistral',
+    label: 'Mistral',
+    tagline: 'European frontier AI — Mistral Large, Codestral, and more',
+    endpoint: 'https://api.mistral.ai/v1',
+    authMethod: 'api_key',
+    models: ['mistral-large-latest', 'mistral-small-latest', 'codestral-latest', 'open-mistral-nemo'],
+    keyHint: 'Mistral API key',
+    dashboardUrl: 'https://console.mistral.ai/api-keys',
+    dashboardLabel: 'Open Mistral Console ↗',
+    color: '#f59e0b',
+  },
+];
+
 const INPUT_CLS  = 'bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1.5 text-xs text-zinc-200 placeholder-zinc-600 outline-none focus:border-brand-600 focus:ring-1 focus:ring-brand-600/30 transition-colors';
 const SELECT_CLS = 'bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1.5 text-xs text-zinc-300 outline-none focus:border-brand-600 focus:ring-1 focus:ring-brand-600/30 transition-colors';
 
@@ -102,6 +192,13 @@ export function ModelsPanel({ health }: Props) {
   // Guided connect modal
   const [connectModalProvider, setConnectModalProvider] = useState<Provider | null>(null);
 
+  // Preset quick-add modal
+  const [presetModal, setPresetModal] = useState<ProviderPreset | null>(null);
+  const [presetKey, setPresetKey] = useState('');
+  const [presetAdding, setPresetAdding] = useState(false);
+  const [presetError, setPresetError] = useState<string | null>(null);
+  const [showPresets, setShowPresets] = useState(false);
+
   // OAuth connect panel state (per-provider, for non-openai/anthropic providers)
   const [oauthPanel, setOauthPanel]     = useState<string | null>(null); // provider id
   const [oauthForm, setOauthForm]       = useState({ accountId: '', displayName: '', accessToken: '', refreshToken: '' });
@@ -138,6 +235,34 @@ export function ModelsPanel({ health }: Props) {
     let authMethod: AuthMethod = 'none';
     if (typeCaps?.supportsApiKey) authMethod = 'api_key';
     setForm(f => ({ ...f, type, endpoint: DEFAULT_ENDPOINTS[type] ?? '', authMethod }));
+  };
+
+  // ── Add via preset ───────────────────────────────────────────────────────
+
+  const handlePresetAdd = async () => {
+    if (!presetModal) return;
+    const trimmed = presetKey.trim();
+    if (!trimmed) { setPresetError('Paste your API key to continue.'); return; }
+    setPresetError(null);
+    setPresetAdding(true);
+    try {
+      const p = await addProvider({
+        name:       presetModal.label,
+        type:       'openai-compat',
+        endpoint:   presetModal.endpoint,
+        authMethod: 'api_key',
+        apiKey:     trimmed,
+        isDefault:  false,
+        models:     presetModal.models,
+      } as Omit<Provider, 'id'>);
+      setProviders(prev => [...prev, p]);
+      setPresetModal(null);
+      setPresetKey('');
+    } catch (err) {
+      setPresetError(err instanceof Error ? err.message : 'Failed to add provider');
+    } finally {
+      setPresetAdding(false);
+    }
   };
 
   // ── Add provider ──────────────────────────────────────────────────────────
@@ -371,12 +496,103 @@ export function ModelsPanel({ health }: Props) {
               {discovering ? 'Probing…' : 'Discover local'}
             </button>
             <button
-              onClick={() => { setShowAdd(s => !s); setAddError(null); }}
+              onClick={() => { setShowPresets(s => !s); setShowAdd(false); }}
+              className="text-xs bg-purple-600/20 text-purple-400 hover:bg-purple-600/30 border border-purple-600/30 rounded px-2 py-1 transition-colors"
+            >Quick add</button>
+            <button
+              onClick={() => { setShowAdd(s => !s); setShowPresets(false); setAddError(null); }}
               className="text-xs bg-brand-600/20 text-brand-400 hover:bg-brand-600/30 hover:text-brand-300 border border-brand-600/30 rounded px-2 py-1 transition-colors"
-            >+ add provider</button>
+            >+ custom</button>
           </div>
         }
       />
+
+      {/* Preset quick-add modal */}
+      {presetModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+          onClick={e => { if (e.target === e.currentTarget) { setPresetModal(null); setPresetKey(''); setPresetError(null); } }}>
+          <div className="bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-2 h-2 rounded-full" style={{ background: presetModal.color }} />
+                <span className="text-sm font-semibold text-zinc-100">Connect {presetModal.label}</span>
+              </div>
+              <button onClick={() => { setPresetModal(null); setPresetKey(''); setPresetError(null); }}
+                className="text-zinc-600 hover:text-zinc-300 text-lg leading-none">×</button>
+            </div>
+            <div className="px-5 py-5 space-y-4">
+              <p className="text-sm text-zinc-400 leading-relaxed">{presetModal.tagline}</p>
+              <div className="rounded-xl bg-zinc-800/40 border border-zinc-700/40 p-4 space-y-2">
+                <p className="text-xs text-zinc-500 font-medium uppercase tracking-wide">Steps</p>
+                <ol className="space-y-2">
+                  <li className="flex gap-2.5 text-sm text-zinc-400">
+                    <span className="font-mono font-bold shrink-0" style={{ color: presetModal.color }}>1.</span>
+                    <span>Get your API key from the {presetModal.label} dashboard.</span>
+                  </li>
+                  <li className="flex gap-2.5 text-sm text-zinc-400">
+                    <span className="font-mono font-bold shrink-0" style={{ color: presetModal.color }}>2.</span>
+                    <span>Paste it below and click Connect.</span>
+                  </li>
+                </ol>
+              </div>
+              {presetModal.dashboardUrl && (
+                <a href={presetModal.dashboardUrl} target="_blank" rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-xl text-sm font-medium text-white transition-colors"
+                  style={{ background: presetModal.color }}>
+                  {presetModal.dashboardLabel}
+                </a>
+              )}
+              <input
+                type="password"
+                value={presetKey}
+                onChange={e => { setPresetKey(e.target.value); setPresetError(null); }}
+                onKeyDown={e => { if (e.key === 'Enter') void handlePresetAdd(); }}
+                placeholder={presetModal.keyHint}
+                autoFocus
+                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3.5 py-2.5 text-sm text-zinc-200 placeholder-zinc-600 outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 transition-colors font-mono"
+              />
+              {presetError && (
+                <p className="text-xs text-red-400 bg-red-950/30 border border-red-900/30 rounded-lg px-3 py-2">{presetError}</p>
+              )}
+              <div className="flex gap-2">
+                <button onClick={() => void handlePresetAdd()} disabled={presetAdding || !presetKey.trim()}
+                  className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium text-zinc-900 transition-colors disabled:opacity-40 flex items-center justify-center gap-2"
+                  style={{ background: presetModal.color }}>
+                  {presetAdding ? <><Spinner /> Connecting…</> : 'Connect'}
+                </button>
+                <button onClick={() => { setPresetModal(null); setPresetKey(''); setPresetError(null); }}
+                  className="px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 text-sm rounded-xl transition-colors">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quick-add preset cards */}
+      {showPresets && (
+        <div className="border-b border-zinc-800 bg-zinc-950/40 p-4 space-y-2">
+          <p className="text-xs text-zinc-500 font-medium uppercase tracking-wider">Quick Add — Popular Providers</p>
+          <div className="grid grid-cols-2 gap-2">
+            {PROVIDER_PRESETS.map(preset => (
+              <button key={preset.id}
+                onClick={() => { setPresetModal(preset); setShowPresets(false); }}
+                className="text-left p-3 rounded-xl border border-zinc-800 hover:border-zinc-600 bg-zinc-900/60 hover:bg-zinc-800/60 transition-all group">
+                <div className="flex items-center gap-2 mb-1">
+                  <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: preset.color }} />
+                  <span className="text-xs font-semibold text-zinc-200 group-hover:text-white transition-colors">{preset.label}</span>
+                </div>
+                <p className="text-[10px] text-zinc-600 leading-tight">{preset.tagline}</p>
+              </button>
+            ))}
+          </div>
+          <button onClick={() => { setShowPresets(false); setShowAdd(true); }}
+            className="text-xs text-zinc-600 hover:text-zinc-400 transition-colors">
+            Need something else? → Custom provider
+          </button>
+        </div>
+      )}
 
       {/* Local model discovery results */}
       {showDiscovery && (

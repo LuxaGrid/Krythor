@@ -17,6 +17,7 @@ import { OnboardingWizard } from './components/OnboardingWizard.tsx';
 import { DegradedBanner } from './components/DegradedBanner.tsx';
 import { SettingsPanel } from './components/SettingsPanel.tsx';
 import { WalkthroughTour, shouldShowTour } from './components/WalkthroughTour.tsx';
+import { LogsPanel } from './components/LogsPanel.tsx';
 
 // ── App Config Context ─────────────────────────────────────────────────────
 interface AppConfigCtx {
@@ -30,7 +31,7 @@ export const AppConfigContext = createContext<AppConfigCtx>({
 export const useAppConfig = () => useContext(AppConfigContext);
 
 // ── Tabs ──────────────────────────────────────────────────────────────────
-type Tab = 'command' | 'agents' | 'skills' | 'memory' | 'models' | 'guard' | 'events' | 'mission' | 'command-center' | 'workflow' | 'dashboard' | 'settings';
+type Tab = 'command' | 'agents' | 'skills' | 'memory' | 'models' | 'guard' | 'events' | 'mission' | 'command-center' | 'workflow' | 'dashboard' | 'settings' | 'logs';
 
 // Primary tabs — always visible
 const PRIMARY_TABS: { id: Tab; label: string; hint: string }[] = [
@@ -47,6 +48,7 @@ const PRIMARY_TABS: { id: Tab; label: string; hint: string }[] = [
 const ADVANCED_TABS: { id: Tab; label: string; hint: string }[] = [
   { id: 'skills',  label: 'Skills',          hint: 'Reusable task templates' },
   { id: 'guard',   label: 'Guard',           hint: 'Safety rules and policy engine' },
+  { id: 'logs',    label: 'Logs',            hint: 'Live gateway log stream' },
   { id: 'events',  label: 'Events',          hint: 'Real-time event stream' },
   { id: 'mission', label: 'Mission Control', hint: 'Agent orchestration workspace' },
   { id: 'workflow',label: 'Workflow',        hint: 'Workflow management' },
@@ -520,6 +522,7 @@ function AppInner({ onTokenReady }: { onTokenReady: (token: string) => void }) {
           <div className={`h-full ${tab === 'memory'  ? 'block' : 'hidden'}`}><MemoryPanel health={healthData} /></div>
           <div className={`h-full ${tab === 'models'  ? 'block' : 'hidden'}`}><ModelsPanel health={healthData} /></div>
           <div className={`h-full ${tab === 'guard'   ? 'block' : 'hidden'}`}><GuardPanel /></div>
+          <div className={`h-full ${tab === 'logs'     ? 'block' : 'hidden'}`}><LogsPanel /></div>
           <div className={`h-full ${tab === 'events'   ? 'block' : 'hidden'}`}>
             <EventStream events={events} onClear={clearEvents} />
           </div>
