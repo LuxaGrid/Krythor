@@ -332,6 +332,10 @@ export interface LocalModelDiscovery {
   llamaServer: { detected: boolean; baseUrl: string };
 }
 
+// Connect a provider using an API key (guided connect flow)
+export const connectProviderKey = (providerId: string, apiKey: string) =>
+  req<Provider>('PATCH', `/models/providers/${providerId}`, { authMethod: 'api_key', apiKey });
+
 // OAuth routes
 export const connectOAuth = (
   providerId: string,

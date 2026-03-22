@@ -7,6 +7,7 @@ import {
   type Provider, type PingResult, type Health, type ProviderCapabilities, type AuthMethod,
   type ProviderTestResult, type LocalModelDiscovery,
 } from '../api.ts';
+import { ConnectKeyModal } from './ConnectKeyModal.tsx';
 
 const PROVIDER_TYPES = ['ollama', 'openai', 'anthropic', 'openai-compat', 'gguf'];
 
@@ -97,7 +98,10 @@ export function ModelsPanel({ health }: Props) {
   const [discovered, setDiscovered]     = useState<LocalModelDiscovery | null>(null);
   const [showDiscovery, setShowDiscovery] = useState(false);
 
-  // OAuth connect panel state (per-provider)
+  // Guided connect modal
+  const [connectModalProvider, setConnectModalProvider] = useState<Provider | null>(null);
+
+  // OAuth connect panel state (per-provider, for non-openai/anthropic providers)
   const [oauthPanel, setOauthPanel]     = useState<string | null>(null); // provider id
   const [oauthForm, setOauthForm]       = useState({ accountId: '', displayName: '', accessToken: '', refreshToken: '' });
   const [oauthError, setOauthError]     = useState<string | null>(null);
@@ -467,10 +471,17 @@ export function ModelsPanel({ health }: Props) {
             </p>
           </div>
           <button
-            onClick={() => { setOauthPanel(oauthPanel === p.id ? null : p.id); setOauthError(null); }}
+            onClick={() => {
+              if (p.type === 'openai' || p.type === 'anthropic') {
+                setConnectModalProvider(p);
+              } else {
+                setOauthPanel(oauthPanel === p.id ? null : p.id);
+                setOauthError(null);
+              }
+            }}
             className="text-xs px-2.5 py-1 bg-amber-700 hover:bg-amber-600 text-white rounded-lg transition-colors shrink-0"
           >
-            Connect OAuth
+            Connect
           </button>
         </div>
       ))}
@@ -749,8 +760,8 @@ export function ModelsPanel({ health }: Props) {
                     )}
                   </div>
 
-                  {/* Action buttons (visible on hover) */}
-                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-wrap justify-end">
+                  {/* Action buttons */}
+                  <div className="flex gap-1 flex-wrap justify-end">
                     {!p.isDefault && (
                       <button onClick={() => handleSetDefault(p.id)} className="text-xs px-2 py-1 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-zinc-400 transition-colors">default</button>
                     )}
@@ -773,12 +784,19 @@ export function ModelsPanel({ health }: Props) {
                       title="Send a test inference to this provider"
                     >{testing[p.id] ? <Spinner /> : 'test'}</button>
 
-                    {/* OAuth: show Connect or Disconnect based on current state */}
+                    {/* Connect: guided modal for openai/anthropic, raw panel for others */}
                     {typeCaps.supportsOAuth && !isOAuthConnected && (
                       <button
-                        onClick={() => { setOauthPanel(oauthPanel === p.id ? null : p.id); setOauthError(null); }}
+                        onClick={() => {
+                          if (p.type === 'openai' || p.type === 'anthropic') {
+                            setConnectModalProvider(p);
+                          } else {
+                            setOauthPanel(oauthPanel === p.id ? null : p.id);
+                            setOauthError(null);
+                          }
+                        }}
                         className="text-xs px-2 py-1 bg-emerald-950/40 hover:bg-emerald-950/70 rounded-lg text-emerald-400 transition-colors"
-                      >OAuth</button>
+                      >Connect</button>
                     )}
                     {typeCaps.supportsOAuth && isOAuthConnected && (
                       <button
@@ -816,6 +834,18 @@ export function ModelsPanel({ health }: Props) {
           })
         )}
       </div>
+
+      {/* Guided connect modal */}
+      {connectModalProvider && (
+        <ConnectKeyModal
+          provider={connectModalProvider}
+          onConnected={updated => {
+            setProviders(prev => prev.map(p => p.id === updated.id ? updated : p));
+            setConnectModalProvider(null);
+          }}
+          onClose={() => setConnectModalProvider(null)}
+        />
+      )}
 
       {/* Embedding Provider Section */}
       <div className="border-t border-zinc-800 p-4 space-y-2">
