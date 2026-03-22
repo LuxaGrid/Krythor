@@ -1,0 +1,17 @@
+# Files excluded from npm publish
+# (The "files" field in package.json controls what IS included)
+
+krythor-dist-*/
+krythor-*.zip
+installer/
+build-*.js
+bundle.js
+*.bat
+sign.js
+sea-config.json
+sea-launcher.js
+build-release.js
+assets/
+.github/
+.vscode/
+scripts/

@@ -7,6 +7,15 @@
   "engines": {
     "node": ">=20"
   },
+  "bin": {
+    "krythor": "./start.js"
+  },
+  "files": [
+    "start.js",
+    "packages/*/dist",
+    "node_modules/better-sqlite3",
+    "docs"
+  ],
   "scripts": {
     "build": "pnpm -r build",
     "dev": "pnpm --filter @krythor/gateway dev",
