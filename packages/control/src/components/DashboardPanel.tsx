@@ -1,5 +1,18 @@
 import { useState, useEffect, useCallback } from 'react';
-import { getDashboard, type Dashboard } from '../api.ts';
+import { getDashboard, getTokenHistory, type Dashboard, type InferenceRecord } from '../api.ts';
+
+const SPARK_CHARS = '▁▂▃▄▅▆▇█';
+
+/** Generate a unicode sparkline string from an array of numeric values. */
+function sparkline(values: number[]): string {
+  if (values.length === 0) return '';
+  const max = Math.max(...values);
+  if (max === 0) return values.map(() => SPARK_CHARS[0]).join('');
+  return values.map(v => {
+    const idx = Math.round((v / max) * (SPARK_CHARS.length - 1));
+    return SPARK_CHARS[Math.min(idx, SPARK_CHARS.length - 1)];
+  }).join('');
+}
 
 function formatUptime(ms: number): string {
   const totalSec = Math.floor(ms / 1000);
@@ -33,11 +46,16 @@ export function DashboardPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError]   = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const [tokenHistory, setTokenHistory] = useState<InferenceRecord[]>([]);
 
   const load = useCallback(async () => {
     try {
-      const d = await getDashboard();
+      const [d, hist] = await Promise.all([
+        getDashboard(),
+        getTokenHistory().catch(() => ({ history: [] as InferenceRecord[], windowSize: 1000 })),
+      ]);
       setData(d);
+      setTokenHistory(hist.history);
       setError(null);
       setLastRefresh(new Date());
     } catch (err) {
@@ -134,6 +152,25 @@ export function DashboardPanel() {
           ))}
         </div>
       )}
+
+      {/* Token usage sparkline — last 20 requests */}
+      <div className="px-4 pb-4">
+        <p className="text-xs text-zinc-500 uppercase tracking-wider font-medium mb-2">
+          Token usage (last 20 requests)
+        </p>
+        {tokenHistory.length === 0 ? (
+          <p className="text-xs text-zinc-700">No inference history yet — make a request to see data.</p>
+        ) : (
+          <div className="bg-zinc-800/40 border border-zinc-700/50 rounded-lg px-3 py-2">
+            <p className="font-mono text-sm text-brand-400 tracking-widest leading-none">
+              {sparkline(tokenHistory.slice(-20).map(r => r.inputTokens + r.outputTokens))}
+            </p>
+            <p className="text-xs text-zinc-600 mt-1">
+              {Math.min(tokenHistory.length, 20)} of {tokenHistory.length} recorded inference{tokenHistory.length !== 1 ? 's' : ''}
+            </p>
+          </div>
+        )}
+      </div>
 
       {!!data.lastHeartbeat && (
         <div className="px-4 pb-4">

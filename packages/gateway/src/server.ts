@@ -28,6 +28,7 @@ import { registerProviderRoutes } from './routes/providers.js';
 import { registerLocalModelsRoute } from './routes/local-models.js';
 import { registerStreamWs } from './ws/stream.js';
 import { registerDashboardRoute } from './routes/dashboard.js';
+import { registerGatewayRoutes } from './routes/gateway.js';
 import { HeartbeatEngine, type HeartbeatRunRecord, type HeartbeatInsight } from './heartbeat/HeartbeatEngine.js';
 import { logger } from './logger.js';
 import { loadOrCreateToken, verifyToken } from './auth.js';
@@ -249,6 +250,105 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
     // Explicit root route
     app.get('/', (req, reply) => serveIndex(req, reply as unknown as Parameters<typeof serveIndex>[1]));
 
+    // GET /chat — minimal standalone web chat page.
+    // Serves a self-contained HTML page with inline styles and a plain fetch loop.
+    // The auth token is injected as window.__KRYTHOR_TOKEN__ so the page can
+    // authenticate with /api/command without the user needing to copy the token.
+    app.get('/chat', (_req, reply) => {
+      const tokenScript = authCfg.authDisabled
+        ? 'window.__KRYTHOR_TOKEN__=null;'
+        : `window.__KRYTHOR_TOKEN__=${JSON.stringify(authCfg.token)};`;
+      const chatHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Krythor Chat</title>
+<script>${tokenScript}</script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,sans-serif;background:#18181b;color:#e4e4e7;height:100vh;display:flex;flex-direction:column}
+#header{padding:10px 14px;border-bottom:1px solid #27272a;font-size:13px;font-weight:600;color:#a1a1aa;letter-spacing:.05em}
+#msgs{flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+.msg{max-width:85%;padding:8px 12px;border-radius:10px;font-size:13px;line-height:1.5;white-space:pre-wrap;word-break:break-word}
+.msg.user{align-self:flex-end;background:#2563eb;color:#fff}
+.msg.assistant{align-self:flex-start;background:#27272a;color:#f4f4f5}
+.msg.error{align-self:flex-start;background:#450a0a;color:#fca5a5}
+.meta{font-size:10px;color:#52525b;margin-top:2px}
+.meta.user{text-align:right}
+#input-row{border-top:1px solid #27272a;padding:10px 12px;display:flex;gap:8px}
+#input{flex:1;background:#27272a;border:1px solid #3f3f46;border-radius:8px;padding:7px 10px;font-size:13px;color:#f4f4f5;outline:none}
+#send{background:#2563eb;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:13px;cursor:pointer}
+#send:disabled{background:#3f3f46;cursor:not-allowed}
+#placeholder{color:#52525b;font-size:13px;text-align:center;margin-top:24px}
+</style>
+</head>
+<body>
+<div id="header">KRYTHOR CHAT</div>
+<div id="msgs"><p id="placeholder">Send a message to get started.</p></div>
+<div id="input-row">
+<input id="input" placeholder="Type a message…" autocomplete="off"/>
+<button id="send">Send</button>
+</div>
+<script>
+const msgs=document.getElementById('msgs');
+const input=document.getElementById('input');
+const send=document.getElementById('send');
+const placeholder=document.getElementById('placeholder');
+let sending=false;
+function addMsg(role,text){
+  if(placeholder)placeholder.remove();
+  const wrap=document.createElement('div');
+  wrap.style.alignSelf=role==='user'?'flex-end':'flex-start';
+  wrap.style.maxWidth='85%';
+  const div=document.createElement('div');
+  div.className='msg '+role;
+  div.textContent=text;
+  wrap.appendChild(div);
+  const meta=document.createElement('p');
+  meta.className='meta'+(role==='user'?' user':'');
+  meta.textContent=role+' · '+new Date().toLocaleTimeString();
+  wrap.appendChild(meta);
+  msgs.appendChild(wrap);
+  msgs.scrollTop=msgs.scrollHeight;
+}
+function setSending(v){
+  sending=v;
+  send.disabled=v;
+  input.disabled=v;
+  send.textContent=v?'…':'Send';
+}
+async function doSend(){
+  const text=input.value.trim();
+  if(!text||sending)return;
+  input.value='';
+  setSending(true);
+  addMsg('user',text);
+  const thinking=document.createElement('div');
+  thinking.style.alignSelf='flex-start';
+  thinking.innerHTML='<div class="msg assistant" style="color:#71717a">Thinking…</div>';
+  msgs.appendChild(thinking);
+  msgs.scrollTop=msgs.scrollHeight;
+  try{
+    const token=window.__KRYTHOR_TOKEN__;
+    const headers={'Content-Type':'application/json'};
+    if(token)headers['Authorization']='Bearer '+token;
+    const r=await fetch('/api/command',{method:'POST',headers,body:JSON.stringify({input:text})});
+    const data=await r.json();
+    thinking.remove();
+    if(r.ok){addMsg('assistant',data.output||'');}
+    else{addMsg('error',data.error||'HTTP '+r.status);}
+  }catch(e){thinking.remove();addMsg('error',e.message||'Request failed');}
+  setSending(false);
+}
+send.onclick=doSend;
+input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();doSend();}});
+</script>
+</body>
+</html>`;
+      (reply as unknown as { type: (t: string) => void; send: (b: unknown) => void }).type('text/html').send(chatHtml);
+    });
+
     // SPA fallback — serves index.html with token injected for all non-asset routes
     app.setNotFoundHandler((req, reply) => {
       // Only inject for HTML navigations — pass through if it looks like an asset request
@@ -376,6 +476,12 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
   // GET /api/stats — per-provider token usage for this session (auth required)
   app.get('/api/stats', async (_req, reply) => {
     return reply.send(models.tokenTracker.snapshot());
+  });
+
+  // GET /api/stats/history — inference history ring buffer (auth required)
+  // Returns last 1000 inferences with timestamp, provider, model, and token counts.
+  app.get('/api/stats/history', async (_req, reply) => {
+    return reply.send(models.tokenTracker.getHistory());
   });
 
   // POST /api/config/reload — manual trigger for hot config reload (auth required)
@@ -677,6 +783,9 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
   // Dashboard route is registered after heartbeat is instantiated so it can
   // reference heartbeat directly (avoids a late-binding closure or re-export).
   registerDashboardRoute(app, models, memory, orchestrator, heartbeat);
+
+  // Gateway identity and capability routes (auth required via global preHandler).
+  registerGatewayRoutes(app, join(dataDir, 'config'));
 
   app.addHook('onClose', async () => {
     heartbeat.stop();

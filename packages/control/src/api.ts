@@ -525,6 +525,18 @@ export interface SkillRunResult {
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 export const getDashboard = () => req<Dashboard>('GET', '/dashboard');
 
+// ── Token history ─────────────────────────────────────────────────────────────
+export interface InferenceRecord {
+  timestamp: number;
+  provider: string;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+}
+
+export const getTokenHistory = () =>
+  req<{ history: InferenceRecord[]; windowSize: number }>('GET', '/stats/history');
+
 export interface Dashboard {
   uptime: number;
   version: string;
