@@ -110,7 +110,7 @@ export function CommandLog({ entries }: CommandLogProps): React.ReactElement {
             <button
               key={f}
               onClick={() => setFilter(f)}
-              className="text-[9px] font-mono px-2 py-0.5 rounded transition-all duration-150 uppercase tracking-wide"
+              className="text-[10px] font-mono px-2 py-0.5 rounded transition-all duration-150 uppercase tracking-wide"
               style={{
                 background: filter === f ? 'rgba(30,174,255,0.12)' : 'transparent',
                 color: filter === f ? '#1eaeff' : '#52525b',
@@ -124,14 +124,14 @@ export function CommandLog({ entries }: CommandLogProps): React.ReactElement {
 
         <div className="ml-auto flex items-center gap-2">
           {/* Entry count */}
-          <span className="text-[9px] font-mono text-zinc-700 tabular-nums">
+          <span className="text-[10px] font-mono text-zinc-600 tabular-nums">
             {filtered.length}/{entries.length}
           </span>
 
           {/* Pause toggle */}
           <button
             onClick={() => setPaused(p => !p)}
-            className="text-[9px] font-mono px-2 py-0.5 rounded transition-all duration-150"
+            className="text-[10px] font-mono px-2 py-0.5 rounded transition-all duration-150"
             style={{
               background: paused ? 'rgba(245,158,11,0.1)' : 'transparent',
               color: paused ? '#f59e0b' : '#52525b',
@@ -192,7 +192,7 @@ export function CommandLog({ entries }: CommandLogProps): React.ReactElement {
                       {icon}
                     </span>
                     <span
-                      className="text-[9px] font-mono uppercase tracking-wide px-1 py-px rounded"
+                      className="text-[10px] font-mono uppercase tracking-wide px-1 py-px rounded"
                       style={{
                         color,
                         background: `${color}12`,

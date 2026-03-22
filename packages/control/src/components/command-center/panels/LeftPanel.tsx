@@ -125,7 +125,7 @@ export function LeftPanel({ agents, isDemo, focusedAgentId, onFocusAgent, active
                   </span>
                 )}
               </div>
-              <div className="text-[9px] font-mono text-zinc-600 mt-0.5 ml-3.5 flex items-center gap-2">
+              <div className="text-[10px] font-mono text-zinc-500 mt-0.5 ml-3.5 flex items-center gap-2">
                 <span>{ROLE_LABEL[agent.role]} · {agent.currentState}</span>
                 {agent.assignedModel && (
                   <span

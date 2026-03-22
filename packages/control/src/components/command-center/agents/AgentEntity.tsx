@@ -131,15 +131,15 @@ export function AgentEntity({ agent, isFocused, isDimmed, onFocus, memoryPulse }
       {/* Name label */}
       <div
         className="absolute left-1/2 -translate-x-1/2 text-center pointer-events-none whitespace-nowrap"
-        style={{ top: `${ENTITY_SIZE + 5}px` }}
+        style={{ top: `${ENTITY_SIZE + 6}px` }}
       >
         <div
-          className="text-[9px] font-mono font-bold tracking-widest uppercase"
+          className="text-[11px] font-mono font-bold tracking-widest uppercase"
           style={{ color: isOffline ? '#3f3f46' : agent.themeColor }}
         >
           {agent.displayName}
         </div>
-        <div className="text-[8px] font-mono text-zinc-700 tracking-wide">
+        <div className="text-[10px] font-mono tracking-wide" style={{ color: 'rgba(255,255,255,0.35)' }}>
           {agent.currentState}
         </div>
       </div>

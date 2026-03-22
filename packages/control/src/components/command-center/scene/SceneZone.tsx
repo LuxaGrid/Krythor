@@ -50,19 +50,19 @@ export function SceneZone({ zone, isActive, agentState }: SceneZoneProps): React
         <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r rounded-br-xl transition-colors duration-700"
           style={{ borderColor: isActive ? zone.accentColor : 'rgba(255,255,255,0.12)' }} />
 
-        {/* Zone label — bottom center */}
-        <div className="absolute bottom-1.5 left-0 right-0 text-center">
+        {/* Zone label — top center, clear of agent body */}
+        <div className="absolute top-2 left-0 right-0 text-center px-1">
           <span
-            className="text-[9px] font-mono tracking-[0.18em] uppercase transition-colors duration-700"
-            style={{ color: isActive ? zone.accentColor : 'rgba(255,255,255,0.2)' }}
+            className="text-[10px] font-mono tracking-[0.15em] uppercase transition-colors duration-700"
+            style={{ color: isActive ? zone.accentColor : 'rgba(255,255,255,0.25)' }}
           >
             {zone.label}
           </span>
         </div>
 
-        {/* Active pulse dot — top right corner */}
+        {/* Active pulse dot — bottom right corner */}
         {isActive && (
-          <div className="absolute top-2 right-2">
+          <div className="absolute bottom-2 right-2">
             <span
               className="block w-1.5 h-1.5 rounded-full animate-pulse"
               style={{ background: zone.accentColor }}
