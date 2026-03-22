@@ -213,9 +213,19 @@ jobs:
           retention-days: 1
           path: Krythor-Setup-*.exe
 
+  docker:
+    name: Docker build verification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Docker image (verify only — no push)
+        run: docker build --tag krythor:ci-verify .
+
   release:
     name: Publish Release
-    needs: build
+    needs: [build, docker]
     runs-on: ubuntu-latest
 
     steps:

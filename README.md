@@ -190,6 +190,29 @@ node start.js
 
 ---
 
+### Docker
+
+```bash
+docker compose up -d
+```
+
+Then open **http://localhost:47200**. Data is persisted in a named Docker volume (`krythor-data`).
+
+See `docs/DEPLOYMENT.md` for environment variables, production setup, and backup strategy.
+
+---
+
+### npm global install *(coming soon)*
+
+```bash
+npm install -g krythor
+krythor
+```
+
+> npm global install is not yet published. The `bin` field and `files` manifest are in place for a future release. Until then, use the one-line installer above.
+
+---
+
 ## 📖 Getting Started — Step by Step Guide
 
 *This section is written for people who have never used a tool like this before. Technical users can skip ahead.*

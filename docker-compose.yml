@@ -1,0 +1,14 @@
+services:
+  krythor:
+    build: .
+    ports:
+      - "47200:47200"
+    volumes:
+      - krythor-data:/data
+    environment:
+      - KRYTHOR_DATA_DIR=/data
+      - NODE_ENV=production
+    restart: unless-stopped
+
+volumes:
+  krythor-data:

@@ -1,0 +1,9 @@
+node_modules
+krythor-dist-*
+*.zip
+.git
+dist
+packages/*/node_modules
+*.bat
+installer/
+installer-out/
