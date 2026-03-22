@@ -1,3 +1,169 @@
+# AI Changelog — Pass 2026-03-21 (Batch 6: Security + Compatibility + UX)
+
+**Model:** Claude Sonnet 4.6
+**Pass type:** Batch 6 — 9 items: OpenAI compat, session cleanup, SSRF, security audit, env var substitution, doctor --test-providers, non-interactive install, migration 007, changelog
+
+---
+
+## Summary (this pass)
+
+### ITEM H: Migration 007 — archived conversations column — DONE
+
+**Files:** `packages/memory/src/db/migrations/007_archived_conversations.sql` (new), `packages/memory/src/db/ConversationStore.ts`
+
+- Migration 007 adds `archived INTEGER NOT NULL DEFAULT 0` column to conversations table
+- Index `idx_conversations_archive_lookup ON conversations (archived, updated_at, pinned)` added for efficient filtering
+- `Conversation` interface gains `archived: boolean` field
+- `listConversations(includeArchived = false)` conditionally filters archived rows
+- `archiveIdleConversations(olderThanMs: number): number` method — bulk-archives conversations with no activity for the given duration; returns count archived
+- All migration count assertions updated from 6 to 7 in `integration.test.ts` and `MigrationRunner.test.ts`
+
+---
+
+### ITEM B: Session idle timeout enforcement — DONE
+
+**Files:** `packages/gateway/src/routes/conversations.ts`, `packages/gateway/src/routes/conversations.archive.test.ts` (new), `packages/gateway/src/server.ts`
+
+- `GET /api/conversations` accepts `?include_archived=true` query param; archived conversations excluded by default
+- `archived` field included in all conversation responses
+- Session cleanup `setInterval` added to `server.ts` (runs every 10 minutes, disabled in test env); archives conversations idle > 24 hours via `archiveIdleConversations()`
+- Cleanup interval cleared in Fastify `onClose` hook
+- 5 new tests in `conversations.archive.test.ts`: archived field present, excluded by default, included with param, hard delete 204, delete nonexistent 404
+
+---
+
+### ITEM C: SSRF protection for WebFetchTool — DONE
+
+**Files:** `packages/core/src/tools/WebFetchTool.ts`, `packages/core/src/tools/WebFetchTool.ssrf.test.ts` (new), `packages/core/src/agents/AgentRunner.ts`, `packages/gateway/src/routes/tools.ts`, `packages/core/src/index.ts`
+
+- `SsrfBlockedResult` interface: `{ error: 'SSRF_BLOCKED'; url: string; reason: string }`
+- `isPrivateIp(ip: string): string | null` — checks all RFC1918 + loopback + link-local + APIPA ranges
+- `BLOCKED_HOSTNAMES` Set: `localhost`, `0.0.0.0`, `metadata.google.internal`, `169.254.169.254`
+- `checkSsrf(urlStr)` — validates scheme (http/https only), blocklist, then DNS-resolves hostname and checks resolved IP
+- `WebFetchTool.fetch()` return type changed to `Promise<WebFetchResult | SsrfBlockedResult>`; blocked requests return `SsrfBlockedResult` without making a network call
+- `AgentRunner` updated to detect `'error' in result && result.error === 'SSRF_BLOCKED'`
+- `POST /api/tools/web_fetch` returns 403 `SSRF_BLOCKED` when blocked
+- 30 new tests in `WebFetchTool.ssrf.test.ts`
+
+---
+
+### ITEM A: OpenAI-compatible /v1/chat/completions endpoint — DONE
+
+**Files:** `packages/gateway/src/routes/openai.compat.ts` (new), `packages/gateway/src/routes/openai.compat.test.ts` (new), `packages/gateway/src/server.ts`
+
+- `GET /v1/models` — returns `{ object: 'list', data: [{ id, object, created, owned_by }] }` for all configured models
+- `POST /v1/chat/completions` — full OpenAI chat completion API compatibility:
+  - Bearer token auth (same token as gateway, skippable when `authDisabled`)
+  - Validates messages array (400 on missing/empty/bad role)
+  - 404 with `{ error: { code: 'model_not_found' } }` when model doesn't exist
+  - Non-streaming: `{ id, object: 'chat.completion', created, model, choices, usage }` shape
+  - Streaming (SSE): `data: {...}\n\n` chunks, ends with `data: [DONE]\n\n`
+  - 503 on inference failure
+- Host header validation extended to cover `/v1/` paths
+- `registerOpenAICompatRoutes(app, models, getToken, authDisabled)` registered in `server.ts`
+- 8 new tests in `openai.compat.test.ts`
+
+---
+
+### ITEM E: Env var substitution in providers.json — DONE
+
+**Files:** `packages/models/src/ModelRegistry.ts`, `packages/models/src/envvar.substitution.test.ts` (new)
+
+- Static method `ModelRegistry.substituteEnvVars(jsonStr: string): string`
+- Regex `"\$\{([^}]+)\}"` replaces `"${VAR_NAME}"` JSON string values with the env var value
+- Non-string fields (booleans, numbers) are unaffected
+- When env var is not set: logs `console.warn` with var name and leaves placeholder in place
+- Called in `load()` before `JSON.parse()` so all string fields are substituted at load time
+- 5 new tests: apiKey substitution, endpoint substitution, missing var warns + placeholder, non-string fields unaffected, multiple vars in same file
+
+---
+
+### ITEM D: `krythor security-audit` command — DONE
+
+**Files:** `start.js`
+
+- `runSecurityAudit()` async function runs 7 security checks:
+  1. Auth token present and `authDisabled` not set (reads `app-config.json`)
+  2. Gateway binds to loopback only (`bindHost`/`host` field in app-config)
+  3. `CORS_ORIGINS` env var not set (loopback CORS only)
+  4. `policy.json` exists with enabled rules or `defaultAction='deny'`
+  5. All enabled cloud providers have credentials
+  6. No obvious API key patterns (`sk-ant-`, `sk-`, `AIza`, `ghp_`, `xoxb-`) in `process.env`
+  7. All API keys in `providers.json` use the `e1:` encrypted prefix or `${ENV_VAR}` placeholder
+- Prints PASS/WARN/FAIL per check, score X/7 in colour (green/yellow/red)
+- `krythor help security-audit` shows full docs
+- Dispatch uses `process.argv[2] === 'security-audit'` (positional) to avoid false-triggering on `help security-audit`
+- Exit 0 if all 7 pass, exit 1 otherwise
+
+---
+
+### ITEM F: `krythor doctor --test-providers` — DONE
+
+**Files:** `packages/setup/src/bin/setup.ts`, `start.js`
+
+- New branch in `setup.ts`: `else if (args.includes('--test-providers'))`
+- Makes a minimal live API call to each enabled provider:
+  - Ollama/GGUF: `GET <endpoint>/api/tags`
+  - Anthropic: `GET https://api.anthropic.com/v1/models` with `x-api-key` header
+  - OpenAI: `GET https://api.openai.com/v1/models` with `Authorization: Bearer`
+  - openai-compat: `GET <endpoint>/v1/models` (with optional Bearer token)
+- Uses `ModelRegistry.listConfigs()` to get decrypted credentials
+- Reports PASS/FAIL per provider with model count or error detail
+- Exit 0 if all pass, exit 1 if any fail
+- `start.js` passes `--test-providers` through to setup script when `doctor` is invoked with the flag
+- `krythor help doctor` updated to document the flag
+
+---
+
+### ITEM G: `KRYTHOR_NON_INTERACTIVE=1` — non-interactive install — DONE
+
+**Files:** `install.sh`, `install.ps1`, `packages/setup/src/SetupWizard.ts`
+
+- `install.sh`: reads `NON_INTERACTIVE="${KRYTHOR_NON_INTERACTIVE:-0}"`; skips overwrite prompt; skips setup wizard when set; prints notice directing users to `krythor setup` or the Control UI
+- `install.ps1`: `$NonInteractive = $env:KRYTHOR_NON_INTERACTIVE -eq '1'`; same skip logic for prompt and wizard
+- `SetupWizard.ts`: exits immediately with a message when `KRYTHOR_NON_INTERACTIVE=1` is set, before printing the banner or probing the system
+
+---
+
+### ITEM I: AI_CHANGELOG.md — DONE
+
+This entry.
+
+---
+
+## Build Status (Batch 6)
+
+All changes compile cleanly with `pnpm build`. All existing tests pass.
+
+| Package | Tests | Delta |
+|---|---|---|
+| guard | (unchanged) | 0 |
+| skills | (unchanged) | 0 |
+| memory | (unchanged) | 0 |
+| models | +5 | +5 (envvar.substitution.test.ts) |
+| core | +30 | +30 (WebFetchTool.ssrf.test.ts) |
+| setup | (unchanged) | 0 |
+| gateway | +13 | +13 (openai.compat ×8, conversations.archive ×5) |
+| **Total passing** | **256** | **+48** |
+
+Migration count updated from 6→7 in `integration.test.ts` and `MigrationRunner.test.ts`. No regressions.
+
+---
+
+## Commits (this pass)
+
+1. `feat(memory): ITEM H migration 007 — archived column + index on conversations`
+2. `feat(memory,gateway): ITEM B session idle cleanup — archiveIdleConversations, setInterval, ?include_archived`
+3. `feat(core,gateway): ITEM C SSRF protection for WebFetchTool — private IP blocking, DNS check, 403 response`
+4. `feat(gateway): ITEM A OpenAI-compatible /v1/chat/completions + GET /v1/models`
+5. `feat(models): ITEM E env var substitution in providers.json — \${VAR_NAME} in string fields`
+6. `feat(D): krythor security-audit command — 7-check security score`
+7. `feat(F): doctor --test-providers — live API key validation`
+8. `feat(G): KRYTHOR_NON_INTERACTIVE=1 — skip all prompts and setup wizard`
+9. `docs(changelog): ITEM I AI_CHANGELOG.md Batch 6 update`
+
+---
+
 # AI Changelog — Pass 2026-03-21 (Batch 5: Deferred Items)
 
 **Model:** Claude Sonnet 4.6
