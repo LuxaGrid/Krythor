@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { listAgents, listRuns, agentStats, type Agent, type AgentRun } from '../api.ts';
+import { listAgents, listRuns, agentStats, stopAgentRun, type Agent, type AgentRun } from '../api.ts';
 import { useGatewayContext } from '../GatewayContext.tsx';
 
 // ─── MissionControlPanel ──────────────────────────────────────────────────────
@@ -88,8 +88,9 @@ function isLocalModel(modelUsed?: string): boolean {
 
 // ─── AgentNode ────────────────────────────────────────────────────────────────
 
-function AgentNode({ agent, live }: { agent: Agent; live: LiveAgentState }) {
+function AgentNode({ agent, live, onStop }: { agent: Agent; live: LiveAgentState; onStop?: (runId: string) => void }) {
   const [hovered, setHovered] = useState(false);
+  const [stopping, setStopping] = useState(false);
   const isRunning = live.status === 'running';
   const isOrch = isOrchestrator(agent);
   const model = live.modelUsed ?? agent.modelId;
@@ -170,6 +171,22 @@ function AgentNode({ agent, live }: { agent: Agent; live: LiveAgentState }) {
           {agent.description.slice(0, 80)}{agent.description.length > 80 ? '…' : ''}
         </p>
       )}
+
+      {/* Stop button — only when running and onStop is wired */}
+      {isRunning && live.runId && onStop && (
+        <button
+          onClick={async (e) => {
+            e.stopPropagation();
+            if (stopping || !live.runId) return;
+            setStopping(true);
+            try { await onStop(live.runId); } finally { setStopping(false); }
+          }}
+          disabled={stopping}
+          className="mt-0.5 w-full text-[9px] py-0.5 rounded border border-red-900/50 text-red-500 hover:bg-red-950/30 disabled:opacity-40 transition-colors"
+        >
+          {stopping ? '…' : 'Stop'}
+        </button>
+      )}
     </div>
   );
 }
@@ -182,12 +199,14 @@ function ZoneRow({
   sublabel,
   agents,
   liveStates,
+  onStop,
 }: {
   zone: 'top' | 'middle' | 'bottom';
   label: string;
   sublabel: string;
   agents: Agent[];
   liveStates: Map<string, LiveAgentState>;
+  onStop: (runId: string) => Promise<void>;
 }) {
   if (agents.length === 0) return null;
 
@@ -209,6 +228,7 @@ function ZoneRow({
             key={a.id}
             agent={a}
             live={liveStates.get(a.id) ?? { status: 'idle' }}
+            onStop={onStop}
           />
         ))}
       </div>
@@ -391,6 +411,10 @@ export function MissionControlPanel() {
     });
   }, [runs]);
 
+  const handleStop = useCallback(async (runId: string) => {
+    try { await stopAgentRun(runId); } catch { /* non-fatal */ }
+  }, []);
+
   const topAgents    = agents.filter(a => classifyRow(a) === 'top');
   const middleAgents = agents.filter(a => classifyRow(a) === 'middle');
   const bottomAgents = agents.filter(a => classifyRow(a) === 'bottom');
@@ -449,6 +473,7 @@ export function MissionControlPanel() {
                     sublabel="control · routing · coordination"
                     agents={topAgents}
                     liveStates={liveStates}
+                    onStop={handleStop}
                   />
                 </div>
               )}
@@ -460,6 +485,7 @@ export function MissionControlPanel() {
                 sublabel="processing · generation · analysis"
                 agents={middleAgents.length > 0 ? middleAgents : (topAgents.length === 0 ? agents : [])}
                 liveStates={liveStates}
+                onStop={handleStop}
               />
 
               {/* ── Support zone ── */}
@@ -471,6 +497,7 @@ export function MissionControlPanel() {
                     sublabel="memory · monitoring · background"
                     agents={bottomAgents}
                     liveStates={liveStates}
+                    onStop={handleStop}
                   />
                 </div>
               )}
