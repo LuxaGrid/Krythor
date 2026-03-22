@@ -16,6 +16,7 @@ import { DashboardPanel } from './components/DashboardPanel.tsx';
 import { OnboardingWizard } from './components/OnboardingWizard.tsx';
 import { DegradedBanner } from './components/DegradedBanner.tsx';
 import { SettingsPanel } from './components/SettingsPanel.tsx';
+import { WalkthroughTour, shouldShowTour } from './components/WalkthroughTour.tsx';
 
 // ── App Config Context ─────────────────────────────────────────────────────
 interface AppConfigCtx {
@@ -385,6 +386,7 @@ function AppInner({ onTokenReady }: { onTokenReady: (token: string) => void }) {
   const [healthData, setHealthData] = useState<Health | null>(null);
   const [appConfig, setAppConfigState] = useState<AppConfig>({});
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showTour, setShowTour]     = useState(false);
   const [showAbout, setShowAbout]   = useState(false);
   const { connected, events, clearEvents } = useGatewayContext();
 
@@ -414,7 +416,11 @@ function AppInner({ onTokenReady }: { onTokenReady: (token: string) => void }) {
   useEffect(() => {
     getAppConfig().then(cfg => {
       setAppConfigState(cfg);
-      if (!cfg.onboardingComplete) setShowOnboarding(true);
+      if (!cfg.onboardingComplete) {
+        setShowOnboarding(true);
+      } else if (shouldShowTour()) {
+        setShowTour(true);
+      }
     }).catch(() => {});
   }, []);
 
@@ -431,6 +437,8 @@ function AppInner({ onTokenReady }: { onTokenReady: (token: string) => void }) {
     setShowOnboarding(false);
     refreshHealth(); // intentional: ensures status bar reflects new provider immediately
     getAppConfig().then(setAppConfigState).catch(() => {});
+    // Show tour after onboarding if not yet seen
+    if (shouldShowTour()) setShowTour(true);
   }, [refreshHealth]);
 
   // ── Global keyboard shortcuts ────────────────────────────────────────────
@@ -484,6 +492,7 @@ function AppInner({ onTokenReady }: { onTokenReady: (token: string) => void }) {
     <AppConfigContext.Provider value={{ config: appConfig, setConfig }}>
       <div className="flex flex-col h-screen overflow-hidden">
         {showOnboarding && <OnboardingWizard onComplete={handleOnboardingComplete} />}
+        {showTour && !showOnboarding && <WalkthroughTour onClose={() => setShowTour(false)} />}
         {showAbout && <AboutDialog health={healthData} onClose={() => setShowAbout(false)} />}
 
         <StatusBar
