@@ -175,13 +175,22 @@ export function registerToolRoutes(
 
     try {
       const result = await webFetchTool.fetch(url);
+
+      // SSRF protection blocked the request
+      if ('error' in result && result.error === 'SSRF_BLOCKED') {
+        logger.warn('Web fetch tool: SSRF blocked', { url, reason: result.reason, requestId: req.id });
+        return sendError(reply, 403, 'SSRF_BLOCKED', `Request blocked: ${result.reason}`,
+          'Requests to private/loopback/metadata IP ranges are not allowed.');
+      }
+
+      const fetchResult = result as import('@krythor/core').WebFetchResult;
       logger.info('Web fetch tool: fetch completed', {
         url,
-        contentLength: result.contentLength,
-        truncated: result.truncated,
+        contentLength: fetchResult.contentLength,
+        truncated: fetchResult.truncated,
         requestId: req.id,
       });
-      return reply.send(result);
+      return reply.send(fetchResult);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Web fetch failed';
       logger.warn('Web fetch tool: fetch failed', { url, error: message, requestId: req.id });

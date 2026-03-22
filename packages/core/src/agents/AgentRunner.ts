@@ -300,14 +300,19 @@ export class AgentRunner {
     } else if (call.tool === 'web_fetch') {
       try {
         const result = await webFetchTool.fetch(call.url);
-        toolResult = [
-          `Web fetch result for ${call.url}:`,
-          result.truncated
-            ? `(content truncated at ${result.content.length} chars — original: ${result.contentLength} chars)`
-            : `(${result.contentLength} chars)`,
-          '',
-          result.content,
-        ].join('\n');
+        if ('error' in result && result.error === 'SSRF_BLOCKED') {
+          toolResult = `Tool web_fetch blocked (SSRF protection): ${result.reason}`;
+        } else {
+          const fetchResult = result as import('../tools/WebFetchTool.js').WebFetchResult;
+          toolResult = [
+            `Web fetch result for ${call.url}:`,
+            fetchResult.truncated
+              ? `(content truncated at ${fetchResult.content.length} chars — original: ${fetchResult.contentLength} chars)`
+              : `(${fetchResult.contentLength} chars)`,
+            '',
+            fetchResult.content,
+          ].join('\n');
+        }
       } catch (err) {
         toolResult = `Tool web_fetch failed: ${err instanceof Error ? err.message : String(err)}`;
       }

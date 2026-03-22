@@ -4,16 +4,24 @@
 // HTML tags are stripped to reduce noise for LLM consumption.
 //
 // Returns: { url, content, contentLength, truncated }
+//    -or-: { error: 'SSRF_BLOCKED', url, reason }  when SSRF check fails
+//
 // Max content: 10000 chars (truncated with note)
 // Timeout: 8000ms
 //
 // Design:
 //   - Accepts only http:// and https:// URLs (no file://, ftp://, etc.)
+//   - Rejects requests to private/loopback/metadata IP ranges (SSRF protection)
 //   - Strips HTML tags with a simple regex (no DOM dependency)
 //   - Normalizes whitespace to remove blank runs
 //   - Never throws on empty content — returns empty string
 //   - Throws on network failure, timeout, or disallowed scheme
 //
+
+import { lookup } from 'dns';
+import { promisify } from 'util';
+
+const dnsLookup = promisify(lookup);
 
 export interface WebFetchResult {
   url:           string;
@@ -22,11 +30,110 @@ export interface WebFetchResult {
   truncated:     boolean;
 }
 
+export interface SsrfBlockedResult {
+  error:  'SSRF_BLOCKED';
+  url:    string;
+  reason: string;
+}
+
 /** Maximum plain-text content returned (in characters). */
 export const WEB_FETCH_MAX_CHARS = 10_000;
 
 /** Timeout for web fetch requests in milliseconds. */
 export const WEB_FETCH_TIMEOUT_MS = 8_000;
+
+// ─── SSRF protection ──────────────────────────────────────────────────────────
+
+/** Hostnames that are always blocked regardless of IP resolution. */
+const BLOCKED_HOSTNAMES = new Set([
+  'localhost',
+  '0.0.0.0',
+  'metadata.google.internal',
+  '169.254.169.254',
+]);
+
+/**
+ * Check whether a resolved IPv4 or IPv6 address is in a private/loopback range.
+ * Returns a description string if blocked, null if the address is public.
+ */
+function isPrivateIp(ip: string): string | null {
+  // IPv6 loopback
+  if (ip === '::1') return 'IPv6 loopback (::1)';
+
+  // IPv6 fc00::/7 (Unique Local Addresses — includes fd00::/8)
+  if (/^f[cd]/i.test(ip)) return 'IPv6 private range (fc00::/7)';
+
+  // IPv4 — split into octets
+  const parts = ip.split('.').map(Number);
+  if (parts.length !== 4 || parts.some(p => isNaN(p))) {
+    // Not IPv4 — could be IPv6 in other form; allow through (conservative)
+    return null;
+  }
+  const [a, b] = parts as [number, number, number, number];
+
+  if (a === 127)                          return 'loopback (127.x.x.x)';
+  if (a === 10)                           return 'private (10.x.x.x)';
+  if (a === 172 && b >= 16 && b <= 31)   return 'private (172.16-31.x.x)';
+  if (a === 192 && b === 168)             return 'private (192.168.x.x)';
+  if (a === 169 && b === 254)             return 'link-local (169.254.x.x)';
+  if (a === 0)                            return 'reserved (0.x.x.x)';
+
+  return null;
+}
+
+/**
+ * Perform SSRF checks on a URL.
+ * Returns null if the URL is allowed, or a reason string if it is blocked.
+ *
+ * Checks:
+ *   1. Scheme must be http or https
+ *   2. Hostname must not be in the static blocklist
+ *   3. Hostname must not resolve to a private IP
+ */
+async function checkSsrf(urlStr: string): Promise<string | null> {
+  let parsed: URL;
+  try {
+    parsed = new URL(urlStr);
+  } catch {
+    return 'invalid URL';
+  }
+
+  // 1. Scheme check
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    return `unsupported scheme: ${parsed.protocol}`;
+  }
+
+  const hostname = parsed.hostname.toLowerCase();
+
+  // 2. Static blocklist
+  if (BLOCKED_HOSTNAMES.has(hostname)) {
+    return `hostname is blocked: ${hostname}`;
+  }
+
+  // 3. Resolve hostname to IP and check for private ranges
+  // If hostname looks like an IP already, check it directly
+  const ipLikeParts = hostname.split('.');
+  if (ipLikeParts.length === 4 && ipLikeParts.every(p => /^\d+$/.test(p))) {
+    const reason = isPrivateIp(hostname);
+    if (reason) return reason;
+    return null; // valid public IP
+  }
+
+  // Try DNS resolution
+  try {
+    const result = await dnsLookup(hostname, { family: 0 });
+    const resolved = Array.isArray(result) ? result[0]?.address : result.address;
+    if (resolved) {
+      const reason = isPrivateIp(resolved);
+      if (reason) return `resolves to private IP (${resolved}): ${reason}`;
+    }
+  } catch {
+    // DNS failure — let the actual fetch fail naturally (may be a valid public domain
+    // that is just temporarily unreachable)
+  }
+
+  return null;
+}
 
 // ─── HTML stripping helpers ───────────────────────────────────────────────────
 
@@ -57,10 +164,11 @@ export class WebFetchTool {
   /**
    * Fetch the URL and return its plain-text content.
    *
-   * @throws {Error} if the scheme is not http or https
+   * Returns SsrfBlockedResult when the URL is blocked by SSRF checks.
+   * @throws {Error} if the scheme is not http or https (early, before SSRF check)
    * @throws {Error} on network failure or timeout
    */
-  async fetch(url: string): Promise<WebFetchResult> {
+  async fetch(url: string): Promise<WebFetchResult | SsrfBlockedResult> {
     if (!url || typeof url !== 'string') {
       throw new Error('url must be a non-empty string');
     }
@@ -69,6 +177,12 @@ export class WebFetchTool {
     const normalized = url.trim();
     if (!/^https?:\/\//i.test(normalized)) {
       throw new Error(`Unsupported URL scheme — only http:// and https:// are allowed. Got: ${normalized.slice(0, 50)}`);
+    }
+
+    // SSRF protection — check before making any network request
+    const ssrfReason = await checkSsrf(normalized);
+    if (ssrfReason) {
+      return { error: 'SSRF_BLOCKED', url: normalized, reason: ssrfReason };
     }
 
     const resp = await fetch(normalized, {
@@ -105,3 +219,6 @@ export class WebFetchTool {
     };
   }
 }
+
+// ─── Exports for testing ──────────────────────────────────────────────────────
+export { checkSsrf, isPrivateIp, BLOCKED_HOSTNAMES };

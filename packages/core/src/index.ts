@@ -4,7 +4,7 @@ export type { ExecOptions, ExecResult } from './tools/ExecTool.js';
 export { WebSearchTool, WEB_SEARCH_TIMEOUT_MS } from './tools/WebSearchTool.js';
 export type { WebSearchResult, WebSearchResponse } from './tools/WebSearchTool.js';
 export { WebFetchTool, WEB_FETCH_MAX_CHARS, WEB_FETCH_TIMEOUT_MS } from './tools/WebFetchTool.js';
-export type { WebFetchResult } from './tools/WebFetchTool.js';
+export type { WebFetchResult, SsrfBlockedResult } from './tools/WebFetchTool.js';
 export { TOOL_REGISTRY, getToolEntry } from './tools/ToolRegistry.js';
 export type { ToolEntry, ToolParameter } from './tools/ToolRegistry.js';
 export { WebhookTool } from './tools/WebhookTool.js';
