@@ -6,7 +6,7 @@ import fastifyRateLimit from '@fastify/rate-limit';
 import { join } from 'path';
 import { existsSync, readFileSync, readdirSync, watch as fsWatch } from 'fs';
 import { homedir, networkInterfaces } from 'os';
-import { KrythorCore, AgentOrchestrator, ExecTool, CustomToolStore, WebhookTool } from '@krythor/core';
+import { KrythorCore, AgentOrchestrator, ExecTool, CustomToolStore, WebhookTool, PluginLoader } from '@krythor/core';
 import { MemoryEngine, GuardDecisionStore, OllamaEmbeddingProvider } from '@krythor/memory';
 import { ModelEngine, ModelRecommender, PreferenceStore } from '@krythor/models';
 import { GuardEngine } from '@krythor/guard';
@@ -30,6 +30,7 @@ import { registerStreamWs } from './ws/stream.js';
 import { registerDashboardRoute } from './routes/dashboard.js';
 import { registerGatewayRoutes } from './routes/gateway.js';
 import { registerOpenAICompatRoutes } from './routes/openai.compat.js';
+import { registerPluginRoutes } from './routes/plugins.js';
 import { HeartbeatEngine, type HeartbeatRunRecord, type HeartbeatInsight } from './heartbeat/HeartbeatEngine.js';
 import { logger } from './logger.js';
 import { loadOrCreateToken, verifyToken } from './auth.js';
@@ -644,6 +645,12 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
     return webhookTool.run(tool, input);
   });
 
+  // Plugin loader — loads user-defined JS tools from <dataDir>/plugins/.
+  // Runs at startup; plugins are registered into TOOL_REGISTRY and dispatched
+  // via the custom tool dispatcher (plugin names take priority over webhook tools).
+  const pluginLoader = new PluginLoader(dataDir);
+  pluginLoader.load();
+
   // Register routes
   registerCommandRoute(app, core, orchestrator, broadcast, guard, convStore);
   registerMemoryRoutes(app, memory, models, guard);
@@ -659,6 +666,7 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   registerProviderRoutes(app, models);
   registerLocalModelsRoute(app);
   registerConfigPortabilityRoutes(app, models);
+  registerPluginRoutes(app, pluginLoader);
   registerStreamWs(app, core, () => authCfg.token, guard);
 
   // Templates endpoint — lists workspace template files available in the user's data dir.
