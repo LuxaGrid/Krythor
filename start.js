@@ -1248,7 +1248,7 @@ const COMMAND_HELP = {
   doctor: {
     summary: 'Full diagnostics report',
     detail: [
-      'Usage: krythor doctor',
+      'Usage: krythor doctor [--test-providers]',
       '',
       'Checks:',
       '  - Node.js version',
@@ -1260,6 +1260,10 @@ const COMMAND_HELP = {
       '  - Embedding — active or keyword-only',
       '  - Migration integrity',
       '  - Stale agent model references',
+      '',
+      'Flags:',
+      '  --test-providers  Make a live API call to each enabled provider to',
+      '                    validate credentials and reachability.',
       '',
       'Prints PASS / WARN / FAIL per check. Exit 1 on critical issues.',
     ],
@@ -1383,8 +1387,10 @@ function runHelp() {
 // ── Allow `node start.js doctor` as an alias for the doctor command ────────
 if (process.argv.includes('doctor')) {
   const doctorScript = join(__dirname, 'packages', 'setup', 'dist', 'bin', 'setup.js');
+  // Pass --test-providers through if present
+  const testFlag = process.argv.includes('--test-providers') ? ' --test-providers' : '';
   try {
-    execSync(`"${NODE_BIN}" "${doctorScript}" doctor`, { stdio: 'inherit' });
+    execSync(`"${NODE_BIN}" "${doctorScript}" doctor${testFlag}`, { stdio: 'inherit' });
   } catch { /* exit code from setup.js propagates */ }
   process.exit(0);
 }

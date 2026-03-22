@@ -397,6 +397,159 @@ if (args.includes('doctor')) {
     console.error(fmt.err('Doctor failed: ' + (err instanceof Error ? err.message : String(err))));
     process.exit(1);
   });
+} else if (args.includes('--test-providers')) {
+  // ── Test-providers mode ────────────────────────────────────────────────────
+  // Makes a minimal live API call to each configured, enabled provider and
+  // reports whether the credentials are valid and the endpoint is reachable.
+  //
+  // Usage: krythor doctor --test-providers
+  //
+  (async () => {
+    console.log(fmt.head('Krythor — Provider Live Test'));
+    console.log(fmt.dim('  Making a minimal API call to each enabled provider…\n'));
+
+    const { join } = await import('path');
+    const { ModelRegistry } = await import('@krythor/models');
+
+    const sys = await probe();
+    const configDir = join(sys.dataDir, 'config');
+
+    let registry: InstanceType<typeof ModelRegistry>;
+    try {
+      registry = new ModelRegistry(configDir);
+    } catch (err) {
+      console.error(fmt.err('Failed to load ModelRegistry: ' + (err instanceof Error ? err.message : String(err))));
+      process.exit(1);
+    }
+
+    const configs = registry.listConfigs().filter(c => c.isEnabled);
+
+    if (configs.length === 0) {
+      console.log(fmt.warn('No enabled providers found. Run: krythor setup'));
+      process.exit(0);
+    }
+
+    let passed = 0;
+    let failed = 0;
+
+    for (const cfg of configs) {
+      const label = `${cfg.name} (${cfg.type})`;
+      process.stdout.write(`  ${label.padEnd(40)} `);
+
+      try {
+        let ok = false;
+        let detail = '';
+
+        if (cfg.type === 'ollama' || cfg.type === 'gguf') {
+          // Ollama / local: GET <endpoint>/api/tags
+          const endpoint = cfg.endpoint.replace(/\/$/, '');
+          const tagsUrl = `${endpoint}/api/tags`;
+          const res = await fetch(tagsUrl, { signal: AbortSignal.timeout(5000) });
+          ok = res.ok;
+          if (!ok) detail = `HTTP ${res.status}`;
+          else {
+            const body = await res.json() as { models?: unknown[] };
+            const count = Array.isArray(body.models) ? body.models.length : 0;
+            detail = `${count} model(s) available`;
+          }
+
+        } else if (cfg.type === 'anthropic') {
+          // Anthropic: GET /v1/models
+          const apiKey = cfg.apiKey ?? '';
+          if (!apiKey) {
+            ok = false;
+            detail = 'no API key configured';
+          } else {
+            const res = await fetch('https://api.anthropic.com/v1/models', {
+              headers: {
+                'x-api-key': apiKey,
+                'anthropic-version': '2023-06-01',
+              },
+              signal: AbortSignal.timeout(8000),
+            });
+            ok = res.ok;
+            if (!ok) {
+              const body = await res.json().catch(() => ({})) as { error?: { message?: string } };
+              detail = `HTTP ${res.status}${body.error?.message ? `: ${body.error.message}` : ''}`;
+            } else {
+              const body = await res.json() as { data?: unknown[] };
+              const count = Array.isArray(body.data) ? body.data.length : 0;
+              detail = `${count} model(s) visible`;
+            }
+          }
+
+        } else if (cfg.type === 'openai') {
+          // OpenAI: GET /v1/models
+          const apiKey = cfg.apiKey ?? '';
+          if (!apiKey) {
+            ok = false;
+            detail = 'no API key configured';
+          } else {
+            const res = await fetch('https://api.openai.com/v1/models', {
+              headers: { Authorization: `Bearer ${apiKey}` },
+              signal: AbortSignal.timeout(8000),
+            });
+            ok = res.ok;
+            if (!ok) {
+              const body = await res.json().catch(() => ({})) as { error?: { message?: string } };
+              detail = `HTTP ${res.status}${body.error?.message ? `: ${body.error.message}` : ''}`;
+            } else {
+              const body = await res.json() as { data?: unknown[] };
+              const count = Array.isArray(body.data) ? body.data.length : 0;
+              detail = `${count} model(s) visible`;
+            }
+          }
+
+        } else if (cfg.type === 'openai-compat') {
+          // OpenAI-compat: GET <endpoint>/v1/models
+          const endpoint = cfg.endpoint.replace(/\/$/, '');
+          const modelsUrl = endpoint.endsWith('/v1') ? `${endpoint}/models` : `${endpoint}/v1/models`;
+          const headers: Record<string, string> = {};
+          if (cfg.apiKey) headers['Authorization'] = `Bearer ${cfg.apiKey}`;
+          const res = await fetch(modelsUrl, {
+            headers,
+            signal: AbortSignal.timeout(8000),
+          });
+          ok = res.ok;
+          if (!ok) detail = `HTTP ${res.status}`;
+          else {
+            const body = await res.json() as { data?: unknown[] };
+            const count = Array.isArray(body.data) ? body.data.length : 0;
+            detail = `${count} model(s) available`;
+          }
+
+        } else {
+          ok = false;
+          detail = `unknown provider type '${cfg.type}'`;
+        }
+
+        if (ok) {
+          console.log(`${fmt.ok('')}${detail}`);
+          passed++;
+        } else {
+          console.log(`${fmt.err('')}${detail}`);
+          failed++;
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.log(`${fmt.err('')}${msg}`);
+        failed++;
+      }
+    }
+
+    console.log('');
+    if (failed === 0) {
+      console.log(fmt.ok(`All ${passed} provider(s) passed live test.`));
+      process.exit(0);
+    } else {
+      console.log(fmt.warn(`${passed} passed, ${failed} failed. See above for details.`));
+      process.exit(1);
+    }
+  })().catch(err => {
+    console.error(fmt.err('Provider test failed: ' + (err instanceof Error ? err.message : String(err))));
+    process.exit(1);
+  });
+
 } else if (args.includes('--rollback')) {
   // ── Rollback mode ──────────────────────────────────────────────────────────
   // Finds the most recent pre-migration backup for the Krythor SQLite DB and
