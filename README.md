@@ -48,6 +48,8 @@ This is **AI you can operate**.
 * **Tool system** — exec (local commands), web_search (DuckDuckGo), web_fetch (URL content), user-defined webhook tools
 * **Session management** — named conversations, pinning, idle detection, export as JSON/Markdown
 * **Token spend history** — ring buffer of last 1000 inferences; Dashboard shows sparkline of recent usage
+* **Outbound channels** — webhook notifications on lifecycle events (agent runs, memory, providers); HMAC-SHA256 signed; compatible with Zapier, n8n, Discord/Slack incoming webhooks
+* **LAN discovery** — gateways on the same network find each other automatically via UDP multicast; manual peer registration for cross-network pairing
 * **Gateway identity** — stable UUID per installation; capability manifest at `GET /api/gateway/info`
 * **Web chat widget** — embeddable chat page at `/chat`; no React bundle required
 * **Transparent execution** — see exactly which model ran, why, and fallback behavior
@@ -461,6 +463,12 @@ All API endpoints are served at `http://127.0.0.1:47200`. Most require a Bearer 
 | POST | `/api/config/reload` | Required | Reload providers.json without restart |
 | GET | `/api/heartbeat/status` | Required | Heartbeat status and active warnings |
 | GET | `/api/templates` | Required | List workspace template files |
+| GET | `/api/channels` | Required | List outbound webhook channels |
+| POST | `/api/channels` | Required | Create a webhook channel |
+| POST | `/api/channels/:id/test` | Required | Send a test delivery to a channel |
+| GET | `/api/gateway/info` | Required | Gateway identity and capability manifest |
+| GET | `/api/gateway/peers` | Required | List known remote gateway peers |
+| POST | `/api/gateway/peers` | Required | Register a remote gateway peer |
 
 ---
 
@@ -576,6 +584,8 @@ To uninstall: remove the application folder (`~/.krythor`) and the data folder a
 * [x] Tool system (exec, web_search, web_fetch)
 * [x] Terminal dashboard (krythor tui)
 * [x] Auto-update check on startup
+* [x] Outbound webhook channels (10 event types, HMAC signing, delivery stats)
+* [x] LAN peer discovery (mDNS UDP multicast) + manual peer registry
 * [ ] Code signing (OV certificate — eliminates SmartScreen warning)
 * [ ] Auto-updater UI (download and replace in-place)
 * [ ] macOS / Linux native installers
