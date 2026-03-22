@@ -1,0 +1,115 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/LuxaGrid/Krythor/blob/main/docs/examples/providers.schema.json",
+  "title": "Krythor Providers Configuration",
+  "description": "Schema for <dataDir>/config/providers.json — the list of AI provider connections.",
+  "type": "array",
+  "items": {
+    "$ref": "#/definitions/Provider"
+  },
+  "definitions": {
+    "Provider": {
+      "type": "object",
+      "required": ["id", "name", "type", "models", "isEnabled"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "description": "Unique identifier for this provider. Used in agents.json to pin an agent to a specific provider."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "Human-readable display name shown in the Control UI."
+        },
+        "type": {
+          "type": "string",
+          "enum": ["anthropic", "openai", "ollama", "openai-compat", "gguf"],
+          "description": "Provider protocol type. 'openai-compat' works with any OpenAI-compatible API (OpenRouter, Groq, LM Studio, etc.)."
+        },
+        "apiKey": {
+          "type": "string",
+          "description": "API key for cloud providers. Use ${ENV_VAR_NAME} to read from an environment variable instead of storing plaintext."
+        },
+        "baseUrl": {
+          "type": "string",
+          "format": "uri",
+          "description": "Base URL for ollama, openai-compat, and gguf providers. Must use http:// or https://."
+        },
+        "models": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1,
+          "description": "List of model IDs available through this provider. The first model is used by default."
+        },
+        "isEnabled": {
+          "type": "boolean",
+          "description": "Whether this provider is active. Disabled providers are skipped during model routing."
+        },
+        "authMethod": {
+          "type": "string",
+          "enum": ["api_key", "oauth", "none"],
+          "description": "Authentication method. 'none' is used for local providers (Ollama, LM Studio)."
+        },
+        "priority": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Routing priority. Lower number = tried first. Providers with the same priority are tried in config file order."
+        },
+        "maxRetries": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10,
+          "description": "Maximum number of retry attempts on transient failures before falling back to the next provider."
+        },
+        "setupHint": {
+          "type": "string",
+          "description": "Internal hint used by the setup wizard. Leave unset for manually configured providers."
+        },
+        "oauthAccount": {
+          "$ref": "#/definitions/OAuthAccount"
+        }
+      }
+    },
+    "OAuthAccount": {
+      "type": "object",
+      "description": "OAuth account details, set by the Control UI after completing an OAuth flow.",
+      "required": ["accountId", "displayName"],
+      "additionalProperties": false,
+      "properties": {
+        "accountId": {
+          "type": "string",
+          "description": "Provider-assigned account identifier."
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Display name shown in the Control UI (e.g. email address)."
+        },
+        "accessToken": {
+          "type": "string",
+          "description": "OAuth access token. Stored encrypted with the e1: prefix."
+        },
+        "refreshToken": {
+          "type": "string",
+          "description": "OAuth refresh token. Stored encrypted with the e1: prefix."
+        },
+        "expiresAt": {
+          "type": "number",
+          "description": "Unix millisecond timestamp when the access token expires."
+        },
+        "connectedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp when the account was connected."
+        }
+      }
+    }
+  }
+}

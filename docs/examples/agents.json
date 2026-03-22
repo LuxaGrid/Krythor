@@ -1,0 +1,54 @@
+[
+  {
+    "id": "default",
+    "name": "Default Agent",
+    "description": "General-purpose assistant for everyday tasks.",
+    "systemPrompt": "You are a helpful, concise assistant. Answer questions accurately and ask for clarification when the request is ambiguous.",
+    "model": "claude-opus-4-5",
+    "provider": "anthropic-main",
+    "tags": ["general", "default"],
+    "memoryScope": "global",
+    "tools": ["web_search", "web_fetch"],
+    "maxTokens": 4096,
+    "temperature": 0.7
+  },
+  {
+    "id": "coder",
+    "name": "Code Assistant",
+    "description": "Specialized agent for writing, reviewing, and debugging code.",
+    "systemPrompt": "You are an expert software engineer. Write clean, well-commented code. When reviewing, focus on correctness, security, and maintainability. Always explain your reasoning.",
+    "model": "claude-opus-4-5",
+    "provider": "anthropic-main",
+    "tags": ["code", "engineering"],
+    "memoryScope": "workspace",
+    "tools": ["web_search", "web_fetch", "exec"],
+    "maxTokens": 8192,
+    "temperature": 0.2
+  },
+  {
+    "id": "researcher",
+    "name": "Research Agent",
+    "description": "Agent specialized in web research and summarization.",
+    "systemPrompt": "You are a research assistant. Search for accurate, up-to-date information. Always cite sources. Provide balanced, objective summaries. Flag any information you are uncertain about.",
+    "model": "gpt-4o",
+    "provider": "openai-main",
+    "tags": ["research", "web"],
+    "memoryScope": "session",
+    "tools": ["web_search", "web_fetch"],
+    "maxTokens": 4096,
+    "temperature": 0.5
+  },
+  {
+    "id": "local-fast",
+    "name": "Local Fast Agent",
+    "description": "Quick responses using a local model — no internet required.",
+    "systemPrompt": "You are a helpful assistant. Be concise and direct.",
+    "model": "llama3.2",
+    "provider": "ollama-local",
+    "tags": ["local", "fast", "offline"],
+    "memoryScope": "session",
+    "tools": [],
+    "maxTokens": 2048,
+    "temperature": 0.8
+  }
+]

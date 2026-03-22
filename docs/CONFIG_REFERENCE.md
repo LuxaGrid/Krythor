@@ -43,6 +43,22 @@ Stores the list of AI providers.
 **Format:** Either a flat array `[...]` or a wrapped object `{ "version": "1", "providers": [...] }`.
 Both formats are accepted at load time.
 
+**Examples and schema:**
+- Full example with 5 providers: [`docs/examples/providers.json`](./examples/providers.json)
+- JSON Schema for IDE validation: [`docs/examples/providers.schema.json`](./examples/providers.schema.json)
+
+To enable IDE validation in VS Code, add to `.vscode/settings.json`:
+```json
+{
+  "json.schemas": [
+    {
+      "fileMatch": ["**/config/providers.json"],
+      "url": "./docs/examples/providers.schema.json"
+    }
+  ]
+}
+```
+
 **Provider entry fields:**
 
 | Field | Type | Required | Description |
@@ -113,6 +129,8 @@ Both formats are accepted at load time.
 
 Stores the list of agent definitions.
 
+**Full example with 4 agents:** [`docs/examples/agents.json`](./examples/agents.json)
+
 **Format:** A plain JSON array `[...]`.
 
 **Agent entry fields:**
@@ -173,6 +191,8 @@ Stores application-level settings.
 ### policy.json
 
 Stores the guard policy rules.
+
+**Full example with 5 rules:** [`docs/examples/policy.json`](./examples/policy.json)
 
 **Fields:**
 

@@ -1,6 +1,7 @@
 import { EventEmitter } from 'events';
 import { PolicyEngine } from './PolicyEngine.js';
 import { PolicyStore } from './PolicyStore.js';
+import { GuardAuditLog } from './GuardAuditLog.js';
 import type {
   GuardContext,
   GuardVerdict,
@@ -18,14 +19,22 @@ import type {
 export class GuardEngine extends EventEmitter {
   private readonly store: PolicyStore;
   private readonly engine: PolicyEngine;
+  private readonly auditLog: GuardAuditLog;
   private config: PolicyConfig;
 
-  constructor(configDir: string) {
+  /**
+   * @param configDir  Directory containing policy.json (e.g. <dataDir>/config)
+   * @param dataDir    Root data directory for logs; defaults to configDir/../
+   */
+  constructor(configDir: string, dataDir?: string) {
     super();
     this.store = new PolicyStore(configDir);
     this.engine = new PolicyEngine();
     this.config = this.store.load();
     this.engine.loadPolicy(this.config);
+    // Audit log lives in <dataDir>/logs/; fall back to configDir/.. if not provided.
+    const resolvedDataDir = dataDir ?? require('path').dirname(configDir);
+    this.auditLog = new GuardAuditLog(resolvedDataDir);
   }
 
   // ── Core evaluation ────────────────────────────────────────────────────────
@@ -41,8 +50,11 @@ export class GuardEngine extends EventEmitter {
       this.emit('guard:warned', { context: ctx, verdict });
     }
 
-    // Always emit guard:decided for audit logging
+    // Always emit guard:decided for observability hooks
     this.emit('guard:decided', { context: ctx, verdict });
+
+    // Persist every decision to the audit log (append-only NDJSON)
+    this.auditLog.record(ctx, verdict);
 
     return verdict;
   }

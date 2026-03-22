@@ -4,11 +4,15 @@ All environment variables that Krythor reads, with description, default, and exa
 
 ---
 
+See also: [`docs/examples/.env.example`](./examples/.env.example) — copy-paste template for all variables.
+
+---
+
 ## Data and config location
 
 | Variable | Description | Default | Example |
 |---|---|---|---|
-| `KRYTHOR_DATA_DIR` | Override the data directory for all Krythor data (memory, config, backups). Affects gateway, setup wizard, doctor, and start.js. | Platform default (see below) | `KRYTHOR_DATA_DIR=/mnt/data/krythor` |
+| `KRYTHOR_DATA_DIR` | Override the data directory for all Krythor data (memory, config, logs, backups). Affects gateway, setup wizard, doctor, and start.js. | Platform default (see below) | `KRYTHOR_DATA_DIR=/mnt/data/krythor` |
 
 **Platform defaults for `KRYTHOR_DATA_DIR`:**
 

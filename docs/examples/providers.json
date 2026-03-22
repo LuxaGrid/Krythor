@@ -1,0 +1,55 @@
+[
+  {
+    "id": "anthropic-main",
+    "name": "Anthropic",
+    "type": "anthropic",
+    "apiKey": "${ANTHROPIC_API_KEY}",
+    "models": ["claude-opus-4-5", "claude-sonnet-4-5", "claude-haiku-4-5"],
+    "isEnabled": true,
+    "authMethod": "api_key",
+    "priority": 1,
+    "maxRetries": 3
+  },
+  {
+    "id": "openai-main",
+    "name": "OpenAI",
+    "type": "openai",
+    "apiKey": "${OPENAI_API_KEY}",
+    "models": ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo"],
+    "isEnabled": true,
+    "authMethod": "api_key",
+    "priority": 2,
+    "maxRetries": 2
+  },
+  {
+    "id": "ollama-local",
+    "name": "Ollama (local)",
+    "type": "ollama",
+    "baseUrl": "http://127.0.0.1:11434",
+    "models": ["llama3.2", "mistral", "deepseek-r1"],
+    "isEnabled": true,
+    "authMethod": "none",
+    "priority": 3
+  },
+  {
+    "id": "openrouter-main",
+    "name": "OpenRouter",
+    "type": "openai-compat",
+    "baseUrl": "https://openrouter.ai/api/v1",
+    "apiKey": "${OPENROUTER_API_KEY}",
+    "models": ["anthropic/claude-opus-4-5", "openai/gpt-4o", "meta-llama/llama-3.1-70b-instruct"],
+    "isEnabled": false,
+    "authMethod": "api_key",
+    "priority": 4
+  },
+  {
+    "id": "lmstudio-local",
+    "name": "LM Studio",
+    "type": "openai-compat",
+    "baseUrl": "http://127.0.0.1:1234/v1",
+    "models": ["local-model"],
+    "isEnabled": false,
+    "authMethod": "none",
+    "priority": 5
+  }
+]

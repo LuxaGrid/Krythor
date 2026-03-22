@@ -390,7 +390,7 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   );
 
   // Initialise guard (loads/creates policy.json on first run)
-  const guard = new GuardEngine(join(dataDir, 'config'));
+  const guard = new GuardEngine(join(dataDir, 'config'), dataDir);
 
   // Guard decision audit store — shares the same SQLite connection as memory
   const guardDecisionStore = new GuardDecisionStore(memory.db);

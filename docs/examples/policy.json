@@ -1,0 +1,69 @@
+{
+  "version": "1",
+  "defaultAction": "allow",
+  "rules": [
+    {
+      "id": "block-provider-delete",
+      "name": "Prevent provider deletion",
+      "description": "Prevents any agent or skill from deleting configured providers.",
+      "enabled": true,
+      "priority": 10,
+      "condition": {
+        "operations": ["provider:delete"],
+        "sources": ["agent", "skill"]
+      },
+      "action": "deny",
+      "reason": "Provider deletion is restricted to human operators. Use the Control UI to manage providers."
+    },
+    {
+      "id": "warn-on-memory-delete",
+      "name": "Warn before memory deletion",
+      "description": "Emits a warning event when any source tries to delete memory entries.",
+      "enabled": true,
+      "priority": 20,
+      "condition": {
+        "operations": ["memory:delete"]
+      },
+      "action": "warn",
+      "reason": "Memory deletion is irreversible — check guard-audit.ndjson to review deletions."
+    },
+    {
+      "id": "restrict-exec-to-user",
+      "name": "Restrict command execution to user source",
+      "description": "Only commands initiated by the user (not agents or skills) may use exec.",
+      "enabled": true,
+      "priority": 30,
+      "condition": {
+        "operations": ["command:execute"],
+        "sources": ["agent", "skill"]
+      },
+      "action": "deny",
+      "reason": "Command execution from agents is disabled by policy. Enable exec in the agent config or change this rule."
+    },
+    {
+      "id": "block-sensitive-content",
+      "name": "Block sensitive content patterns",
+      "description": "Denies requests where the content appears to contain API keys or secrets.",
+      "enabled": true,
+      "priority": 40,
+      "condition": {
+        "operations": ["model:infer"],
+        "contentPattern": "(sk-ant-api|sk-proj-|AKIA[A-Z0-9]{16})"
+      },
+      "action": "deny",
+      "reason": "Request content appears to contain API credentials. Do not send secrets to AI models."
+    },
+    {
+      "id": "allow-user-all",
+      "name": "Allow all user operations",
+      "description": "The human user has full access to all operations.",
+      "enabled": true,
+      "priority": 100,
+      "condition": {
+        "sources": ["user"]
+      },
+      "action": "allow",
+      "reason": "User is trusted."
+    }
+  ]
+}

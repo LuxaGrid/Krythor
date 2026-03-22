@@ -1017,8 +1017,17 @@ async function runDaemon() {
 
   console.log('\x1b[36m  KRYTHOR\x1b[0m — Starting daemon…');
 
-  const logFile = path.join(require('os').tmpdir(), 'krythor-gateway.log');
-  const logStream = fs.openSync(logFile, 'w');
+  // Write daemon log to dataDir/logs/ so it persists across reboots.
+  // Fall back to /tmp only if the dataDir is not writable.
+  let logFile;
+  try {
+    const logsDir = path.join(getDataDirForUpdates(), 'logs');
+    fs.mkdirSync(logsDir, { recursive: true });
+    logFile = path.join(logsDir, 'gateway.log');
+  } catch {
+    logFile = path.join(require('os').tmpdir(), 'krythor-gateway.log');
+  }
+  const logStream = fs.openSync(logFile, 'a'); // append — preserves previous run logs
 
   const child = spawn(NODE_BIN, [gatewayDist], {
     stdio: ['ignore', logStream, logStream],
@@ -1054,6 +1063,7 @@ async function runDaemon() {
 
   console.log(`\x1b[32m  Krythor started (PID ${child.pid})\x1b[0m`);
   console.log(`  Control UI: http://${HOST}:${PORT}`);
+  console.log(`  Log file:   ${logFile}`);
   console.log(`  Stop with:  krythor stop`);
   console.log('');
 }

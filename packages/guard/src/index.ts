@@ -1,6 +1,8 @@
 export { GuardEngine, GuardDeniedError } from './GuardEngine.js';
 export { PolicyEngine } from './PolicyEngine.js';
 export { PolicyStore } from './PolicyStore.js';
+export { GuardAuditLog } from './GuardAuditLog.js';
+export type { AuditEntry } from './GuardAuditLog.js';
 
 export type {
   GuardAction,
