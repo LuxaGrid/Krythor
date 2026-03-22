@@ -121,6 +121,66 @@ export function registerAgentRoutes(app: FastifyInstance, orchestrator: AgentOrc
     }
   });
 
+  // GET /api/agents/:id/export — returns agent config as JSON (auth required)
+  // Excludes internal fields (id, createdAt, updatedAt); receiver assigns a new ID on import.
+  app.get<{ Params: { id: string } }>('/api/agents/:id/export', async (req, reply) => {
+    const agent = orchestrator.getAgent(req.params.id);
+    if (!agent) return reply.code(404).send({ error: 'Agent not found' });
+    const { id: _id, createdAt: _ca, updatedAt: _ua, ...config } = agent;
+    return reply
+      .header('Content-Disposition', `attachment; filename="agent-${agent.name.replace(/[^a-z0-9_-]/gi, '_').toLowerCase()}.json"`)
+      .send({ krythorAgentExport: '1', ...config });
+  });
+
+  // POST /api/agents/import — accepts exported agent config, assigns new ID (auth required)
+  app.post('/api/agents/import', {
+    config: { rateLimit: { max: 20, timeWindow: 60_000 } },
+    schema: {
+      body: {
+        type: 'object',
+        required: ['name', 'systemPrompt'],
+        properties: {
+          krythorAgentExport: { type: 'string' },
+          name:         { type: 'string', minLength: 1, maxLength: 200 },
+          description:  { type: 'string', maxLength: 1000 },
+          systemPrompt: { type: 'string', minLength: 1, maxLength: 100000 },
+          modelId:      { type: 'string' },
+          providerId:   { type: 'string' },
+          memoryScope:  { type: 'string', enum: ['session', 'agent', 'workspace'] },
+          maxTurns:     { type: 'number', minimum: 1, maximum: 100 },
+          temperature:  { type: 'number', minimum: 0, maximum: 2 },
+          maxTokens:    { type: 'number', minimum: 1 },
+          tags:         { type: 'array', items: { type: 'string', minLength: 1, maxLength: 50 }, maxItems: 20 },
+          allowedTools: { type: 'array', items: { type: 'string', minLength: 1, maxLength: 100 }, maxItems: 50 },
+          systemPromptPreview: { type: 'string' }, // ignored; produced by list endpoint
+        },
+        additionalProperties: false,
+      },
+    },
+  }, async (req, reply) => {
+    const body = req.body as CreateAgentInput & { krythorAgentExport?: string; systemPromptPreview?: string };
+    const nameCheck = validateString(body.name, 'name', MAX_NAME_LEN, true);
+    if (nameCheck.error) return reply.code(400).send({ error: nameCheck.error });
+    const descCheck = validateString(body.description, 'description', MAX_DESCRIPTION_LEN, false);
+    if (descCheck.error) return reply.code(400).send({ error: descCheck.error });
+    const spCheck = validateString(body.systemPrompt, 'systemPrompt', MAX_SYSTEM_PROMPT_LEN, true);
+    if (spCheck.error) return reply.code(400).send({ error: spCheck.error });
+    const agent = orchestrator.createAgent({
+      name:         nameCheck.value || body.name,
+      description:  descCheck.value  || body.description,
+      systemPrompt: spCheck.value    || body.systemPrompt,
+      memoryScope:  body.memoryScope,
+      maxTurns:     body.maxTurns,
+      temperature:  body.temperature,
+      maxTokens:    body.maxTokens,
+      modelId:      body.modelId,
+      providerId:   body.providerId,
+      tags:         body.tags,
+      allowedTools: body.allowedTools,
+    });
+    return reply.code(201).send(agent);
+  });
+
   // DELETE /api/agents/:id
   app.delete<{ Params: { id: string } }>('/api/agents/:id', async (req, reply) => {
     try {

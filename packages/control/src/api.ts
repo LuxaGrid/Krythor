@@ -397,6 +397,21 @@ export const listRuns    = (agentId?: string) => {
   const qs = agentId ? `?agentId=${agentId}` : '';
   return req<AgentRun[]>('GET', `/agents/runs${qs}`);
 };
+export const importAgent = (config: Record<string, unknown>) => req<Agent>('POST', '/agents/import', config);
+export const exportAgent = async (agent: Agent): Promise<void> => {
+  const res = await fetch(`${BASE}/agents/${agent.id}/export`, {
+    headers: _gatewayToken ? { Authorization: `Bearer ${_gatewayToken}` } : {},
+  });
+  if (!res.ok) throw new Error(`Export failed: ${res.status}`);
+  const data = await res.json();
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `agent-${agent.name.replace(/[^a-z0-9_-]/gi, '_').toLowerCase()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+};
 
 export interface Agent {
   id: string; name: string; description: string; systemPrompt: string;

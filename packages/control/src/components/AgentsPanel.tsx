@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   listAgents, createAgent, updateAgent, deleteAgent, runAgent,
-  listRuns, agentStats, listProviders,
+  listRuns, agentStats, listProviders, importAgent, exportAgent,
   type Agent, type AgentRun, type AgentStats, type Provider,
 } from '../api.ts';
 import { useAppConfig } from '../App.tsx';
@@ -130,6 +130,7 @@ export function AgentsPanel() {
   const [form, setForm] = useState<AgentForm>(EMPTY_FORM);
   const [loading, setLoading] = useState(true);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -244,6 +245,37 @@ export function AgentsPanel() {
     await setConfig({ selectedAgentId: agent.id });
   };
 
+  const handleImport = () => {
+    setImportError(null);
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json,application/json';
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const config = JSON.parse(text) as Record<string, unknown>;
+        if (!config.name || !config.systemPrompt) {
+          setImportError('Invalid agent file: missing name or systemPrompt.');
+          return;
+        }
+        const agent = await importAgent(config);
+        setAgents(a => [...a, agent]);
+        setSelected(agent);
+      } catch (err) {
+        setImportError(err instanceof Error ? err.message : 'Import failed');
+      }
+    };
+    input.click();
+  };
+
+  const handleExport = async (agent: Agent) => {
+    try {
+      await exportAgent(agent);
+    } catch { /* ignore */ }
+  };
+
   // Gather all models from providers for the dropdown
   const allModels = providers.flatMap(p =>
     (p.models ?? []).map(m => ({ label: `${m} (${p.name})`, modelId: m, providerId: p.id }))
@@ -253,15 +285,25 @@ export function AgentsPanel() {
     <div className="flex h-full">
       {/* Agent list */}
       <div className="w-52 shrink-0 border-r border-zinc-800 flex flex-col">
-        <div className="p-2 border-b border-zinc-800 flex items-center justify-between">
-          <span className="text-xs text-zinc-500">
+        <div className="p-2 border-b border-zinc-800 flex items-center justify-between gap-1">
+          <span className="text-xs text-zinc-500 shrink-0">
             {stats ? `${stats.agentCount} agent${stats.agentCount !== 1 ? 's' : ''}` : '—'}
           </span>
-          <button
-            onClick={openCreate}
-            className="text-xs text-brand-400 hover:text-brand-300 transition-colors"
-          >+ new</button>
+          <div className="flex gap-1 items-center">
+            <button
+              onClick={handleImport}
+              className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+              title="Import agent from JSON file"
+            >import</button>
+            <button
+              onClick={openCreate}
+              className="text-xs text-brand-400 hover:text-brand-300 transition-colors"
+            >+ new</button>
+          </div>
         </div>
+        {importError && (
+          <p className="text-red-400 text-[10px] bg-red-950/30 px-2 py-1">{importError}</p>
+        )}
         <div className="flex-1 overflow-y-auto scrollbar-thin">
           {loading ? (
             <div className="space-y-1 p-2">
@@ -444,6 +486,13 @@ export function AgentsPanel() {
                   className="px-2 py-1 rounded-lg text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-400 transition-colors"
                 >
                   Edit
+                </button>
+                <button
+                  onClick={() => handleExport(selected)}
+                  className="px-2 py-1 rounded-lg text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-400 transition-colors"
+                  title="Download agent config as JSON"
+                >
+                  Export
                 </button>
                 <button
                   onClick={() => handleSetActive(selected)}
