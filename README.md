@@ -2,7 +2,7 @@
 
 ![Krythor Banner](./assets/krythor-banner.png)
 
-**Local-first AI command platform with intelligent model routing, memory, and agent execution.**
+**Local-first AI command platform with intelligent model routing, memory, agent execution, and a live animated Command Center.**
 
 ---
 
@@ -10,7 +10,7 @@
 
 Krythor is a local-first AI system designed to give you **full control** over how AI runs, remembers, and executes tasks.
 
-Run agents. Route across models. Persist memory. Enforce rules.
+Run agents. Route across models. Persist memory. Enforce rules. Watch it all happen in real time inside a live animated Command Center.
 
 All from a single control interface running entirely on your machine.
 
@@ -27,6 +27,7 @@ Krythor does the opposite.
 * See which model ran your task
 * Know why it was selected
 * Track fallbacks in real time
+* Watch agents move, work, and hand off tasks in the live scene
 * Control memory and execution behavior
 
 This is not just chat.
@@ -51,6 +52,7 @@ This is **AI you can operate**.
 * **Outbound channels** — webhook notifications on lifecycle events (agent runs, memory, providers); HMAC-SHA256 signed; compatible with Zapier, n8n, Discord/Slack incoming webhooks
 * **LAN discovery** — gateways on the same network find each other automatically via UDP multicast; manual peer registration for cross-network pairing
 * **Gateway identity** — stable UUID per installation; capability manifest at `GET /api/gateway/info`
+* **Command Center** — live animated operations view; mythic-tech agent entities (Atlas, Voltaris, Aethon, Thyros, Pyron) move between zones, react to real events, and fall back to a cycling demo when the gateway is idle
 * **Web chat widget** — embeddable chat page at `/chat`; no React bundle required
 * **Transparent execution** — see exactly which model ran, why, and fallback behavior
 * **Heartbeat monitoring** — background provider health tracking and anomaly detection
@@ -62,6 +64,38 @@ This is **AI you can operate**.
 * **Backup command** — `krythor backup` creates a timestamped archive of the data directory
 * **Doctor + Repair** — comprehensive diagnostics with migration integrity check and credential validation
 * **Local-first** — all data stays on your machine
+
+---
+
+## 🎛️ Command Center
+
+The **Command Center** tab is a live animated scene that shows what your AI agents are doing right now.
+
+Five mythic-tech agent entities inhabit the scene, each with a unique silhouette:
+
+| Agent | Role | Zone | Color |
+|-------|------|------|-------|
+| **Atlas** | Orchestrator | Crown Platform | Forge gold |
+| **Voltaris** | Builder / Execution | Forge Console | Electric blue |
+| **Aethon** | Researcher / Knowledge | Archive Pillar | Blue-violet |
+| **Thyros** | Archivist / Memory | Memory Core | Ice blue |
+| **Pyron** | Monitor / Logs | Monitoring Node | Amber |
+
+Each agent:
+- Has a **distinct SVG body** — Atlas is a crowned hexagonal medallion, Voltaris an angular diamond with forge spikes, Aethon an arcane eye/lens, Thyros a stacked memory pillar, Pyron a diamond-shard sentinel with a sweep-scan line
+- Reacts visually to its **current state** — idle, listening, thinking, working, speaking, handoff, error, offline
+- **Moves between zones** when handed off tasks (smooth 700ms transition)
+- Shows a **task bubble** during working/thinking states
+- Displays a **local/remote badge** (LC / RM) and an active **model badge** (OPUS, SNT, etc.)
+- Pulses with a **memory recall flash** when Thyros retrieves from the memory store
+
+The scene also features:
+- **Energy paths** — animated dashed lines from Crown Platform to every active zone
+- **Ambient reactor** — a central orb that grows and shifts color as more agents become active
+- **Zone glow scaling** — zone platforms intensify their glow proportional to agent activity
+- **Focus mode** — click any agent to dim everything else and center attention
+- **Command log** — filterable live event log (all / tasks / tools / memory / errors) with pause toggle and auto-scroll
+- **Demo mode** — when no gateway events arrive for 8 seconds, the scene runs a cycling demo scenario automatically; it seamlessly switches back to live data when the gateway reconnects
 
 ---
 
@@ -190,6 +224,8 @@ pnpm install && pnpm build
 node start.js
 ```
 
+> Requires Node.js 20+ and pnpm. Install pnpm with `npm install -g pnpm`.
+
 ---
 
 ### Docker
@@ -199,6 +235,13 @@ docker compose up -d
 ```
 
 Then open **http://localhost:47200**. Data is persisted in a named Docker volume (`krythor-data`).
+
+Or build and run directly:
+
+```bash
+docker build -t krythor .
+docker run -p 47200:47200 -v krythor-data:/data krythor
+```
 
 See `docs/DEPLOYMENT.md` for environment variables, production setup, and backup strategy.
 
@@ -351,6 +394,7 @@ The dashboard has several tabs:
 | **Agents** | Create custom AI assistants with their own instructions |
 | **Guard** | Set rules for what Krythor is and isn't allowed to do |
 | **Skills** | Reusable task templates |
+| **Command Center** | Live animated scene showing all agents working in real time |
 
 ---
 
@@ -421,6 +465,9 @@ krythor repair
 ```
 This verifies the bundled runtime, native modules, and gateway health, and prints a pass/fail for each. Follow the printed instructions if any check fails.
 
+**Command Center shows "DEMO MODE"**
+This is normal when no real agent runs are happening. The scene runs a pre-scripted cycling scenario. As soon as your gateway processes real events, it switches to live data automatically.
+
 ---
 
 ## 🧠 Supported Providers
@@ -465,10 +512,58 @@ All API endpoints are served at `http://127.0.0.1:47200`. Most require a Bearer 
 | GET | `/api/templates` | Required | List workspace template files |
 | GET | `/api/channels` | Required | List outbound webhook channels |
 | POST | `/api/channels` | Required | Create a webhook channel |
+| PATCH | `/api/channels/:id` | Required | Update a webhook channel |
+| DELETE | `/api/channels/:id` | Required | Delete a webhook channel |
+| GET | `/api/channels/events` | Required | List supported channel event types |
 | POST | `/api/channels/:id/test` | Required | Send a test delivery to a channel |
 | GET | `/api/gateway/info` | Required | Gateway identity and capability manifest |
 | GET | `/api/gateway/peers` | Required | List known remote gateway peers |
 | POST | `/api/gateway/peers` | Required | Register a remote gateway peer |
+| DELETE | `/api/gateway/peers/:id` | Required | Remove a registered peer |
+| GET | `/api/gateway/probe` | Required | Probe connectivity to known peers |
+| WS | `/ws/stream` | Required | Real-time event stream (used by Command Center) |
+
+---
+
+## 📡 Outbound Channels
+
+Krythor can push lifecycle events to any webhook endpoint — Zapier, n8n, Discord, Slack, or your own server.
+
+**Create a channel:**
+```bash
+curl -X POST http://localhost:47200/api/channels \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "My Slack Hook",
+    "url": "https://hooks.slack.com/services/...",
+    "events": ["agent_run_complete", "memory_saved", "provider_added"]
+  }'
+```
+
+**Supported events:** `agent_run_complete`, `agent_run_failed`, `memory_saved`, `memory_deleted`, `provider_added`, `provider_removed`, `conversation_created`, `guard_denied`, `heartbeat_warning`, `heartbeat_recovery`
+
+**Delivery:** POST with JSON body, `Content-Type: application/json`, and a `X-Krythor-Signature: sha256=<hex>` HMAC-SHA256 header for verification.
+
+---
+
+## 🌐 LAN Discovery & Peer Registry
+
+Krythor gateways on the same network automatically discover each other using UDP multicast (mDNS on `224.0.0.251:5353`). For cross-network pairing, register peers manually:
+
+```bash
+# Register a remote gateway
+curl -X POST http://localhost:47200/api/gateway/peers \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"url": "http://192.168.1.50:47200", "label": "Home server"}'
+
+# List all known peers (LAN-discovered + manual)
+curl http://localhost:47200/api/gateway/peers \
+  -H "Authorization: Bearer <token>"
+```
+
+Each gateway has a stable UUID identity visible at `GET /api/gateway/info`. The capability manifest lists which features (channels, peers, tools, etc.) are available on that gateway.
 
 ---
 
@@ -514,6 +609,16 @@ Direct API: `POST /api/tools/web_fetch`
 packages/
   gateway/    — Fastify HTTP + WebSocket server, all API routes
   control/    — React control UI (served by gateway)
+    src/components/command-center/
+      agents/     — AgentBody, AgentEntity, AgentLayer, AgentRings, AgentGlyph, AgentTooltip, TaskBubble
+      scene/      — CommandScene, SceneGrid, SceneZone, EnergyPaths, AmbientReactor, HandoffArc
+      panels/     — LeftPanel, BottomPanel, CommandLog
+      agents.ts   — DEFAULT_AGENTS, SCENE_ZONES, ZONE_MAP, createAgent()
+      types.ts    — all Command Center types
+      events.ts   — AGENT_STATE_TRANSITIONS, makeEvent()
+      eventAdapter.ts  — gateway → CCEvent adapter
+      demoAdapter.ts   — 12-step cycling demo scenario
+      useCommandCenter.ts — master hook
   core/       — Agent orchestration, runner, SOUL identity
   memory/     — SQLite memory engine, embeddings, conversation store
   models/     — Model registry, router, circuit breaker, providers
@@ -523,6 +628,7 @@ packages/
 start.js      — Launcher (starts gateway, opens browser)
 bundle.js     — Distribution packager (creates krythor-dist/)
 build-exe.js  — Windows SEA executable builder
+Dockerfile    — Docker image (node:20-alpine, non-root user)
 ```
 
 ---
@@ -535,6 +641,8 @@ pnpm test       # run all tests
 pnpm build      # build all packages
 pnpm doctor     # run diagnostics
 ```
+
+The control UI auto-reloads on save during `pnpm dev`. The Command Center connects to the gateway WebSocket at `ws://localhost:47200/ws/stream` and falls back to demo mode after 8 seconds of silence.
 
 ---
 
@@ -586,10 +694,12 @@ To uninstall: remove the application folder (`~/.krythor`) and the data folder a
 * [x] Auto-update check on startup
 * [x] Outbound webhook channels (10 event types, HMAC signing, delivery stats)
 * [x] LAN peer discovery (mDNS UDP multicast) + manual peer registry
+* [x] Command Center — live animated agent scene with distinct silhouettes, state machine, zone transitions, energy paths, ambient reactor, focus mode, and command log
 * [ ] Code signing (OV certificate — eliminates SmartScreen warning)
 * [ ] Auto-updater UI (download and replace in-place)
 * [ ] macOS / Linux native installers
-* [ ] Docker image
+* [ ] Docker image on GitHub Container Registry (ghcr.io)
+* [ ] npm global package publish
 
 ---
 
