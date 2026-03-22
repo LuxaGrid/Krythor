@@ -628,7 +628,10 @@ async function runTui() {
   let tick = 0;
   let inputBuf = '';          // current command buffer being typed
   let lastResponse = null;    // last inline response to show
+  let lastSelectionReason = null; // model selection reason from last response
   let sending = false;        // true while a command is being dispatched
+  let activeAgentId = null;   // agent ID switched with /agent command
+  let messageHistory = [];    // list of {role, text} for display
 
   /** Read the auth token from the gateway's app-config.json for API calls. */
   function getTuiToken() {
@@ -655,13 +658,17 @@ async function runTui() {
 
   const HELP_TEXT = [
     'TUI commands:',
-    '  q         — quit',
-    '  r         — refresh now',
-    '  s         — show status line',
-    '  h         — show this help',
-    '  <message> — send message to gateway (/api/command)',
-    '  Enter     — submit typed command/message',
-    '  Backspace — delete last character',
+    '  q              — quit',
+    '  r              — refresh status now',
+    '  s              — show status line',
+    '  h              — show this help',
+    '  /agent <name>  — switch active agent (by name or ID)',
+    '  /clear         — clear message history display',
+    '  /models        — list available models',
+    '  <message>      — send message to /api/command',
+    '  Enter          — submit typed message',
+    '  Backspace      — delete last character',
+    '  Escape         — clear input buffer',
   ];
 
   function render(data) {
@@ -735,19 +742,42 @@ async function runTui() {
       process.stdout.write(`${d}  Polling every 5s  •  tick #${tick}${rs}\n`);
     }
 
-    // Inline response area
-    if (lastResponse) {
+    // Message history display
+    if (messageHistory.length > 0) {
+      process.stdout.write('\n');
+      process.stdout.write(`${d}  ─────────────────────────────────────────────────────${rs}\n`);
+      // Show last 5 messages
+      const recentMsgs = messageHistory.slice(-5);
+      for (const msg of recentMsgs) {
+        if (msg.role === 'user') {
+          process.stdout.write(`  ${b}You:${rs} ${msg.text.slice(0, 80)}${msg.text.length > 80 ? '…' : ''}\n`);
+        } else {
+          process.stdout.write(`  ${c}AI:${rs} ${msg.text.slice(0, 120)}${msg.text.length > 120 ? '…' : ''}\n`);
+          if (msg.selectionReason) {
+            process.stdout.write(`  ${d}   (${msg.selectionReason})${rs}\n`);
+          }
+        }
+      }
+    } else if (lastResponse) {
       process.stdout.write('\n');
       process.stdout.write(`${d}  ─────────────────────────────────────────────────────${rs}\n`);
       const lines = lastResponse.split('\n').slice(0, 6);
       lines.forEach(line => process.stdout.write(`  ${line}\n`));
+      if (lastSelectionReason) {
+        process.stdout.write(`  ${d}  (${lastSelectionReason})${rs}\n`);
+      }
+    }
+
+    // Active agent indicator
+    if (activeAgentId) {
+      process.stdout.write(`\n  ${d}Active agent: ${activeAgentId}${rs}\n`);
     }
 
     // Command input line at the bottom
     process.stdout.write('\n');
     process.stdout.write(`${d}  ─────────────────────────────────────────────────────${rs}\n`);
     if (sending) {
-      process.stdout.write(`  ${d}Sending…${rs}\n`);
+      process.stdout.write(`  ${y}Thinking…${rs}\n`);
     } else {
       process.stdout.write(`  ${d}>${rs} ${inputBuf}${g}▌${rs}\n`);
     }
@@ -770,28 +800,117 @@ async function runTui() {
       return;
     }
 
+    // /clear — reset message history display
+    if (trimmed === '/clear') {
+      messageHistory = [];
+      lastResponse = null;
+      lastSelectionReason = null;
+      return;
+    }
+
+    // /agent <name> — switch active agent
+    if (trimmed.startsWith('/agent')) {
+      const parts = trimmed.split(/\s+/);
+      const agentArg = parts.slice(1).join(' ').trim();
+      if (!agentArg) {
+        lastResponse = activeAgentId
+          ? `Active agent: ${activeAgentId}  (use /agent <name> to switch)`
+          : 'No agent active. Use /agent <name> to switch.';
+        return;
+      }
+      // Verify agent exists via GET /api/agents
+      const token = getTuiToken();
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      try {
+        const resp = await fetch(`http://${HOST}:${PORT}/api/agents`, {
+          headers,
+          signal: AbortSignal.timeout(5_000),
+        });
+        if (resp.ok) {
+          const agents = await resp.json();
+          const match = agents.find(a =>
+            a.name === agentArg || a.id === agentArg ||
+            (a.name && a.name.toLowerCase() === agentArg.toLowerCase())
+          );
+          if (match) {
+            activeAgentId = match.id || match.name;
+            lastResponse = `Switched to agent: ${match.name || activeAgentId}`;
+          } else {
+            lastResponse = `Agent not found: "${agentArg}". Use /models or check gateway.`;
+          }
+        } else {
+          activeAgentId = agentArg;
+          lastResponse = `Agent set to "${agentArg}" (could not verify — gateway returned ${resp.status}).`;
+        }
+      } catch (err) {
+        activeAgentId = agentArg;
+        lastResponse = `Agent set to "${agentArg}" (gateway unreachable, will retry on next message).`;
+      }
+      return;
+    }
+
+    // /models — list available models from gateway
+    if (trimmed === '/models') {
+      const token = getTuiToken();
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      try {
+        const resp = await fetch(`http://${HOST}:${PORT}/api/models`, {
+          headers,
+          signal: AbortSignal.timeout(5_000),
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          const models = Array.isArray(data) ? data : (data.models || []);
+          if (models.length === 0) {
+            lastResponse = 'No models available. Run: krythor setup';
+          } else {
+            lastResponse = 'Models:\n' + models.map(m =>
+              `  ${m.id || m.name || m}${m.provider ? '  (' + m.provider + ')' : ''}`
+            ).join('\n');
+          }
+        } else {
+          lastResponse = `Could not fetch models: HTTP ${resp.status}`;
+        }
+      } catch (err) {
+        lastResponse = `Could not fetch models: ${err.message || err}`;
+      }
+      return;
+    }
+
     // Treat as a chat message — send to /api/command
     const token = getTuiToken();
     const headers = { 'Content-Type': 'application/json' };
     if (token) headers['Authorization'] = `Bearer ${token}`;
     sending = true;
+    messageHistory.push({ role: 'user', text: trimmed });
     render(lastData);
     try {
+      const body = { input: trimmed };
+      if (activeAgentId) body.agentId = activeAgentId;
       const resp = await fetch(`http://${HOST}:${PORT}/api/command`, {
         method: 'POST',
         headers,
-        body: JSON.stringify({ input: trimmed }),
+        body: JSON.stringify(body),
         signal: AbortSignal.timeout(30_000),
       });
-      const body = await resp.json();
+      const respBody = await resp.json();
       if (resp.ok) {
-        const out = body.output || body.error || JSON.stringify(body);
-        lastResponse = out.slice(0, 500) + (out.length > 500 ? '…' : '');
+        const out = respBody.output || respBody.error || JSON.stringify(respBody);
+        const selReason = respBody.selectionReason || null;
+        lastSelectionReason = selReason;
+        messageHistory.push({ role: 'ai', text: out, selectionReason: selReason });
+        lastResponse = null; // use messageHistory display instead
       } else {
-        lastResponse = `Error: ${body.error || `HTTP ${resp.status}`}`;
+        const errMsg = `Error: ${respBody.error || `HTTP ${resp.status}`}`;
+        messageHistory.push({ role: 'ai', text: errMsg, selectionReason: null });
+        lastResponse = null;
       }
     } catch (err) {
-      lastResponse = `Request failed: ${err.message || err}`;
+      const errMsg = `Request failed: ${err.message || err}`;
+      messageHistory.push({ role: 'ai', text: errMsg, selectionReason: null });
+      lastResponse = null;
     } finally {
       sending = false;
     }
