@@ -96,6 +96,31 @@ export const TOOL_REGISTRY: ToolEntry[] = [
     requiresGuard: false,
     alwaysAllowed: true,
   },
+  {
+    name: 'spawn_agent',
+    description:
+      'Spawn a sub-agent by ID and send it a message. The sub-agent runs with shared memory. ' +
+      'Capped at 2 spawns per top-level run to prevent runaway chains. ' +
+      'Returns the spawned agent\'s output as the tool result.',
+    parameters: {
+      agentId: {
+        type:        'string',
+        description: 'The ID of the agent to spawn.',
+        required:    true,
+        minLength:   1,
+        maxLength:   100,
+      },
+      message: {
+        type:        'string',
+        description: 'The message to send to the spawned agent.',
+        required:    true,
+        minLength:   1,
+        maxLength:   4000,
+      },
+    },
+    requiresGuard: false,
+    alwaysAllowed: false,
+  },
 ];
 
 /** Look up a tool entry by name. Returns undefined if not registered. */

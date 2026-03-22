@@ -6,7 +6,7 @@ import type { ModelEngine } from '@krythor/models';
 import type { ExecTool } from '../tools/ExecTool.js';
 import { AgentRegistry } from './AgentRegistry.js';
 import { AgentRunner } from './AgentRunner.js';
-import type { LearningRecorder, HandoffResolver, CustomToolDispatcher } from './AgentRunner.js';
+import type { LearningRecorder, HandoffResolver, CustomToolDispatcher, SpawnAgentResolver } from './AgentRunner.js';
 import type {
   AgentDefinition,
   AgentRun,
@@ -67,6 +67,7 @@ export class AgentOrchestrator extends EventEmitter {
 
   private handoffResolver: HandoffResolver | null = null;
   private customToolDispatcher: CustomToolDispatcher | null = null;
+  private spawnAgentResolver: SpawnAgentResolver | null = null;
 
   constructor(
     private readonly memory: MemoryEngine | null,
@@ -78,9 +79,16 @@ export class AgentOrchestrator extends EventEmitter {
     super();
     const dir = configDir ?? getConfigDir();
     this.registry = new AgentRegistry(dir);
-    this.runner = new AgentRunner(memory, models, recordLearning, execTool ?? null, null, null);
+    this.runner = new AgentRunner(memory, models, recordLearning, execTool ?? null, null, null, null);
     // Wire the handoff resolver — dispatches {"handoff":"<id>","message":"..."} to another agent
     this.handoffResolver = async (targetAgentId: string, message: string): Promise<string | null> => {
+      const agent = this.registry.getById(targetAgentId);
+      if (!agent) return null;
+      const run = await this.runner.run(agent, { input: message }, (evt) => this.emit('agent:event', evt));
+      return run.output ?? null;
+    };
+    // Wire the spawn-agent resolver — dispatches {"tool":"spawn_agent","agentId":"<id>","message":"..."}
+    this.spawnAgentResolver = async (targetAgentId: string, message: string): Promise<string | null> => {
       const agent = this.registry.getById(targetAgentId);
       if (!agent) return null;
       const run = await this.runner.run(agent, { input: message }, (evt) => this.emit('agent:event', evt));
@@ -98,6 +106,7 @@ export class AgentOrchestrator extends EventEmitter {
       execTool ?? null,
       this.handoffResolver,
       this.customToolDispatcher,
+      this.spawnAgentResolver,
     );
   }
 
@@ -114,6 +123,7 @@ export class AgentOrchestrator extends EventEmitter {
       execTool,
       this.handoffResolver,
       this.customToolDispatcher,
+      this.spawnAgentResolver,
     );
   }
 

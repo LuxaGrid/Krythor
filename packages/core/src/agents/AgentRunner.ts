@@ -22,6 +22,9 @@ const MAX_TOOL_CALL_ITERATIONS = 3;
 /** Maximum number of agent handoffs per run (prevents cycles). */
 const MAX_HANDOFFS = 3;
 
+/** Maximum number of sub-agent spawns per run (prevents runaway chains). */
+const MAX_SPAWN_AGENT = 2;
+
 /** Regex that finds a JSON tool-call block anywhere in a model response. */
 const TOOL_CALL_RE = /\{[\s\S]*?"tool"\s*:\s*"[^"]*"[\s\S]*?\}/;
 
@@ -30,11 +33,12 @@ const HANDOFF_RE  = /\{[\s\S]*?"handoff"\s*:\s*"[^"]*"[\s\S]*?\}/;
 
 // ── Tool-call extraction types ────────────────────────────────────────────────
 
-type ExecCall       = { tool: 'exec';       command: string; args: string[] };
-type WebSearchCall  = { tool: 'web_search'; query: string };
-type WebFetchCall   = { tool: 'web_fetch';  url: string };
-type CustomCall     = { tool: 'custom';     name: string;   input: string };
-type AnyToolCall    = ExecCall | WebSearchCall | WebFetchCall | CustomCall;
+type ExecCall        = { tool: 'exec';         command: string; args: string[] };
+type WebSearchCall   = { tool: 'web_search';   query: string };
+type WebFetchCall    = { tool: 'web_fetch';    url: string };
+type CustomCall      = { tool: 'custom';       name: string;   input: string };
+type SpawnAgentCall  = { tool: 'spawn_agent';  agentId: string; message: string };
+type AnyToolCall     = ExecCall | WebSearchCall | WebFetchCall | CustomCall | SpawnAgentCall;
 
 /**
  * Attempt to extract a handoff directive from a model response.
@@ -85,6 +89,12 @@ function extractToolCall(response: string): AnyToolCall | null {
       return { tool: 'web_fetch', url: parsed['url'] as string };
     }
 
+    if (tool === 'spawn_agent' &&
+        typeof parsed['agentId'] === 'string' && parsed['agentId'].length > 0 &&
+        typeof parsed['message'] === 'string') {
+      return { tool: 'spawn_agent', agentId: parsed['agentId'] as string, message: parsed['message'] as string };
+    }
+
     // Custom webhook tool — any other tool name with an "input" field
     if (typeof tool === 'string' && tool.length > 0 && typeof parsed['input'] === 'string') {
       return { tool: 'custom', name: tool, input: parsed['input'] as string };
@@ -111,6 +121,14 @@ export type HandoffResolver = (targetAgentId: string, message: string) => Promis
  * Returns the response string or throws on error.
  */
 export type CustomToolDispatcher = (toolName: string, input: string, agentId: string) => Promise<string | null>;
+
+/**
+ * Optional callback for spawning a sub-agent.
+ * Provided by AgentOrchestrator — looks up the agent by ID and runs it.
+ * Returns the sub-agent's output string, or null if the agent does not exist.
+ * A separate callback (rather than a direct registry reference) avoids circular deps.
+ */
+export type SpawnAgentResolver = (agentId: string, message: string) => Promise<string | null>;
 
 /**
  * Optional callback invoked after each completed or failed run.
@@ -164,6 +182,7 @@ function withTimeout(parent: AbortSignal, ms: number): { signal: AbortSignal; cl
 
 export class AgentRunner {
   private activeRuns = new Map<string, { run: AgentRun; stop: () => void; controller: AbortController }>();
+  private spawnCount = 0; // per-run counter, reset in run()
 
   constructor(
     private readonly memory: MemoryEngine | null,
@@ -172,6 +191,7 @@ export class AgentRunner {
     private readonly execTool?: ExecTool | null,
     private readonly handoffResolver?: HandoffResolver | null,
     private readonly customToolDispatcher?: CustomToolDispatcher | null,
+    private readonly spawnAgentResolver?: SpawnAgentResolver | null,
   ) {}
 
   // ── Private helpers ────────────────────────────────────────────────────────
@@ -316,6 +336,24 @@ export class AgentRunner {
       } catch (err) {
         toolResult = `Tool web_fetch failed: ${err instanceof Error ? err.message : String(err)}`;
       }
+    } else if (call.tool === 'spawn_agent') {
+      if (!this.spawnAgentResolver) {
+        toolResult = `Tool "spawn_agent" called but no spawn resolver is configured.`;
+      } else if (this.spawnCount >= MAX_SPAWN_AGENT) {
+        toolResult = `Tool "spawn_agent" cap reached (max ${MAX_SPAWN_AGENT} spawns per run). Cannot spawn agent "${call.agentId}".`;
+      } else {
+        this.spawnCount++;
+        try {
+          const result = await this.spawnAgentResolver(call.agentId, call.message);
+          if (result === null) {
+            toolResult = `spawn_agent: agent "${call.agentId}" not found.`;
+          } else {
+            toolResult = `Spawned agent "${call.agentId}" response:\n${result}`;
+          }
+        } catch (err) {
+          toolResult = `spawn_agent "${call.agentId}" failed: ${err instanceof Error ? err.message : String(err)}`;
+        }
+      }
     } else if (call.tool === 'custom') {
       if (!this.customToolDispatcher) {
         toolResult = `Tool "${call.name}" called but no custom tool dispatcher is configured.`;
@@ -384,6 +422,8 @@ export class AgentRunner {
     input: RunAgentInput,
     emit: EventEmitter,
   ): Promise<AgentRun> {
+    // Reset per-run spawn counter at the start of every top-level run.
+    this.spawnCount = 0;
     const runId = input.runId ?? randomUUID();
     const now = Date.now();
     const controller = new AbortController();
