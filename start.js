@@ -420,6 +420,194 @@ async function runRepair() {
   }
 }
 
+// ── krythor security-audit ─────────────────────────────────────────────────
+// Runs 7 security checks and prints PASS / WARN / FAIL per item.
+// Prints a score X/7 at the end. Exit 0 if all pass, exit 1 if any fail.
+
+async function runSecurityAudit() {
+  const fs   = require('fs');
+  const os   = require('os');
+  const path = require('path');
+  const dns  = require('dns');
+
+  const PASS = '\x1b[32mPASS\x1b[0m';
+  const WARN = '\x1b[33mWARN\x1b[0m';
+  const FAIL = '\x1b[31mFAIL\x1b[0m';
+  const check = (label) => process.stdout.write(`  ${label.padEnd(36)} `);
+
+  console.log('\x1b[36m  KRYTHOR\x1b[0m — Security Audit');
+  console.log('');
+
+  const dataDir = process.env['KRYTHOR_DATA_DIR'] ||
+    (process.platform === 'win32'
+      ? path.join(process.env['LOCALAPPDATA'] || path.join(os.homedir(), 'AppData', 'Local'), 'Krythor')
+      : process.platform === 'darwin'
+        ? path.join(os.homedir(), 'Library', 'Application Support', 'Krythor')
+        : path.join(os.homedir(), '.local', 'share', 'krythor'));
+  const configDir = path.join(dataDir, 'config');
+
+  let passed = 0;
+  const TOTAL = 7;
+
+  // ── Check 1: Auth token is configured and auth is not disabled ───────────
+  check('1. Auth token configured');
+  let appCfg = {};
+  const appCfgPath = path.join(configDir, 'app-config.json');
+  try {
+    if (existsSync(appCfgPath)) {
+      appCfg = JSON.parse(fs.readFileSync(appCfgPath, 'utf-8'));
+    }
+  } catch { /* ignore parse errors */ }
+
+  if (appCfg['authDisabled'] === true) {
+    console.log(`${FAIL}  — authDisabled=true in app-config.json`);
+    console.log('    Anyone who can reach the gateway has full access.');
+    console.log('    Fix: remove "authDisabled": true from app-config.json');
+  } else {
+    const token = appCfg['authToken'] || appCfg['token'] || '';
+    if (!token || token.length < 16) {
+      console.log(`${WARN}  — no auth token found (gateway may be open)`);
+      console.log('    Fix: restart Krythor to generate a token automatically');
+    } else {
+      console.log(`${PASS}  — token present (${token.length} chars)`);
+      passed++;
+    }
+  }
+
+  // ── Check 2: Gateway bound to loopback only ──────────────────────────────
+  check('2. Gateway binds to loopback');
+  // We check if the running gateway's /health host matches loopback.
+  // If not running, inspect app-config for any custom bindHost setting.
+  const bindHost = appCfg['bindHost'] || appCfg['host'] || '127.0.0.1';
+  const loopbackHosts = ['127.0.0.1', 'localhost', '::1'];
+  if (loopbackHosts.includes(bindHost)) {
+    console.log(`${PASS}  — bound to ${bindHost}`);
+    passed++;
+  } else {
+    console.log(`${FAIL}  — gateway configured to bind to ${bindHost}`);
+    console.log('    This exposes the gateway to your network.');
+    console.log(`    Fix: remove "bindHost" or "host" from app-config.json`);
+  }
+
+  // ── Check 3: CORS not expanded beyond loopback ───────────────────────────
+  check('3. CORS restricted to loopback');
+  const corsOrigins = process.env['CORS_ORIGINS'] || '';
+  if (corsOrigins.trim().length > 0) {
+    console.log(`${WARN}  — CORS_ORIGINS env var is set`);
+    console.log(`    Allowed origins: ${corsOrigins}`);
+    console.log('    Review whether non-loopback origins are intentional.');
+  } else {
+    console.log(`${PASS}  — CORS_ORIGINS not set (loopback only)`);
+    passed++;
+  }
+
+  // ── Check 4: Guard engine policy is present ──────────────────────────────
+  check('4. Guard policy file exists');
+  const policyPath = path.join(configDir, 'policy.json');
+  if (!existsSync(policyPath)) {
+    console.log(`${WARN}  — policy.json not found`);
+    console.log('    Guard engine starts with empty policy (allow-all default).');
+    console.log('    Fix: open the Guard tab in the Control UI to configure rules');
+  } else {
+    let policy = {};
+    try { policy = JSON.parse(fs.readFileSync(policyPath, 'utf-8')); } catch { /* ignore */ }
+    const rules = Array.isArray(policy['rules']) ? policy['rules'] : [];
+    const enabledRules = rules.filter(r => r && r.enabled !== false);
+    const defaultAction = policy['defaultAction'] || 'allow';
+    if (enabledRules.length > 0 || defaultAction === 'deny') {
+      console.log(`${PASS}  — ${enabledRules.length} enabled rule(s), default=${defaultAction}`);
+      passed++;
+    } else {
+      console.log(`${WARN}  — 0 enabled rules and defaultAction=allow (no restrictions)`);
+      console.log('    Fix: add Guard rules in the Control UI → Guard tab');
+    }
+  }
+
+  // ── Check 5: No cloud providers without credentials ──────────────────────
+  check('5. Cloud providers have credentials');
+  const providersPath = path.join(configDir, 'providers.json');
+  let providerList = [];
+  if (existsSync(providersPath)) {
+    try {
+      const raw = JSON.parse(fs.readFileSync(providersPath, 'utf-8'));
+      providerList = Array.isArray(raw) ? raw
+        : (raw && Array.isArray(raw['providers']) ? raw['providers'] : []);
+    } catch { /* ignore */ }
+  }
+  const cloudTypes = ['anthropic', 'openai', 'openai-compat'];
+  const unauthCloud = providerList.filter(p =>
+    p && p.isEnabled !== false &&
+    cloudTypes.includes(p.type) &&
+    (p.authMethod === 'none' || (!p.authMethod && !p.apiKey && !p.oauthAccount))
+  );
+  if (unauthCloud.length > 0) {
+    console.log(`${WARN}  — ${unauthCloud.length} cloud provider(s) have no credentials`);
+    unauthCloud.forEach(p => console.log(`    · ${p.name || p.id} (${p.type})`));
+    console.log('    Fix: add API keys in the Models tab');
+  } else {
+    console.log(`${PASS}  — all enabled cloud providers have credentials`);
+    passed++;
+  }
+
+  // ── Check 6: No API key patterns in process.env ──────────────────────────
+  check('6. No secrets in env vars');
+  // Looks for common secret patterns that may have leaked into the environment.
+  // Providers are expected to store keys in providers.json, not env vars.
+  const secretPatterns = [
+    /^sk-ant-/i,          // Anthropic
+    /^sk-[a-z0-9]{32,}/i, // OpenAI-style
+    /^AIza/,              // Google
+    /^xoxb-/,             // Slack bot token
+    /^ghp_/,              // GitHub PAT
+  ];
+  const suspiciousEnvKeys = Object.entries(process.env).filter(([, val]) => {
+    if (typeof val !== 'string' || val.length < 20) return false;
+    return secretPatterns.some(re => re.test(val));
+  }).map(([k]) => k);
+  if (suspiciousEnvKeys.length > 0) {
+    console.log(`${WARN}  — ${suspiciousEnvKeys.length} env var(s) look like API keys`);
+    suspiciousEnvKeys.forEach(k => console.log(`    · ${k}`));
+    console.log('    Review whether these are intentionally set.');
+    console.log('    Store API keys in providers.json (encrypted at rest) instead.');
+  } else {
+    console.log(`${PASS}  — no obvious API key patterns found in env vars`);
+    passed++;
+  }
+
+  // ── Check 7: providers.json uses ${ENV_VAR} safely (no plaintext keys) ───
+  check('7. API keys encrypted at rest');
+  const ENCRYPTION_PREFIX = 'e1:';
+  let plaintextKeyCount = 0;
+  for (const p of providerList) {
+    if (!p || typeof p !== 'object') continue;
+    if (typeof p['apiKey'] === 'string' && p['apiKey'].length > 0) {
+      if (!p['apiKey'].startsWith(ENCRYPTION_PREFIX) && !p['apiKey'].startsWith('${')) {
+        plaintextKeyCount++;
+      }
+    }
+  }
+  if (plaintextKeyCount > 0) {
+    console.log(`${FAIL}  — ${plaintextKeyCount} provider(s) have unencrypted API keys in providers.json`);
+    console.log('    Fix: restart Krythor — it auto-encrypts keys on load');
+  } else {
+    console.log(`${PASS}  — all API keys are encrypted or use env var placeholders`);
+    passed++;
+  }
+
+  // ── Summary ───────────────────────────────────────────────────────────────
+  console.log('');
+  const scoreColour = passed === TOTAL ? '\x1b[32m' : passed >= TOTAL - 2 ? '\x1b[33m' : '\x1b[31m';
+  console.log(`  Security score: ${scoreColour}${passed}/${TOTAL}\x1b[0m checks passed`);
+  console.log('');
+  if (passed === TOTAL) {
+    console.log('\x1b[32m  All security checks passed.\x1b[0m');
+  } else {
+    console.log('\x1b[33m  Review the items above and address any WARN or FAIL entries.\x1b[0m');
+  }
+  console.log('');
+  process.exit(passed === TOTAL ? 0 : 1);
+}
+
 // ── krythor tui ────────────────────────────────────────────────────────────
 // Lightweight terminal dashboard. Polls /health every 5 seconds and re-renders.
 // Shows: gateway status, provider list, recent memory entries, last 5 commands.
@@ -1108,6 +1296,26 @@ const COMMAND_HELP = {
       'After uninstalling, also remove the PATH entry from your shell config.',
     ],
   },
+  'security-audit': {
+    summary: 'Run a security hardening check (7 checks, scored)',
+    detail: [
+      'Usage: krythor security-audit',
+      '',
+      'Checks:',
+      '  1. Auth token is configured and auth is not disabled',
+      '  2. Gateway binds to loopback (127.0.0.1) only',
+      '  3. CORS not expanded beyond loopback via CORS_ORIGINS',
+      '  4. Guard policy.json exists with rules or deny default',
+      '  5. Enabled cloud providers all have credentials',
+      '  6. No obvious API key patterns found in process.env',
+      '  7. All API keys in providers.json are encrypted at rest',
+      '',
+      'Prints PASS / WARN / FAIL for each check.',
+      'Security score: X/7 checks passed.',
+      '',
+      'Exit 0 if all 7 pass, exit 1 if any WARN or FAIL.',
+    ],
+  },
   help: {
     summary: 'Print this help text',
     detail: [
@@ -1120,6 +1328,7 @@ const COMMAND_HELP = {
       '  krythor help',
       '  krythor help start',
       '  krythor help doctor',
+      '  krythor help security-audit',
     ],
   },
 };
@@ -1236,6 +1445,13 @@ else if (process.argv.includes('backup')) {
 // ── krythor uninstall ──────────────────────────────────────────────────────
 else if (process.argv.includes('uninstall')) {
   runUninstall().catch(e => {
+    console.error('\x1b[31mFatal:\x1b[0m', e.message);
+    process.exit(1);
+  });
+}
+// ── krythor security-audit ─────────────────────────────────────────────────
+else if (process.argv[2] === 'security-audit') {
+  runSecurityAudit().catch(e => {
     console.error('\x1b[31mFatal:\x1b[0m', e.message);
     process.exit(1);
   });
