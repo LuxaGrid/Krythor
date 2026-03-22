@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { CommandCenterAgent } from '../types';
-import { AgentGlyph } from './AgentGlyph';
+import { AgentBody } from './AgentBody';
 import { AgentRings } from './AgentRings';
 import { TaskBubble } from './TaskBubble';
 import { AgentTooltip } from './AgentTooltip';
@@ -8,47 +8,26 @@ import { AgentTooltip } from './AgentTooltip';
 interface AgentEntityProps {
   agent: CommandCenterAgent;
   isFocused: boolean;
-  isDimmed: boolean; // true when another agent is focused
+  isDimmed: boolean;
   onFocus: () => void;
-  memoryPulse?: boolean; // flash when memory recalled
+  memoryPulse?: boolean;
 }
 
-const ENTITY_SIZE = 52;
-const CORE_SIZE = 32;
-
-const STATE_CORE_BG: Record<string, string> = {
-  idle:      'rgba(255,255,255,0.04)',
-  listening: 'rgba(30,174,255,0.12)',
-  thinking:  'rgba(129,140,248,0.15)',
-  working:   'rgba(30,174,255,0.2)',
-  speaking:  'rgba(245,158,11,0.18)',
-  handoff:   'rgba(167,139,250,0.2)',
-  error:     'rgba(248,113,113,0.25)',
-  offline:   'rgba(0,0,0,0.4)',
-};
-
-const BODY_ANIM: Record<string, string> = {
-  idle:      'cc-float 3s ease-in-out infinite',
-  listening: 'cc-float 2s ease-in-out infinite',
-  thinking:  'cc-flicker 0.45s ease-in-out infinite',
-  working:   'cc-float 1.5s ease-in-out infinite',
-  speaking:  'cc-float 2.5s ease-in-out infinite',
-  handoff:   '',
-  error:     'cc-strobe 0.3s ease-in-out 6',
-  offline:   '',
-};
+// Total hit-area / ring container size
+const ENTITY_SIZE = 56;
+// Body SVG size — slightly smaller than entity to leave room for rings
+const BODY_SIZE = 44;
 
 // Abbreviate model IDs for the scene badge
 function shortModel(modelId: string): string {
-  if (modelId.includes('opus')) return 'OPUS';
-  if (modelId.includes('sonnet')) return 'SNT';
-  if (modelId.includes('haiku')) return 'HAI';
+  if (modelId.includes('opus'))    return 'OPUS';
+  if (modelId.includes('sonnet'))  return 'SNT';
+  if (modelId.includes('haiku'))   return 'HAI';
   if (modelId.includes('gpt-4o')) return 'GPT4o';
-  if (modelId.includes('gpt-4')) return 'GPT4';
-  if (modelId.includes('gpt-3')) return 'GPT3';
-  if (modelId.includes('gemini')) return 'GEM';
+  if (modelId.includes('gpt-4'))   return 'GPT4';
+  if (modelId.includes('gpt-3'))   return 'GPT3';
+  if (modelId.includes('gemini'))  return 'GEM';
   if (modelId.includes('mistral')) return 'MST';
-  // fallback: first 5 chars uppercased
   return modelId.slice(0, 5).toUpperCase();
 }
 
@@ -68,7 +47,7 @@ export function AgentEntity({ agent, isFocused, isDimmed, onFocus, memoryPulse }
         height: `${ENTITY_SIZE}px`,
         transition: 'left 700ms cubic-bezier(0.4,0,0.2,1), top 700ms cubic-bezier(0.4,0,0.2,1), opacity 400ms ease',
         zIndex: isFocused ? 20 : 10,
-        opacity: isDimmed ? 0.25 : 1,
+        opacity: isDimmed ? 0.2 : 1,
         pointerEvents: 'auto',
         cursor: 'pointer',
       }}
@@ -88,7 +67,7 @@ export function AgentEntity({ agent, isFocused, isDimmed, onFocus, memoryPulse }
         />
       )}
 
-      {/* Outer animated rings */}
+      {/* Orbital rings — sits behind the body */}
       <AgentRings
         color={agent.themeColor}
         glowColor={agent.glowColor}
@@ -96,42 +75,46 @@ export function AgentEntity({ agent, isFocused, isDimmed, onFocus, memoryPulse }
         size={ENTITY_SIZE}
       />
 
+      {/* Agent body — full custom SVG silhouette, centered */}
+      <div
+        className="absolute"
+        style={{
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          width: `${BODY_SIZE}px`,
+          height: `${BODY_SIZE}px`,
+          // Float animation wraps the whole body for idle/working states
+          animation: isOffline ? 'none'
+            : agent.currentState === 'idle' ? 'cc-float 3.5s ease-in-out infinite'
+            : agent.currentState === 'working' ? 'cc-float 1.8s ease-in-out infinite'
+            : agent.currentState === 'listening' ? 'cc-float 2.2s ease-in-out infinite'
+            : '',
+          filter: isOffline ? 'grayscale(1) brightness(0.3)'
+            : isFocused ? `drop-shadow(0 0 6px ${agent.themeColor})`
+            : undefined,
+          transition: 'filter 300ms ease',
+        }}
+      >
+        <AgentBody
+          role={agent.role}
+          color={agent.currentState === 'error' ? '#f87171' : agent.themeColor}
+          glowColor={agent.glowColor}
+          state={agent.currentState}
+          size={BODY_SIZE}
+        />
+      </div>
+
       {/* Memory recall pulse overlay */}
       {memoryPulse && (
         <div
           className="absolute inset-0 rounded-full pointer-events-none"
           style={{
-            background: 'transparent',
-            boxShadow: `0 0 28px 10px rgba(147,197,253,0.55)`,
-            animation: 'cc-ring 0.8s ease-out 2',
+            boxShadow: `0 0 32px 12px rgba(147,197,253,0.6)`,
+            animation: 'cc-ring 0.9s ease-out 2',
           }}
         />
       )}
-
-      {/* Core body */}
-      <div
-        className="absolute rounded-xl flex items-center justify-center transition-all duration-300"
-        style={{
-          width: `${CORE_SIZE}px`,
-          height: `${CORE_SIZE}px`,
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          background: STATE_CORE_BG[agent.currentState] ?? STATE_CORE_BG.idle,
-          border: `1.5px solid ${agent.currentState === 'error' ? '#f87171' : agent.themeColor}`,
-          boxShadow: isOffline
-            ? 'none'
-            : `0 0 12px 2px ${agent.glowColor}, inset 0 0 8px ${agent.glowColor}`,
-          animation: BODY_ANIM[agent.currentState] ?? '',
-          opacity: isOffline ? 0.3 : 1,
-        }}
-      >
-        <AgentGlyph
-          role={agent.role}
-          color={agent.currentState === 'error' ? '#f87171' : agent.themeColor}
-          animState={agent.currentState}
-        />
-      </div>
 
       {/* Focus ring */}
       {(isFocused || hovered) && (
@@ -139,16 +122,16 @@ export function AgentEntity({ agent, isFocused, isDimmed, onFocus, memoryPulse }
           className="absolute inset-0 rounded-full pointer-events-none"
           style={{
             border: `1px solid ${agent.themeColor}`,
-            boxShadow: `0 0 16px 4px ${agent.glowColor}`,
-            opacity: 0.6,
+            boxShadow: `0 0 18px 5px ${agent.glowColor}`,
+            opacity: 0.55,
           }}
         />
       )}
 
-      {/* Name + state label */}
+      {/* Name label */}
       <div
         className="absolute left-1/2 -translate-x-1/2 text-center pointer-events-none whitespace-nowrap"
-        style={{ top: `${ENTITY_SIZE + 4}px` }}
+        style={{ top: `${ENTITY_SIZE + 5}px` }}
       >
         <div
           className="text-[9px] font-mono font-bold tracking-widest uppercase"
@@ -161,13 +144,13 @@ export function AgentEntity({ agent, isFocused, isDimmed, onFocus, memoryPulse }
         </div>
       </div>
 
-      {/* Local/remote badge — bottom-right of entity */}
+      {/* Local/remote badge — bottom-right */}
       {!isOffline && agent.localOrRemote !== 'unknown' && (
         <div
           className="absolute pointer-events-none"
           style={{
-            right: -2,
-            bottom: -2,
+            right: -1,
+            bottom: -1,
             fontSize: '7px',
             fontFamily: 'monospace',
             fontWeight: 700,
@@ -185,13 +168,13 @@ export function AgentEntity({ agent, isFocused, isDimmed, onFocus, memoryPulse }
         </div>
       )}
 
-      {/* Model badge — top-right when model is assigned and agent is active */}
+      {/* Model badge — top-right when active */}
       {agent.assignedModel && !isOffline && agent.currentState !== 'idle' && (
         <div
           className="absolute pointer-events-none"
           style={{
-            right: -4,
-            top: -2,
+            right: -3,
+            top: -1,
             fontSize: '7px',
             fontFamily: 'monospace',
             fontWeight: 700,
@@ -202,7 +185,7 @@ export function AgentEntity({ agent, isFocused, isDimmed, onFocus, memoryPulse }
             border: `1px solid ${agent.glowColor}`,
             borderRadius: '3px',
             padding: '1px 3px',
-            maxWidth: '40px',
+            maxWidth: '42px',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
