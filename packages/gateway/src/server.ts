@@ -29,6 +29,7 @@ import { registerLocalModelsRoute } from './routes/local-models.js';
 import { registerStreamWs } from './ws/stream.js';
 import { registerDashboardRoute } from './routes/dashboard.js';
 import { registerGatewayRoutes } from './routes/gateway.js';
+import { registerOpenAICompatRoutes } from './routes/openai.compat.js';
 import { HeartbeatEngine, type HeartbeatRunRecord, type HeartbeatInsight } from './heartbeat/HeartbeatEngine.js';
 import { logger } from './logger.js';
 import { loadOrCreateToken, verifyToken } from './auth.js';
@@ -182,7 +183,7 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
   // Applied only to /api/* and /ws/* so that static assets load normally.
   app.addHook('preHandler', async (req, reply) => {
     const url = req.url ?? '';
-    if (!url.startsWith('/api/') && !url.startsWith('/ws/')) return;
+    if (!url.startsWith('/api/') && !url.startsWith('/ws/') && !url.startsWith('/v1/')) return;
     const host = req.headers['host'] ?? '';
     const allowed = [`127.0.0.1:${GATEWAY_PORT}`, `localhost:${GATEWAY_PORT}`];
     if (!allowed.includes(host)) {
@@ -793,6 +794,15 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
 
   // Gateway identity and capability routes (auth required via global preHandler).
   registerGatewayRoutes(app, join(dataDir, 'config'));
+
+  // OpenAI-compatible API routes — allows OpenAI SDK users to point baseURL at Krythor.
+  // Auth is handled inside the route (flexible — allows no-token usage for local-only setups).
+  registerOpenAICompatRoutes(
+    app,
+    models,
+    () => authCfg.token,
+    authCfg.authDisabled ?? false,
+  );
 
   // ── Session idle cleanup job ─────────────────────────────────────────────────
   // Archives conversations idle for more than 24 hours (non-pinned only).
