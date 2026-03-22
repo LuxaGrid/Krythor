@@ -5,6 +5,7 @@ import {
   type Agent, type AgentRun, type AgentStats, type Provider,
 } from '../api.ts';
 import { useAppConfig } from '../App.tsx';
+import { PanelHeader } from './PanelHeader.tsx';
 
 const STATUS_COLOR: Record<string, string> = {
   completed: 'text-emerald-400',
@@ -282,7 +283,13 @@ export function AgentsPanel() {
   );
 
   return (
-    <div className="flex h-full">
+    <div className="flex flex-col h-full">
+      <PanelHeader
+        title="Agents"
+        description="Create and configure AI agents. Each agent has its own personality, model, and system prompt."
+        tip="Click an agent in the list to view its details and run history. Use the + button to create a new agent. You can export and import agents as JSON files."
+      />
+      <div className="flex flex-1 min-h-0">
       {/* Agent list */}
       <div className="w-52 shrink-0 border-r border-zinc-800 flex flex-col">
         <div className="p-2 border-b border-zinc-800 flex items-center justify-between gap-1">
@@ -539,6 +546,7 @@ export function AgentsPanel() {
             <p className="text-zinc-700 text-xs">or create a new one with <span className="text-brand-400">+ new</span></p>
           </div>
         )}
+      </div>
       </div>
     </div>
   );

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { health, getGatewayInfo, getHeartbeatHistory } from '../api.ts';
 import type { Health, GatewayInfo, ProviderHealthEntry } from '../api.ts';
+import { PanelHeader } from './PanelHeader.tsx';
 
 // ── Theme helpers ─────────────────────────────────────────────────────────────
 
@@ -115,8 +116,13 @@ export function SettingsPanel() {
     : null;
 
   return (
-    <div className="h-full overflow-y-auto p-6 max-w-2xl mx-auto">
-      <h2 className="text-sm font-semibold text-zinc-200 mb-6">Settings</h2>
+    <div className="flex flex-col h-full">
+      <PanelHeader
+        title="Settings"
+        description="Gateway configuration, provider health history, theme, and system information."
+        tip="Change your theme between dark and light mode. Provider health dots show the last 10 ping results — green is healthy, red is failed. Heartbeat runs periodic background checks on your providers."
+      />
+      <div className="flex-1 overflow-y-auto p-6 max-w-2xl mx-auto w-full">
 
       {/* Gateway */}
       <Section title="Gateway">
@@ -189,6 +195,7 @@ export function SettingsPanel() {
           </p>
         </Section>
       )}
+      </div>
     </div>
   );
 }

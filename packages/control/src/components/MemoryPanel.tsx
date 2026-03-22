@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { listMemory, createMemory, updateMemory, deleteMemory, pinMemory, unpinMemory, pruneMemory, summarizeMemory, pruneMemoryBulk, exportMemory, memoryStatsDetailed, listMemoryTags, type MemoryEntry, type MemorySearchResult, type Health, type MemoryStatsDetailed } from '../api.ts';
+import { PanelHeader } from './PanelHeader.tsx';
 
 const SCOPES = ['all', 'session', 'user', 'agent', 'workspace', 'skill'];
 const PAGE_SIZE = 20;
@@ -395,6 +396,11 @@ export function MemoryPanel({ health }: MemoryPanelProps) {
 
   return (
     <div className="flex flex-col h-full">
+      <PanelHeader
+        title="Memory"
+        description="Persistent knowledge stored across conversations. Search, browse, pin, and manage what your agents remember."
+        tip="Use the search bar to find memories by keyword or semantic meaning. Filter by scope (user, agent, etc.) or tags. Pin important memories so they're always available. Use Prune to auto-remove low-importance entries."
+      />
       {showForm && (
         <MemoryForm
           initial={editing ?? undefined}

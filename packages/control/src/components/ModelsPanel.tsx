@@ -8,6 +8,7 @@ import {
   type ProviderTestResult, type LocalModelDiscovery,
 } from '../api.ts';
 import { ConnectKeyModal } from './ConnectKeyModal.tsx';
+import { PanelHeader } from './PanelHeader.tsx';
 
 const PROVIDER_TYPES = ['ollama', 'openai', 'anthropic', 'openai-compat', 'gguf'];
 
@@ -354,24 +355,28 @@ export function ModelsPanel({ health }: Props) {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="p-3 border-b border-zinc-800 flex items-center justify-between">
-        <span className="text-xs text-zinc-500">{providers.length} provider{providers.length !== 1 ? 's' : ''}</span>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handleDiscover}
-            disabled={discovering}
-            className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
-            title="Probe Ollama, LM Studio, and llama-server on default ports"
-          >
-            {discovering ? 'Probing…' : 'Discover local'}
-          </button>
-          <button
-            onClick={() => { setShowAdd(s => !s); setAddError(null); }}
-            className="text-xs text-brand-400 hover:text-brand-300 transition-colors"
-          >+ add provider</button>
-        </div>
-      </div>
+      <PanelHeader
+        title="Models"
+        description="Connect AI providers and manage available models. Supports Ollama (local), OpenAI, Anthropic, and any OpenAI-compatible API."
+        tip="Click Connect to add your API key for OpenAI or Anthropic. Use Discover Local to auto-detect Ollama and LM Studio running on your machine. Ping a provider to check if it's reachable."
+        actions={
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-zinc-600">{providers.length} provider{providers.length !== 1 ? 's' : ''}</span>
+            <button
+              onClick={handleDiscover}
+              disabled={discovering}
+              className="text-xs text-zinc-400 hover:text-zinc-200 transition-colors"
+              title="Probe Ollama, LM Studio, and llama-server on default ports"
+            >
+              {discovering ? 'Probing…' : 'Discover local'}
+            </button>
+            <button
+              onClick={() => { setShowAdd(s => !s); setAddError(null); }}
+              className="text-xs bg-brand-600/20 text-brand-400 hover:bg-brand-600/30 hover:text-brand-300 border border-brand-600/30 rounded px-2 py-1 transition-colors"
+            >+ add provider</button>
+          </div>
+        }
+      />
 
       {/* Local model discovery results */}
       {showDiscovery && (

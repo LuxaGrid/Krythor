@@ -3,6 +3,7 @@ import {
   listSkills, listBuiltinSkills, createSkill, updateSkill, deleteSkill, listProviders, runSkill,
   type Skill, type CreateSkillInput, type Provider, type BuiltinSkill,
 } from '../api.ts';
+import { PanelHeader } from './PanelHeader.tsx';
 
 const INPUT_CLS = 'w-full bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1.5 text-xs text-zinc-200 placeholder-zinc-600 outline-none focus:border-brand-600 focus:ring-1 focus:ring-brand-600/30 transition-colors';
 const SELECT_CLS = 'w-full bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1.5 text-xs text-zinc-300 outline-none focus:border-brand-600 focus:ring-1 focus:ring-brand-600/30 transition-colors';
@@ -325,7 +326,13 @@ export function SkillsPanel() {
   };
 
   return (
-    <div className="flex h-full">
+    <div className="flex flex-col h-full">
+      <PanelHeader
+        title="Skills"
+        description="Reusable task templates that give your agents specialized capabilities and pre-configured behaviors."
+        tip="Click a skill to view its details and run it on demand. Built-in skills are provided by Krythor. Create custom skills with your own system prompts and model preferences."
+      />
+      <div className="flex flex-1 min-h-0">
       {runningSkill && (
         <RunSkillDialog skill={runningSkill} onClose={() => setRunningSkill(null)} />
       )}
@@ -535,6 +542,7 @@ export function SkillsPanel() {
             </div>
           </div>
         )}
+      </div>
       </div>
     </div>
   );

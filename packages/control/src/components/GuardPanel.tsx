@@ -3,6 +3,7 @@ import {
   guardStats, guardRules, updateGuardRule, deleteGuardRule, createGuardRule, setGuardDefault,
   type GuardRule, type GuardStats,
 } from '../api.ts';
+import { PanelHeader } from './PanelHeader.tsx';
 
 const ACTION_COLOR: Record<string, string> = {
   allow: 'text-emerald-400', deny: 'text-red-400', warn: 'text-amber-400',
@@ -176,34 +177,21 @@ export function GuardPanel() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="p-3 border-b border-zinc-800 flex flex-wrap items-center gap-3">
-        {stats && (
-          <>
-            <span className="text-xs text-zinc-500">{stats.ruleCount} rules</span>
-            <span className="text-xs text-zinc-600">|</span>
-            <span className="text-xs text-zinc-500">{stats.enabledRules} enabled</span>
-            <span className="text-xs text-zinc-600">|</span>
-            <span className="text-xs">
-              default: <span className={stats.defaultAction === 'allow' ? 'text-emerald-400' : 'text-red-400'}>
-                {stats.defaultAction}
-              </span>
-            </span>
-          </>
-        )}
-        <div className="ml-auto flex items-center gap-2">
-          <button
-            onClick={() => { setShowAdd(s => !s); setAddError(null); }}
-            className="text-xs text-brand-400 hover:text-brand-300 transition-colors"
-          >
-            + Add Rule
-          </button>
-          <button
-            onClick={load}
-            className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
-          >{loading ? <Spinner /> : '↺'}</button>
-        </div>
-      </div>
+      <PanelHeader
+        title="Guard"
+        description="Safety rules that control what your agents can and cannot do. Set the safety mode and define allow/deny/warn rules."
+        tip="Choose a safety mode: Guarded (strict, deny by default), Balanced (warn on risky requests), or Power User (unrestricted). Add custom rules to block or allow specific content patterns."
+        actions={
+          <div className="flex items-center gap-2">
+            {stats && <span className="text-xs text-zinc-600">{stats.enabledRules}/{stats.ruleCount} rules active</span>}
+            <button
+              onClick={() => { setShowAdd(s => !s); setAddError(null); }}
+              className="text-xs bg-brand-600/20 text-brand-400 hover:bg-brand-600/30 border border-brand-600/30 rounded px-2 py-1 transition-colors"
+            >+ Add Rule</button>
+            <button onClick={load} className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors">{loading ? <Spinner /> : '↺'}</button>
+          </div>
+        }
+      />
 
       {/* Safety Mode Selector */}
       <div className="px-4 py-2 border-b border-zinc-800 flex items-center gap-2">

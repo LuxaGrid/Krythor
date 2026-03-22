@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { getDashboard, getTokenHistory, type Dashboard, type InferenceRecord } from '../api.ts';
+import { PanelHeader } from './PanelHeader.tsx';
 
 const SPARK_CHARS = '▁▂▃▄▅▆▇█';
 
@@ -102,21 +103,17 @@ export function DashboardPanel() {
 
   return (
     <div className="flex flex-col h-full overflow-y-auto">
-      <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
-        <div>
-          <h2 className="text-sm font-semibold text-zinc-200">Dashboard</h2>
-          <p className="text-xs text-zinc-600 mt-0.5">
-            v{data.version}
-            {lastRefresh && ` · refreshed ${lastRefresh.toLocaleTimeString()}`}
-          </p>
-        </div>
-        <button
-          onClick={() => { void load(); }}
-          className="text-xs text-brand-400 hover:text-brand-300 transition-colors"
-        >
-          ↺ refresh
-        </button>
-      </div>
+      <PanelHeader
+        title="Dashboard"
+        description={`System stats and health overview. v${data.version}${lastRefresh ? ` · refreshed ${lastRefresh.toLocaleTimeString()}` : ''}`}
+        tip="Live view of token usage, inference history, provider health, and agent activity. Click Refresh to pull the latest data."
+        actions={
+          <button
+            onClick={() => { void load(); }}
+            className="text-xs text-zinc-400 hover:text-zinc-200 transition-colors"
+          >↺ refresh</button>
+        }
+      />
 
       <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard label="Uptime" value={formatUptime(data.uptime)} />

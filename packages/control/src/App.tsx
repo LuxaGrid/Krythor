@@ -1,4 +1,4 @@
-import { useState, useEffect, createContext, useContext, useCallback, useRef } from 'react';
+import { useState, useEffect, createContext, useContext, useCallback, useRef, useMemo } from 'react';
 import { health, getAppConfig, patchAppConfig, getGatewayToken, type Health, type AppConfig } from './api.ts';
 import { GatewayProvider, useGatewayContext } from './GatewayContext.tsx';
 import { StatusBar } from './components/StatusBar.tsx';
@@ -31,20 +31,27 @@ export const useAppConfig = () => useContext(AppConfigContext);
 // ── Tabs ──────────────────────────────────────────────────────────────────
 type Tab = 'command' | 'agents' | 'skills' | 'memory' | 'models' | 'guard' | 'events' | 'mission' | 'command-center' | 'workflow' | 'dashboard' | 'settings';
 
-const TABS: { id: Tab; label: string }[] = [
-  { id: 'command',   label: 'Command'         },
-  { id: 'agents',    label: 'Agents'          },
-  { id: 'skills',    label: 'Skills'          },
-  { id: 'memory',    label: 'Memory'          },
-  { id: 'models',    label: 'Models'          },
-  { id: 'guard',     label: 'Guard'           },
-  { id: 'events',    label: 'Events'          },
-  { id: 'mission',         label: 'Mission Control' },
-  { id: 'command-center', label: 'Command Center'  },
-  { id: 'workflow',        label: 'Workflow'        },
-  { id: 'dashboard', label: 'Dashboard'       },
-  { id: 'settings',  label: 'Settings'        },
+// Primary tabs — always visible
+const PRIMARY_TABS: { id: Tab; label: string; hint: string }[] = [
+  { id: 'command',        label: 'Chat',           hint: 'Send messages to your AI agents' },
+  { id: 'agents',         label: 'Agents',         hint: 'Create and manage AI agents' },
+  { id: 'memory',         label: 'Memory',         hint: 'View and search persistent memory' },
+  { id: 'models',         label: 'Models',         hint: 'Connect AI providers' },
+  { id: 'command-center', label: 'Command Center', hint: 'Live animated agent operations view' },
+  { id: 'dashboard',      label: 'Dashboard',      hint: 'System stats and health' },
+  { id: 'settings',       label: 'Settings',       hint: 'Configuration and info' },
 ];
+
+// Advanced tabs — shown in overflow menu
+const ADVANCED_TABS: { id: Tab; label: string; hint: string }[] = [
+  { id: 'skills',  label: 'Skills',          hint: 'Reusable task templates' },
+  { id: 'guard',   label: 'Guard',           hint: 'Safety rules and policy engine' },
+  { id: 'events',  label: 'Events',          hint: 'Real-time event stream' },
+  { id: 'mission', label: 'Mission Control', hint: 'Agent orchestration workspace' },
+  { id: 'workflow',label: 'Workflow',        hint: 'Workflow management' },
+];
+
+const ALL_TABS = [...PRIMARY_TABS, ...ADVANCED_TABS];
 
 // ── About Dialog ──────────────────────────────────────────────────────────
 
@@ -221,6 +228,156 @@ function AboutDialog({ health, onClose }: AboutDialogProps) {
   );
 }
 
+// ── Tab Bar ───────────────────────────────────────────────────────────────
+
+const TAB_ORDER_KEY = 'krythor_tab_order';
+
+function loadTabOrder(): Tab[] {
+  try {
+    const stored = localStorage.getItem(TAB_ORDER_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored) as Tab[];
+      // Validate — must contain all PRIMARY_TABS ids
+      const primaryIds = PRIMARY_TABS.map(t => t.id);
+      if (primaryIds.every(id => parsed.includes(id)) && parsed.every(id => primaryIds.includes(id))) {
+        return parsed;
+      }
+    }
+  } catch { /* ignore */ }
+  return PRIMARY_TABS.map(t => t.id);
+}
+
+function saveTabOrder(order: Tab[]) {
+  try { localStorage.setItem(TAB_ORDER_KEY, JSON.stringify(order)); } catch { /* ignore */ }
+}
+
+function TabBar({ tab, setTab, eventCount }: { tab: Tab; setTab: (t: Tab) => void; eventCount: number }) {
+  const [advOpen, setAdvOpen] = useState(false);
+  const [tabOrder, setTabOrder] = useState<Tab[]>(loadTabOrder);
+  const [dragOver, setDragOver] = useState<Tab | null>(null);
+  const dragSrc = useRef<Tab | null>(null);
+  const activeInAdvanced = ADVANCED_TABS.some(t => t.id === tab);
+
+  // Ordered primary tabs
+  const orderedPrimary = useMemo(() =>
+    tabOrder.map(id => PRIMARY_TABS.find(t => t.id === id)!).filter(Boolean),
+    [tabOrder]
+  );
+
+  const handleDragStart = (e: React.DragEvent, id: Tab) => {
+    dragSrc.current = id;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', id);
+  };
+
+  const handleDragOver = (e: React.DragEvent, id: Tab) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (dragSrc.current && dragSrc.current !== id) setDragOver(id);
+  };
+
+  const handleDrop = (e: React.DragEvent, targetId: Tab) => {
+    e.preventDefault();
+    const srcId = dragSrc.current;
+    if (!srcId || srcId === targetId) return;
+    const next = [...tabOrder];
+    const fromIdx = next.indexOf(srcId);
+    const toIdx = next.indexOf(targetId);
+    next.splice(fromIdx, 1);
+    next.splice(toIdx, 0, srcId);
+    setTabOrder(next);
+    saveTabOrder(next);
+    setDragOver(null);
+    dragSrc.current = null;
+  };
+
+  const handleDragEnd = () => {
+    setDragOver(null);
+    dragSrc.current = null;
+  };
+
+  return (
+    <div className="flex items-stretch border-b border-zinc-800 bg-zinc-950 relative select-none">
+      {/* Primary tabs — draggable to reorder */}
+      {orderedPrimary.map(t => {
+        const isActive = tab === t.id;
+        const isCC = t.id === 'command-center';
+        const isDragTarget = dragOver === t.id;
+        return (
+          <button
+            key={t.id}
+            draggable
+            onDragStart={e => handleDragStart(e, t.id)}
+            onDragOver={e => handleDragOver(e, t.id)}
+            onDrop={e => handleDrop(e, t.id)}
+            onDragEnd={handleDragEnd}
+            onClick={() => setTab(t.id)}
+            title={`${t.hint}\n(drag to reorder)`}
+            className={`px-4 py-2.5 text-sm font-medium transition-colors relative whitespace-nowrap cursor-pointer
+              ${isDragTarget ? 'bg-zinc-800/60' : ''}
+              ${isActive
+                ? isCC
+                  ? 'text-gold-400 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-gold-500'
+                  : 'text-zinc-100 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-brand-500'
+                : isCC
+                  ? 'text-gold-600 hover:text-gold-400'
+                  : 'text-zinc-500 hover:text-zinc-300'}`}
+          >
+            {t.label}
+            {isDragTarget && (
+              <span className="absolute left-0 top-1 bottom-1 w-0.5 bg-brand-500 rounded-full" />
+            )}
+          </button>
+        );
+      })}
+
+      {/* Divider */}
+      <div className="w-px bg-zinc-800 my-2 mx-1 flex-shrink-0" />
+
+      {/* Advanced overflow menu */}
+      <div className="relative flex items-stretch">
+        <button
+          onClick={() => setAdvOpen(o => !o)}
+          title="More tabs"
+          className={`px-3 py-2.5 text-sm font-medium transition-colors flex items-center gap-1.5 whitespace-nowrap
+            ${activeInAdvanced || advOpen ? 'text-zinc-300' : 'text-zinc-600 hover:text-zinc-400'}`}
+        >
+          {activeInAdvanced ? ADVANCED_TABS.find(t => t.id === tab)?.label : 'More'}
+          <span className={`text-[10px] transition-transform ${advOpen ? 'rotate-180' : ''}`}>▾</span>
+          {eventCount > 0 && (
+            <span className="bg-brand-600 text-white text-[10px] rounded-full px-1.5 py-px leading-none">
+              {eventCount}
+            </span>
+          )}
+        </button>
+
+        {advOpen && (
+          <>
+            {/* Backdrop */}
+            <div className="fixed inset-0 z-40" onClick={() => setAdvOpen(false)} />
+            {/* Dropdown */}
+            <div className="absolute top-full left-0 z-50 mt-0 w-52 bg-zinc-900 border border-zinc-700 rounded-b-xl shadow-2xl overflow-hidden">
+              {ADVANCED_TABS.map(t => (
+                <button
+                  key={t.id}
+                  onClick={() => { setTab(t.id); setAdvOpen(false); }}
+                  className={`w-full text-left px-4 py-3 transition-colors flex flex-col gap-0.5
+                    ${tab === t.id
+                      ? 'bg-zinc-800 text-zinc-100'
+                      : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}`}
+                >
+                  <span className="text-sm font-medium">{t.label}</span>
+                  <span className="text-xs text-zinc-600">{t.hint}</span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Main inner component ───────────────────────────────────────────────────
 
 function AppInner({ onTokenReady }: { onTokenReady: (token: string) => void }) {
@@ -278,7 +435,7 @@ function AppInner({ onTokenReady }: { onTokenReady: (token: string) => void }) {
 
   // ── Global keyboard shortcuts ────────────────────────────────────────────
   useEffect(() => {
-    const tabOrder: Tab[] = ['command', 'agents', 'skills', 'memory', 'models', 'guard', 'events', 'mission', 'command-center', 'workflow', 'dashboard', 'settings'];
+    const tabOrder: Tab[] = ALL_TABS.map(t => t.id);
 
     const handler = (e: KeyboardEvent) => {
       // Ignore when typing in an input/textarea (except for modal-close)
@@ -338,33 +495,11 @@ function AppInner({ onTokenReady }: { onTokenReady: (token: string) => void }) {
         <DegradedBanner />
 
         {/* Tab bar */}
-        <div className="flex border-b border-zinc-800 bg-zinc-950">
-          {TABS.map(t => {
-            const isMC = t.id === 'mission' || t.id === 'workflow';
-            const isActive = tab === t.id;
-            return (
-              <button
-                key={t.id}
-                onClick={() => setTab(t.id)}
-                className={`px-4 py-2 text-xs font-medium transition-colors relative
-                  ${isActive
-                    ? isMC
-                      ? 'text-gold-400 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-gold-500'
-                      : 'text-zinc-100 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-brand-500'
-                    : isMC
-                      ? 'text-gold-600 hover:text-gold-400'
-                      : 'text-zinc-500 hover:text-zinc-300'}`}
-              >
-                {t.label}
-                {t.id === 'events' && events.length > 0 && (
-                  <span className="ml-1.5 bg-brand-600 text-white text-xs rounded-full px-1.5 py-0.5 leading-none">
-                    {events.length}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
+        <TabBar
+          tab={tab}
+          setTab={setTab}
+          eventCount={events.length}
+        />
 
         {/* Panel area */}
         <div className="flex-1 overflow-hidden">
