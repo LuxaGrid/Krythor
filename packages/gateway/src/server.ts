@@ -25,6 +25,7 @@ import { registerRecommendRoutes } from './routes/recommend.js';
 import { registerToolRoutes } from './routes/tools.js';
 import { registerCustomToolRoutes } from './routes/tools.custom.js';
 import { registerProviderRoutes } from './routes/providers.js';
+import { registerOAuthRoutes } from './routes/oauth.js';
 import { registerLocalModelsRoute } from './routes/local-models.js';
 import { registerStreamWs } from './ws/stream.js';
 import { registerDashboardRoute } from './routes/dashboard.js';
@@ -664,6 +665,7 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   registerToolRoutes(app, guard, execTool);
   registerCustomToolRoutes(app, customToolStore, guard);
   registerProviderRoutes(app, models);
+  registerOAuthRoutes(app, models);
   registerLocalModelsRoute(app);
   registerConfigPortabilityRoutes(app, models);
   registerPluginRoutes(app, pluginLoader);

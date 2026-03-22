@@ -455,36 +455,55 @@ export class SetupWizard {
       const info = providerInfo[type]!;
       endpoint = info.endpoint;
 
-      console.log(fmt.dim('  This provider supports two connection methods:'));
+      console.log(fmt.dim('  Choose how to authenticate with this provider:'));
       console.log(fmt.dim(''));
-      console.log(fmt.dim('    [1] Enter API key now   — paste a key from the provider dashboard (fastest)'));
-      console.log(fmt.dim('    [2] Connect with OAuth later — opens provider dashboard to get your API key'));
-      console.log(fmt.dim('    [3] Skip entirely       — add this provider manually later'));
+      console.log(fmt.dim('    [1] API key — paste a key from the provider dashboard (simplest)'));
+      console.log(fmt.dim('    [2] OAuth   — browser login with client ID + secret (more secure)'));
+      console.log(fmt.dim('    [3] Skip    — add this provider manually later via the Models tab'));
       console.log(fmt.dim(''));
 
       const authChoice = await choose(
         '  How would you like to connect?',
-        ['Enter API key now', 'Connect with OAuth later — opens provider dashboard to get your API key', 'Skip'],
+        ['API key', 'OAuth (browser login)', 'Skip'],
         0,
       );
 
-      if (authChoice === 'Enter API key now') {
+      if (authChoice === 'API key') {
         authMethod = 'api_key';
         console.log(fmt.dim(`  Get your API key at: ${info.keyUrl}`));
         apiKey = await ask('  API Key: ');
         models = [await pickModel(info.models, info.defaultModel)];
         console.log(fmt.ok(`Provider "${name}" configured with API key.`));
 
-      } else if (authChoice.startsWith('Connect with OAuth later')) {
-        // Persist the provider shell so the UI can surface a Connect CTA on first launch.
-        // Note: "OAuth" here means "click to open provider dashboard to get your API key".
-        // Full browser OAuth flow is not yet implemented — the Connect button in the UI
-        // opens the provider's API key page in a new tab.
-        authMethod = 'none';
-        setupHint = 'oauth_available';
+      } else if (authChoice === 'OAuth (browser login)') {
+        // Real OAuth — user supplies their client ID and optionally client secret.
+        // The gateway's /api/oauth/start endpoint handles the loopback flow after
+        // the provider is saved and the gateway is running.
+        authMethod = 'oauth';
+        setupHint = 'oauth_pending';
         models = [await pickModel(info.models, info.defaultModel)];
-        console.log(fmt.ok(`Provider "${name}" added. Open the Models tab to connect.`));
-        console.log(fmt.dim(`  → Click "Connect" next to this provider to open ${info.keyUrl}`));
+
+        console.log(fmt.dim(''));
+        console.log(fmt.dim('  To use OAuth you need a client ID from the provider.'));
+        console.log(fmt.dim(`  Register an OAuth app at: ${info.keyUrl}`));
+        console.log(fmt.dim('  Set the redirect URI to:  http://127.0.0.1:<port>/oauth/callback'));
+        console.log(fmt.dim('  (the exact port is assigned when the flow starts — use a wildcard if available)'));
+        console.log(fmt.dim(''));
+
+        const clientId = await ask('  OAuth Client ID (leave blank to set later): ');
+        const clientSecret = await ask('  OAuth Client Secret (optional, leave blank for PKCE-only): ');
+
+        if (clientId.trim()) {
+          // Store client credentials in setupHints so the UI can start the flow
+          setupHint = JSON.stringify({
+            type: 'oauth_pending',
+            clientId: clientId.trim(),
+            clientSecret: clientSecret.trim() || undefined,
+          });
+        }
+
+        console.log(fmt.ok(`Provider "${name}" added with OAuth auth method.`));
+        console.log(fmt.dim('  Start Krythor, then go to Models tab → click "Connect with OAuth" to complete login.'));
 
       } else {
         // Skip entirely — do not write any provider entry
