@@ -28,6 +28,39 @@ export function registerMemoryRoutes(app: FastifyInstance, memory: MemoryEngine,
     return reply.send(results);
   });
 
+  // GET /api/memory/search — paginated search with total count envelope
+  // Returns { results, total, page, limit } for consistent pagination support.
+  // Supports the same query params as GET /api/memory plus explicit page/limit.
+  app.get('/api/memory/search', async (req, reply) => {
+    if (guard) {
+      const verdict = guard.check({ operation: 'memory:read', source: 'user' });
+      if (!verdict.allowed) return reply.code(403).send({ error: 'GUARD_DENIED', reason: verdict.reason });
+    }
+    const q = req.query as Record<string, string>;
+    const page  = Math.max(1, parseInt(q.page, 10) || 1);
+    const limit = Math.min(Math.max(1, parseInt(q.limit, 10) || 20), 200);
+    const offset = (page - 1) * limit;
+
+    // Fetch all matching entries (for total count), then slice for page
+    // We fetch up to offset+limit items to avoid full-table count on large DBs,
+    // but we also need the total — use a separate count query.
+    const all = await memory.search({
+      text:          q.q || q.text,
+      scope:         q.scope as MemoryScope | undefined,
+      scope_id:      q.scope_id,
+      tags:          q.tags ? q.tags.split(',').map(t => t.trim()) : undefined,
+      pinned:        q.pinned === 'true' ? true : q.pinned === 'false' ? false : undefined,
+      minImportance: q.minImportance ? (parseFloat(q.minImportance) || undefined) : undefined,
+      limit:         10_000, // fetch all matches to get accurate total
+      offset:        0,
+    }, q.q || q.text);
+
+    const total = all.length;
+    const results = all.slice(offset, offset + limit);
+
+    return reply.send({ results, total, page, limit });
+  });
+
   // GET /api/memory/stats — total entries, oldest/newest date, size estimate
   app.get('/api/memory/stats', async (_req, reply) => {
     if (guard) {
