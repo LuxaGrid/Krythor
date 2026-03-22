@@ -423,12 +423,13 @@ export interface Agent {
   id: string; name: string; description: string; systemPrompt: string;
   memoryScope: string; maxTurns: number; tags: string[];
   createdAt: number; updatedAt: number; modelId?: string;
-  temperature?: number;
-  maxTokens?: number;
+  providerId?: string; temperature?: number; maxTokens?: number;
+  allowedTools?: string[]; idleTimeoutMs?: number;
 }
 export interface CreateAgentInput {
   name: string; systemPrompt: string; description?: string;
-  memoryScope?: string; maxTurns?: number; modelId?: string; tags?: string[];
+  memoryScope?: string; maxTurns?: number; modelId?: string; providerId?: string;
+  tags?: string[]; allowedTools?: string[] | null; idleTimeoutMs?: number | null;
 }
 export interface AgentRun {
   id: string; agentId: string; status: string; input: string;
@@ -601,6 +602,56 @@ export interface ProviderHealthEntry {
 
 export const getHeartbeatHistory = () =>
   req<Record<string, ProviderHealthEntry[]>>('GET', '/heartbeat/history');
+
+// ── Custom webhook tools ──────────────────────────────────────────────────────
+export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+export interface CustomTool {
+  name: string; description: string; type: 'webhook';
+  url: string; method: HttpMethod;
+  headers?: Record<string, string>;
+  bodyTemplate?: string;
+}
+export const listCustomTools  = () => req<CustomTool[]>('GET', '/tools/custom');
+export const createCustomTool = (tool: Omit<CustomTool, 'type'>) =>
+  req<CustomTool>('POST', '/tools/custom', { ...tool, type: 'webhook' });
+export const deleteCustomTool = (name: string) =>
+  req<void>('DELETE', `/tools/custom/${encodeURIComponent(name)}`);
+
+// ── Discord integration ───────────────────────────────────────────────────────
+export interface DiscordConfig {
+  token: string;       // masked as '***' when reading
+  channelId: string;
+  agentId: string;
+  running: boolean;
+}
+export const getDiscordConfig  = () => req<DiscordConfig>('GET', '/discord');
+export const setDiscordConfig  = (cfg: { token: string; channelId: string; agentId: string }) =>
+  req<{ ok: boolean }>('PUT', '/discord', cfg);
+export const stopDiscord       = () => req<{ ok: boolean }>('DELETE', '/discord');
+
+// ── Outbound channels (webhooks) ──────────────────────────────────────────────
+export type ChannelEvent =
+  | 'agent_run_complete' | 'agent_run_failed' | 'memory_saved' | 'memory_deleted'
+  | 'conversation_created' | 'conversation_archived' | 'provider_added' | 'provider_removed'
+  | 'heartbeat' | 'custom';
+export interface Channel {
+  id: string; name: string; url: string; events: ChannelEvent[];
+  hasSecret: boolean; isEnabled: boolean; headers?: Record<string, string>;
+  createdAt: string; updatedAt: string;
+  lastDeliveryAt?: string; lastDeliveryStatus?: 'ok' | 'failed';
+  lastDeliveryStatusCode?: number; failureCount: number;
+}
+export interface CreateChannelInput {
+  name: string; url: string; events?: ChannelEvent[];
+  secret?: string; headers?: Record<string, string>; isEnabled?: boolean;
+}
+export const listChannels         = () => req<Channel[]>('GET', '/channels');
+export const listChannelEvents    = () => req<{ events: ChannelEvent[] }>('GET', '/channels/events');
+export const createChannel        = (c: CreateChannelInput) => req<Channel>('POST', '/channels', c);
+export const updateChannel        = (id: string, patch: Partial<CreateChannelInput> & { isEnabled?: boolean }) =>
+  req<Channel>('PATCH', `/channels/${id}`, patch);
+export const deleteChannel        = (id: string) => req<void>('DELETE', `/channels/${id}`);
+export const testChannel          = (id: string) => req<{ ok: boolean; statusCode?: number; error?: string }>('POST', `/channels/${id}/test`);
 
 // ── Config file editor ─────────────────────────────────────────────────────────
 export interface ConfigFileEntry { key: string; filename: string; exists: boolean }

@@ -19,6 +19,8 @@ import { SettingsPanel } from './components/SettingsPanel.tsx';
 import { WalkthroughTour, shouldShowTour } from './components/WalkthroughTour.tsx';
 import { LogsPanel } from './components/LogsPanel.tsx';
 import { ConfigEditorPanel } from './components/ConfigEditorPanel.tsx';
+import { CustomToolsPanel } from './components/CustomToolsPanel.tsx';
+import { ChannelsPanel } from './components/ChannelsPanel.tsx';
 
 // ── App Config Context ─────────────────────────────────────────────────────
 interface AppConfigCtx {
@@ -32,7 +34,7 @@ export const AppConfigContext = createContext<AppConfigCtx>({
 export const useAppConfig = () => useContext(AppConfigContext);
 
 // ── Tabs ──────────────────────────────────────────────────────────────────
-type Tab = 'command' | 'agents' | 'skills' | 'memory' | 'models' | 'guard' | 'events' | 'mission' | 'command-center' | 'workflow' | 'dashboard' | 'settings' | 'logs' | 'config-editor';
+type Tab = 'command' | 'agents' | 'skills' | 'memory' | 'models' | 'guard' | 'events' | 'mission' | 'command-center' | 'workflow' | 'dashboard' | 'settings' | 'logs' | 'config-editor' | 'custom-tools' | 'channels';
 
 // Primary tabs — always visible
 const PRIMARY_TABS: { id: Tab; label: string; hint: string }[] = [
@@ -54,6 +56,8 @@ const ADVANCED_TABS: { id: Tab; label: string; hint: string }[] = [
   { id: 'events',        label: 'Events',          hint: 'Real-time event stream' },
   { id: 'mission',       label: 'Mission Control', hint: 'Agent orchestration workspace' },
   { id: 'workflow',      label: 'Workflow',        hint: 'Workflow management' },
+  { id: 'custom-tools', label: 'Custom Tools',    hint: 'Register webhook-backed tools for agents' },
+  { id: 'channels',     label: 'Channels',        hint: 'Outbound webhooks that fire on Krythor events' },
 ];
 
 const ALL_TABS = [...PRIMARY_TABS, ...ADVANCED_TABS];
@@ -536,6 +540,8 @@ function AppInner({ onTokenReady }: { onTokenReady: (token: string) => void }) {
           <div className={`h-full ${tab === 'dashboard' ? 'block' : 'hidden'}`}><DashboardPanel /></div>
           <div className={`h-full ${tab === 'settings'     ? 'block' : 'hidden'}`}><SettingsPanel /></div>
           <div className={`h-full ${tab === 'config-editor' ? 'block' : 'hidden'}`}><ConfigEditorPanel /></div>
+          <div className={`h-full ${tab === 'custom-tools' ? 'block' : 'hidden'}`}><CustomToolsPanel /></div>
+          <div className={`h-full ${tab === 'channels'     ? 'block' : 'hidden'}`}><ChannelsPanel /></div>
         </div>
       </div>
     </AppConfigContext.Provider>

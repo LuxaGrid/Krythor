@@ -108,11 +108,15 @@ interface AgentForm {
   temperature: number;
   maxTokens: number;
   maxTurns: number;
+  tags: string;           // comma-separated in the UI
+  allowedTools: string;  // comma-separated in the UI
+  idleTimeoutMs: number; // 0 = no timeout
 }
 
 const EMPTY_FORM: AgentForm = {
   name: '', systemPrompt: '', description: '', memoryScope: 'session',
   modelId: '', providerId: '', temperature: 0.7, maxTokens: 2048, maxTurns: 5,
+  tags: '', allowedTools: '', idleTimeoutMs: 0,
 };
 
 export function AgentsPanel() {
@@ -175,6 +179,9 @@ export function AgentsPanel() {
       temperature: agent.temperature ?? 0.7,
       maxTokens: agent.maxTokens ?? 2048,
       maxTurns: agent.maxTurns ?? 5,
+      tags: (agent.tags ?? []).join(', '),
+      allowedTools: (agent.allowedTools ?? []).join(', '),
+      idleTimeoutMs: agent.idleTimeoutMs ?? 0,
     });
     setCreateError(null);
     setShowForm(true);
@@ -186,6 +193,8 @@ export function AgentsPanel() {
       return;
     }
     setCreateError(null);
+    const parsedTags = form.tags.split(',').map(t => t.trim()).filter(Boolean);
+    const parsedTools = form.allowedTools.split(',').map(t => t.trim()).filter(Boolean);
     const payload = {
       name: form.name, systemPrompt: form.systemPrompt,
       description: form.description, memoryScope: form.memoryScope,
@@ -194,6 +203,9 @@ export function AgentsPanel() {
       maxTokens: form.maxTokens,
       ...(form.modelId && { modelId: form.modelId }),
       ...(form.providerId && { providerId: form.providerId }),
+      ...(parsedTags.length > 0 ? { tags: parsedTags } : {}),
+      ...(parsedTools.length > 0 ? { allowedTools: parsedTools } : { allowedTools: null }),
+      ...(form.idleTimeoutMs > 0 ? { idleTimeoutMs: form.idleTimeoutMs } : { idleTimeoutMs: null }),
     };
     try {
       if (editingId) {
@@ -466,6 +478,34 @@ export function AgentsPanel() {
                 ))}
               </select>
             </div>
+            <div>
+              <label className="text-xs text-zinc-500 block mb-1">Tags <span className="text-zinc-700">(comma-separated)</span></label>
+              <input
+                value={form.tags}
+                onChange={e => setForm(f => ({ ...f, tags: e.target.value }))}
+                placeholder="coding, research, writing"
+                className={INPUT_CLS}
+              />
+            </div>
+            <div>
+              <label className="text-xs text-zinc-500 block mb-1">Allowed tools <span className="text-zinc-700">(comma-separated, empty = all)</span></label>
+              <input
+                value={form.allowedTools}
+                onChange={e => setForm(f => ({ ...f, allowedTools: e.target.value }))}
+                placeholder="web_search, read_file, write_file"
+                className={INPUT_CLS}
+              />
+            </div>
+            <div>
+              <label className="text-xs text-zinc-500 block mb-1">Idle timeout <span className="text-zinc-700">(ms, 0 = none)</span></label>
+              <input
+                type="number" min={0} step={60000}
+                value={form.idleTimeoutMs}
+                onChange={e => setForm(f => ({ ...f, idleTimeoutMs: parseInt(e.target.value, 10) || 0 }))}
+                placeholder="0"
+                className={INPUT_CLS}
+              />
+            </div>
             {createError && <p className="text-red-400 text-xs bg-red-950/30 rounded-lg p-2">{createError}</p>}
             <div className="flex gap-2">
               <button onClick={handleSubmit} className="px-3 py-1.5 bg-brand-600 hover:bg-brand-500 disabled:opacity-40 text-white text-xs rounded-lg transition-colors">
@@ -485,7 +525,15 @@ export function AgentsPanel() {
                 <p className="text-xs text-zinc-700 mt-1">
                   scope: {selected.memoryScope} · maxTurns: {selected.maxTurns}
                   {selected.modelId && ` · model: ${selected.modelId}`}
+                  {selected.idleTimeoutMs != null && ` · idle: ${selected.idleTimeoutMs / 1000}s`}
                 </p>
+                {((selected.tags?.length ?? 0) > 0 || (selected.allowedTools?.length ?? 0) > 0) && (
+                  <p className="text-xs text-zinc-700 mt-0.5">
+                    {(selected.tags?.length ?? 0) > 0 && `tags: ${selected.tags.join(', ')}`}
+                    {(selected.tags?.length ?? 0) > 0 && (selected.allowedTools?.length ?? 0) > 0 && ' · '}
+                    {(selected.allowedTools?.length ?? 0) > 0 && `tools: ${(selected.allowedTools ?? []).join(', ')}`}
+                  </p>
+                )}
               </div>
               <div className="flex gap-1 shrink-0">
                 <button

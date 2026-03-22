@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { health, getGatewayInfo, getHeartbeatHistory } from '../api.ts';
-import type { Health, GatewayInfo, ProviderHealthEntry } from '../api.ts';
+import { health, getGatewayInfo, getHeartbeatHistory, getDiscordConfig, setDiscordConfig, stopDiscord } from '../api.ts';
+import type { Health, GatewayInfo, ProviderHealthEntry, DiscordConfig } from '../api.ts';
 import { PanelHeader } from './PanelHeader.tsx';
 
 // ── Theme helpers ─────────────────────────────────────────────────────────────
@@ -72,12 +72,21 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 // ── Main component ────────────────────────────────────────────────────────────
 
+const INPUT_CLS = 'w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-brand-500';
+
 export function SettingsPanel() {
   const [healthData, setHealthData]     = useState<Health | null>(null);
   const [gatewayInfo, setGatewayInfo]   = useState<GatewayInfo | null>(null);
   const [providerHistory, setProviderHistory] = useState<Record<string, ProviderHealthEntry[]>>({});
   const [theme, setTheme]               = useState<Theme>(getStoredTheme());
   const [loading, setLoading]           = useState(true);
+
+  // Discord state
+  const [discord, setDiscord]           = useState<DiscordConfig | null>(null);
+  const [discordForm, setDiscordForm]   = useState({ token: '', channelId: '', agentId: '' });
+  const [discordSaving, setDiscordSaving] = useState(false);
+  const [discordError, setDiscordError] = useState<string | null>(null);
+  const [discordStatus, setDiscordStatus] = useState<string | null>(null);
 
   useEffect(() => {
     applyTheme(theme);
@@ -86,14 +95,19 @@ export function SettingsPanel() {
   useEffect(() => {
     async function load() {
       try {
-        const [h, info, hist] = await Promise.all([
+        const [h, info, hist, disc] = await Promise.all([
           health(),
           getGatewayInfo().catch(() => null),
           getHeartbeatHistory().catch(() => ({})),
+          getDiscordConfig().catch(() => null),
         ]);
         setHealthData(h);
         setGatewayInfo(info);
         setProviderHistory(hist);
+        if (disc) {
+          setDiscord(disc);
+          setDiscordForm({ token: '', channelId: disc.channelId, agentId: disc.agentId });
+        }
       } catch { /* non-fatal */ }
       finally { setLoading(false); }
     }
@@ -109,6 +123,43 @@ export function SettingsPanel() {
   }
 
   const toggleTheme = () => setTheme(t => t === 'dark' ? 'light' : 'dark');
+
+  async function handleDiscordSave() {
+    setDiscordError(null);
+    setDiscordStatus(null);
+    if (!discordForm.channelId || !discordForm.agentId) {
+      setDiscordError('Channel ID and Agent ID are required.');
+      return;
+    }
+    setDiscordSaving(true);
+    try {
+      await setDiscordConfig({
+        token: discordForm.token || '***', // keep existing token if blank
+        channelId: discordForm.channelId,
+        agentId: discordForm.agentId,
+      });
+      const updated = await getDiscordConfig();
+      setDiscord(updated);
+      setDiscordForm(f => ({ ...f, token: '' }));
+      setDiscordStatus(updated.running ? 'Bot started.' : 'Config saved.');
+    } catch (e: unknown) {
+      setDiscordError(e instanceof Error ? e.message : 'Failed to save Discord config.');
+    } finally {
+      setDiscordSaving(false);
+    }
+  }
+
+  async function handleDiscordStop() {
+    setDiscordError(null);
+    setDiscordStatus(null);
+    try {
+      await stopDiscord();
+      setDiscordStatus('Bot stopped.');
+      setDiscord(d => d ? { ...d, running: false } : d);
+    } catch (e: unknown) {
+      setDiscordError(e instanceof Error ? e.message : 'Failed to stop bot.');
+    }
+  }
 
   // Compute uptime from startTime in gateway info
   const uptimeMs = gatewayInfo?.startTime
@@ -175,6 +226,64 @@ export function SettingsPanel() {
         {gatewayInfo?.capabilities && (
           <Row label="Capabilities" value={gatewayInfo.capabilities.join(', ')} />
         )}
+      </Section>
+
+      {/* Discord bot */}
+      <Section title="Discord Bot">
+        <div className="py-2 space-y-3">
+          <p className="text-zinc-600 text-xs">
+            Connect a Discord bot to route messages from a channel to an agent.
+            {discord?.running && <span className="ml-2 text-green-400 font-medium">● Running</span>}
+            {discord && !discord.running && <span className="ml-2 text-zinc-500">● Stopped</span>}
+          </p>
+          <div>
+            <label className="text-xs text-zinc-500 block mb-1">Bot token <span className="text-zinc-700">(leave blank to keep existing)</span></label>
+            <input
+              type="password"
+              value={discordForm.token}
+              onChange={e => setDiscordForm(f => ({ ...f, token: e.target.value }))}
+              placeholder={discord?.token === '***' ? '(token saved)' : 'Bot token…'}
+              className={INPUT_CLS}
+            />
+          </div>
+          <div>
+            <label className="text-xs text-zinc-500 block mb-1">Channel ID</label>
+            <input
+              value={discordForm.channelId}
+              onChange={e => setDiscordForm(f => ({ ...f, channelId: e.target.value }))}
+              placeholder="1234567890123456789"
+              className={INPUT_CLS}
+            />
+          </div>
+          <div>
+            <label className="text-xs text-zinc-500 block mb-1">Agent ID</label>
+            <input
+              value={discordForm.agentId}
+              onChange={e => setDiscordForm(f => ({ ...f, agentId: e.target.value }))}
+              placeholder="agent UUID"
+              className={INPUT_CLS}
+            />
+          </div>
+          {discordError && <p className="text-red-400 text-xs bg-red-950/30 rounded-lg p-2">{discordError}</p>}
+          {discordStatus && <p className="text-green-400 text-xs">{discordStatus}</p>}
+          <div className="flex gap-2">
+            <button
+              onClick={handleDiscordSave}
+              disabled={discordSaving}
+              className="px-3 py-1.5 bg-brand-600 hover:bg-brand-500 disabled:opacity-40 text-white text-xs rounded-lg transition-colors"
+            >
+              {discordSaving ? 'Saving…' : discord?.running ? 'Update & Restart' : 'Save & Start'}
+            </button>
+            {discord?.running && (
+              <button
+                onClick={handleDiscordStop}
+                className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs rounded-lg transition-colors"
+              >
+                Stop bot
+              </button>
+            )}
+          </div>
+        </div>
       </Section>
 
       {/* Provider health history */}
