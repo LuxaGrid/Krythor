@@ -5,6 +5,7 @@ import type { ExecTool } from '../tools/ExecTool.js';
 import { WebSearchTool } from '../tools/WebSearchTool.js';
 import { WebFetchTool } from '../tools/WebFetchTool.js';
 import { FilesystemTool } from '../tools/FilesystemTool.js';
+import { browserTool } from '../tools/BrowserTool.js';
 import type {
   AgentDefinition,
   AgentRun,
@@ -37,14 +38,16 @@ const HANDOFF_RE  = /\{[\s\S]*?"handoff"\s*:\s*"[^"]*"[\s\S]*?\}/;
 type ExecCall        = { tool: 'exec';         command: string; args: string[] };
 type WebSearchCall   = { tool: 'web_search';   query: string };
 type WebFetchCall    = { tool: 'web_fetch';    url: string };
-type ReadFileCall    = { tool: 'read_file';    path: string };
-type WriteFileCall   = { tool: 'write_file';   path: string; content: string };
-type EditFileCall    = { tool: 'edit_file';    path: string; old: string; new: string };
-type ApplyPatchCall  = { tool: 'apply_patch';  path: string; patch: string };
-type CustomCall      = { tool: 'custom';       name: string;   input: string };
-type SpawnAgentCall  = { tool: 'spawn_agent';  agentId: string; message: string };
-type AnyToolCall     = ExecCall | WebSearchCall | WebFetchCall
+type ReadFileCall      = { tool: 'read_file';      path: string };
+type WriteFileCall     = { tool: 'write_file';     path: string; content: string };
+type EditFileCall      = { tool: 'edit_file';      path: string; old: string; new: string };
+type ApplyPatchCall    = { tool: 'apply_patch';    path: string; patch: string };
+type GetPageTextCall   = { tool: 'get_page_text';  url: string };
+type CustomCall        = { tool: 'custom';          name: string;   input: string };
+type SpawnAgentCall    = { tool: 'spawn_agent';     agentId: string; message: string };
+type AnyToolCall       = ExecCall | WebSearchCall | WebFetchCall
   | ReadFileCall | WriteFileCall | EditFileCall | ApplyPatchCall
+  | GetPageTextCall
   | CustomCall | SpawnAgentCall;
 
 /**
@@ -119,6 +122,10 @@ function extractToolCall(response: string): AnyToolCall | null {
     if (tool === 'apply_patch' && typeof parsed['path'] === 'string' && parsed['path'].length > 0 &&
         typeof parsed['patch'] === 'string') {
       return { tool: 'apply_patch', path: parsed['path'] as string, patch: parsed['patch'] as string };
+    }
+
+    if (tool === 'get_page_text' && typeof parsed['url'] === 'string' && parsed['url'].length > 0) {
+      return { tool: 'get_page_text', url: parsed['url'] as string };
     }
 
     // Custom webhook tool — any other tool name with an "input" field
@@ -372,6 +379,20 @@ export class AgentRunner {
         }
       } catch (err) {
         toolResult = `Tool web_fetch failed: ${err instanceof Error ? err.message : String(err)}`;
+      }
+    } else if (call.tool === 'get_page_text') {
+      try {
+        const result = await browserTool.getPageText(call.url);
+        if (!result.ok) {
+          toolResult = `Tool get_page_text failed: ${result.error}`;
+        } else {
+          toolResult = [
+            `Page text from ${call.url} (source: ${result.source}):`,
+            result.text ?? '(empty)',
+          ].join('\n');
+        }
+      } catch (err) {
+        toolResult = `Tool get_page_text failed: ${err instanceof Error ? err.message : String(err)}`;
       }
     } else if (call.tool === 'read_file' || call.tool === 'write_file' || call.tool === 'edit_file' || call.tool === 'apply_patch') {
       const fsResult = filesystemTool.dispatch(call as import('../tools/FilesystemTool.js').FsCall);

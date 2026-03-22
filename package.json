@@ -33,6 +33,8 @@
     "build:installer": "node build-installer.js",
     "build:sign": "node sign.js",
     "build:release": "node build-release.js",
+    "build:pkg": "node build-pkg.js",
+    "build:deb": "node build-deb.js",
     "release": "node scripts/tag-release.js"
   },
   "devDependencies": {

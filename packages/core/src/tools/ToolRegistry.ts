@@ -97,6 +97,25 @@ export const TOOL_REGISTRY: ToolEntry[] = [
     alwaysAllowed: true,
   },
   {
+    name: 'get_page_text',
+    description:
+      'Render a URL with a headless browser (Puppeteer if available, otherwise plain fetch) ' +
+      'and return the visible text content. Use this for JavaScript-rendered pages where ' +
+      'web_fetch only returns the HTML shell. Max output: 8000 chars. Timeout: 15s. ' +
+      'Same SSRF protection as web_fetch — private/loopback IPs are blocked.',
+    parameters: {
+      url: {
+        type:        'string',
+        description: 'The URL to render. Must be http:// or https://.',
+        required:    true,
+        minLength:   7,
+        maxLength:   2048,
+      },
+    },
+    requiresGuard: false,
+    alwaysAllowed: true,
+  },
+  {
     name: 'read_file',
     description:
       'Read the contents of a local file. ' +

@@ -186,6 +186,28 @@ jobs:
         shell: bash
         run: mv krythor-dist-${{ matrix.platform }} krythor-${{ matrix.target }}
 
+      - name: Build .deb package (Linux only)
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: |
+          # Symlink so build-deb.js finds the renamed dir
+          ln -s krythor-${{ matrix.target }} krythor-dist-linux
+          node build-deb.js
+
+      - name: Build .pkg installer (macOS arm64 only)
+        if: matrix.target == 'macos-arm64'
+        shell: bash
+        run: |
+          ln -s krythor-${{ matrix.target }} krythor-dist-mac
+          node build-pkg.js --arch arm64
+
+      - name: Build .pkg installer (macOS x64 only)
+        if: matrix.target == 'macos-x64'
+        shell: bash
+        run: |
+          ln -s krythor-${{ matrix.target }} krythor-dist-mac
+          node build-pkg.js --arch x64
+
       - name: Zip distribution (Windows)
         if: matrix.os == 'windows-latest'
         shell: pwsh
@@ -204,6 +226,22 @@ jobs:
           name: krythor-${{ matrix.target }}
           retention-days: 1
           path: krythor-${{ matrix.target }}.zip
+
+      - name: Upload .deb artifact (Linux only)
+        if: matrix.platform == 'linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: krythor-linux-deb
+          retention-days: 1
+          path: krythor-*.deb
+
+      - name: Upload .pkg artifact (macOS only)
+        if: matrix.platform == 'mac'
+        uses: actions/upload-artifact@v4
+        with:
+          name: krythor-${{ matrix.target }}-pkg
+          retention-days: 1
+          path: krythor-*.pkg
 
       - name: Upload installer artifact (Windows only)
         if: matrix.os == 'windows-latest'
@@ -236,7 +274,7 @@ jobs:
         shell: bash
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
 
-      - name: Download all zip artifacts
+      - name: Download all build artifacts
         uses: actions/download-artifact@v4
         with:
           pattern: krythor-*
@@ -260,6 +298,8 @@ jobs:
             dist-artifacts/krythor-macos-arm64.zip
             dist-artifacts/krythor-macos-x64.zip
             dist-artifacts/Krythor-Setup-${{ env.VERSION }}.exe
+            dist-artifacts/krythor-*.deb
+            dist-artifacts/krythor-*.pkg
 
   npm-publish:
     name: Publish to npm
