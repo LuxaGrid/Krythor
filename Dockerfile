@@ -13,7 +13,7 @@ RUN apk add --no-cache python3 make g++
 RUN npm install -g pnpm@9.15.4
 
 # Copy dependency manifests first (layer caching)
-COPY package.json pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/gateway/package.json  packages/gateway/package.json
 COPY packages/control/package.json  packages/control/package.json
 COPY packages/setup/package.json    packages/setup/package.json
