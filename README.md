@@ -213,6 +213,20 @@ krythor
 
 ---
 
+## 📚 Documentation
+
+**[docs/START_HERE.md](./docs/START_HERE.md)** — the single entry point for all documentation.
+
+Covers: Quick Start, feature overview, installation options, configuration, all CLI commands, API quick reference, troubleshooting, and links to every doc.
+
+Other key docs:
+- [docs/TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md) — top 10 issues with step-by-step fixes
+- [docs/ENV_VARS.md](./docs/ENV_VARS.md) — every environment variable Krythor reads
+- [docs/API.md](./docs/API.md) — complete API reference
+- [docs/REMOTE_GATEWAY.md](./docs/REMOTE_GATEWAY.md) — SSH forwarding, Tailscale, Nginx
+
+---
+
 ## 📖 Getting Started — Step by Step Guide
 
 *This section is written for people who have never used a tool like this before. Technical users can skip ahead.*
