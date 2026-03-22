@@ -32,6 +32,7 @@ import { registerDashboardRoute } from './routes/dashboard.js';
 import { registerGatewayRoutes, loadOrCreateGatewayId } from './routes/gateway.js';
 import { registerChannelRoutes } from './routes/channels.js';
 import { ChannelManager } from './ChannelManager.js';
+import { DiscordInbound } from './DiscordInbound.js';
 import { PeerRegistry } from './PeerRegistry.js';
 import { registerOpenAICompatRoutes } from './routes/openai.compat.js';
 import { registerPluginRoutes } from './routes/plugins.js';
@@ -818,6 +819,54 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
 
   // Channel routes (outbound webhooks) — #16
   registerChannelRoutes(app, channelMgr);
+
+  // Discord inbound channel — optional, started only if configured
+  const discordInbound = new DiscordInbound(orchestrator);
+
+  // Bootstrap from env vars if present
+  const discordToken     = process.env['KRYTHOR_DISCORD_TOKEN'];
+  const discordChannelId = process.env['KRYTHOR_DISCORD_CHANNEL_ID'];
+  const discordAgentId   = process.env['KRYTHOR_DISCORD_AGENT_ID'];
+  if (discordToken && discordChannelId && discordAgentId && process.env['NODE_ENV'] !== 'test') {
+    discordInbound.configure({ token: discordToken, channelId: discordChannelId, agentId: discordAgentId, enabled: true });
+    discordInbound.start().then(r => {
+      if (!r.ok) logger.warn({ error: r.error }, '[discord] Failed to start inbound');
+    }).catch(err => logger.error({ err }, '[discord] Start error'));
+  }
+
+  // Discord configuration routes (auth-gated via global preHandler)
+  app.get('/api/discord', async (_req, reply) => {
+    return reply.send({ config: discordInbound.getConfig(), running: discordInbound.isRunning() });
+  });
+
+  app.put<{ Body: { token: string; channelId: string; agentId: string; enabled?: boolean } }>('/api/discord', {
+    schema: {
+      body: {
+        type: 'object',
+        required: ['token', 'channelId', 'agentId'],
+        properties: {
+          token:     { type: 'string', minLength: 1, maxLength: 200 },
+          channelId: { type: 'string', minLength: 1, maxLength: 50 },
+          agentId:   { type: 'string', minLength: 1, maxLength: 100 },
+          enabled:   { type: 'boolean' },
+        },
+        additionalProperties: false,
+      },
+    },
+  }, async (req, reply) => {
+    const body = req.body;
+    discordInbound.stop();
+    discordInbound.configure({ ...body, enabled: body.enabled ?? true });
+    const result = await discordInbound.start();
+    return reply.send({ ok: result.ok, running: discordInbound.isRunning(), error: result.error });
+  });
+
+  app.delete('/api/discord', async (_req, reply) => {
+    discordInbound.stop();
+    return reply.send({ ok: true, running: false });
+  });
+
+  app.addHook('onClose', async () => { discordInbound.stop(); });
 
   // Peer registry (LAN discovery + manual peers) — #18
   const peerRegistry = new PeerRegistry(join(dataDir, 'config'), gatewayId, GATEWAY_PORT, KRYTHOR_VERSION);

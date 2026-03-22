@@ -1,0 +1,35 @@
+{
+  "name": "Krythor Control",
+  "short_name": "Krythor",
+  "description": "Local-first AI command platform",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#09090b",
+  "theme_color": "#09090b",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["productivity", "utilities"],
+  "shortcuts": [
+    {
+      "name": "Chat",
+      "short_name": "Chat",
+      "description": "Open the chat panel",
+      "url": "/?tab=command",
+      "icons": [{ "src": "/logo.png", "sizes": "any" }]
+    },
+    {
+      "name": "Agents",
+      "short_name": "Agents",
+      "description": "Manage AI agents",
+      "url": "/?tab=agents",
+      "icons": [{ "src": "/logo.png", "sizes": "any" }]
+    }
+  ]
+}
