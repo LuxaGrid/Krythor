@@ -220,26 +220,50 @@ async function runStatus() {
 }
 
 // ── krythor repair ─────────────────────────────────────────────────────────
-// Verify that all runtime components are healthy.
-// Each check prints PASS / WARN / FAIL with a fix suggestion on failure.
+// Diagnose AND auto-fix common Krythor problems.
+// Pass --fix to apply fixes automatically (some require confirmation).
+// Pass --yes to skip all confirmation prompts (unattended/CI mode).
+//
+// Checks + fixes:
 //   1. Bundled Node runtime exists and executes
-//   2. better-sqlite3 native module loads under the bundled Node
-//   3. Gateway health endpoint responds (if already running)
-//   4. providers.json exists and is parseable JSON
-//   5. At least one provider is configured (zero-provider warning)
-//   6. All enabled providers have credentials (API key or OAuth)
+//   2. better-sqlite3 native module loads
+//   3. Gateway health endpoint (if running)
+//   4. providers.json exists and is parseable JSON     [FIX: scaffold empty file]
+//   5. At least one provider configured                [FIX: prompt to run setup]
+//   6. Per-provider credentials                        [FIX: clear expired OAuth]
+//   7. Config directory exists                         [FIX: create it]
+//   8. agents.json exists                              [FIX: scaffold default agent]
+//   9. app-config.json exists                          [FIX: scaffold with new token]
+//  10. Log directory exists                            [FIX: create it]
 async function runRepair() {
   const fs = require('fs');
   const os = require('os');
   const path = require('path');
+  const crypto = require('crypto');
+
+  const autoFix  = process.argv.includes('--fix') || process.argv.includes('--yes');
+  const autoYes  = process.argv.includes('--yes');
 
   // ANSI helpers
   const PASS  = '\x1b[32mPASS\x1b[0m';
   const WARN  = '\x1b[33mWARN\x1b[0m';
   const FAIL  = '\x1b[31mFAIL\x1b[0m';
+  const FIXED = '\x1b[32mFIXED\x1b[0m';
   const check = (label) => process.stdout.write(`  ${label.padEnd(28)} ... `);
 
+  // Prompt for confirmation in interactive mode
+  async function confirm(question) {
+    if (autoYes) return true;
+    if (!process.stdin.isTTY) return false; // non-interactive: skip destructive fixes
+    process.stdout.write(`  ${question} [y/N] `);
+    return new Promise(resolve => {
+      const rl = require('readline').createInterface({ input: process.stdin, terminal: false });
+      rl.once('line', line => { rl.close(); process.stdin.resume(); resolve(line.trim().toLowerCase() === 'y'); });
+    });
+  }
+
   console.log('\x1b[36m  KRYTHOR\x1b[0m — Repair / Health Check');
+  if (autoFix) console.log('  Mode: \x1b[32mauto-fix enabled\x1b[0m  (--fix)');
   console.log('');
 
   let allOk = true;
@@ -403,11 +427,184 @@ async function runRepair() {
     }
   }
 
+  // ── Check 7: config directory exists ──────────────────────────────────
+  check('Config directory');
+  if (!existsSync(configDir)) {
+    if (autoFix) {
+      try {
+        fs.mkdirSync(configDir, { recursive: true });
+        console.log(`${FIXED}  — created: ${configDir}`);
+      } catch (e) {
+        console.log(`${FAIL}  — could not create: ${e.message}`);
+        allOk = false;
+      }
+    } else {
+      console.log(`${WARN}  — missing (run with --fix to create)`);
+      fixes.push(`Create config directory: krythor repair --fix`);
+      allOk = false;
+    }
+  } else {
+    console.log(PASS);
+  }
+
+  // ── Check 8: agents.json exists ────────────────────────────────────────
+  const agentsPath = path.join(configDir, 'agents.json');
+  check('agents.json');
+  if (!existsSync(agentsPath)) {
+    if (autoFix) {
+      try {
+        const defaultAgent = [{
+          id: 'default',
+          name: 'Default Agent',
+          description: 'General-purpose assistant',
+          systemPrompt: 'You are a helpful, concise assistant.',
+          memoryScope: 'global',
+          tags: ['general', 'default'],
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        }];
+        fs.writeFileSync(agentsPath, JSON.stringify(defaultAgent, null, 2) + '\n', 'utf-8');
+        console.log(`${FIXED}  — scaffolded default agent at: ${agentsPath}`);
+      } catch (e) {
+        console.log(`${FAIL}  — could not create: ${e.message}`);
+        allOk = false;
+      }
+    } else {
+      console.log(`${WARN}  — missing (run with --fix to scaffold a default agent)`);
+      fixes.push(`Scaffold agents.json: krythor repair --fix  OR  krythor setup`);
+    }
+  } else {
+    try {
+      const raw = JSON.parse(fs.readFileSync(agentsPath, 'utf-8'));
+      const count = Array.isArray(raw) ? raw.length : '?';
+      console.log(`${PASS}  (${count} agent(s))`);
+    } catch {
+      console.log(`${WARN}  — invalid JSON (file exists but cannot be parsed)`);
+      fixes.push(`Fix agents.json: open in editor or delete and run: krythor repair --fix`);
+    }
+  }
+
+  // ── Check 9: app-config.json exists ───────────────────────────────────
+  const appConfigPath = path.join(configDir, 'app-config.json');
+  check('app-config.json');
+  if (!existsSync(appConfigPath)) {
+    if (autoFix) {
+      try {
+        const newToken = crypto.randomBytes(32).toString('hex');
+        const appCfg = { authToken: newToken, authDisabled: false, createdAt: new Date().toISOString() };
+        fs.writeFileSync(appConfigPath, JSON.stringify(appCfg, null, 2) + '\n', 'utf-8');
+        console.log(`${FIXED}  — scaffolded with new auth token`);
+        console.log(`    Token: ${newToken}`);
+        console.log('    Copy this token — it is required to authenticate with the gateway API.');
+      } catch (e) {
+        console.log(`${FAIL}  — could not create: ${e.message}`);
+        allOk = false;
+      }
+    } else {
+      console.log(`${WARN}  — missing (run with --fix to generate a new auth token)`);
+      fixes.push(`Scaffold app-config.json: krythor repair --fix`);
+    }
+  } else {
+    try {
+      const cfg = JSON.parse(fs.readFileSync(appConfigPath, 'utf-8'));
+      const hasToken = cfg.authToken || cfg.token;
+      const authDisabled = cfg.authDisabled === true;
+      if (authDisabled) {
+        console.log(`${WARN}  — auth is DISABLED (all API routes unprotected)`);
+      } else if (!hasToken) {
+        console.log(`${WARN}  — no auth token found`);
+        fixes.push(`Re-generate auth token: krythor repair --fix`);
+      } else {
+        console.log(PASS);
+      }
+    } catch {
+      console.log(`${WARN}  — invalid JSON`);
+      fixes.push(`Fix app-config.json: delete it and run: krythor repair --fix`);
+    }
+  }
+
+  // ── Check 10: expired OAuth tokens — offer to clear ───────────────────
+  const expiredOauth = [];
+  for (const p of providerList) {
+    if (!p || p.isEnabled === false) continue;
+    if (p.authMethod === 'oauth' && p.oauthAccount) {
+      const { expiresAt } = p.oauthAccount;
+      if (expiresAt && expiresAt < Date.now()) {
+        expiredOauth.push(p);
+      }
+    }
+  }
+  if (expiredOauth.length > 0) {
+    check('Expired OAuth tokens');
+    console.log(`${WARN}  — ${expiredOauth.length} expired`);
+    if (autoFix) {
+      const shouldClear = autoYes || await confirm(`Clear expired OAuth tokens for ${expiredOauth.map(p => p.name).join(', ')}?`);
+      if (shouldClear) {
+        try {
+          const raw = JSON.parse(fs.readFileSync(providersPath, 'utf-8'));
+          const list = Array.isArray(raw) ? raw : (raw.providers || []);
+          for (const p of list) {
+            if (expiredOauth.some(e => e.id === p.id)) {
+              if (p.oauthAccount) {
+                delete p.oauthAccount.accessToken;
+                delete p.oauthAccount.refreshToken;
+                delete p.oauthAccount.expiresAt;
+              }
+              p.authMethod = 'none';
+            }
+          }
+          const out = Array.isArray(raw) ? list : { ...raw, providers: list };
+          fs.writeFileSync(providersPath, JSON.stringify(out, null, 2) + '\n', 'utf-8');
+          console.log(`    ${FIXED}  — cleared expired tokens; reconnect via Models tab → OAuth`);
+        } catch (e) {
+          console.log(`    Could not update providers.json: ${e.message}`);
+          allOk = false;
+        }
+      } else {
+        console.log('    Skipped — reconnect manually via Models tab → OAuth');
+      }
+    } else {
+      for (const p of expiredOauth) {
+        console.log(`    ${FAIL}  ${p.name} — reconnect via Models tab → OAuth`);
+        fixes.push(`Reconnect OAuth for "${p.name}": krythor repair --fix  OR  Models tab → OAuth`);
+      }
+    }
+  }
+
+  // ── Check 11: log directory ────────────────────────────────────────────
+  const logsDir = path.join(dataDir, 'logs');
+  check('Logs directory');
+  if (!existsSync(logsDir)) {
+    if (autoFix) {
+      try {
+        fs.mkdirSync(logsDir, { recursive: true });
+        console.log(`${FIXED}  — created: ${logsDir}`);
+      } catch (e) {
+        console.log(`${WARN}  — could not create: ${e.message}`);
+      }
+    } else {
+      console.log(`${WARN}  — missing (run with --fix to create)`);
+      fixes.push(`Create logs directory: krythor repair --fix`);
+    }
+  } else {
+    console.log(PASS);
+  }
+
   console.log('');
 
   // ── Summary and suggested fixes ────────────────────────────────────────
-  if (allOk) {
+  if (allOk && fixes.length === 0) {
     console.log('\x1b[32m  All checks passed.\x1b[0m');
+    process.exit(0);
+  } else if (allOk) {
+    console.log('\x1b[33m  All critical checks passed — some warnings above.\x1b[0m');
+    if (fixes.length > 0) {
+      console.log('');
+      console.log('  Suggestions:');
+      fixes.forEach((f, i) => console.log(`    ${i + 1}. ${f}`));
+    }
+    console.log('');
+    console.log('  Run with --fix to auto-apply fixes:  krythor repair --fix');
     process.exit(0);
   } else {
     console.log('\x1b[31m  One or more checks failed. See above for details.\x1b[0m');
@@ -416,6 +613,8 @@ async function runRepair() {
       console.log('  Suggested fixes:');
       fixes.forEach((f, i) => console.log(`    ${i + 1}. ${f}`));
     }
+    console.log('');
+    console.log('  Run with --fix to auto-apply fixes:  krythor repair --fix');
     process.exit(1);
   }
 }
@@ -1344,17 +1543,26 @@ const COMMAND_HELP = {
     ],
   },
   repair: {
-    summary: 'Check runtime components and credentials',
+    summary: 'Diagnose and auto-fix common Krythor problems',
     detail: [
-      'Usage: krythor repair',
+      'Usage: krythor repair [--fix] [--yes]',
+      '',
+      'Flags:',
+      '  --fix   Apply auto-fixes for any detected problems',
+      '  --yes   Skip all confirmation prompts (unattended / CI mode)',
       '',
       'Checks:',
-      '  1. Bundled Node runtime — exists and executes',
-      '  2. better-sqlite3 native module — loads under bundled Node',
-      '  3. Gateway health endpoint — responds (if already running)',
-      '  4. providers.json — exists and is valid JSON',
-      '  5. Provider count — warns if zero',
-      '  6. Per-provider credentials — API key or OAuth present',
+      '   1. Bundled Node runtime — exists and executes',
+      '   2. better-sqlite3 native module — loads under bundled Node',
+      '   3. Gateway health endpoint — responds (if already running)',
+      '   4. providers.json — exists and is valid JSON      [FIX: scaffold empty file]',
+      '   5. Provider count — warns if zero',
+      '   6. Per-provider credentials — API key or OAuth',
+      '   7. Config directory — exists                      [FIX: create it]',
+      '   8. agents.json — exists                           [FIX: scaffold default agent]',
+      '   9. app-config.json — exists with auth token       [FIX: generate new token]',
+      '  10. Expired OAuth tokens                           [FIX: clear and prompt reconnect]',
+      '  11. Logs directory — exists                        [FIX: create it]',
       '',
       'Exit 0 if all checks pass, exit 1 if any fail.',
     ],
