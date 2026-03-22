@@ -106,15 +106,26 @@ export function registerConversationRoutes(app: FastifyInstance, store: Conversa
     return reply.code(204).send();
   });
 
-  // GET /api/conversations/:id/messages
-  app.get<{ Params: { id: string } }>('/api/conversations/:id/messages', async (req, reply) => {
+  // GET /api/conversations/:id/messages — paginated message list
+  // Query params: ?page=1&limit=50  (limit capped at 500)
+  // Response: { messages, total, page, limit, hasMore }
+  app.get<{ Params: { id: string }; Querystring: { page?: string; limit?: string } }>('/api/conversations/:id/messages', async (req, reply) => {
     if (guard) {
       const verdict = guard.check({ operation: 'conversation:read', source: 'user' });
       if (!verdict.allowed) return reply.code(403).send({ error: 'GUARD_DENIED', reason: verdict.reason });
     }
     const conv = store.getConversation(req.params.id);
     if (!conv) return reply.code(404).send({ error: 'Conversation not found' });
-    return reply.send(store.getMessages(req.params.id));
+
+    const page  = Math.max(1, parseInt(req.query.page  ?? '1',  10) || 1);
+    const limit = Math.min(Math.max(1, parseInt(req.query.limit ?? '50', 10) || 50), 500);
+    const offset = (page - 1) * limit;
+
+    const all = store.getMessages(req.params.id);
+    const total = all.length;
+    const messages = all.slice(offset, offset + limit);
+
+    return reply.send({ messages, total, page, limit, hasMore: offset + messages.length < total });
   });
 
   // DELETE /api/conversations/:id/messages/last-assistant — remove most recent assistant message

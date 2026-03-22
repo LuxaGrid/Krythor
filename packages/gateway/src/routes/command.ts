@@ -47,6 +47,72 @@ export function registerCommandRoute(
       conversationId?: string;
     };
 
+    // Resolve model engine early so it's available for slash-command responses.
+    const models = core.getModels();
+
+    // In-chat /command handling — intercept slash commands before inference.
+    // /model <id>    — switch model for this and subsequent messages
+    // /agent <id>    — switch agent for this and subsequent messages
+    // /clear         — return a synthetic 'cleared' signal (client clears history display)
+    // These return a synthetic JSON response; no inference is triggered.
+    if (input.startsWith('/')) {
+      const [cmd, ...args] = input.trim().split(/\s+/);
+      const arg = args.join(' ').trim();
+
+      if (cmd === '/clear') {
+        return reply.send({
+          input,
+          output: '(chat history cleared)',
+          command: 'clear',
+          timestamp: new Date().toISOString(),
+          processingTimeMs: 0,
+        });
+      }
+
+      if (cmd === '/model') {
+        if (!arg) {
+          const modelList = models?.listModels().map(m => `${m.id} (${m.providerId})`).join(', ') ?? '(no models)';
+          return reply.send({
+            input,
+            output: `Available models: ${modelList}. Use /model <id> to switch.`,
+            command: 'model:list',
+            timestamp: new Date().toISOString(),
+            processingTimeMs: 0,
+          });
+        }
+        return reply.send({
+          input,
+          output: `Model switched to: ${arg}. This will be used for your next message.`,
+          command: 'model:switch',
+          modelId: arg,
+          timestamp: new Date().toISOString(),
+          processingTimeMs: 0,
+        });
+      }
+
+      if (cmd === '/agent') {
+        if (!arg) {
+          return reply.send({
+            input,
+            output: agentId ? `Active agent: ${agentId}. Use /agent <id> to switch.` : 'No agent active. Use /agent <id> to switch.',
+            command: 'agent:status',
+            timestamp: new Date().toISOString(),
+            processingTimeMs: 0,
+          });
+        }
+        return reply.send({
+          input,
+          output: `Agent switched to: ${arg}. This will be used for your next message.`,
+          command: 'agent:switch',
+          agentId: arg,
+          timestamp: new Date().toISOString(),
+          processingTimeMs: 0,
+        });
+      }
+
+      // Unknown slash command — fall through to inference so plugins/agents can handle it
+    }
+
     // Guard check — evaluate before executing anything
     if (guard) {
       const verdict = guard.check({
@@ -76,9 +142,6 @@ export function registerCommandRoute(
         });
       }
     }
-
-    // No provider — return friendly guidance immediately
-    const models = core.getModels();
 
     // Resolve model routing aliases (claude, gpt4, local, fast, best)
     // before passing modelId downstream.  Unknown names pass through unchanged.
