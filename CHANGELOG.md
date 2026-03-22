@@ -11,6 +11,18 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+#### Batch 5 — Deferred items (2026-03-21)
+
+- **Docker support**: `Dockerfile` (node:20-alpine, non-root user, `VOLUME /data`), `docker-compose.yml` (single service, named volume, restart policy), `.dockerignore`; CI release workflow now runs a docker build-only verification job before publishing
+- **npm global publish foundation**: `bin: { "krythor": "./start.js" }` and `files` array added to root `package.json`; `.npmignore` added; README notes upcoming `npm install -g krythor` support
+- **Live provider test infrastructure**: `providers.live.test.ts` with `it.skipIf(!ENV_VAR)` guards for Anthropic, OpenAI, Ollama — skips cleanly in CI, runs when keys are set; `docs/help/testing.md` documents all three test tiers
+- **Model routing transparency in UI**: `selectionReason` and `fallbackOccurred` now surface in command API responses (both streaming and non-streaming); Command panel shows selection reason as dimmed italic text below each assistant reply; "copy model info" button copies `{ model, selectionReason, fallbackOccurred }` to clipboard
+- **Memory search pagination**: `GET /api/memory/search` now returns `{ results, total, page, limit }` envelope; `?page=` and `?limit=` (max 200) query params supported
+- **Provider health history**: `HeartbeatEngine` accumulates per-provider health entries (cap 100) from circuit breaker state; `GET /api/heartbeat/history` (auth required) returns full history map; `ProviderHealthEntry { timestamp, ok, latencyMs }` interface
+- **Settings UI tab**: new Settings tab in the control panel — sections for Gateway info (port, dataDir, configDir), Auth status, Appearance (dark/light theme toggle with localStorage persistence), About (version, platform, arch, Node.js, gatewayId, uptime, capabilities), Provider Health History (colored dot sparkline for last 10 checks)
+- **DEPLOYMENT.md**: systemd and launchd configs, Docker quickstart, env vars reference, backup strategy, update flow, production checklist
+- **API.md**: full API reference for every endpoint with method, auth, and request/response shapes
+
 #### Batch 4 — Items 3, 4, 6, 7 (2026-03-21)
 
 - **Token spend history** (`GET /api/stats/history`): `TokenTracker` extended with a ring buffer of last 1000 inferences; each entry has `{ timestamp, provider, model, inputTokens, outputTokens }`; endpoint returns `{ history, windowSize: 1000 }`; auth required

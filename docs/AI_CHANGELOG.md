@@ -1,3 +1,144 @@
+# AI Changelog — Pass 2026-03-21 (Batch 5: Deferred Items)
+
+**Model:** Claude Sonnet 4.6
+**Pass type:** Batch 5 — All 12 deferred items from v1.5.0 roadmap
+
+---
+
+## Summary (this pass)
+
+### ITEM 1: Docker support — DONE
+
+**Files:** `Dockerfile` (new), `docker-compose.yml` (new), `.dockerignore` (new), `README.md`, `.github/workflows/release.yml`
+
+- `Dockerfile`: node:20-alpine base, installs python3/make/g++ for native modules (better-sqlite3), non-root `krythor` user, `KRYTHOR_DATA_DIR=/data`, `VOLUME /data`, `EXPOSE 47200`, `CMD ["node", "start.js", "--no-browser"]`
+- `docker-compose.yml`: single `krythor` service, port 47200:47200, named volume `krythor-data:/data`, `restart: unless-stopped`
+- `.dockerignore`: excludes node_modules, krythor-dist-*, *.zip, .git, dist folders, installer/
+- `README.md`: Docker section added (docker compose up -d)
+- `release.yml`: `docker` job added (build-only verification, no push) before `release` job; `release.needs` updated to `[build, docker]`
+
+---
+
+### ITEM 2: macOS arm64 in release matrix — ALREADY COMPLETE
+
+`release.yml` already contained `macos-latest` with `arch: arm64, target: macos-arm64`. No changes needed.
+
+---
+
+### ITEM 3: npm global publish foundation — DONE
+
+**Files:** `package.json`, `.npmignore` (new), `README.md`
+
+- `package.json`: added `bin: { "krythor": "./start.js" }` and `files: ["start.js", "packages/*/dist", "node_modules/better-sqlite3", "docs"]`
+- `.npmignore`: excludes krythor-dist-*, *.zip, installer/, build-*.js, bundle.js, *.bat, etc.
+- `README.md`: npm global install note added (coming soon, bin field in place)
+
+---
+
+### ITEM 4: Live provider test infrastructure — DONE
+
+**Files:** `packages/gateway/src/routes/providers.live.test.ts` (new), `docs/help/testing.md` (new)
+
+- `providers.live.test.ts`: 3 live tests (Anthropic, OpenAI, Ollama) using `it.skipIf(!ENV_VAR)` — skip cleanly when env vars not set (KRYTHOR_TEST_ANTHROPIC_KEY, KRYTHOR_TEST_OPENAI_KEY, KRYTHOR_TEST_OLLAMA_URL)
+- `docs/help/testing.md`: documents three test tiers (unit/integration, live, manual), how to run live tests, how to write new tests
+
+---
+
+### ITEM 5: Model routing transparency — DONE
+
+**Files:** `packages/gateway/src/routes/command.ts`, `packages/gateway/src/routes/command.test.ts`, `packages/control/src/api.ts`, `packages/control/src/components/CommandPanel.tsx`
+
+- `command.ts`: non-streaming response now includes `selectionReason` and `fallbackOccurred`; streaming `done` event payload type updated to include both fields
+- `command.test.ts`: test added verifying `selectionReason` field presence in responses
+- `api.ts`: `StreamEvent` done type extended with `selectionReason?: string | null; fallbackOccurred?: boolean`; `GatewayInfo` interface + `getGatewayInfo()` + `ProviderHealthEntry` interface + `getHeartbeatHistory()` added; `Health` interface extended with `dataDir?` and `configDir?`
+- `CommandPanel.tsx`: `LocalMessage` interface extended with `selectionReason` and `fallbackOccurred`; streaming `done` handler saves both fields; meta row below each assistant message shows selectionReason (italic, dimmed) and a "copy model info" button when either field is present
+
+---
+
+### ITEM 6: Guard engine improvements — ALREADY COMPLETE
+
+`guard.ts` already had full `GET/POST/PATCH/DELETE /api/guard/rules`. No changes needed.
+
+---
+
+### ITEM 7: Memory search pagination — DONE
+
+**Files:** `packages/gateway/src/routes/memory.ts`, `packages/gateway/src/routes/heartbeat.history.test.ts` (new)
+
+- `GET /api/memory/search` endpoint added (before the stats endpoint) returning `{ results, total, page, limit }` envelope; `page` and `limit` query params; limit capped at 200
+- 4 tests for the pagination endpoint in `heartbeat.history.test.ts`
+
+---
+
+### ITEM 8: Conversation export — ALREADY COMPLETE
+
+`conversations.ts` already had `GET /api/conversations/:id/export`. No changes needed.
+
+---
+
+### ITEM 9: Skills CRUD — ALREADY COMPLETE
+
+`skills.ts` already had `POST/PATCH/DELETE /api/skills`. No changes needed.
+
+---
+
+### ITEM 10: Provider health history — DONE
+
+**Files:** `packages/gateway/src/heartbeat/HeartbeatEngine.ts`, `packages/gateway/src/server.ts`, `packages/gateway/src/routes/heartbeat.history.test.ts` (new)
+
+- `HeartbeatEngine`: added `ProviderHealthEntry` interface `{ timestamp, ok, latencyMs }`; added `providerHealthHistory: Map<string, ProviderHealthEntry[]>` field; added `getProviderHealthHistory()` and `recordProviderHealth()` public methods; `check_config_integrity()` records entries from circuit breaker state; history capped at 100 entries per provider
+- `server.ts`: `GET /api/heartbeat/history` added returning `heartbeat.getProviderHealthHistory()`
+- 3 tests in `heartbeat.history.test.ts` for the history endpoint
+
+---
+
+### ITEM 11: Settings/config UI tab — DONE
+
+**Files:** `packages/control/src/components/SettingsPanel.tsx` (new), `packages/control/src/App.tsx`, `packages/control/src/api.ts`
+
+- `SettingsPanel.tsx`: four sections — Gateway (port, dataDir, configDir), Auth (bearer token status), Appearance (dark/light toggle via localStorage), About (version, platform, arch, Node.js, gatewayId, uptime, capabilities), Provider Health History (colored dots ● for last 10 checks, green=ok/red=fail)
+- `App.tsx`: `settings` added to Tab type; `{ id: 'settings', label: 'Settings' }` added to TABS; keyboard nav updated; `<SettingsPanel />` rendered
+- `api.ts`: `GatewayInfo`, `getGatewayInfo()`, `ProviderHealthEntry`, `getHeartbeatHistory()` added; `Health` extended with `dataDir?`/`configDir?`
+
+---
+
+### ITEM 12: Final docs — DONE
+
+**Files:** `docs/DEPLOYMENT.md` (new), `docs/API.md` (new), `CHANGELOG.md`, `docs/AI_CHANGELOG.md` (this file)
+
+- `docs/DEPLOYMENT.md`: daemon mode, systemd/launchd configs, Docker quickstart, env vars table, backup strategy, update flow, production checklist
+- `docs/API.md`: full API reference for every endpoint with method, auth, request/response shapes
+- `CHANGELOG.md`: [Unreleased] section updated with Batch 5 items
+
+---
+
+## Build Status (Batch 5)
+
+All changes compile cleanly with `pnpm build`.
+
+| Package | Tests | Delta |
+|---|---|---|
+| gateway | 243 | +8 (heartbeat.history ×7, live provider ×3 skip) |
+| control | — | TypeScript clean |
+| **Total passing** | **243** | **+8** |
+
+3 live tests skip cleanly when env vars not set. No regressions.
+
+---
+
+## Commits (this pass)
+
+1. `feat(docker): ITEM 1 Dockerfile, docker-compose.yml, .dockerignore, CI docker build job`
+2. `feat(npm): ITEM 3 bin field, files field, .npmignore — npm global publish foundation`
+3. `feat(gateway): ITEM 4 live provider test infra + docs/help/testing.md`
+4. `feat(gateway,control): ITEM 5 model routing transparency — selectionReason + fallbackOccurred in API + UI`
+5. `feat(gateway): ITEM 7 memory search pagination envelope`
+6. `feat(gateway): ITEM 10 provider health history — HeartbeatEngine.recordProviderHealth + GET /api/heartbeat/history`
+7. `feat(control): ITEM 11 Settings tab — gateway info, auth, appearance, about, provider health dots`
+8. `docs: ITEM 12 DEPLOYMENT.md, API.md, final changelog updates`
+
+---
+
 # AI Changelog — Pass 2026-03-21 (Batch 4: Remaining Items)
 
 **Model:** Claude Sonnet 4.6
