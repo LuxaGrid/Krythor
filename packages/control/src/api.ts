@@ -446,6 +446,12 @@ export interface AgentRun {
 export interface AgentStats { agentCount: number; activeRuns: number; totalRuns: number }
 
 // ── Guard ─────────────────────────────────────────────────────────────────
+export interface GuardDecision {
+  ts: number; operation: string; source: string; sourceId?: string; scope?: string;
+  allowed: boolean; action: string; ruleId?: string; ruleName?: string;
+  reason: string; warnings: string[];
+}
+export const guardDecisions    = (limit = 100) => req<GuardDecision[]>('GET', `/guard/decisions?limit=${limit}`);
 export const guardStats        = () => req<GuardStats>('GET', '/guard/stats');
 export const guardRules        = () => req<GuardRule[]>('GET', '/guard/rules');
 export const guardCheck        = (ctx: GuardCheckInput) => req<GuardVerdict>('POST', '/guard/check', ctx);

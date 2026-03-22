@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  guardStats, guardRules, updateGuardRule, deleteGuardRule, createGuardRule, setGuardDefault,
-  type GuardRule, type GuardStats,
+  guardStats, guardRules, guardDecisions, updateGuardRule, deleteGuardRule, createGuardRule, setGuardDefault,
+  type GuardRule, type GuardStats, type GuardDecision,
 } from '../api.ts';
 import { PanelHeader } from './PanelHeader.tsx';
 
@@ -67,6 +67,9 @@ export function GuardPanel() {
   const [savingRuleId, setSavingRuleId] = useState<string | null>(null);
   const [savingDefault, setSavingDefault] = useState(false);
   const [addingRule, setAddingRule] = useState(false);
+  const [activeTab, setActiveTab]   = useState<'rules' | 'audit'>('rules');
+  const [decisions, setDecisions]   = useState<GuardDecision[]>([]);
+  const [decisionsLoading, setDecisionsLoading] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -213,8 +216,30 @@ export function GuardPanel() {
         ))}
       </div>
 
+      {/* Tab bar */}
+      <div className="px-4 border-b border-zinc-800 flex gap-1">
+        {(['rules', 'audit'] as const).map(t => (
+          <button key={t} onClick={async () => {
+            setActiveTab(t);
+            if (t === 'audit' && decisions.length === 0) {
+              setDecisionsLoading(true);
+              try { setDecisions(await guardDecisions(200)); } catch { /* non-fatal */ }
+              finally { setDecisionsLoading(false); }
+            }
+          }}
+            className={`text-xs px-3 py-2 border-b-2 transition-colors capitalize ${
+              activeTab === t
+                ? 'border-brand-600 text-brand-300'
+                : 'border-transparent text-zinc-500 hover:text-zinc-300'
+            }`}
+          >
+            {t === 'audit' ? 'Audit Log' : 'Rules'}
+          </button>
+        ))}
+      </div>
+
       {/* Add Rule Form */}
-      {showAdd && (
+      {activeTab === 'rules' && showAdd && (
         <div className="p-4 border-b border-zinc-800 space-y-2 bg-zinc-900/30">
           <p className="text-xs text-zinc-400 font-medium">New Rule</p>
           <div className="grid grid-cols-2 gap-2">
@@ -288,8 +313,35 @@ export function GuardPanel() {
         </div>
       )}
 
-      {/* Delete error banner */}
-      {deleteError && (
+      {/* Audit log tab */}
+      {activeTab === 'audit' && (
+        <div className="flex-1 overflow-y-auto scrollbar-thin divide-y divide-zinc-800/50">
+          {decisionsLoading ? (
+            <div className="flex items-center justify-center py-12 text-zinc-600 text-xs">Loading audit log…</div>
+          ) : decisions.length === 0 ? (
+            <div className="flex items-center justify-center py-12 text-zinc-600 text-xs">No guard decisions recorded yet.</div>
+          ) : decisions.map((d, i) => (
+            <div key={i} className="px-4 py-2.5 text-xs">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className={d.allowed ? 'text-emerald-400 font-mono' : 'text-red-400 font-mono'}>
+                  {d.allowed ? 'ALLOW' : 'DENY'}
+                </span>
+                <span className="text-zinc-400 font-mono">{d.operation}</span>
+                <span className="text-zinc-600">src: {d.source}{d.sourceId ? `/${d.sourceId}` : ''}</span>
+                {d.ruleName && <span className="text-zinc-600">rule: {d.ruleName}</span>}
+                <span className="text-zinc-700 ml-auto">{new Date(d.ts).toLocaleTimeString()}</span>
+              </div>
+              <p className="text-zinc-600 mt-0.5">{d.reason}</p>
+              {d.warnings.length > 0 && (
+                <p className="text-amber-600 mt-0.5">{d.warnings.join(', ')}</p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Rules tab — Delete error banner */}
+      {activeTab === 'rules' && deleteError && (
         <div className="mx-4 mt-3 flex items-center gap-2 text-xs text-red-400 bg-red-950/30 border border-red-900/50 rounded-lg px-3 py-2">
           <span className="flex-1">{deleteError}</span>
           <button
@@ -300,7 +352,7 @@ export function GuardPanel() {
       )}
 
       {/* Rule list */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin divide-y divide-zinc-800/50">
+      {activeTab === 'rules' && <div className="flex-1 overflow-y-auto scrollbar-thin divide-y divide-zinc-800/50">
         {loading ? (
           <div className="divide-y divide-zinc-800/50">
             {[1, 2, 3].map(i => (
@@ -371,7 +423,7 @@ export function GuardPanel() {
             </div>
           ))
         )}
-      </div>
+      </div>}
     </div>
   );
 }
