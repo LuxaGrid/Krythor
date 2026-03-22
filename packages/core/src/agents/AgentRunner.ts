@@ -201,12 +201,22 @@ export class AgentRunner {
     let memoryContext = '';
 
     if (this.memory) {
-      const results = await this.memory.search(
-        { scope: agent.memoryScope === 'agent' ? 'agent' : agent.memoryScope, scope_id: agent.id, limit: 8 },
+      // Per-agent scope enforcement:
+      // - 'agent' scope: strictly isolated — only this agent's own memories (scope_id = agent.id).
+      //   User/global memories are NOT included so that agent data stays private to the agent.
+      // - 'workspace' / 'session': fetch scoped memories AND global user memories, merged up to 10.
+      const agentResults = await this.memory.search(
+        { scope: agent.memoryScope, scope_id: agent.id, limit: 8 },
         input,
       );
-      const userResults = await this.memory.search({ scope: 'user', limit: 4 }, input);
-      const allResults = [...results, ...userResults].slice(0, 10);
+
+      let allResults = agentResults;
+
+      if (agent.memoryScope !== 'agent') {
+        // Non-isolated scopes include global user memories as additional context.
+        const userResults = await this.memory.search({ scope: 'user', limit: 4 }, input);
+        allResults = [...agentResults, ...userResults].slice(0, 10);
+      }
 
       for (const r of allResults) {
         memoryIdsUsed.push(r.entry.id);
