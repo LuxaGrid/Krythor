@@ -287,6 +287,8 @@ export const exportMemory = async (): Promise<void> => {
   a.click();
   URL.revokeObjectURL(url);
 };
+export const importMemory = (entries: unknown[]) =>
+  req<{ imported: number; skipped: number }>('POST', '/memory/import', { entries });
 export const memoryStatsDetailed = () => req<MemoryStatsDetailed>('GET', '/memory/stats');
 export const listMemoryTags = () => req<{ tags: string[] }>('GET', '/memory/tags');
 export interface MemoryStatsDetailed extends MemoryStats {

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { listMemory, createMemory, updateMemory, deleteMemory, pinMemory, unpinMemory, pruneMemory, summarizeMemory, pruneMemoryBulk, exportMemory, memoryStatsDetailed, listMemoryTags, type MemoryEntry, type MemorySearchResult, type Health, type MemoryStatsDetailed } from '../api.ts';
+import { listMemory, createMemory, updateMemory, deleteMemory, pinMemory, unpinMemory, pruneMemory, summarizeMemory, pruneMemoryBulk, exportMemory, importMemory, memoryStatsDetailed, listMemoryTags, type MemoryEntry, type MemorySearchResult, type Health, type MemoryStatsDetailed } from '../api.ts';
 import { PanelHeader } from './PanelHeader.tsx';
 
 const SCOPES = ['all', 'session', 'user', 'agent', 'workspace', 'skill'];
@@ -275,6 +275,7 @@ export function MemoryPanel({ health }: MemoryPanelProps) {
   const [summarizeResult, setSummarizeResult] = useState<{ summarized: number } | null>(null);
   const [showPruneModal, setShowPruneModal] = useState(false);
   const [exporting, setExporting]   = useState(false);
+  const [importResult, setImportResult] = useState<string | null>(null);
   const [detailedStats, setDetailedStats] = useState<MemoryStatsDetailed | null>(null);
 
   // Load detailed memory stats + available tags
@@ -287,6 +288,26 @@ export function MemoryPanel({ health }: MemoryPanelProps) {
     setExporting(true);
     try { await exportMemory(); } catch { /* ignore */ }
     finally { setExporting(false); }
+  };
+
+  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportResult(null);
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      try {
+        const json = JSON.parse(ev.target?.result as string);
+        const entries = Array.isArray(json) ? json : (json.entries ?? json.data ?? []);
+        const result = await importMemory(entries);
+        setImportResult(`Imported ${result.imported}, skipped ${result.skipped} duplicates.`);
+        await load();
+      } catch (err) {
+        setImportResult(err instanceof Error ? err.message : 'Import failed.');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
   };
 
   const load = useCallback(async (pageOffset = 0, searchText = search, scopeValue = scope, tagValue = tagFilter) => {
@@ -587,6 +608,18 @@ export function MemoryPanel({ health }: MemoryPanelProps) {
           >
             {exporting ? '…' : 'export'}
           </button>
+          <label
+            title="Import memory entries from a JSON file"
+            className="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 rounded text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer"
+          >
+            import
+            <input type="file" accept=".json" onChange={handleImport} className="hidden" />
+          </label>
+          {importResult && (
+            <span className={`text-xs ${importResult.includes('ailed') ? 'text-red-400' : 'text-emerald-400'}`}>
+              {importResult}
+            </span>
+          )}
           <button
             onClick={handleSummarize}
             disabled={summarizing}
