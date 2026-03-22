@@ -601,3 +601,10 @@ export interface ProviderHealthEntry {
 
 export const getHeartbeatHistory = () =>
   req<Record<string, ProviderHealthEntry[]>>('GET', '/heartbeat/history');
+
+// ── Config file editor ─────────────────────────────────────────────────────────
+export interface ConfigFileEntry { key: string; filename: string; exists: boolean }
+export const listConfigFiles  = () => req<{ files: ConfigFileEntry[] }>('GET', '/config/files');
+export const readConfigFile   = (key: string) => req<{ content: string }>('GET', `/config/files/${key}`);
+export const writeConfigFile  = (key: string, content: string) =>
+  req<{ ok: boolean }>('PUT', `/config/files/${key}`, { content });

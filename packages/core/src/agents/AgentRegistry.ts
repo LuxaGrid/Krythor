@@ -32,6 +32,7 @@ export class AgentRegistry {
       maxTokens: input.maxTokens,
       tags: input.tags ?? [],
       ...(input.allowedTools !== undefined && { allowedTools: input.allowedTools }),
+      ...(input.idleTimeoutMs !== undefined && { idleTimeoutMs: input.idleTimeoutMs }),
       createdAt: now,
       updatedAt: now,
     };
@@ -57,6 +58,7 @@ export class AgentRegistry {
       ...(input.maxTokens !== undefined && { maxTokens: input.maxTokens }),
       ...(input.tags !== undefined && { tags: input.tags }),
       ...(input.allowedTools !== undefined && { allowedTools: input.allowedTools === null ? undefined : input.allowedTools }),
+      ...(input.idleTimeoutMs !== undefined && { idleTimeoutMs: input.idleTimeoutMs === null ? undefined : input.idleTimeoutMs }),
       updatedAt: Date.now(),
     };
 

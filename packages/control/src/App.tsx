@@ -18,6 +18,7 @@ import { DegradedBanner } from './components/DegradedBanner.tsx';
 import { SettingsPanel } from './components/SettingsPanel.tsx';
 import { WalkthroughTour, shouldShowTour } from './components/WalkthroughTour.tsx';
 import { LogsPanel } from './components/LogsPanel.tsx';
+import { ConfigEditorPanel } from './components/ConfigEditorPanel.tsx';
 
 // ── App Config Context ─────────────────────────────────────────────────────
 interface AppConfigCtx {
@@ -31,7 +32,7 @@ export const AppConfigContext = createContext<AppConfigCtx>({
 export const useAppConfig = () => useContext(AppConfigContext);
 
 // ── Tabs ──────────────────────────────────────────────────────────────────
-type Tab = 'command' | 'agents' | 'skills' | 'memory' | 'models' | 'guard' | 'events' | 'mission' | 'command-center' | 'workflow' | 'dashboard' | 'settings' | 'logs';
+type Tab = 'command' | 'agents' | 'skills' | 'memory' | 'models' | 'guard' | 'events' | 'mission' | 'command-center' | 'workflow' | 'dashboard' | 'settings' | 'logs' | 'config-editor';
 
 // Primary tabs — always visible
 const PRIMARY_TABS: { id: Tab; label: string; hint: string }[] = [
@@ -46,12 +47,13 @@ const PRIMARY_TABS: { id: Tab; label: string; hint: string }[] = [
 
 // Advanced tabs — shown in overflow menu
 const ADVANCED_TABS: { id: Tab; label: string; hint: string }[] = [
-  { id: 'skills',  label: 'Skills',          hint: 'Reusable task templates' },
-  { id: 'guard',   label: 'Guard',           hint: 'Safety rules and policy engine' },
-  { id: 'logs',    label: 'Logs',            hint: 'Live gateway log stream' },
-  { id: 'events',  label: 'Events',          hint: 'Real-time event stream' },
-  { id: 'mission', label: 'Mission Control', hint: 'Agent orchestration workspace' },
-  { id: 'workflow',label: 'Workflow',        hint: 'Workflow management' },
+  { id: 'skills',        label: 'Skills',          hint: 'Reusable task templates' },
+  { id: 'guard',         label: 'Guard',           hint: 'Safety rules and policy engine' },
+  { id: 'logs',          label: 'Logs',            hint: 'Live gateway log stream' },
+  { id: 'config-editor', label: 'Config Editor',   hint: 'Edit agents.json, providers.json, guard.json' },
+  { id: 'events',        label: 'Events',          hint: 'Real-time event stream' },
+  { id: 'mission',       label: 'Mission Control', hint: 'Agent orchestration workspace' },
+  { id: 'workflow',      label: 'Workflow',        hint: 'Workflow management' },
 ];
 
 const ALL_TABS = [...PRIMARY_TABS, ...ADVANCED_TABS];
@@ -532,7 +534,8 @@ function AppInner({ onTokenReady }: { onTokenReady: (token: string) => void }) {
           </div>
           <div className={`h-full ${tab === 'workflow'  ? 'block' : 'hidden'}`}><WorkflowPanel /></div>
           <div className={`h-full ${tab === 'dashboard' ? 'block' : 'hidden'}`}><DashboardPanel /></div>
-          <div className={`h-full ${tab === 'settings'  ? 'block' : 'hidden'}`}><SettingsPanel /></div>
+          <div className={`h-full ${tab === 'settings'     ? 'block' : 'hidden'}`}><SettingsPanel /></div>
+          <div className={`h-full ${tab === 'config-editor' ? 'block' : 'hidden'}`}><ConfigEditorPanel /></div>
         </div>
       </div>
     </AppConfigContext.Provider>

@@ -57,6 +57,9 @@ export class RunQueueFullError extends Error {
   }
 }
 
+/** Interval at which the idle-timeout janitor runs (ms). */
+const JANITOR_INTERVAL_MS = 15_000; // 15 seconds
+
 export class AgentOrchestrator extends EventEmitter {
   readonly registry: AgentRegistry;
   private runner: AgentRunner;
@@ -64,6 +67,9 @@ export class AgentOrchestrator extends EventEmitter {
 
   // Queue of resolve functions waiting for a run slot
   private readonly waitQueue: Array<{ resolve: () => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }> = [];
+
+  // Background janitor — stops runs that exceed their agent's idleTimeoutMs
+  private janitorTimer: ReturnType<typeof setInterval> | null = null;
 
   private handoffResolver: HandoffResolver | null = null;
   private customToolDispatcher: CustomToolDispatcher | null = null;
@@ -95,6 +101,40 @@ export class AgentOrchestrator extends EventEmitter {
       return run.output ?? null;
     };
     this.rebuildRunner(recordLearning, execTool ?? null);
+    this.startJanitor();
+  }
+
+  // ── Idle-timeout janitor ──────────────────────────────────────────────────
+
+  private startJanitor(): void {
+    this.janitorTimer = setInterval(() => {
+      const now = Date.now();
+      for (const [runId, run] of this.runHistory) {
+        if (run.status !== 'running') continue;
+        const agent = this.registry.getById(run.agentId);
+        if (!agent?.idleTimeoutMs) continue;
+        if (now - run.startedAt > agent.idleTimeoutMs) {
+          this.runner.stopRun(runId);
+          this.emit('agent:event', {
+            type:      'run:stopped',
+            runId,
+            agentId:   run.agentId,
+            payload:   { reason: 'idle_timeout', idleTimeoutMs: agent.idleTimeoutMs },
+            timestamp: now,
+          });
+        }
+      }
+    }, JANITOR_INTERVAL_MS);
+    // unref so the timer doesn't keep the process alive unnecessarily
+    if (this.janitorTimer.unref) this.janitorTimer.unref();
+  }
+
+  /** Stop the background janitor. Call on graceful shutdown. */
+  destroy(): void {
+    if (this.janitorTimer) {
+      clearInterval(this.janitorTimer);
+      this.janitorTimer = null;
+    }
   }
 
   /** Rebuild runner with all current wired dependencies. */

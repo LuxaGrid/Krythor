@@ -20,6 +20,12 @@ export interface AgentDefinition {
    * Example: ["web_search", "web_fetch"]
    */
   allowedTools?: string[];
+  /**
+   * Optional idle timeout in milliseconds. If a run is still active after this
+   * duration it is automatically stopped by the orchestrator janitor.
+   * Default: undefined (no timeout). Example: 300000 (5 minutes).
+   */
+  idleTimeoutMs?: number;
   createdAt: number;
   updatedAt: number;
 }
@@ -65,6 +71,7 @@ export interface CreateAgentInput {
   maxTokens?: number;
   tags?: string[];
   allowedTools?: string[];
+  idleTimeoutMs?: number;
 }
 
 export interface UpdateAgentInput {
@@ -79,6 +86,7 @@ export interface UpdateAgentInput {
   maxTokens?: number;
   tags?: string[];
   allowedTools?: string[] | null;
+  idleTimeoutMs?: number | null;
 }
 
 export interface RunAgentInput {

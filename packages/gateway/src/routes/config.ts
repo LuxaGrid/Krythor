@@ -5,6 +5,14 @@ import { join } from 'path';
 import { atomicWriteJSON, parseAppConfig } from '@krythor/core';
 import { logger } from '../logger.js';
 
+// ── Config file keys exposed for in-app editing ──────────────────────────────
+const EDITABLE_CONFIG_FILES: Record<string, string> = {
+  'agents':    'agents.json',
+  'providers': 'providers.json',
+  'guard':     'guard.json',
+  'app':       'app-config.json',
+};
+
 export interface AppConfig {
   selectedAgentId?: string;
   selectedModel?: string;
@@ -76,5 +84,59 @@ export function registerConfigRoute(app: FastifyInstance, configDir: string, gua
     }
     write(updated);
     return reply.send(updated);
+  });
+
+  // ── Config file editor routes ─────────────────────────────────────────────
+  // GET  /api/config/files           — list editable config files
+  // GET  /api/config/files/:key      — read a config file as raw JSON text
+  // PUT  /api/config/files/:key      — overwrite a config file with validated JSON
+
+  app.get('/api/config/files', async (_req, reply) => {
+    const files = Object.entries(EDITABLE_CONFIG_FILES).map(([key, filename]) => {
+      const path = join(configDir, filename);
+      return { key, filename, exists: existsSync(path) };
+    });
+    return reply.send({ files });
+  });
+
+  app.get<{ Params: { key: string } }>('/api/config/files/:key', async (req, reply) => {
+    const filename = EDITABLE_CONFIG_FILES[req.params.key];
+    if (!filename) return reply.code(404).send({ error: `Unknown config key: ${req.params.key}` });
+    const path = join(configDir, filename);
+    if (!existsSync(path)) return reply.send({ content: '' });
+    try {
+      const content = readFileSync(path, 'utf-8');
+      return reply.send({ content });
+    } catch (err) {
+      return reply.code(500).send({ error: err instanceof Error ? err.message : 'Read failed' });
+    }
+  });
+
+  app.put<{ Params: { key: string }; Body: { content: string } }>('/api/config/files/:key', {
+    schema: {
+      body: {
+        type: 'object',
+        required: ['content'],
+        properties: { content: { type: 'string', maxLength: 2_000_000 } },
+        additionalProperties: false,
+      },
+    },
+  }, async (req, reply) => {
+    if (guard) {
+      const verdict = guard.check({ operation: 'config:write', source: 'user' });
+      if (!verdict.allowed) return reply.code(403).send({ error: 'GUARD_DENIED', reason: verdict.reason });
+    }
+    const filename = EDITABLE_CONFIG_FILES[req.params.key];
+    if (!filename) return reply.code(404).send({ error: `Unknown config key: ${req.params.key}` });
+    const { content } = req.body;
+    // Validate that it's parseable JSON before writing
+    try {
+      const parsed = JSON.parse(content);
+      const path = join(configDir, filename);
+      atomicWriteJSON(path, parsed);
+      return reply.send({ ok: true });
+    } catch (err) {
+      return reply.code(400).send({ error: `Invalid JSON: ${err instanceof Error ? err.message : 'Parse error'}` });
+    }
   });
 }

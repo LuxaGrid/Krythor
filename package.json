@@ -1,8 +1,11 @@
 {
   "name": "krythor",
   "version": "2.1.0",
-  "private": true,
   "description": "Krythor — local-first AI command platform",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "packageManager": "pnpm@9.15.4",
   "engines": {
     "node": ">=20"

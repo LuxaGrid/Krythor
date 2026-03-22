@@ -97,6 +97,104 @@ export const TOOL_REGISTRY: ToolEntry[] = [
     alwaysAllowed: true,
   },
   {
+    name: 'read_file',
+    description:
+      'Read the contents of a local file. ' +
+      'Path must be within the allowed root directory. ' +
+      'Max file size: 512 KB. ' +
+      'Add "read_file" to the agent\'s allowedTools to permit this tool.',
+    parameters: {
+      path: {
+        type:        'string',
+        description: 'Absolute or relative path to the file to read.',
+        required:    true,
+        minLength:   1,
+        maxLength:   4096,
+      },
+    },
+    requiresGuard: false,
+    alwaysAllowed: false,
+  },
+  {
+    name: 'write_file',
+    description:
+      'Write text content to a local file, creating it if it does not exist. ' +
+      'Path must be within the allowed root directory. ' +
+      'Max content size: 512 KB. ' +
+      'Add "write_file" to the agent\'s allowedTools to permit this tool.',
+    parameters: {
+      path: {
+        type:        'string',
+        description: 'Absolute or relative path to write.',
+        required:    true,
+        minLength:   1,
+        maxLength:   4096,
+      },
+      content: {
+        type:        'string',
+        description: 'Text content to write to the file.',
+        required:    true,
+      },
+    },
+    requiresGuard: true,
+    alwaysAllowed: false,
+  },
+  {
+    name: 'edit_file',
+    description:
+      'Replace one exact occurrence of a string in a file with new text. ' +
+      'The "old" string must appear exactly once in the file. ' +
+      'Path must be within the allowed root directory. ' +
+      'Add "edit_file" to the agent\'s allowedTools to permit this tool.',
+    parameters: {
+      path: {
+        type:        'string',
+        description: 'Absolute or relative path to the file to edit.',
+        required:    true,
+        minLength:   1,
+        maxLength:   4096,
+      },
+      old: {
+        type:        'string',
+        description: 'The exact text to replace (must appear exactly once).',
+        required:    true,
+        minLength:   1,
+      },
+      new: {
+        type:        'string',
+        description: 'The replacement text.',
+        required:    true,
+      },
+    },
+    requiresGuard: true,
+    alwaysAllowed: false,
+  },
+  {
+    name: 'apply_patch',
+    description:
+      'Apply a unified diff patch to a local file. ' +
+      'The patch must be in standard unified diff format (--- / +++ / @@ headers). ' +
+      'Path must be within the allowed root directory. ' +
+      'Add "apply_patch" to the agent\'s allowedTools to permit this tool.',
+    parameters: {
+      path: {
+        type:        'string',
+        description: 'Absolute or relative path to the file to patch.',
+        required:    true,
+        minLength:   1,
+        maxLength:   4096,
+      },
+      patch: {
+        type:        'string',
+        description: 'The unified diff patch to apply.',
+        required:    true,
+        minLength:   1,
+      },
+    },
+    requiresGuard: true,
+    alwaysAllowed: false,
+  },
+  {
     name: 'spawn_agent',
     description:
       'Spawn a sub-agent by ID and send it a message. The sub-agent runs with shared memory. ' +
