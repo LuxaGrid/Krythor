@@ -11,6 +11,18 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+#### Items A–J (2026-03-21)
+
+- **Documentation consolidation (A)**: `docs/START_HERE.md` (quick-start, feature table, CLI/API reference, troubleshooting); `docs/TROUBLESHOOTING.md` (10 common issues with step-by-step fixes); `docs/ENV_VARS.md` (all environment variables with types and defaults); README.md updated with documentation links section
+- **Sub-agent spawning (B)**: `spawn_agent` tool in `AgentRunner`; agents can emit `{"tool":"spawn_agent","agentId":"...","message":"..."}` to invoke any registered agent as a sub-agent; capped at 2 spawns per run; `SpawnAgentResolver` callback wired from `AgentOrchestrator` to avoid circular imports; 4 tests
+- **Plugin/tool architecture (C)**: `PluginLoader` class scans `<dataDir>/plugins/*.js`, validates `{name, description, run}` shape, registers into `TOOL_REGISTRY`; `GET /api/plugins` returns `[{name, description, file}]`; hot-reload via `require.cache` clearing; 6 core tests + 3 gateway tests
+- **TUI interactive chat improvements (D)**: `/agent <name>`, `/clear`, `/models` commands in the TUI; message history display (last 5 messages with role labels); `selectionReason` shown below AI responses; active agent indicator; "Thinking…" during inference
+- **Remote gateway documentation (E)**: `docs/REMOTE_GATEWAY.md` — SSH tunnel, Tailscale mesh, Nginx TLS proxy; security guidance, multi-gateway setup, troubleshooting table
+- **Memory temporal decay (F)**: `temporalDecayMultiplier()` with 90-day half-life (exponential, 2^(-age/halfLife)); applied to BM25 scores when >5 results exist; pinned entries exempt; `KRYTHOR_MEMORY_NO_DECAY=1` disables; 7 unit tests
+- **Per-agent DB memory scope enforcement (G)**: agents with `memoryScope='agent'` now query ONLY their own memories (`scope_id=agent.id`); user/global scope is excluded to enforce isolation; workspace/session scopes continue to include user-global context; 4 tests
+- **Model routing aliases (H)**: `ModelEngine.resolveModelAlias(alias)` maps `claude`, `gpt4`, `local`, `fast`, `best` to real provider/model pairs; case-insensitive; unknown aliases pass through unchanged; gateway `/api/command` resolves aliases before routing; 10 tests
+- **Conversation management improvements (I)**: `GET /api/conversations/:id/messages` now returns paginated `{messages, total, page, limit, hasMore}` envelope (`?page=&limit=`, capped at 500); `POST /api/command` intercepts `/clear`, `/model`, `/agent` in-chat slash commands and returns synthetic JSON responses without inference; 12 integration tests
+
 #### Batch 5 — Deferred items (2026-03-21)
 
 - **Docker support**: `Dockerfile` (node:20-alpine, non-root user, `VOLUME /data`), `docker-compose.yml` (single service, named volume, restart policy), `.dockerignore`; CI release workflow now runs a docker build-only verification job before publishing

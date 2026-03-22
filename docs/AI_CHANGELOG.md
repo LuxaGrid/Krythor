@@ -1,3 +1,130 @@
+# AI Changelog — Pass 2026-03-21 (Items A–J: Docs, Agents, Plugins, TUI, Memory, Models, Conversations)
+
+**Model:** Claude Sonnet 4.6
+**Pass type:** Items A–J — 10 items completing documentation, spawn_agent, PluginLoader, TUI improvements, remote gateway docs, memory temporal decay, per-agent memory scoping, model aliases, conversation pagination, and docs update
+
+---
+
+## Summary (this pass)
+
+### ITEM A: Documentation consolidation — DONE
+
+**Files:** `docs/START_HERE.md` (new), `docs/TROUBLESHOOTING.md` (new), `docs/ENV_VARS.md` (new), `README.md`
+
+- `START_HERE.md`: single entry point with 3-step quick start, feature table, CLI commands, API quick reference, troubleshooting, full docs index
+- `TROUBLESHOOTING.md`: 10 common issues (gateway not starting, 404, 401, ABI mismatch, no providers, etc.) with step-by-step fixes
+- `ENV_VARS.md`: all environment variables with types, defaults, and examples
+- README.md: added documentation links section before Getting Started
+
+---
+
+### ITEM B: Sub-agent spawning — DONE
+
+**Files:** `packages/core/src/agents/AgentRunner.ts`, `packages/core/src/agents/AgentOrchestrator.ts`, `packages/core/src/tools/ToolRegistry.ts`, `packages/core/src/index.ts`, `packages/core/src/agents/AgentRunner.spawn.test.ts` (new)
+
+- `SpawnAgentCall` type: `{ tool: 'spawn_agent'; agentId: string; message: string }`
+- `SpawnAgentResolver` callback type (7th arg to `AgentRunner`) — avoids circular imports
+- `MAX_SPAWN_AGENT = 2` cap enforced via instance counter reset at run start
+- `TOOL_REGISTRY` entry for `spawn_agent` with `agentId` + `message` parameters
+- `AgentOrchestrator` wires spawnAgentResolver: looks up agent by registry, runs via runner
+- 4 tests: resolves to response, unknown agent, cap enforcement, no resolver
+
+---
+
+### ITEM C: Plugin/tool architecture — DONE
+
+**Files:** `packages/core/src/tools/PluginLoader.ts` (new), `packages/core/src/tools/PluginLoader.test.ts` (new), `packages/gateway/src/routes/plugins.ts` (new), `packages/gateway/src/routes/plugins.test.ts` (new), `packages/gateway/src/server.ts`, `packages/core/src/index.ts`
+
+- `PluginLoader` class: scans `<dataDir>/plugins/*.js`, uses `require()` for CommonJS
+- `validatePluginExport()`: checks `{name: string, description: string, run: function}` shape
+- Invalid plugins skipped with `console.warn`; missing directory is a no-op
+- `TOOL_REGISTRY` registration for valid plugins; `require.cache` cleared for hot-reload
+- `GET /api/plugins`: returns `[{name, description, file}]` (run function excluded)
+- 6 core tests + 3 gateway tests
+
+---
+
+### ITEM D: TUI interactive chat improvements — DONE
+
+**Files:** `start.js`
+
+- State variables: `lastSelectionReason`, `activeAgentId`, `messageHistory`
+- HELP_TEXT extended with `/agent`, `/clear`, `/models` entries
+- `render()`: message history (last 5), selectionReason dimmed below AI reply, active agent indicator, "Thinking…" during inference
+- `dispatchCommand()`: `/clear` resets history; `/agent <name>` verifies via `GET /api/agents`; `/models` fetches from `GET /api/models`; chat messages push to history with selectionReason; agentId included in `/api/command` body
+
+---
+
+### ITEM E: Remote gateway documentation — DONE
+
+**Files:** `docs/REMOTE_GATEWAY.md` (new)
+
+- SSH tunnel (ad-hoc), Tailscale (team mesh), Nginx (production TLS)
+- Security: token rotation, what NOT to do, CORS configuration
+- Multi-gateway Nginx path-routing setup
+- Troubleshooting table (9 symptoms with fixes)
+
+---
+
+### ITEM F: Memory temporal decay — DONE
+
+**Files:** `packages/memory/src/MemoryRetriever.ts`, `packages/memory/src/MemoryRetriever.test.ts`
+
+- `temporalDecayMultiplier(entry, now)` exported function
+- 90-day half-life exponential decay: `2^(-ageMs / HALF_LIFE_MS)`
+- Clamped to `[0.10, 1.0]` — very old entries still surface when they are the only result
+- Pinned entries exempt (multiplier = 1.0)
+- Only applied when `entries.length > 5` (avoids burying unique results)
+- `KRYTHOR_MEMORY_NO_DECAY=1` env var disables completely
+- 7 unit tests: new entry (1.0), 90-day (≈0.5), 180-day (≈0.25), old entry (clamp=0.10), pinned, env-var disable
+
+---
+
+### ITEM G: Per-agent DB memory scope enforcement — DONE
+
+**Files:** `packages/core/src/agents/AgentRunner.ts`, `packages/core/src/agents/AgentRunner.memscope.test.ts` (new)
+
+- `buildMemoryContext()` updated: agents with `memoryScope='agent'` query ONLY agent scope
+- `workspace`/`session` scope agents still get user-global memories as supplemental context
+- `scope_id = agent.id` enforced for all agent-scope searches
+- 4 tests: agent-scope excludes user, session includes both, workspace includes both, scope_id correctness
+
+---
+
+### ITEM H: Model routing aliases — DONE
+
+**Files:** `packages/models/src/ModelEngine.ts`, `packages/models/src/ModelEngine.alias.test.ts` (new), `packages/gateway/src/routes/command.ts`
+
+- `ModelEngine.resolveModelAlias(alias)` → `{ modelId, providerId } | null`
+- Aliases: `claude` (Anthropic), `gpt4` (OpenAI, gpt-4 preferred), `local` (Ollama), `fast` (lowest latency), `best` (premium keyword match)
+- Case-insensitive; unknown strings return null (pass-through)
+- Resolved before routing in `POST /api/command`; providerOverride also passed
+- 10 tests: each alias, no-provider fallbacks, case-insensitivity
+
+---
+
+### ITEM I: Conversation management improvements — DONE
+
+**Files:** `packages/gateway/src/routes/conversations.ts`, `packages/gateway/src/routes/command.ts`, `packages/gateway/src/routes/conversations.itemI.test.ts` (new)
+
+- `GET /api/conversations/:id/messages` now returns `{messages, total, page, limit, hasMore}` envelope; `?page=&limit=` params (limit capped 500, default 50)
+- `POST /api/conversations/:id/messages` already supported message import without inference (no changes)
+- `POST /api/command`: `/clear`, `/model [id]`, `/agent [id]` slash commands return synthetic JSON without inference; `models` resolved early for slash-command list
+- 12 integration tests: pagination envelope, page 2, 404s, message import, 5 slash-command variants
+
+---
+
+### ITEM J: Final documentation pass — DONE
+
+**Files:** `docs/API.md`, `CHANGELOG.md`, `docs/AI_CHANGELOG.md`, `README.md`
+
+- API.md: slash commands table, model aliases table, paginated messages schema, `/api/plugins` section, `spawn_agent` tool documentation
+- CHANGELOG.md: Items A–J entry under [Unreleased]
+- AI_CHANGELOG.md: full item-by-item technical summary (this document)
+- README.md: documentation section links (already added in ITEM A)
+
+---
+
 # AI Changelog — Pass 2026-03-21 (Batch 6: Security + Compatibility + UX)
 
 **Model:** Claude Sonnet 4.6

@@ -61,11 +61,31 @@ Run a command through the AI system.
 {
   "input": "string (required)",
   "agentId": "string (optional — use a specific agent)",
-  "modelId": "string (optional — override model)",
+  "modelId": "string (optional — override model, supports aliases: claude, gpt4, local, fast, best)",
   "conversationId": "string (optional — continue a conversation)",
   "stream": "boolean (optional — SSE streaming)"
 }
 ```
+
+**In-chat slash commands:** When `input` begins with `/`, the command is intercepted before inference and returns a synthetic response. No tokens are consumed.
+
+| Command | Returns |
+|---------|---------|
+| `/clear` | `{ command: "clear", output: "(chat history cleared)" }` |
+| `/model` | `{ command: "model:list", output: "Available models: ..." }` |
+| `/model <id>` | `{ command: "model:switch", modelId: "<id>" }` |
+| `/agent` | `{ command: "agent:status", output: "..." }` |
+| `/agent <id>` | `{ command: "agent:switch", agentId: "<id>" }` |
+
+**Model aliases for `modelId`:** Short aliases are resolved to real provider/model pairs before routing.
+
+| Alias | Resolves to |
+|-------|-------------|
+| `claude` | First enabled Anthropic provider's default model |
+| `gpt4` | First enabled OpenAI provider, gpt-4 model preferred |
+| `local` | First enabled Ollama provider's first model |
+| `fast` | Provider with lowest recorded average latency |
+| `best` | Premium model (claude/gpt-4/gemini preferred) or first model |
 
 **Response (non-streaming):**
 
@@ -188,6 +208,16 @@ Export all agents as JSON.
 
 Import agents from JSON.
 
+**Agent tool: `spawn_agent`**
+
+Agents can spawn sub-agents using the built-in `spawn_agent` tool. The agent emits a JSON blob in its response:
+
+```json
+{"tool":"spawn_agent","agentId":"<child-id>","message":"<message>"}
+```
+
+The orchestrator intercepts this, runs the target agent, and injects the result back as a tool result. Capped at 2 spawns per run to prevent runaway chains.
+
 ---
 
 ## Memory
@@ -288,11 +318,19 @@ Delete a conversation.
 
 ### GET /api/conversations/:id/messages
 
-Get all messages in a conversation.
+Get messages in a conversation — paginated.
+
+**Query params:** `?page=1&limit=50` (limit capped at 500, default 50)
+
+**Response:**
+
+```json
+{ "messages": [...], "total": 42, "page": 1, "limit": 50, "hasMore": false }
+```
 
 ### POST /api/conversations/:id/messages
 
-Add a message.
+Add a message without triggering inference (import / seeding).
 
 **Body:** `{ role, content, modelId?, providerId? }`
 
@@ -391,6 +429,18 @@ Reload policy from disk.
 ### GET /api/guard/decisions
 
 Audit log of all guard decisions. **Query:** `?limit=100&offset=0`
+
+---
+
+## Plugins
+
+### GET /api/plugins
+
+List loaded plugins (from `<dataDir>/plugins/*.js`).
+
+**Response:** Array of `{ name, description, file }` (the `run` function is not serialized).
+
+Plugins are CommonJS modules loaded at gateway startup. See [START_HERE.md](./START_HERE.md) for plugin format.
 
 ---
 
