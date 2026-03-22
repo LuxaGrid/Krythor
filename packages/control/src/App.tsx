@@ -14,6 +14,7 @@ import { WorkflowPanel } from './components/WorkflowPanel.tsx';
 import { DashboardPanel } from './components/DashboardPanel.tsx';
 import { OnboardingWizard } from './components/OnboardingWizard.tsx';
 import { DegradedBanner } from './components/DegradedBanner.tsx';
+import { SettingsPanel } from './components/SettingsPanel.tsx';
 
 // ── App Config Context ─────────────────────────────────────────────────────
 interface AppConfigCtx {
@@ -27,7 +28,7 @@ export const AppConfigContext = createContext<AppConfigCtx>({
 export const useAppConfig = () => useContext(AppConfigContext);
 
 // ── Tabs ──────────────────────────────────────────────────────────────────
-type Tab = 'command' | 'agents' | 'skills' | 'memory' | 'models' | 'guard' | 'events' | 'mission' | 'workflow' | 'dashboard';
+type Tab = 'command' | 'agents' | 'skills' | 'memory' | 'models' | 'guard' | 'events' | 'mission' | 'workflow' | 'dashboard' | 'settings';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'command',   label: 'Command'         },
@@ -40,6 +41,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'mission',   label: 'Mission Control' },
   { id: 'workflow',  label: 'Workflow'        },
   { id: 'dashboard', label: 'Dashboard'       },
+  { id: 'settings',  label: 'Settings'        },
 ];
 
 // ── About Dialog ──────────────────────────────────────────────────────────
@@ -274,7 +276,7 @@ function AppInner({ onTokenReady }: { onTokenReady: (token: string) => void }) {
 
   // ── Global keyboard shortcuts ────────────────────────────────────────────
   useEffect(() => {
-    const tabOrder: Tab[] = ['command', 'agents', 'skills', 'memory', 'models', 'guard', 'events', 'mission', 'workflow', 'dashboard'];
+    const tabOrder: Tab[] = ['command', 'agents', 'skills', 'memory', 'models', 'guard', 'events', 'mission', 'workflow', 'dashboard', 'settings'];
 
     const handler = (e: KeyboardEvent) => {
       // Ignore when typing in an input/textarea (except for modal-close)
@@ -378,6 +380,7 @@ function AppInner({ onTokenReady }: { onTokenReady: (token: string) => void }) {
           <div className={`h-full ${tab === 'mission'   ? 'block' : 'hidden'}`}><MissionControlPanel /></div>
           <div className={`h-full ${tab === 'workflow'  ? 'block' : 'hidden'}`}><WorkflowPanel /></div>
           <div className={`h-full ${tab === 'dashboard' ? 'block' : 'hidden'}`}><DashboardPanel /></div>
+          <div className={`h-full ${tab === 'settings'  ? 'block' : 'hidden'}`}><SettingsPanel /></div>
         </div>
       </div>
     </AppConfigContext.Provider>
