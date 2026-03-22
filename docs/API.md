@@ -588,6 +588,121 @@ Probe for locally running model servers (Ollama, LM Studio, llama-server).
 
 ---
 
+## Channels (outbound webhooks) — #16
+
+Configure outbound webhooks that Krythor POSTs to when lifecycle events occur.
+
+### GET /api/channels/events
+
+Returns all supported event type names.
+
+**Response:** `{ events: ["agent_run_complete", "agent_run_failed", "memory_saved", "memory_deleted", "conversation_created", "conversation_archived", "provider_added", "provider_removed", "heartbeat", "custom"] }`
+
+### GET /api/channels
+
+List all configured channels (secrets are never returned — `hasSecret: boolean` only).
+
+### POST /api/channels
+
+Create a new outbound webhook channel.
+
+**Body:**
+```json
+{
+  "name": "My Webhook",
+  "url": "https://hooks.example.com/abc",
+  "events": ["agent_run_complete", "agent_run_failed"],
+  "secret": "optional-hmac-secret",
+  "headers": { "X-Custom": "value" },
+  "isEnabled": true
+}
+```
+
+- `events`: empty array = subscribe to all events.
+- `secret`: if set, each delivery includes `X-Krythor-Signature: sha256=<hmac>` for verification.
+- URL must use `http` or `https`.
+
+**Payload format** (POSTed to your URL on each event):
+```json
+{
+  "event": "agent_run_complete",
+  "gatewayId": "uuid",
+  "ts": "2026-03-22T12:00:00.000Z",
+  "data": { "runId": "...", "agentId": "...", "durationMs": 1200 }
+}
+```
+
+### GET /api/channels/:id
+
+Get a single channel including headers and delivery stats.
+
+### PATCH /api/channels/:id
+
+Update any fields (`name`, `url`, `events`, `secret`, `headers`, `isEnabled`).
+
+### DELETE /api/channels/:id
+
+Remove a channel. Returns `{ ok: true }`.
+
+### POST /api/channels/:id/test
+
+Send a test delivery with `event: "custom"` and `data: { test: true }`. Rate-limited to 10/minute.
+
+**Response:** `{ ok: boolean, statusCode?: number, latencyMs: number, error?: string }`
+
+---
+
+## Gateway identity and peer discovery — #18
+
+### GET /api/gateway/info
+
+Returns this gateway's stable identity and capability manifest.
+
+**Response:**
+```json
+{
+  "version": "2.0.0",
+  "platform": "linux",
+  "arch": "x64",
+  "nodeVersion": "v20.19.0",
+  "gatewayId": "uuid",
+  "startTime": "2026-03-22T00:00:00.000Z",
+  "capabilities": ["exec", "web_search", "web_fetch", "memory", "agents", "skills", "tools", "channels", "peers"]
+}
+```
+
+### GET /api/gateway/peers
+
+List all known peers (manual + auto-discovered via mDNS).
+
+### POST /api/gateway/peers
+
+Register a remote Krythor gateway as a peer. The peer is probed immediately.
+
+**Body:** `{ "name": "string", "url": "http://192.168.1.10:47200", "authToken": "optional" }`
+
+### GET /api/gateway/peers/:id
+
+Get a single peer with health and capability info.
+
+### PATCH /api/gateway/peers/:id
+
+Update peer fields: `name`, `url`, `authToken`, `isEnabled`.
+
+### DELETE /api/gateway/peers/:id
+
+Remove a peer. Returns `{ ok: true }`.
+
+### POST /api/gateway/peers/:id/probe
+
+On-demand health check against a peer's `/api/gateway/info`. Rate-limited to 10/minute.
+
+**Response:** `{ healthy: boolean, latencyMs: number, info?: { version, platform, capabilities, ... } }`
+
+**LAN auto-discovery:** Gateways on the same network announce themselves via UDP multicast (`224.0.0.251:5353`) every 30 seconds. Peers on the same LAN are discovered automatically and probed; they appear with `source: "mdns"` and are not persisted across restarts. Manual peers (`source: "manual"`) are persisted to `peers.json`.
+
+---
+
 ## WebSocket stream
 
 ### WS /ws/stream

@@ -20,7 +20,7 @@ function withIdleStatus(conv: { id: string; title: string; agentId: string | nul
   };
 }
 
-export function registerConversationRoutes(app: FastifyInstance, store: ConversationStore, guard?: GuardEngine): void {
+export function registerConversationRoutes(app: FastifyInstance, store: ConversationStore, guard?: GuardEngine, emit?: (event: string, data: Record<string, unknown>) => void): void {
 
   // GET /api/conversations — list all, with idle status metadata
   // ?include_archived=true — include archived conversations (hidden by default)
@@ -47,6 +47,7 @@ export function registerConversationRoutes(app: FastifyInstance, store: Conversa
   }, async (req, reply) => {
     const { agentId } = (req.body ?? {}) as { agentId?: string };
     const conv = store.createConversation(agentId);
+    emit?.('conversation_created', { id: conv.id, agentId: agentId ?? null });
     return reply.code(201).send(conv);
   });
 

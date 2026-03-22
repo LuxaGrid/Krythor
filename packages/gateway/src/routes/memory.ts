@@ -5,7 +5,7 @@ import type { GuardEngine } from '@krythor/guard';
 import { sendError } from '../errors.js';
 import { createHash } from 'crypto';
 
-export function registerMemoryRoutes(app: FastifyInstance, memory: MemoryEngine, models?: ModelEngine, guard?: GuardEngine): void {
+export function registerMemoryRoutes(app: FastifyInstance, memory: MemoryEngine, models?: ModelEngine, guard?: GuardEngine, emit?: (event: string, data: Record<string, unknown>) => void): void {
 
   // GET /api/memory — list / search entries
   app.get('/api/memory', async (req, reply) => {
@@ -249,6 +249,7 @@ export function registerMemoryRoutes(app: FastifyInstance, memory: MemoryEngine,
     },
   }, async (req, reply) => {
     const result = memory.create(req.body as CreateMemoryInput);
+    emit?.('memory_saved', { id: result.entry.id, scope: result.entry.scope, source: result.entry.source });
     return reply.code(201).send({ entry: result.entry, risk: result.risk });
   });
 
@@ -326,6 +327,7 @@ export function registerMemoryRoutes(app: FastifyInstance, memory: MemoryEngine,
     const existing = memory.getById(req.params.id);
     if (!existing) return reply.code(404).send({ error: 'Not found' });
     memory.delete(req.params.id);
+    emit?.('memory_deleted', { id: req.params.id });
     return reply.code(204).send();
   });
 

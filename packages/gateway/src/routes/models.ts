@@ -64,6 +64,7 @@ export function registerModelRoutes(
   models: ModelEngine,
   memory?: MemoryEngine,
   guard?: GuardEngine,
+  emit?: (event: string, data: Record<string, unknown>) => void,
 ): void {
 
   // GET /api/models — list all models across all providers (with badges + provider info)
@@ -165,6 +166,7 @@ export function registerModelRoutes(
       memory.registerEmbeddingProvider(ep);
       memory.setActiveEmbeddingProvider(ep.name);
     }
+    emit?.('provider_added', { id: config.id, name: config.name, type: config.type });
     return reply.code(201).send(maskProviderConfig(config));
   });
 
@@ -221,6 +223,7 @@ export function registerModelRoutes(
   app.delete<{ Params: { id: string } }>('/api/models/providers/:id', async (req, reply) => {
     try {
       models.removeProvider(req.params.id);
+      emit?.('provider_removed', { id: req.params.id });
       return reply.code(204).send();
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Not found';

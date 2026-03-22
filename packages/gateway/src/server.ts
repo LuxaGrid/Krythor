@@ -29,7 +29,10 @@ import { registerOAuthRoutes } from './routes/oauth.js';
 import { registerLocalModelsRoute } from './routes/local-models.js';
 import { registerStreamWs } from './ws/stream.js';
 import { registerDashboardRoute } from './routes/dashboard.js';
-import { registerGatewayRoutes } from './routes/gateway.js';
+import { registerGatewayRoutes, loadOrCreateGatewayId } from './routes/gateway.js';
+import { registerChannelRoutes } from './routes/channels.js';
+import { ChannelManager } from './ChannelManager.js';
+import { PeerRegistry } from './PeerRegistry.js';
 import { registerOpenAICompatRoutes } from './routes/openai.compat.js';
 import { registerPluginRoutes } from './routes/plugins.js';
 import { HeartbeatEngine, type HeartbeatRunRecord, type HeartbeatInsight } from './heartbeat/HeartbeatEngine.js';
@@ -564,6 +567,7 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   };
 
   // Forward agent and guard events to WebSocket clients; also log to disk
+  // Channel events are emitted here so all outbound webhooks fire on lifecycle events.
   orchestrator.on('agent:event', (event) => {
     broadcast({ type: 'agent:event', payload: event });
     const requestId = runRequestIds.get(event.runId);
@@ -578,6 +582,8 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
       runStartTimes.delete(event.runId);
       runRequestIds.delete(event.runId);
       logger.agentRunCompleted(event.runId, event.agentId, durationMs, p?.modelUsed, requestId);
+      // Fire channel event
+      channelMgr.emit('agent_run_complete', { runId: event.runId, agentId: event.agentId, durationMs, modelUsed: p?.modelUsed });
     } else if (event.type === 'run:stopped') {
       runStartTimes.delete(event.runId);
       runRequestIds.delete(event.runId);
@@ -586,6 +592,8 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
       runRequestIds.delete(event.runId);
       const p = event.payload as { error?: string } | undefined;
       logger.agentRunFailed(event.runId, event.agentId, redactErrorMessage(p?.error ?? 'unknown'), requestId);
+      // Fire channel event
+      channelMgr.emit('agent_run_failed', { runId: event.runId, agentId: event.agentId, error: p?.error });
     }
   });
   guard.on('guard:denied', (payload) => {
@@ -652,14 +660,20 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   const pluginLoader = new PluginLoader(dataDir);
   pluginLoader.load();
 
+  // Channels (outbound webhooks) — #16
+  // Created here so emit() is available to route handlers below.
+  const gatewayId = loadOrCreateGatewayId(join(dataDir, 'config'));
+  const channelMgr = new ChannelManager(join(dataDir, 'config'), gatewayId);
+  const channelEmit = (event: string, data: Record<string, unknown>) => channelMgr.emit(event as import('./ChannelManager.js').ChannelEvent, data);
+
   // Register routes
   registerCommandRoute(app, core, orchestrator, broadcast, guard, convStore);
-  registerMemoryRoutes(app, memory, models, guard);
-  registerModelRoutes(app, models, memory, guard);
+  registerMemoryRoutes(app, memory, models, guard, channelEmit);
+  registerModelRoutes(app, models, memory, guard, channelEmit);
   registerAgentRoutes(app, orchestrator, guard);
   registerGuardRoutes(app, guard, guardDecisionStore);
   registerConfigRoute(app, join(dataDir, 'config'), guard);
-  registerConversationRoutes(app, convStore, guard);
+  registerConversationRoutes(app, convStore, guard, channelEmit);
   registerSkillRoutes(app, skillRegistry, guard, skillRunner);
   registerRecommendRoutes(app, models, recommender, guard);
   registerToolRoutes(app, guard, execTool);
@@ -802,8 +816,19 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   // reference heartbeat directly (avoids a late-binding closure or re-export).
   registerDashboardRoute(app, models, memory, orchestrator, heartbeat);
 
+  // Channel routes (outbound webhooks) — #16
+  registerChannelRoutes(app, channelMgr);
+
+  // Peer registry (LAN discovery + manual peers) — #18
+  const peerRegistry = new PeerRegistry(join(dataDir, 'config'), gatewayId, GATEWAY_PORT, KRYTHOR_VERSION);
+  if (process.env['NODE_ENV'] !== 'test') {
+    peerRegistry.startDiscovery();
+    app.addHook('onClose', async () => peerRegistry.stopDiscovery());
+  }
+
+
   // Gateway identity and capability routes (auth required via global preHandler).
-  registerGatewayRoutes(app, join(dataDir, 'config'));
+  registerGatewayRoutes(app, join(dataDir, 'config'), peerRegistry);
 
   // OpenAI-compatible API routes — allows OpenAI SDK users to point baseURL at Krythor.
   // Auth is handled inside the route (flexible — allows no-token usage for local-only setups).

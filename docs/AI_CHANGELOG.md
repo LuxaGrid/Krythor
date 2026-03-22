@@ -1,3 +1,56 @@
+# AI Changelog — Pass 2026-03-22 (#16 Channels, #18 Discovery — v2.0.0)
+
+**Model:** Claude Sonnet 4.6
+**Pass type:** #16 Channels/messaging (outbound webhooks) + #18 Discovery/node pairing (mDNS LAN + manual peers)
+
+---
+
+## Summary (this pass)
+
+### #16 Channels (outbound webhooks) — DONE
+
+**Files:**
+- `packages/gateway/src/ChannelManager.ts` (new) — webhook engine: CRUD, HMAC signing, delivery stats, persistence
+- `packages/gateway/src/routes/channels.ts` (new) — 7 REST routes
+- `packages/gateway/src/routes/channels.test.ts` (new) — 13 tests
+
+**What was built:**
+- `ChannelManager` class: manages outbound webhook channels persisted to `<configDir>/channels.json`
+- Events: `agent_run_complete`, `agent_run_failed`, `memory_saved`, `memory_deleted`, `conversation_created`, `conversation_archived`, `provider_added`, `provider_removed`, `heartbeat`, `custom`
+- Empty `events` array = subscribe to all events
+- HMAC-SHA256 signing: `X-Krythor-Signature: sha256=<hex>` when `secret` is set
+- Custom headers per channel; delivery stats tracked (`lastDeliveryAt`, `lastDeliveryStatus`, `failureCount`)
+- `emit()` is non-blocking (fire-and-forget); `test()` returns latency + status synchronously
+- Routes: `GET /api/channels/events`, `GET /api/channels`, `POST /api/channels`, `GET /api/channels/:id`, `PATCH /api/channels/:id`, `DELETE /api/channels/:id`, `POST /api/channels/:id/test`
+- Secrets never returned in responses (only `hasSecret: boolean`)
+- Channel events wired from server.ts into: orchestrator (agent runs), memory routes, conversation routes, model routes (provider add/remove)
+
+---
+
+### #18 Discovery / node pairing — DONE
+
+**Files:**
+- `packages/gateway/src/PeerRegistry.ts` (new) — LAN discovery + manual peer CRUD
+- `packages/gateway/src/routes/gateway.ts` (rewritten) — full peer REST API
+- `packages/gateway/src/routes/gateway.test.ts` (expanded) — 15 tests
+
+**What was built:**
+- `PeerRegistry` class: manages remote gateway peers persisted to `<configDir>/peers.json`
+- LAN discovery: UDP multicast on `224.0.0.251:5353`; announces `{ type: 'krythor-announce', gatewayId, port, version }` every 30s
+- Auto-registers peers heard from other gateways on LAN; probes via `GET /api/gateway/info`
+- Health polling every 60s; mDNS peers not seen in 5 min are evicted
+- mDNS peers (`source: 'mdns'`) are ephemeral — not persisted; manual peers are persisted
+- Discovery disabled in `NODE_ENV=test` to prevent UDP socket leaks
+- Routes: `GET /api/gateway/info`, `GET /api/gateway/peers`, `POST /api/gateway/peers`, `GET /api/gateway/peers/:id`, `PATCH /api/gateway/peers/:id`, `DELETE /api/gateway/peers/:id`, `POST /api/gateway/peers/:id/probe`
+- Capabilities manifest updated: now includes `'channels'` and `'peers'`
+- `loadOrCreateGatewayId()` exported and reused across server.ts, PeerRegistry, ChannelManager
+
+---
+
+### Test results: 303 tests passing (40 test files)
+
+---
+
 # AI Changelog — Pass 2026-03-21 (Items A–J: Docs, Agents, Plugins, TUI, Memory, Models, Conversations)
 
 **Model:** Claude Sonnet 4.6
