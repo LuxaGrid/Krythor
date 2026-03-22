@@ -1,6 +1,6 @@
 {
   "name": "krythor",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "private": true,
   "description": "Krythor — local-first AI command platform",
   "packageManager": "pnpm@9.15.4",
