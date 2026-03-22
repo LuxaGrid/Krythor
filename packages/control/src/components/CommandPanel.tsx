@@ -8,6 +8,7 @@ import {
   createConversation,
   deleteConversation,
   updateConversation,
+  pinConversation,
   getMessages,
   deleteLastAssistantMessage,
   exportConversation,
@@ -234,9 +235,10 @@ interface SidebarProps {
   onNew: () => void;
   onDelete: (id: string) => void;
   onRename: (id: string, title: string) => void;
+  onPin: (id: string, pinned: boolean) => void;
 }
 
-function Sidebar({ conversations, activeId, onSelect, onNew, onDelete, onRename }: SidebarProps) {
+function Sidebar({ conversations, activeId, onSelect, onNew, onDelete, onRename, onPin }: SidebarProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
@@ -270,9 +272,13 @@ function Sidebar({ conversations, activeId, onSelect, onNew, onDelete, onRename 
     setDeleteConfirm(null);
   };
 
-  // Group by time
+  // Pinned conversations shown first
+  const pinned = conversations.filter(c => c.pinned);
+  const unpinned = conversations.filter(c => !c.pinned);
+
+  // Group unpinned by time
   const groups: Record<string, Conversation[]> = {};
-  for (const conv of conversations) {
+  for (const conv of unpinned) {
     const label = groupLabel(conv.updatedAt);
     if (!groups[label]) groups[label] = [];
     groups[label]!.push(conv);
@@ -294,6 +300,30 @@ function Sidebar({ conversations, activeId, onSelect, onNew, onDelete, onRename 
       <div className="flex-1 overflow-y-auto scrollbar-thin">
         {conversations.length === 0 && (
           <p className="text-zinc-700 text-xs p-3 leading-relaxed">No conversations yet. Start one above.</p>
+        )}
+        {pinned.length > 0 && (
+          <div>
+            <p className="text-zinc-600 text-xs px-3 pt-3 pb-1 font-medium uppercase tracking-wide">Pinned</p>
+            {pinned.map(conv => (
+              <div
+                key={conv.id}
+                onClick={() => onSelect(conv.id)}
+                className={`group relative px-3 py-2 cursor-pointer flex items-center gap-1.5 text-xs border-l-2 transition-colors
+                  ${activeId === conv.id
+                    ? 'bg-zinc-800/80 border-brand-500 text-zinc-100'
+                    : 'border-transparent text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200'
+                  }`}
+              >
+                <span className="flex-1 truncate">{conv.title}</span>
+                <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 shrink-0">
+                  <button onClick={e => { e.stopPropagation(); onPin(conv.id, false); }}
+                    className="text-amber-600 hover:text-amber-400 p-0.5 rounded" title="Unpin">📌</button>
+                  <button onClick={e => { e.stopPropagation(); onDelete(conv.id); }}
+                    className="text-zinc-600 hover:text-red-400 p-0.5 rounded" title="Delete">✕</button>
+                </div>
+              </div>
+            ))}
+          </div>
         )}
         {groupOrder.map(label => {
           const items = groups[label];
@@ -341,11 +371,19 @@ function Sidebar({ conversations, activeId, onSelect, onNew, onDelete, onRename 
                         </div>
                       ) : (
                         <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 shrink-0 relative">
+                          {conv.pinned && (
+                            <span className="text-amber-600 text-[9px] mr-0.5" title="Pinned">📌</span>
+                          )}
                           <button
                             onClick={e => startEdit(conv, e)}
                             className="text-zinc-600 hover:text-zinc-300 p-0.5 rounded"
                             title="Rename"
                           >✎</button>
+                          <button
+                            onClick={e => { e.stopPropagation(); onPin(conv.id, !conv.pinned); }}
+                            className={`p-0.5 rounded ${conv.pinned ? 'text-amber-600 hover:text-amber-400' : 'text-zinc-600 hover:text-amber-500'}`}
+                            title={conv.pinned ? 'Unpin' : 'Pin'}
+                          >📌</button>
                           <button
                             onClick={e => { e.stopPropagation(); setExportMenuId(id => id === conv.id ? null : conv.id); }}
                             className="text-zinc-600 hover:text-zinc-300 p-0.5 rounded"
@@ -520,6 +558,13 @@ export function CommandPanel({ health, onTabChange, newChatRef }: Props) {
       setActiveConvId(null);
       setMessages([]);
     }
+  };
+
+  const handlePin = async (id: string, pinned: boolean) => {
+    try {
+      const updated = await pinConversation(id, pinned);
+      setConversations(prev => prev.map(c => c.id === id ? { ...c, pinned: updated.pinned } : c));
+    } catch { /* non-fatal */ }
   };
 
   const handleRename = async (id: string, title: string) => {
@@ -704,6 +749,7 @@ export function CommandPanel({ health, onTabChange, newChatRef }: Props) {
         onNew={handleNew}
         onDelete={handleDelete}
         onRename={handleRename}
+        onPin={handlePin}
       />
 
       {/* Chat area */}

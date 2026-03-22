@@ -209,6 +209,9 @@ export interface Conversation {
   agentId: string | null;
   createdAt: number;
   updatedAt: number;
+  archived?: boolean;
+  pinned?: boolean;
+  isIdle?: boolean;
 }
 
 export interface Message {
@@ -221,10 +224,12 @@ export interface Message {
   createdAt: number;
 }
 
-export const listConversations  = () => req<Conversation[]>('GET', '/conversations');
+export const listConversations  = (includeArchived = false) =>
+  req<Conversation[]>('GET', `/conversations${includeArchived ? '?include_archived=true' : ''}`);
 export const createConversation = (agentId?: string) => req<Conversation>('POST', '/conversations', { agentId });
 export const deleteConversation        = (id: string) => req<void>('DELETE', `/conversations/${id}`);
 export const updateConversation        = (id: string, title: string) => req<Conversation>('PATCH', `/conversations/${id}`, { title });
+export const pinConversation           = (id: string, pinned: boolean) => req<Conversation>('PATCH', `/conversations/${id}`, { pinned });
 export const getMessages               = (id: string) => req<Message[]>('GET', `/conversations/${id}/messages`);
 export const deleteLastAssistantMessage = (id: string) => req<void>('DELETE', `/conversations/${id}/messages/last-assistant`);
 export const exportConversation = async (id: string, format: 'json' | 'markdown', title: string): Promise<void> => {
