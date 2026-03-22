@@ -36,11 +36,11 @@ describe('MigrationRunner — user_version', () => {
     const db = new Database(dbPath);
     const runner = new MigrationRunner(db);
     const result = runner.run(dbPath);
-    // We have 6 migration files (001, 002, 003, 004, 005, 006)
-    expect(result.total).toBe(6);
-    expect(result.applied).toBe(6);
-    expect(result.userVersion).toBe(6);
-    expect(runner.getUserVersion()).toBe(6);
+    // We have 7 migration files (001–007)
+    expect(result.total).toBe(7);
+    expect(result.applied).toBe(7);
+    expect(result.userVersion).toBe(7);
+    expect(runner.getUserVersion()).toBe(7);
     db.close();
   });
 
@@ -50,7 +50,7 @@ describe('MigrationRunner — user_version', () => {
     const db = new Database(dbPath);
     const runner = new MigrationRunner(db);
     runner.run(dbPath);
-    expect(runner.getAppliedVersions().size).toBe(6);
+    expect(runner.getAppliedVersions().size).toBe(7);
     db.close();
   });
 
@@ -62,7 +62,7 @@ describe('MigrationRunner — user_version', () => {
     runner.run(dbPath);
     const second = runner.run(dbPath);
     expect(second.applied).toBe(0);
-    expect(second.userVersion).toBe(6);
+    expect(second.userVersion).toBe(7);
     db.close();
   });
 
@@ -73,7 +73,7 @@ describe('MigrationRunner — user_version', () => {
     const runner = new MigrationRunner(db);
     const result = runner.run(dbPath);
     expect(runner.getUserVersion()).toBe(result.userVersion);
-    expect(result.userVersion).toBe(result.total); // all 6 applied → version 6
+    expect(result.userVersion).toBe(result.total); // all 7 applied → version 7
     db.close();
   });
 });

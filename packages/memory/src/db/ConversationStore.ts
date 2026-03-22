@@ -13,6 +13,8 @@ export interface Conversation {
   name?: string | null;
   /** When true, this conversation is pinned and appears first in listings. */
   pinned: boolean;
+  /** When true, the conversation has been archived by the idle cleanup job. */
+  archived: boolean;
   agentId: string | null;
   createdAt: number;
   updatedAt: number;
@@ -35,6 +37,7 @@ interface ConversationRow {
   title: string;
   name?: string | null;
   pinned: number;
+  archived: number;
   agent_id: string | null;
   created_at: number;
   updated_at: number;
@@ -56,6 +59,7 @@ function rowToConversation(row: ConversationRow): Conversation {
     title: row.title,
     name: row.name ?? null,
     pinned: row.pinned === 1,
+    archived: (row.archived ?? 0) === 1,
     agentId: row.agent_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -107,15 +111,35 @@ export class ConversationStore {
       INSERT INTO conversations (id, title, name, pinned, agent_id, created_at, updated_at)
       VALUES (@id, @title, NULL, 0, @agentId, @now, @now)
     `).run({ id, title: 'New Chat', agentId: agentId ?? null, now });
-    return { id, title: 'New Chat', name: null, pinned: false, agentId: agentId ?? null, createdAt: now, updatedAt: now };
+    return { id, title: 'New Chat', name: null, pinned: false, archived: false, agentId: agentId ?? null, createdAt: now, updatedAt: now };
   }
 
-  listConversations(): Conversation[] {
+  listConversations(includeArchived = false): Conversation[] {
     // Pinned first, then by updatedAt desc — per ITEM 4 spec
-    const rows = this.db.prepare(`
-      SELECT * FROM conversations ORDER BY pinned DESC, updated_at DESC, id DESC
-    `).all() as ConversationRow[];
+    // By default, archived conversations are excluded.
+    const sql = includeArchived
+      ? `SELECT * FROM conversations ORDER BY pinned DESC, updated_at DESC, id DESC`
+      : `SELECT * FROM conversations WHERE archived = 0 ORDER BY pinned DESC, updated_at DESC, id DESC`;
+    const rows = this.db.prepare(sql).all() as ConversationRow[];
     return rows.map(rowToConversation);
+  }
+
+  /**
+   * Archive conversations that have been idle for more than the given threshold and are not pinned.
+   * Sets archived = 1 on matching rows. Does NOT delete.
+   * @param olderThanMs  – cutoff age in milliseconds (e.g. 24 * 60 * 60 * 1000 for 24 hours)
+   * @returns number of conversations archived
+   */
+  archiveIdleConversations(olderThanMs: number): number {
+    const cutoff = Date.now() - olderThanMs;
+    const result = this.db.prepare(`
+      UPDATE conversations
+      SET archived = 1
+      WHERE archived = 0
+        AND pinned  = 0
+        AND updated_at < @cutoff
+    `).run({ cutoff });
+    return result.changes;
   }
 
   getConversation(id: string): Conversation | null {

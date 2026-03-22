@@ -9,7 +9,7 @@ const SESSION_IDLE_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes
  * Enrich a raw Conversation object with session-idle metadata.
  * This is a read-only computed field — the underlying data is never modified.
  */
-function withIdleStatus(conv: { id: string; title: string; agentId: string | null; createdAt: number; updatedAt: number }) {
+function withIdleStatus(conv: { id: string; title: string; agentId: string | null; createdAt: number; updatedAt: number; archived?: boolean; pinned?: boolean; name?: string | null }) {
   const now = Date.now();
   const sessionAgeMs = now - conv.updatedAt;
   const isIdle = sessionAgeMs >= SESSION_IDLE_THRESHOLD_MS;
@@ -23,12 +23,14 @@ function withIdleStatus(conv: { id: string; title: string; agentId: string | nul
 export function registerConversationRoutes(app: FastifyInstance, store: ConversationStore, guard?: GuardEngine): void {
 
   // GET /api/conversations — list all, with idle status metadata
-  app.get('/api/conversations', async (_req, reply) => {
+  // ?include_archived=true — include archived conversations (hidden by default)
+  app.get<{ Querystring: { include_archived?: string } }>('/api/conversations', async (req, reply) => {
     if (guard) {
       const verdict = guard.check({ operation: 'conversation:read', source: 'user' });
       if (!verdict.allowed) return reply.code(403).send({ error: 'GUARD_DENIED', reason: verdict.reason });
     }
-    return reply.send(store.listConversations().map(withIdleStatus));
+    const includeArchived = req.query.include_archived === 'true' || req.query.include_archived === '1';
+    return reply.send(store.listConversations(includeArchived).map(withIdleStatus));
   });
 
   // POST /api/conversations — create new

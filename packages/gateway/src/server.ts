@@ -794,7 +794,29 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   // Gateway identity and capability routes (auth required via global preHandler).
   registerGatewayRoutes(app, join(dataDir, 'config'));
 
+  // ── Session idle cleanup job ─────────────────────────────────────────────────
+  // Archives conversations idle for more than 24 hours (non-pinned only).
+  // Runs every 10 minutes. Disabled in test environments to prevent timer leaks.
+  const IDLE_ARCHIVE_THRESHOLD_MS = 24 * 60 * 60 * 1000; // 24 hours
+  const IDLE_CLEANUP_INTERVAL_MS  = 10 * 60 * 1000;      // 10 minutes
+  let idleCleanupInterval: ReturnType<typeof setInterval> | undefined;
+  if (process.env['NODE_ENV'] !== 'test') {
+    idleCleanupInterval = setInterval(() => {
+      try {
+        const archived = convStore.archiveIdleConversations(IDLE_ARCHIVE_THRESHOLD_MS);
+        if (archived > 0) {
+          logger.info('Session cleanup: archived idle conversations', { count: archived });
+        }
+      } catch (err) {
+        logger.warn('Session cleanup: archiveIdleConversations failed', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }, IDLE_CLEANUP_INTERVAL_MS);
+  }
+
   app.addHook('onClose', async () => {
+    if (idleCleanupInterval) clearInterval(idleCleanupInterval);
     heartbeat.stop();
     // memory.close() closes the shared SQLite connection used by both stores
     memory.close();
