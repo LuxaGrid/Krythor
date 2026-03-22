@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { health, getGatewayInfo, getHeartbeatHistory, getDiscordConfig, setDiscordConfig, stopDiscord } from '../api.ts';
-import type { Health, GatewayInfo, ProviderHealthEntry, DiscordConfig } from '../api.ts';
+import { health, getGatewayInfo, getHeartbeatHistory, getDiscordConfig, setDiscordConfig, stopDiscord, listPlugins, exportProviderConfig, importProviderConfig } from '../api.ts';
+import type { Health, GatewayInfo, ProviderHealthEntry, DiscordConfig, Plugin } from '../api.ts';
 import { PanelHeader } from './PanelHeader.tsx';
 
 // ── Theme helpers ─────────────────────────────────────────────────────────────
@@ -81,6 +81,14 @@ export function SettingsPanel() {
   const [theme, setTheme]               = useState<Theme>(getStoredTheme());
   const [loading, setLoading]           = useState(true);
 
+  // Plugin state
+  const [plugins, setPlugins]           = useState<Plugin[]>([]);
+
+  // Config portability state
+  const [exportStatus, setExportStatus] = useState<string | null>(null);
+  const [importStatus, setImportStatus] = useState<string | null>(null);
+  const [importError, setImportError]   = useState<string | null>(null);
+
   // Discord state
   const [discord, setDiscord]           = useState<DiscordConfig | null>(null);
   const [discordForm, setDiscordForm]   = useState({ token: '', channelId: '', agentId: '' });
@@ -95,15 +103,17 @@ export function SettingsPanel() {
   useEffect(() => {
     async function load() {
       try {
-        const [h, info, hist, disc] = await Promise.all([
+        const [h, info, hist, disc, plugs] = await Promise.all([
           health(),
           getGatewayInfo().catch(() => null),
           getHeartbeatHistory().catch(() => ({})),
           getDiscordConfig().catch(() => null),
+          listPlugins().catch(() => []),
         ]);
         setHealthData(h);
         setGatewayInfo(info);
         setProviderHistory(hist);
+        setPlugins(plugs);
         if (disc) {
           setDiscord(disc);
           setDiscordForm({ token: '', channelId: disc.channelId, agentId: disc.agentId });
@@ -147,6 +157,40 @@ export function SettingsPanel() {
     } finally {
       setDiscordSaving(false);
     }
+  }
+
+  async function handleExportConfig() {
+    setExportStatus(null);
+    try {
+      const data = await exportProviderConfig();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href = url; a.download = 'krythor-providers.json'; a.click();
+      URL.revokeObjectURL(url);
+      setExportStatus('Exported successfully.');
+    } catch { setExportStatus('Export failed.'); }
+  }
+
+  function handleImportConfig(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportError(null);
+    setImportStatus(null);
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      try {
+        const json = JSON.parse(ev.target?.result as string);
+        const list = json.providers ?? (Array.isArray(json) ? json : null);
+        if (!list) { setImportError('Invalid format — expected { providers: [...] } or an array.'); return; }
+        const result = await importProviderConfig(list);
+        setImportStatus(`Imported ${result.imported}, updated ${result.updated}, skipped ${result.skipped}.`);
+      } catch (err) {
+        setImportError(err instanceof Error ? err.message : 'Import failed.');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
   }
 
   async function handleDiscordStop() {
@@ -226,6 +270,40 @@ export function SettingsPanel() {
         {gatewayInfo?.capabilities && (
           <Row label="Capabilities" value={gatewayInfo.capabilities.join(', ')} />
         )}
+      </Section>
+
+      {/* Plugins */}
+      {plugins.length > 0 && (
+        <Section title="Plugins">
+          {plugins.map(p => (
+            <div key={p.file} className="flex items-start gap-3 py-1.5 border-b border-zinc-800 last:border-0">
+              <span className="text-zinc-300 text-xs font-mono w-36 shrink-0 truncate" title={p.name}>{p.name}</span>
+              <span className="text-zinc-500 text-xs">{p.description || p.file}</span>
+            </div>
+          ))}
+        </Section>
+      )}
+
+      {/* Config portability */}
+      <Section title="Config Portability">
+        <div className="py-2 space-y-3">
+          <p className="text-zinc-600 text-xs">Export and import your provider configuration (API keys are not exported).</p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={handleExportConfig}
+              className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs rounded-lg transition-colors"
+            >
+              Export providers
+            </button>
+            <label className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs rounded-lg transition-colors cursor-pointer">
+              Import providers
+              <input type="file" accept=".json" onChange={handleImportConfig} className="hidden" />
+            </label>
+          </div>
+          {exportStatus && <p className="text-green-400 text-xs">{exportStatus}</p>}
+          {importStatus && <p className="text-green-400 text-xs">{importStatus}</p>}
+          {importError  && <p className="text-red-400  text-xs">{importError}</p>}
+        </div>
       </Section>
 
       {/* Discord bot */}

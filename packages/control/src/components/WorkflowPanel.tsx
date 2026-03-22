@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { listAgents, listRuns, type Agent, type AgentRun } from '../api.ts';
+import { listAgents, listRuns, runAgentsParallel, runAgentsSequential, type Agent, type AgentRun } from '../api.ts';
 import { useGatewayContext } from '../GatewayContext.tsx';
 
 // ─── WorkflowPanel ────────────────────────────────────────────────────────────
@@ -267,12 +267,23 @@ function MetaRow({ run }: { run: AgentRun }) {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
+const INPUT_CLS = 'w-full bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1.5 text-xs text-zinc-200 placeholder-zinc-600 outline-none focus:border-arc-600 transition-colors';
+
 export function WorkflowPanel() {
   const { events } = useGatewayContext();
   const [agents, setAgents] = useState<Agent[]>([]);
   const [runs, setRuns]     = useState<AgentRun[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Multi-agent dispatch
+  const [showDispatch, setShowDispatch]     = useState(false);
+  const [dispatchInput, setDispatchInput]   = useState('');
+  const [dispatchMode, setDispatchMode]     = useState<'parallel' | 'sequential'>('parallel');
+  const [dispatchAgents, setDispatchAgents] = useState<string[]>([]);
+  const [dispatching, setDispatching]       = useState(false);
+  const [dispatchError, setDispatchError]   = useState<string | null>(null);
+  const [dispatchResult, setDispatchResult] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     try {
@@ -302,6 +313,34 @@ export function WorkflowPanel() {
     }
   }, [events]);
 
+  async function handleDispatch() {
+    setDispatchError(null);
+    setDispatchResult(null);
+    if (!dispatchInput.trim()) { setDispatchError('Input is required.'); return; }
+    if (dispatchAgents.length < 2) { setDispatchError('Select at least 2 agents.'); return; }
+    setDispatching(true);
+    try {
+      if (dispatchMode === 'parallel') {
+        const results = await runAgentsParallel(dispatchAgents, dispatchInput.trim());
+        setDispatchResult(`Dispatched to ${results.length} agents in parallel.`);
+      } else {
+        const results = await runAgentsSequential(dispatchAgents, dispatchInput.trim());
+        setDispatchResult(`Sequential pipeline complete — ${results.length} runs.`);
+      }
+      await loadData();
+    } catch (e: unknown) {
+      setDispatchError(e instanceof Error ? e.message : 'Dispatch failed.');
+    } finally {
+      setDispatching(false);
+    }
+  }
+
+  function toggleDispatchAgent(id: string) {
+    setDispatchAgents(prev =>
+      prev.includes(id) ? prev.filter(a => a !== id) : [...prev, id]
+    );
+  }
+
   const selectedRun = runs.find(r => r.id === selectedRunId) ?? runs[0] ?? null;
   const runAgent = selectedRun ? agents.find(a => a.id === selectedRun.agentId) : null;
 
@@ -330,8 +369,8 @@ export function WorkflowPanel() {
           </div>
         </div>
 
-        {/* Run selector */}
-        <div className="ml-auto flex items-center gap-2">
+        {/* Run selector + multi-agent dispatch button */}
+        <div className="ml-auto flex items-center gap-2 flex-wrap">
           <span className="text-[10px]" style={{ color: 'var(--kr-text-muted)' }}>Run:</span>
           <select
             value={selectedRunId ?? ''}
@@ -347,8 +386,69 @@ export function WorkflowPanel() {
               return <option key={r.id} value={r.id}>{label}</option>;
             })}
           </select>
+          <button
+            onClick={() => setShowDispatch(d => !d)}
+            className="px-2.5 py-1 text-[10px] rounded-lg border transition-colors"
+            style={{
+              borderColor: showDispatch ? 'var(--kr-border-active)' : 'var(--kr-border-subtle)',
+              background: showDispatch ? 'rgba(245,158,11,0.08)' : 'var(--kr-bg-card)',
+              color: showDispatch ? 'var(--kr-gold)' : 'var(--kr-text-muted)',
+            }}
+          >
+            ⇢ Multi-agent
+          </button>
         </div>
       </div>
+
+      {/* Multi-agent dispatch panel */}
+      {showDispatch && (
+        <div className="shrink-0 px-6 py-4 border-b space-y-3"
+          style={{ borderColor: 'var(--kr-border-subtle)', background: 'var(--kr-bg-panel)' }}>
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-[10px] uppercase tracking-widest font-semibold text-gold-600">Multi-agent dispatch</span>
+            <div className="flex gap-1">
+              {(['parallel', 'sequential'] as const).map(m => (
+                <button key={m} onClick={() => setDispatchMode(m)}
+                  className={`px-2.5 py-0.5 text-[10px] rounded border transition-colors ${
+                    dispatchMode === m
+                      ? 'border-arc-700 bg-arc-950/50 text-arc-300'
+                      : 'border-zinc-700 text-zinc-500 hover:border-zinc-500'
+                  }`}>
+                  {m}
+                </button>
+              ))}
+            </div>
+          </div>
+          <textarea
+            rows={2}
+            value={dispatchInput}
+            onChange={e => setDispatchInput(e.target.value)}
+            placeholder="Input to dispatch to all selected agents…"
+            className={INPUT_CLS}
+          />
+          <div className="flex flex-wrap gap-1.5">
+            {agents.map(a => (
+              <button key={a.id} onClick={() => toggleDispatchAgent(a.id)}
+                className={`px-2 py-0.5 text-[10px] rounded border transition-colors ${
+                  dispatchAgents.includes(a.id)
+                    ? 'border-arc-600 bg-arc-950/40 text-arc-300'
+                    : 'border-zinc-700 text-zinc-500 hover:border-zinc-500'
+                }`}>
+                {a.name}
+              </button>
+            ))}
+          </div>
+          {dispatchError  && <p className="text-red-400 text-[10px]">{dispatchError}</p>}
+          {dispatchResult && <p className="text-emerald-400 text-[10px]">{dispatchResult}</p>}
+          <button
+            onClick={handleDispatch}
+            disabled={dispatching}
+            className="px-3 py-1.5 text-xs rounded-lg bg-arc-800/40 hover:bg-arc-700/40 border border-arc-700/50 text-arc-300 disabled:opacity-40 transition-colors"
+          >
+            {dispatching ? 'Dispatching…' : `Run ${dispatchMode}`}
+          </button>
+        </div>
+      )}
 
       {/* Flow canvas */}
       <div className="flex-1 overflow-auto p-8">

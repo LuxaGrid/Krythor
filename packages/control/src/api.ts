@@ -399,6 +399,12 @@ export const deleteAgent = (id: string) => req<void>('DELETE', `/agents/${id}`);
 export const runAgent    = (id: string, input: string) =>
   req<AgentRun>('POST', `/agents/${id}/run`, { input });
 export const agentStats  = () => req<AgentStats>('GET', '/agents/stats');
+export const stopAgentRun = (runId: string) => req<void>('POST', `/agents/runs/${runId}/stop`);
+export interface ParallelRunResult { agentId: string; run: AgentRun }
+export const runAgentsParallel = (agentIds: string[], input: string) =>
+  req<ParallelRunResult[]>('POST', '/agents/run/parallel', { agentIds, input });
+export const runAgentsSequential = (agentIds: string[], input: string) =>
+  req<AgentRun[]>('POST', '/agents/run/sequential', { agentIds, input });
 export const listRuns    = (agentId?: string) => {
   const qs = agentId ? `?agentId=${agentId}` : '';
   return req<AgentRun[]>('GET', `/agents/runs${qs}`);
@@ -628,6 +634,15 @@ export const getDiscordConfig  = () => req<DiscordConfig>('GET', '/discord');
 export const setDiscordConfig  = (cfg: { token: string; channelId: string; agentId: string }) =>
   req<{ ok: boolean }>('PUT', '/discord', cfg);
 export const stopDiscord       = () => req<{ ok: boolean }>('DELETE', '/discord');
+
+// ── Plugins ───────────────────────────────────────────────────────────────────
+export interface Plugin { name: string; description: string; file: string }
+export const listPlugins = () => req<Plugin[]>('GET', '/plugins');
+
+// ── Config portability ────────────────────────────────────────────────────────
+export const exportProviderConfig = () => req<{ providers: unknown[] }>('GET', '/config/export');
+export const importProviderConfig = (providers: unknown[]) =>
+  req<{ imported: number; updated: number; skipped: number }>('POST', '/config/import', { providers });
 
 // ── Outbound channels (webhooks) ──────────────────────────────────────────────
 export type ChannelEvent =
