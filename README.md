@@ -266,14 +266,15 @@ Krythor supports two ways to connect — pick whichever suits you:
 2. Go to API Keys and create a new key
 3. In Krythor, add a provider, choose **openai** or **anthropic**, and paste your key
 
-**OAuth / in-app sign-in** (sign in with your browser — no key to copy-paste)
-1. In the Krythor dashboard, go to the **Models** tab
-2. Click **+ add provider**, choose **openai** or **anthropic**
-3. Select **Connect with OAuth** and follow the browser prompts
+**"Connect with OAuth later"** (deferred setup — opens provider dashboard in your browser)
+1. During setup, choose **"Connect with OAuth later — opens provider dashboard to get your API key"**
+2. Krythor saves a placeholder provider entry and shows an **OAuth Pending** badge in the Models tab
+3. Click **Connect ↗** next to the provider — this opens the provider's API key page in a new browser tab
+4. Copy your API key, then edit the provider in the Models tab to add it
 
-> If you chose "Connect with OAuth later" during setup, you'll see a reminder banner in the Models tab — just click **Connect OAuth** to finish.
+> **Note:** The current "OAuth" option is a convenience shortcut that opens the provider's API key page in your browser. It is not a full OAuth browser sign-in flow. A full OAuth sign-in flow (no key copy-paste) is on the roadmap.
 
-> **Your credentials are stored encrypted on your computer.** They are never sent anywhere except directly to the AI provider when you make a request.
+> **Your credentials are stored on your computer.** They are never sent anywhere except directly to the AI provider when you make a request.
 
 ---
 

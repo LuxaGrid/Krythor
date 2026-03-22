@@ -598,6 +598,14 @@ export function ModelsPanel({ health }: Props) {
             const isOAuthConnected = p.authMethod === 'oauth' && !!p.oauthAccount;
             const showOAuthPanel   = oauthPanel === p.id;
 
+            // Resolve the provider dashboard URL for the "Connect" button
+            const oauthDashboardUrl = (() => {
+              if (p.type === 'anthropic') return 'https://console.anthropic.com/settings/keys';
+              if (p.type === 'openai')    return 'https://platform.openai.com/api-keys';
+              // For other providers, fall back to their endpoint base URL if available
+              return p.endpoint ?? null;
+            })();
+
             return (
               <div key={p.id} className="px-4 py-3 group">
                 <div className="flex items-start gap-2">
@@ -608,6 +616,12 @@ export function ModelsPanel({ health }: Props) {
                       {p.isDefault && <span className="text-xs bg-brand-900 text-brand-400 px-1.5 py-0.5 rounded">default</span>}
                       <span className="text-xs text-zinc-600">{p.type}</span>
                       <AuthBadge p={p} />
+                      {/* OAuth Pending badge — shown when user deferred OAuth connection during setup */}
+                      {p.setupHint === 'oauth_available' && (
+                        <span className="text-xs bg-amber-950/60 text-amber-400 border border-amber-700/40 px-1.5 py-0.5 rounded">
+                          OAuth Pending
+                        </span>
+                      )}
                       {circuitState === 'open' && (
                         <span className="text-xs bg-red-950/60 text-red-400 px-1.5 py-0.5 rounded" title={CIRCUIT_EXPLANATIONS['open']}>circuit open</span>
                       )}
@@ -618,6 +632,23 @@ export function ModelsPanel({ health }: Props) {
                         <span className="text-xs text-zinc-700" title="Average inference latency">{circuit.avgLatencyMs}ms avg</span>
                       )}
                     </div>
+
+                    {/* OAuth Pending — Connect button opens provider dashboard to get API key */}
+                    {p.setupHint === 'oauth_available' && oauthDashboardUrl && (
+                      <div className="mt-1.5 flex items-center gap-2">
+                        <p className="text-xs text-amber-500/80">
+                          Finish connecting: get your API key from the provider dashboard, then add it here.
+                        </p>
+                        <a
+                          href={oauthDashboardUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs px-2 py-0.5 bg-amber-700 hover:bg-amber-600 text-white rounded transition-colors shrink-0"
+                        >
+                          Connect ↗
+                        </a>
+                      </div>
+                    )}
 
                     {/* OAuth account info */}
                     {isOAuthConnected && p.oauthAccount && (

@@ -447,13 +447,13 @@ export class SetupWizard {
       console.log(fmt.dim('  This provider supports two connection methods:'));
       console.log(fmt.dim(''));
       console.log(fmt.dim('    [1] Enter API key now   — paste a key from the provider dashboard (fastest)'));
-      console.log(fmt.dim('    [2] Connect with OAuth  — skip for now; use the in-app button after launch'));
+      console.log(fmt.dim('    [2] Connect with OAuth later — opens provider dashboard to get your API key'));
       console.log(fmt.dim('    [3] Skip entirely       — add this provider manually later'));
       console.log(fmt.dim(''));
 
       const authChoice = await choose(
         '  How would you like to connect?',
-        ['Enter API key now', 'Connect with OAuth later (in the app)', 'Skip'],
+        ['Enter API key now', 'Connect with OAuth later — opens provider dashboard to get your API key', 'Skip'],
         0,
       );
 
@@ -464,13 +464,16 @@ export class SetupWizard {
         models = [await pickModel(info.models, info.defaultModel)];
         console.log(fmt.ok(`Provider "${name}" configured with API key.`));
 
-      } else if (authChoice === 'Connect with OAuth later (in the app)') {
-        // Persist the provider shell so the UI can surface an OAuth CTA on first launch
+      } else if (authChoice.startsWith('Connect with OAuth later')) {
+        // Persist the provider shell so the UI can surface a Connect CTA on first launch.
+        // Note: "OAuth" here means "click to open provider dashboard to get your API key".
+        // Full browser OAuth flow is not yet implemented — the Connect button in the UI
+        // opens the provider's API key page in a new tab.
         authMethod = 'none';
         setupHint = 'oauth_available';
         models = [await pickModel(info.models, info.defaultModel)];
-        console.log(fmt.ok(`Provider "${name}" added. Connect with OAuth after launch.`));
-        console.log(fmt.dim('  → Open the Models tab and click "OAuth" next to this provider.'));
+        console.log(fmt.ok(`Provider "${name}" added. Open the Models tab to connect.`));
+        console.log(fmt.dim(`  → Click "Connect" next to this provider to open ${info.keyUrl}`));
 
       } else {
         // Skip entirely — do not write any provider entry
