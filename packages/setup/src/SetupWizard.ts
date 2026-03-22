@@ -117,6 +117,17 @@ async function pickModel(knownModels: string[], defaultModel: string): Promise<s
 
 export class SetupWizard {
   async run(): Promise<void> {
+    // ── Non-interactive guard ───────────────────────────────────────────────
+    // When KRYTHOR_NON_INTERACTIVE=1 is set (e.g. in CI or scripted installs),
+    // the wizard exits immediately. Providers must be configured via
+    // providers.json or the Control UI after the gateway starts.
+    if (process.env['KRYTHOR_NON_INTERACTIVE'] === '1') {
+      console.log(fmt.warn('Setup wizard skipped — KRYTHOR_NON_INTERACTIVE=1 is set.'));
+      console.log(fmt.dim('  Configure providers via: krythor setup  or the Control UI.'));
+      closeRL();
+      return;
+    }
+
     this.printBanner();
 
     // 1. Probe the system

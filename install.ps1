@@ -21,6 +21,12 @@ $ApiUrl     = "https://api.github.com/repos/$Repo/releases/latest"
 # Update mode: set by the krythor.bat launcher when user runs "krythor update"
 $UpdateMode = $env:KRYTHOR_UPDATE -eq '1'
 
+# Non-interactive mode: set KRYTHOR_NON_INTERACTIVE=1 to skip all prompts.
+# Useful for CI pipelines and scripted/unattended installations.
+# The setup wizard is also skipped — configure providers via providers.json or
+# the Control UI after install.
+$NonInteractive = $env:KRYTHOR_NON_INTERACTIVE -eq '1'
+
 function Write-Step { param($msg) Write-Host "  $msg" -ForegroundColor Cyan }
 function Write-Ok   { param($msg) Write-Host "  [OK] $msg" -ForegroundColor Green }
 function Write-Warn { param($msg) Write-Host "  [!]  $msg" -ForegroundColor Yellow }
@@ -65,7 +71,7 @@ $zipUrl = $zipAsset.browser_download_url
 Write-Ok "Latest version: $version"
 
 # ── Check for existing install ────────────────────────────────────────────────
-if ((Test-Path $InstallDir) -and -not $UpdateMode) {
+if ((Test-Path $InstallDir) -and -not $UpdateMode -and -not $NonInteractive) {
   Write-Host ""
   Write-Warn "Krythor is already installed at: $InstallDir"
   Write-Host "  Your settings, memory, and saved data are stored separately and will not be deleted." -ForegroundColor White
@@ -74,6 +80,8 @@ if ((Test-Path $InstallDir) -and -not $UpdateMode) {
     Write-Host "  Cancelled." -ForegroundColor Yellow
     exit 0
   }
+} elseif ((Test-Path $InstallDir) -and $NonInteractive) {
+  Write-Warn "Overwriting existing install (non-interactive mode)"
 }
 
 $OldInstallDir = $null
@@ -205,7 +213,7 @@ if (Test-Path $BundledNode) {
 
 # ── Run first-time setup wizard ───────────────────────────────────────────────
 $setupScript = Join-Path $InstallDir 'packages\setup\dist\bin\setup.js'
-if ((Test-Path $setupScript) -and -not $UpdateMode) {
+if ((Test-Path $setupScript) -and -not $UpdateMode -and -not $NonInteractive) {
   Write-Host ""
   Write-Step "Running first-time setup..."
   Write-Host ""
@@ -218,6 +226,10 @@ if ((Test-Path $setupScript) -and -not $UpdateMode) {
   } catch {
     Write-Warn "Setup wizard had an issue — you can run it later with: krythor setup"
   }
+} elseif ($NonInteractive) {
+  Write-Host ""
+  Write-Warn "Setup wizard skipped (KRYTHOR_NON_INTERACTIVE=1)."
+  Write-Host "  Configure providers via: krythor setup  or the Control UI after starting." -ForegroundColor White
 }
 
 # ── Done ──────────────────────────────────────────────────────────────────────

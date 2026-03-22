@@ -31,6 +31,12 @@ RESET="\033[0m"
 # with UPDATE=1. Skips the interactive overwrite prompt.
 UPDATE_MODE="${UPDATE:-0}"
 
+# ── Non-interactive mode ──────────────────────────────────────────────────────
+# Set KRYTHOR_NON_INTERACTIVE=1 to skip all prompts (CI/scripted installs).
+# The setup wizard is also skipped — configure providers via providers.json or
+# the Control UI after install.
+NON_INTERACTIVE="${KRYTHOR_NON_INTERACTIVE:-0}"
+
 echo ""
 echo -e "${CYAN}${BOLD}  KRYTHOR${RESET}${CYAN} — Installer${RESET}"
 echo -e "  https://github.com/${REPO}"
@@ -99,7 +105,7 @@ fi
 echo -e "${GREEN}✓${RESET} Latest version: ${BOLD}${VERSION}${RESET}"
 
 # ── Check if already installed ────────────────────────────────────────────────
-if [ -d "$INSTALL_DIR" ] && [ "$UPDATE_MODE" != "1" ]; then
+if [ -d "$INSTALL_DIR" ] && [ "$UPDATE_MODE" != "1" ] && [ "$NON_INTERACTIVE" != "1" ]; then
   echo ""
   echo -e "${YELLOW}⚠  Krythor is already installed at: ${INSTALL_DIR}${RESET}"
   echo "   Your settings, memory, and data are stored separately and will not be touched."
@@ -109,6 +115,8 @@ if [ -d "$INSTALL_DIR" ] && [ "$UPDATE_MODE" != "1" ]; then
     echo "  Cancelled."
     exit 0
   fi
+elif [ -d "$INSTALL_DIR" ] && [ "$NON_INTERACTIVE" = "1" ]; then
+  echo -e "${YELLOW}⚠  Overwriting existing install (non-interactive mode)${RESET}"
 fi
 
 if [ -d "$INSTALL_DIR" ]; then
@@ -221,7 +229,7 @@ add_to_profile "${HOME}/.zshrc"
 
 # ── Run first-time setup wizard ───────────────────────────────────────────────
 SETUP_SCRIPT="${INSTALL_DIR}/packages/setup/dist/bin/setup.js"
-if [ -f "$SETUP_SCRIPT" ] && [ "$UPDATE_MODE" != "1" ]; then
+if [ -f "$SETUP_SCRIPT" ] && [ "$UPDATE_MODE" != "1" ] && [ "$NON_INTERACTIVE" != "1" ]; then
   echo ""
   echo -e "${CYAN}  Running first-time setup...${RESET}"
   echo ""
@@ -230,6 +238,9 @@ if [ -f "$SETUP_SCRIPT" ] && [ "$UPDATE_MODE" != "1" ]; then
   else
     node "$SETUP_SCRIPT" || true
   fi
+elif [ "$NON_INTERACTIVE" = "1" ]; then
+  echo -e "${YELLOW}  Setup wizard skipped (KRYTHOR_NON_INTERACTIVE=1).${RESET}"
+  echo "  Configure providers via: krythor setup  or the Control UI after starting."
 fi
 
 # ── Done ──────────────────────────────────────────────────────────────────────
