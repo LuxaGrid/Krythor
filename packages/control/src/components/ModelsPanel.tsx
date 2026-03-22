@@ -4,8 +4,9 @@ import {
   testProvider, updateProviderMeta, discoverLocalModels,
   getEmbeddings, activateEmbedding, deactivateEmbedding,
   getProviderCapabilities, connectOAuth, disconnectOAuth,
+  directInfer, listModelPreferences, clearModelPreference,
   type Provider, type PingResult, type Health, type ProviderCapabilities, type AuthMethod,
-  type ProviderTestResult, type LocalModelDiscovery,
+  type ProviderTestResult, type LocalModelDiscovery, type TaskPreference,
 } from '../api.ts';
 import { ConnectKeyModal } from './ConnectKeyModal.tsx';
 import { PanelHeader } from './PanelHeader.tsx';
@@ -212,6 +213,19 @@ export function ModelsPanel({ health }: Props) {
   const [showEmbeddingForm, setShowEmbeddingForm] = useState(false);
   const [embeddingError, setEmbeddingError] = useState<string | null>(null);
   const [savingEmbedding, setSavingEmbedding] = useState(false);
+
+  // Model playground state
+  const [showPlayground, setShowPlayground] = useState(false);
+  const [playInput, setPlayInput] = useState('');
+  const [playOutput, setPlayOutput] = useState<string | null>(null);
+  const [playMeta, setPlayMeta] = useState<string | null>(null);
+  const [playError, setPlayError] = useState<string | null>(null);
+  const [playRunning, setPlayRunning] = useState(false);
+
+  // Model preferences state
+  const [showPreferences, setShowPreferences] = useState(false);
+  const [preferences, setPreferences] = useState<TaskPreference[]>([]);
+  const [prefsLoading, setPrefsLoading] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -437,6 +451,34 @@ export function ModelsPanel({ health }: Props) {
       const result = await deactivateEmbedding();
       setEmbeddingInfo(prev => prev ? { ...prev, active: result.active } : null);
     } catch { /* ignore */ }
+  };
+
+  const handlePlayground = async () => {
+    if (!playInput.trim() || playRunning) return;
+    setPlayRunning(true); setPlayError(null); setPlayOutput(null); setPlayMeta(null);
+    try {
+      const res = await directInfer([{ role: 'user', content: playInput.trim() }]);
+      setPlayOutput(res.content);
+      const parts = [];
+      if (res.model) parts.push(`model: ${res.model}`);
+      if (res.tokensUsed) parts.push(`tokens: ${res.tokensUsed}`);
+      setPlayMeta(parts.join(' · '));
+    } catch (e: unknown) {
+      setPlayError(e instanceof Error ? e.message : 'Inference failed.');
+    } finally { setPlayRunning(false); }
+  };
+
+  const loadPreferences = async () => {
+    setPrefsLoading(true);
+    try { setPreferences(await listModelPreferences()); } catch { /* non-fatal */ }
+    finally { setPrefsLoading(false); }
+  };
+
+  const handleClearPref = async (taskType: string) => {
+    try {
+      await clearModelPreference(taskType);
+      setPreferences(ps => ps.filter(p => p.taskType !== taskType));
+    } catch { /* non-fatal */ }
   };
 
   // ── Helpers ───────────────────────────────────────────────────────────────
@@ -1067,6 +1109,87 @@ export function ModelsPanel({ health }: Props) {
           onClose={() => setConnectModalProvider(null)}
         />
       )}
+
+      {/* Model Playground */}
+      <div className="border-t border-zinc-800 p-4 space-y-2">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs text-zinc-400 font-medium">Model Playground</p>
+            <p className="text-xs text-zinc-600 mt-0.5">Test a prompt directly against the default provider</p>
+          </div>
+          <button
+            onClick={() => { setShowPlayground(s => !s); setPlayError(null); }}
+            className="text-xs text-brand-400 hover:text-brand-300 transition-colors"
+          >{showPlayground ? 'hide' : 'open'}</button>
+        </div>
+        {showPlayground && (
+          <div className="space-y-2">
+            <textarea
+              rows={3}
+              value={playInput}
+              onChange={e => setPlayInput(e.target.value)}
+              placeholder="Enter a prompt to test…"
+              className={INPUT_CLS}
+              onKeyDown={e => { if (e.key === 'Enter' && e.ctrlKey) { e.preventDefault(); void handlePlayground(); } }}
+            />
+            <button
+              onClick={() => void handlePlayground()}
+              disabled={playRunning || !playInput.trim()}
+              className="px-3 py-1.5 bg-brand-600 hover:bg-brand-500 disabled:opacity-40 text-white text-xs rounded-lg transition-colors flex items-center gap-1.5"
+            >
+              {playRunning ? <><Spinner /> Running…</> : 'Run (Ctrl+Enter)'}
+            </button>
+            {playError && <p className="text-red-400 text-xs bg-red-950/30 rounded-lg p-2">{playError}</p>}
+            {playOutput !== null && (
+              <div className="space-y-1">
+                <pre className="text-xs text-zinc-300 bg-zinc-800/60 rounded-lg p-3 whitespace-pre-wrap break-words max-h-48 overflow-y-auto">
+                  {playOutput}
+                </pre>
+                {playMeta && <p className="text-[10px] text-zinc-600">{playMeta}</p>}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Model Preferences */}
+      <div className="border-t border-zinc-800 p-4 space-y-2">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs text-zinc-400 font-medium">Task Preferences</p>
+            <p className="text-xs text-zinc-600 mt-0.5">Learned model→task mappings (click to clear)</p>
+          </div>
+          <button
+            onClick={async () => {
+              setShowPreferences(s => !s);
+              if (!showPreferences && preferences.length === 0) await loadPreferences();
+            }}
+            className="text-xs text-brand-400 hover:text-brand-300 transition-colors"
+          >{showPreferences ? 'hide' : `view${preferences.length > 0 ? ` (${preferences.length})` : ''}`}</button>
+        </div>
+        {showPreferences && (
+          prefsLoading ? (
+            <p className="text-xs text-zinc-600">Loading…</p>
+          ) : preferences.length === 0 ? (
+            <p className="text-xs text-zinc-700">No task preferences saved yet. Use the model recommendation bar in Chat to build preferences.</p>
+          ) : (
+            <div className="space-y-1">
+              {preferences.map(p => (
+                <div key={p.taskType} className="flex items-center gap-2 py-1.5 border-b border-zinc-800 last:border-0">
+                  <span className="text-xs text-zinc-400 font-mono flex-1 truncate">{p.taskType}</span>
+                  <span className="text-xs text-zinc-500">{p.modelId}</span>
+                  <span className="text-xs bg-zinc-800 text-zinc-600 px-1.5 py-0.5 rounded">{p.preference}</span>
+                  <button
+                    onClick={() => void handleClearPref(p.taskType)}
+                    className="text-xs text-zinc-700 hover:text-red-400 transition-colors px-1"
+                    title="Clear preference"
+                  >✕</button>
+                </div>
+              ))}
+            </div>
+          )
+        )}
+      </div>
 
       {/* Embedding Provider Section */}
       <div className="border-t border-zinc-800 p-4 space-y-2">

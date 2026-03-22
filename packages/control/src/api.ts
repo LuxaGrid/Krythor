@@ -479,6 +479,13 @@ export interface GuardVerdict {
 }
 
 // ── Embeddings ────────────────────────────────────────────────────────────────
+export interface InferenceMessage { role: 'user' | 'assistant' | 'system'; content: string }
+export interface InferenceResponse { content: string; model?: string; providerId?: string; tokensUsed?: number }
+export const directInfer = (messages: InferenceMessage[], opts?: { model?: string; providerId?: string; temperature?: number; maxTokens?: number }) =>
+  req<InferenceResponse>('POST', '/models/infer', { messages, ...opts });
+export const listModelPreferences = () => req<TaskPreference[]>('GET', '/recommend/preferences');
+export const clearModelPreference = (taskType: string) =>
+  req<void>('DELETE', `/recommend/preferences/${encodeURIComponent(taskType)}`);
 export const getEmbeddings = () => req<{ active: string; providers: string[] }>('GET', '/models/embeddings');
 export const activateEmbedding = (baseUrl: string, model: string) =>
   req<{ active: string }>('POST', '/models/embeddings/activate', { baseUrl, model });
