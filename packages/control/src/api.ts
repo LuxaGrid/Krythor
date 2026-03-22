@@ -101,6 +101,8 @@ export interface Health {
   nodeVersion?: string;
   timestamp: string;
   firstRun: boolean;
+  dataDir?: string;
+  configDir?: string;
   memory: { totalEntries: number; embeddingProvider: string; embeddingDegraded?: boolean; semantic?: boolean };
   models: { providerCount: number; modelCount: number; hasDefault: boolean };
   circuits?: Record<string, CircuitStat>;
@@ -151,7 +153,7 @@ export interface CommandResult {
 
 export type StreamEvent =
   | { type: 'delta'; content: string; runId?: string }
-  | { type: 'done'; runId?: string; duration: number; output: string; modelUsed?: string; conversationId?: string }
+  | { type: 'done'; runId?: string; duration: number; output: string; modelUsed?: string; conversationId?: string; selectionReason?: string | null; fallbackOccurred?: boolean }
   | { type: 'conversation'; conversationId: string; title: string }
   | { type: 'error'; message: string };
 
@@ -572,3 +574,26 @@ export interface CreateSkillInput {
   tags?: string[]; modelId?: string; providerId?: string;
   taskProfile?: SkillTaskProfile;
 }
+
+// ── Gateway info ──────────────────────────────────────────────────────────────
+export interface GatewayInfo {
+  version: string;
+  platform: string;
+  arch: string;
+  nodeVersion: string;
+  gatewayId: string;
+  startTime: string;
+  capabilities: string[];
+}
+
+export const getGatewayInfo = () => req<GatewayInfo>('GET', '/gateway/info');
+
+// ── Heartbeat history ─────────────────────────────────────────────────────────
+export interface ProviderHealthEntry {
+  timestamp: string;
+  ok: boolean;
+  latencyMs: number;
+}
+
+export const getHeartbeatHistory = () =>
+  req<Record<string, ProviderHealthEntry[]>>('GET', '/heartbeat/history');

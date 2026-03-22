@@ -38,6 +38,8 @@ interface LocalMessage {
   content: string;
   createdAt: number;
   modelId?: string | null;
+  selectionReason?: string | null;
+  fallbackOccurred?: boolean;
   streaming?: boolean;
 }
 
@@ -195,6 +197,18 @@ function MessageBubble({ msg, isLast, onRegenerate }: MessageBubbleProps) {
         <div className={`flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
           <MessageTime ts={msg.createdAt} />
           {msg.modelId && <span className="text-zinc-700 text-xs">[{msg.modelId}]</span>}
+          {!isUser && msg.selectionReason && !msg.streaming && (
+            <span className="text-zinc-700 text-xs italic" title="Model selection reason">{msg.selectionReason}{msg.fallbackOccurred ? ' [fallback]' : ''}</span>
+          )}
+          {!isUser && (msg.modelId || msg.selectionReason) && !msg.streaming && (
+            <button
+              onClick={() => navigator.clipboard.writeText(JSON.stringify({ model: msg.modelId, selectionReason: msg.selectionReason, fallbackOccurred: msg.fallbackOccurred }, null, 2))}
+              className="text-zinc-700 hover:text-zinc-400 text-xs"
+              title="Copy model info"
+            >
+              copy model info
+            </button>
+          )}
           {!msg.streaming && <CopyButton text={msg.content} />}
           {!isUser && isLast && !msg.streaming && onRegenerate && (
             <button
@@ -601,7 +615,7 @@ export function CommandPanel({ health, onTabChange, newChatRef }: Props) {
             const finalConvId = event.conversationId ?? resolvedConvId;
             setMessages(prev => prev.map((m, i) =>
               i === prev.length - 1 && m.streaming
-                ? { ...m, content: event.output, streaming: false, modelId: event.modelUsed ?? null }
+                ? { ...m, content: event.output, streaming: false, modelId: event.modelUsed ?? null, selectionReason: event.selectionReason ?? null, fallbackOccurred: event.fallbackOccurred ?? false }
                 : m
             ));
             // Refresh conversation list to update updatedAt / title

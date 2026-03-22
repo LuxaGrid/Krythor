@@ -182,7 +182,7 @@ export function registerCommandRoute(
               const p = event.payload as { delta?: string; done?: boolean } | undefined;
               sendEvent({ type: 'delta', content: p?.delta ?? '', runId });
             } else if (event.type === 'run:completed') {
-              const p = event.payload as { output?: string; modelUsed?: string } | undefined;
+              const p = event.payload as { output?: string; modelUsed?: string; selectionReason?: string; fallbackOccurred?: boolean } | undefined;
               const output = p?.output ?? '';
 
               // Save assistant message to conversation
@@ -190,7 +190,7 @@ export function registerCommandRoute(
                 convStore.addMessage(convIdForRun, 'assistant', output, p?.modelUsed);
               }
 
-              sendEvent({ type: 'done', output, runId, requestId: req.id, conversationId: convIdForRun, modelUsed: p?.modelUsed });
+              sendEvent({ type: 'done', output, runId, requestId: req.id, conversationId: convIdForRun, modelUsed: p?.modelUsed, selectionReason: p?.selectionReason ?? null, fallbackOccurred: p?.fallbackOccurred ?? false });
               endStream();
             } else if (event.type === 'run:failed') {
               const p = event.payload as { error?: string } | undefined;
@@ -252,6 +252,8 @@ export function registerCommandRoute(
           requestId: req.id,
           conversationId: activeConvId,
           status: run.status,
+          selectionReason: run.selectionReason ?? null,
+          fallbackOccurred: run.fallbackOccurred ?? false,
           error: run.status === 'failed'
             ? { code: 'RUN_FAILED', message: run.errorMessage ?? 'Run failed', hint: 'Check the Models tab and verify your provider is reachable.' }
             : undefined,
