@@ -79,6 +79,19 @@ export function registerCommandRoute(
 
     // No provider — return friendly guidance immediately
     const models = core.getModels();
+
+    // Resolve model routing aliases (claude, gpt4, local, fast, best)
+    // before passing modelId downstream.  Unknown names pass through unchanged.
+    let resolvedModelId = modelId;
+    let resolvedProviderId: string | undefined;
+    if (models && modelId) {
+      const aliasResult = models.resolveModelAlias(modelId);
+      if (aliasResult) {
+        resolvedModelId = aliasResult.modelId;
+        resolvedProviderId = aliasResult.providerId;
+      }
+    }
+
     if (!models || models.stats().providerCount === 0) {
       if (stream) {
         reply.raw.writeHead(200, {
@@ -207,7 +220,7 @@ export function registerCommandRoute(
           reply.raw.on('close', endStream);
 
           // Start the run — don't await, events drive the response
-          const runInput = { input, ...(modelId && { modelOverride: modelId }), requestId: String(req.id) };
+          const runInput = { input, ...(resolvedModelId && { modelOverride: resolvedModelId }), ...(resolvedProviderId && { providerOverride: resolvedProviderId }), requestId: String(req.id) };
           orchestrator.runAgentStream(agentId, runInput, { contextMessages, runId }).catch(err => {
             const structured = classifyError(err);
             sendEvent({ type: 'error', message: structured.hint || structured.message });
@@ -223,7 +236,7 @@ export function registerCommandRoute(
         const { randomUUID: genNonStreamId } = await import('crypto');
         const nonStreamRunId = genNonStreamId();
         registerRunRequestId(app, nonStreamRunId, String(req.id));
-        const nonStreamRunInput = { input, ...(modelId && { modelOverride: modelId }), requestId: String(req.id), runId: nonStreamRunId };
+        const nonStreamRunInput = { input, ...(resolvedModelId && { modelOverride: resolvedModelId }), ...(resolvedProviderId && { providerOverride: resolvedProviderId }), requestId: String(req.id), runId: nonStreamRunId };
         const run = await orchestrator.runAgent(agentId, nonStreamRunInput, { contextMessages });
         const output = run.output ?? '(no response)';
 
@@ -283,7 +296,7 @@ export function registerCommandRoute(
         }
 
         try {
-          const result = await core.handleCommand(input, modelId ? { agentModelId: modelId } : undefined);
+          const result = await core.handleCommand(input, resolvedModelId ? { agentModelId: resolvedModelId, ...(resolvedProviderId && { providerId: resolvedProviderId }) } : undefined);
           const output = (result as { output?: string }).output ?? String(result);
           const duration = Date.now() - startTime;
 

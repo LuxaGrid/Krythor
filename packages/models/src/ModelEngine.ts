@@ -122,6 +122,90 @@ export class ModelEngine {
     return p?.endpoint ?? null;
   }
 
+  /**
+   * Resolve a model routing alias to a real modelId + optional providerId.
+   *
+   * Supported aliases:
+   *   claude  → first enabled Anthropic provider's default model
+   *   gpt4    → first enabled OpenAI provider's default model
+   *   local   → first enabled Ollama provider's default model
+   *   fast    → lowest average latency model across enabled providers (circuit-breaker stats)
+   *   best    → ModelRecommender's top suggestion for a 'general' task
+   *
+   * Returns null when the alias is not one of the known keywords or no matching
+   * provider is configured — callers should treat null as "use the alias as-is".
+   */
+  resolveModelAlias(alias: string): { modelId: string; providerId: string } | null {
+    const lc = alias.toLowerCase().trim();
+    const configs = this.registry.listConfigs().filter(c => c.isEnabled !== false);
+
+    if (lc === 'claude') {
+      const cfg = configs.find(c => c.type === 'anthropic');
+      if (!cfg) return null;
+      const provider = this.registry.getProvider(cfg.id);
+      const model = provider?.getModels()[0] ?? cfg.models?.[0];
+      return model ? { modelId: model, providerId: cfg.id } : null;
+    }
+
+    if (lc === 'gpt4') {
+      const cfg = configs.find(c => c.type === 'openai');
+      if (!cfg) return null;
+      const provider = this.registry.getProvider(cfg.id);
+      // Prefer a gpt-4 model; fall back to first model
+      const gpt4Model = provider?.getModels().find(m => m.includes('gpt-4')) ?? provider?.getModels()[0] ?? cfg.models?.[0];
+      return gpt4Model ? { modelId: gpt4Model, providerId: cfg.id } : null;
+    }
+
+    if (lc === 'local') {
+      const cfg = configs.find(c => c.type === 'ollama');
+      if (!cfg) return null;
+      const provider = this.registry.getProvider(cfg.id);
+      const model = provider?.getModels()[0] ?? cfg.models?.[0];
+      return model ? { modelId: model, providerId: cfg.id } : null;
+    }
+
+    if (lc === 'fast') {
+      // Pick the provider with the lowest recorded average latency
+      const stats = this.router.circuitStats();
+      let bestProviderId: string | null = null;
+      let bestLatency = Infinity;
+      for (const [providerId, s] of Object.entries(stats)) {
+        const avg = (s as { avgLatencyMs?: number }).avgLatencyMs;
+        if (typeof avg === 'number' && avg < bestLatency) {
+          bestLatency = avg;
+          bestProviderId = providerId;
+        }
+      }
+      if (bestProviderId) {
+        const provider = this.registry.getProvider(bestProviderId);
+        const model = provider?.getModels()[0];
+        if (model) return { modelId: model, providerId: bestProviderId };
+      }
+      // No latency data yet — fall back to first enabled provider's first model
+      const cfg = configs[0];
+      if (!cfg) return null;
+      const provider = this.registry.getProvider(cfg.id);
+      const model = provider?.getModels()[0];
+      return model ? { modelId: model, providerId: cfg.id } : null;
+    }
+
+    if (lc === 'best') {
+      // Use the ModelRecommender for a 'general' task
+      const allModels = this.router.listAllModels();
+      if (allModels.length === 0) return null;
+      // Prefer a premium model (claude, gpt-4, etc.) over a local model
+      const premiumKeywords = ['claude', 'gpt-4', 'gemini', 'mistral-large', 'llama-3'];
+      const premium = allModels.find(m =>
+        premiumKeywords.some(k => (m.id ?? '').toLowerCase().includes(k))
+      );
+      const target = premium ?? allModels[0];
+      if (!target) return null;
+      return { modelId: target.id ?? '', providerId: target.providerId ?? '' };
+    }
+
+    return null; // not a known alias
+  }
+
   // ── Inference ─────────────────────────────────────────────────────────────
 
   async infer(request: InferenceRequest, context?: RoutingContext, signal?: AbortSignal): Promise<InferenceResponse> {
