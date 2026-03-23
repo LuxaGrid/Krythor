@@ -29,6 +29,27 @@ export interface AppConfig {
   onboardingComplete?: boolean;
 }
 
+export interface GatewayConfig {
+  port: number;
+  bind: string;
+  auth: {
+    mode: 'token' | 'none';
+    token?: string;
+  };
+}
+
+export interface ChannelConfig {
+  telegram?: { enabled: boolean; botToken: string };
+  discord?: { enabled: boolean; botToken: string; guildId?: string };
+  slack?: { enabled: boolean; botToken: string; appToken: string };
+}
+
+export interface WebSearchConfig {
+  enabled: boolean;
+  provider: string;
+  apiKey?: string;
+}
+
 // ─── Installer ────────────────────────────────────────────────────────────────
 
 export class Installer {
@@ -207,6 +228,40 @@ export class Installer {
     }
 
     return installed;
+  }
+
+  writeGatewayConfig(config: GatewayConfig): void {
+    const f = join(this.configDir, 'gateway.json');
+    let existing: Partial<GatewayConfig> = {};
+    if (existsSync(f)) {
+      try { existing = JSON.parse(readFileSync(f, 'utf8')) as Partial<GatewayConfig>; } catch {}
+    }
+    writeFileSync(f, JSON.stringify({ ...existing, ...config }, null, 2), 'utf8');
+  }
+
+  readGatewayConfig(): Partial<GatewayConfig> {
+    const f = join(this.configDir, 'gateway.json');
+    if (!existsSync(f)) return {};
+    try { return JSON.parse(readFileSync(f, 'utf8')) as Partial<GatewayConfig>; } catch { return {}; }
+  }
+
+  writeChannelsConfig(config: ChannelConfig): void {
+    const f = join(this.configDir, 'channels.json');
+    let existing: ChannelConfig = {};
+    if (existsSync(f)) {
+      try { existing = JSON.parse(readFileSync(f, 'utf8')) as ChannelConfig; } catch {}
+    }
+    // Merge: only overwrite keys explicitly provided
+    const merged: ChannelConfig = { ...existing };
+    if (config.telegram) merged.telegram = config.telegram;
+    if (config.discord)  merged.discord  = config.discord;
+    if (config.slack)    merged.slack    = config.slack;
+    writeFileSync(f, JSON.stringify(merged, null, 2), 'utf8');
+  }
+
+  writeWebSearchConfig(config: WebSearchConfig): void {
+    const f = join(this.configDir, 'websearch.json');
+    writeFileSync(f, JSON.stringify(config, null, 2), 'utf8');
   }
 
   writeStartScript(gatewayDistPath: string, scriptDir: string): void {

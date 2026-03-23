@@ -1,5 +1,6 @@
 import { join } from 'path';
 import { existsSync } from 'fs';
+import { randomBytes } from 'crypto';
 import { spawn } from 'child_process';
 import { probe, type ProbeResult } from './SystemProbe.js';
 import { Installer } from './Installer.js';
@@ -236,7 +237,16 @@ export class SetupWizard {
       console.log(fmt.dim('  Skipped. You can add providers via the Models tab in the Control UI.'));
     }
 
-    // 6. Write app config with defaults
+    // 6. Gateway configuration (port, bind, auth)
+    await this.configureGateway(installer);
+
+    // 7. Chat channels (Telegram, Discord, Slack)
+    await this.configureChannels(installer);
+
+    // 8. Web search (optional)
+    await this.configureWebSearch(installer);
+
+    // 9. Write app config with defaults
     installer.writeAppConfig({
       selectedAgentId: 'krythor-default',
       selectedModel: firstModel,
@@ -733,6 +743,258 @@ export class SetupWizard {
     }
 
     return models[0];
+  }
+
+  // ── Gateway configuration ───────────────────────────────────────────────────
+
+  private async configureGateway(installer: Installer): Promise<void> {
+    console.log(fmt.head('Gateway Configuration'));
+    console.log(fmt.dim('  The gateway is the local HTTP server Krythor runs on your machine.'));
+    console.log('');
+
+    const existing = installer.readGatewayConfig();
+    const currentPort = existing.port ?? 47200;
+    const currentBind = existing.bind ?? '127.0.0.1';
+
+    // Port
+    const portInput = await ask(`  Port [${currentPort}]: `);
+    const port = portInput ? parseInt(portInput, 10) : currentPort;
+    if (isNaN(port) || port < 1024 || port > 65535) {
+      console.log(fmt.warn('  Invalid port — keeping current value.'));
+    }
+    const resolvedPort = (!isNaN(port) && port >= 1024 && port <= 65535) ? port : currentPort;
+
+    // Bind address
+    console.log(fmt.dim('  Bind address controls who can reach the gateway:'));
+    console.log(fmt.dim('    127.0.0.1 — loopback only (default, most secure)'));
+    console.log(fmt.dim('    0.0.0.0   — all interfaces (LAN/remote access)'));
+    const bindChoice = await choose(
+      '  Bind address',
+      ['127.0.0.1 (loopback — default)', '0.0.0.0 (all interfaces)'],
+      currentBind === '0.0.0.0' ? 1 : 0,
+    );
+    const bind = bindChoice.startsWith('0.0.0.0') ? '0.0.0.0' : '127.0.0.1';
+
+    // Auth mode
+    console.log('');
+    console.log(fmt.dim('  Auth mode controls how the Control UI authenticates:'));
+    console.log(fmt.dim('    token — bearer token (recommended, auto-generated)'));
+    console.log(fmt.dim('    none  — no auth (only safe on loopback)'));
+    const authChoice = await choose(
+      '  Auth mode',
+      ['token (recommended)', 'none'],
+      existing.auth?.mode === 'none' ? 1 : 0,
+    );
+    const authMode = authChoice.startsWith('none') ? 'none' as const : 'token' as const;
+
+    let token: string | undefined;
+    if (authMode === 'token') {
+      const existingToken = existing.auth?.token;
+      if (existingToken) {
+        const keepToken = await confirm('  Existing auth token found — keep it?', true);
+        token = keepToken ? existingToken : randomBytes(32).toString('hex');
+      } else {
+        token = randomBytes(32).toString('hex');
+      }
+      console.log(fmt.ok('  Auth token generated (stored in gateway.json).'));
+    }
+
+    installer.writeGatewayConfig({
+      port: resolvedPort,
+      bind,
+      auth: { mode: authMode, token },
+    });
+
+    if (bind === '0.0.0.0') {
+      console.log(fmt.warn('  Gateway will accept connections from all network interfaces.'));
+      console.log(fmt.dim('  Make sure your firewall restricts port access appropriately.'));
+    }
+    console.log(fmt.ok(`Gateway configured: ${bind}:${resolvedPort} (auth: ${authMode})`));
+    console.log('');
+  }
+
+  // ── Chat channel configuration ──────────────────────────────────────────────
+
+  private async configureChannels(installer: Installer): Promise<void> {
+    console.log(fmt.head('Chat Channels (optional)'));
+    console.log(fmt.dim('  Connect Krythor to messaging platforms so you can chat via Telegram, Discord, or Slack.'));
+    console.log(fmt.dim('  All channels are optional — skip any you do not need.'));
+    console.log(fmt.dim('  You can configure channels later via the Channels tab in the Control UI.'));
+    console.log('');
+
+    const setupAny = await confirm('  Set up any chat channels now?', false);
+    if (!setupAny) {
+      console.log(fmt.dim('  Skipped. Add channels later via the Control UI.'));
+      console.log('');
+      return;
+    }
+
+    const channelChoices = await choose(
+      '  Which channel would you like to configure first?',
+      ['Telegram', 'Discord', 'Slack', 'Skip channels'],
+      0,
+    );
+
+    if (channelChoices === 'Skip channels') {
+      console.log(fmt.dim('  Skipped.'));
+      console.log('');
+      return;
+    }
+
+    if (channelChoices === 'Telegram') {
+      await this.configureTelegram(installer);
+    } else if (channelChoices === 'Discord') {
+      await this.configureDiscord(installer);
+    } else if (channelChoices === 'Slack') {
+      await this.configureSlack(installer);
+    }
+
+    // Offer to configure additional channels
+    const addAnother = await confirm('  Configure another channel?', false);
+    if (addAnother) {
+      const remaining = ['Telegram', 'Discord', 'Slack'].filter(c => c !== channelChoices);
+      const next = await choose('  Which channel?', [...remaining, 'Skip'], 0);
+      if (next === 'Telegram') await this.configureTelegram(installer);
+      else if (next === 'Discord') await this.configureDiscord(installer);
+      else if (next === 'Slack') await this.configureSlack(installer);
+    }
+
+    console.log('');
+  }
+
+  private async configureTelegram(installer: Installer): Promise<void> {
+    console.log('');
+    console.log(fmt.dim('  ── Telegram ──'));
+    console.log(fmt.dim('  1. Open Telegram and find @BotFather'));
+    console.log(fmt.dim('  2. Send /newbot and follow the prompts'));
+    console.log(fmt.dim('  3. Copy the bot token (looks like: 123456789:ABCdef...)'));
+    console.log('');
+
+    const botToken = await ask('  Bot token: ');
+    if (!botToken.trim()) {
+      console.log(fmt.warn('  No token entered — Telegram channel not configured.'));
+      return;
+    }
+    installer.writeChannelsConfig({
+      telegram: { enabled: true, botToken: botToken.trim() },
+    });
+    console.log(fmt.ok('  Telegram channel configured.'));
+    console.log(fmt.dim('  After the gateway starts: send a message to your bot to receive a pairing code,'));
+    console.log(fmt.dim('  then approve it from the Channels tab in the Control UI.'));
+  }
+
+  private async configureDiscord(installer: Installer): Promise<void> {
+    console.log('');
+    console.log(fmt.dim('  ── Discord ──'));
+    console.log(fmt.dim('  1. Go to https://discord.com/developers/applications'));
+    console.log(fmt.dim('  2. Create a New Application → go to the Bot section'));
+    console.log(fmt.dim('  3. Reset Token to generate a bot token (save it securely)'));
+    console.log(fmt.dim('  4. Enable: Message Content Intent and Server Members Intent'));
+    console.log(fmt.dim('  5. Under OAuth2, generate an invite URL with bot + applications.commands scopes'));
+    console.log(fmt.dim('  6. Invite the bot to your server'));
+    console.log('');
+
+    const botToken = await ask('  Bot token: ');
+    if (!botToken.trim()) {
+      console.log(fmt.warn('  No token entered — Discord channel not configured.'));
+      return;
+    }
+
+    const guildId = await ask('  Server (Guild) ID (right-click server → Copy ID): ');
+
+    installer.writeChannelsConfig({
+      discord: {
+        enabled: true,
+        botToken: botToken.trim(),
+        guildId: guildId.trim() || undefined,
+      },
+    });
+    console.log(fmt.ok('  Discord channel configured.'));
+    console.log(fmt.dim('  DM the bot after the gateway starts to receive a pairing code.'));
+  }
+
+  private async configureSlack(installer: Installer): Promise<void> {
+    console.log('');
+    console.log(fmt.dim('  ── Slack ──'));
+    console.log(fmt.dim('  1. Go to https://api.slack.com/apps and create a new app'));
+    console.log(fmt.dim('  2. Enable Socket Mode and generate an App Token (xapp-...) with connections:write'));
+    console.log(fmt.dim('  3. Install the app to your workspace'));
+    console.log(fmt.dim('  4. Copy the Bot Token (xoxb-...) from OAuth & Permissions'));
+    console.log('');
+
+    const botToken = await ask('  Bot token (xoxb-...): ');
+    if (!botToken.trim()) {
+      console.log(fmt.warn('  No token entered — Slack channel not configured.'));
+      return;
+    }
+
+    const appToken = await ask('  App token (xapp-...): ');
+    if (!appToken.trim()) {
+      console.log(fmt.warn('  No app token entered — Slack channel not configured.'));
+      return;
+    }
+
+    installer.writeChannelsConfig({
+      slack: {
+        enabled: true,
+        botToken: botToken.trim(),
+        appToken: appToken.trim(),
+      },
+    });
+    console.log(fmt.ok('  Slack channel configured.'));
+    console.log(fmt.dim('  Message your bot in Slack after the gateway starts to receive a pairing code.'));
+  }
+
+  // ── Web search configuration ────────────────────────────────────────────────
+
+  private async configureWebSearch(installer: Installer): Promise<void> {
+    console.log(fmt.head('Web Search (optional)'));
+    console.log(fmt.dim('  Krythor agents can search the web using DuckDuckGo (no key required) by default.'));
+    console.log(fmt.dim('  Optionally configure a premium search provider for richer results.'));
+    console.log('');
+
+    const enablePremium = await confirm('  Configure a premium web search provider?', false);
+    if (!enablePremium) {
+      console.log(fmt.dim('  Using built-in DuckDuckGo search (no API key needed).'));
+      console.log('');
+      return;
+    }
+
+    const providers = [
+      { label: 'Brave Search',      id: 'brave',       url: 'https://api.search.brave.com/app/keys' },
+      { label: 'Perplexity',        id: 'perplexity',  url: 'https://docs.perplexity.ai/docs/getting-started' },
+      { label: 'Google (Gemini)',   id: 'gemini',      url: 'https://ai.google.dev/gemini-api/docs' },
+      { label: 'Kimi (Moonshot)',   id: 'kimi',        url: 'https://platform.moonshot.cn/console/api-keys' },
+    ];
+
+    const choice = await choose(
+      '  Search provider',
+      [...providers.map(p => p.label), 'Skip'],
+      0,
+    );
+
+    const selected = providers.find(p => p.label === choice);
+    if (!selected) {
+      console.log(fmt.dim('  Skipped.'));
+      console.log('');
+      return;
+    }
+
+    console.log(fmt.dim(`  Get your API key at: ${selected.url}`));
+    const apiKey = await ask(`  ${selected.label} API key: `);
+    if (!apiKey.trim()) {
+      console.log(fmt.warn('  No key entered — falling back to DuckDuckGo.'));
+      console.log('');
+      return;
+    }
+
+    installer.writeWebSearchConfig({
+      enabled: true,
+      provider: selected.id,
+      apiKey: apiKey.trim(),
+    });
+    console.log(fmt.ok(`  Web search configured: ${selected.label}`));
+    console.log('');
   }
 
   private async offerLaunch(sys: ProbeResult): Promise<void> {
