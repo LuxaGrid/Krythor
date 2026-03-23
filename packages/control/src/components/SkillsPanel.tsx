@@ -606,6 +606,9 @@ export function SkillsPanel() {
                 )}
                 {selected.taskProfile && Object.keys(selected.taskProfile).length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1">
+                    {(selected.taskProfile.taskCategories ?? []).map(cat => (
+                      <span key={cat} className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">{cat}</span>
+                    ))}
                     {selected.taskProfile.costTier && (
                       <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-amber-600 border border-zinc-700">
                         {selected.taskProfile.costTier.replace('_', ' ')}

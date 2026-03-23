@@ -284,6 +284,7 @@ export function WorkflowPanel() {
   const [runs, setRuns]     = useState<AgentRun[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [agentFilter, setAgentFilter] = useState<string>('');
 
   // Multi-agent dispatch
   const [showDispatch, setShowDispatch]     = useState(false);
@@ -357,7 +358,8 @@ export function WorkflowPanel() {
     );
   }
 
-  const selectedRun = runs.find(r => r.id === selectedRunId) ?? runs[0] ?? null;
+  const filteredRuns = agentFilter ? runs.filter(r => r.agentId === agentFilter) : runs;
+  const selectedRun = filteredRuns.find(r => r.id === selectedRunId) ?? filteredRuns[0] ?? null;
   const runAgent = selectedRun ? agents.find(a => a.id === selectedRun.agentId) : null;
 
   if (loading) {
@@ -387,6 +389,15 @@ export function WorkflowPanel() {
 
         {/* Run selector + multi-agent dispatch button */}
         <div className="ml-auto flex items-center gap-2 flex-wrap">
+          <select
+            value={agentFilter}
+            onChange={e => { setAgentFilter(e.target.value); setSelectedRunId(null); }}
+            className="border rounded-lg px-2 py-1 text-[11px] text-zinc-300 outline-none transition-colors focus:border-arc-600"
+            style={{ background: 'var(--kr-bg-card)', borderColor: 'var(--kr-border-subtle)' }}
+          >
+            <option value="">All agents</option>
+            {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+          </select>
           <span className="text-[10px]" style={{ color: 'var(--kr-text-muted)' }}>Run:</span>
           <select
             value={selectedRunId ?? ''}
@@ -397,7 +408,7 @@ export function WorkflowPanel() {
               borderColor: 'var(--kr-border-subtle)',
             }}
           >
-            {runs.map(r => {
+            {filteredRuns.map(r => {
               const label = `${r.status} · ${r.input.slice(0, 40)}${r.input.length > 40 ? '…' : ''}`;
               return <option key={r.id} value={r.id}>{label}</option>;
             })}
@@ -536,7 +547,7 @@ export function WorkflowPanel() {
         </div>
         <div className="overflow-x-auto scrollbar-thin">
           <div className="flex gap-2 px-4 py-3" style={{ minWidth: 'max-content' }}>
-            {runs.slice(0, 20).map(r => {
+            {filteredRuns.slice(0, 20).map(r => {
               const isSelected = r.id === selectedRunId;
               const agent = agents.find(a => a.id === r.agentId);
               return (
@@ -584,7 +595,7 @@ export function WorkflowPanel() {
                 </button>
               );
             })}
-            {runs.length === 0 && (
+            {filteredRuns.length === 0 && (
               <span className="text-[10px] py-2" style={{ color: 'var(--kr-text-dim)' }}>
                 No runs yet.
               </span>

@@ -247,6 +247,7 @@ function Sidebar({ conversations, activeId, onSelect, onNew, onDelete, onRename,
   const [editValue, setEditValue] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [exportMenuId, setExportMenuId] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
 
   const handleExport = async (conv: Conversation, format: 'json' | 'markdown', e: React.MouseEvent) => {
     e.stopPropagation();
@@ -276,10 +277,16 @@ function Sidebar({ conversations, activeId, onSelect, onNew, onDelete, onRename,
     setDeleteConfirm(null);
   };
 
+  // Apply title search filter
+  const searchLower = search.toLowerCase();
+  const filtered = searchLower
+    ? conversations.filter(c => c.title.toLowerCase().includes(searchLower))
+    : conversations;
+
   // Pinned conversations shown first; archived shown only when toggled
-  const pinned   = conversations.filter(c => c.pinned && !c.archived);
-  const archived = conversations.filter(c => c.archived);
-  const unpinned = conversations.filter(c => !c.pinned && !c.archived);
+  const pinned   = filtered.filter(c => c.pinned && !c.archived);
+  const archived = filtered.filter(c => c.archived);
+  const unpinned = filtered.filter(c => !c.pinned && !c.archived);
 
   // Group unpinned (non-archived) by time
   const groups: Record<string, Conversation[]> = {};
@@ -300,6 +307,12 @@ function Sidebar({ conversations, activeId, onSelect, onNew, onDelete, onRename,
           <span className="text-brand-400 text-sm leading-none">+</span>
           New Chat
         </button>
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search conversations…"
+          className="w-full bg-zinc-800/60 border border-zinc-700/50 rounded px-2 py-1 text-xs text-zinc-300 placeholder-zinc-600 outline-none focus:border-brand-600/60 transition-colors"
+        />
         <button
           onClick={onToggleArchived}
           className={`w-full flex items-center gap-2 px-3 py-1.5 rounded text-xs transition-colors ${
@@ -314,8 +327,11 @@ function Sidebar({ conversations, activeId, onSelect, onNew, onDelete, onRename,
       </div>
 
       <div className="flex-1 overflow-y-auto scrollbar-thin">
-        {conversations.filter(c => !c.archived).length === 0 && !showArchived && (
+        {conversations.filter(c => !c.archived).length === 0 && !showArchived && !search && (
           <p className="text-zinc-700 text-xs p-3 leading-relaxed">No conversations yet. Start one above.</p>
+        )}
+        {search && filtered.length === 0 && (
+          <p className="text-zinc-700 text-xs p-3 leading-relaxed">No matches for "{search}".</p>
         )}
         {pinned.length > 0 && (
           <div>
@@ -389,6 +405,9 @@ function Sidebar({ conversations, activeId, onSelect, onNew, onDelete, onRename,
                       : 'text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200 transition-colors'
                   }`}
                 >
+                  {conv.isIdle && (
+                    <span className="shrink-0 w-1 h-1 rounded-full bg-amber-600/60" title="Agent went idle" />
+                  )}
                   {editingId === conv.id ? (
                     <input
                       value={editValue}
