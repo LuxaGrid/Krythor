@@ -4,6 +4,9 @@ import type { CommandCenterAgent, SceneZone, SceneZoneId } from './types';
 
 // ── Default Agents ────────────────────────────────────────────────────────────
 
+// Agent positions map to desk locations in the office scene.
+// Y=40-80 is the floor area (below the wall at ~32%).
+// Atlas sits at the boss desk top-center; others at workstations.
 export const DEFAULT_AGENTS: CommandCenterAgent[] = [
   {
     id: 'atlas',
@@ -15,7 +18,7 @@ export const DEFAULT_AGENTS: CommandCenterAgent[] = [
     localOrRemote: 'local',
     homeZone: 'crown',
     currentZone: 'crown',
-    position: { x: 50, y: 15 },
+    position: { x: 50, y: 42 }, // boss desk — top center of floor
   },
   {
     id: 'voltaris',
@@ -27,7 +30,7 @@ export const DEFAULT_AGENTS: CommandCenterAgent[] = [
     localOrRemote: 'local',
     homeZone: 'forge',
     currentZone: 'forge',
-    position: { x: 22, y: 45 },
+    position: { x: 22, y: 60 }, // left workstation
   },
   {
     id: 'aethon',
@@ -39,7 +42,7 @@ export const DEFAULT_AGENTS: CommandCenterAgent[] = [
     localOrRemote: 'local',
     homeZone: 'archive',
     currentZone: 'archive',
-    position: { x: 78, y: 45 },
+    position: { x: 78, y: 60 }, // right workstation
   },
   {
     id: 'thyros',
@@ -51,7 +54,7 @@ export const DEFAULT_AGENTS: CommandCenterAgent[] = [
     localOrRemote: 'local',
     homeZone: 'memory',
     currentZone: 'memory',
-    position: { x: 50, y: 72 },
+    position: { x: 62, y: 78 }, // bottom-right desk
   },
   {
     id: 'pyron',
@@ -63,64 +66,66 @@ export const DEFAULT_AGENTS: CommandCenterAgent[] = [
     localOrRemote: 'local',
     homeZone: 'monitor',
     currentZone: 'monitor',
-    position: { x: 20, y: 72 },
+    position: { x: 36, y: 78 }, // bottom-left desk
   },
 ];
 
 // ── Scene Zones ───────────────────────────────────────────────────────────────
 
+// Zone positions match desk positions in the office floor layout.
+// Zones are desk platforms agents sit at — sized to hold agent body + label.
 export const SCENE_ZONES: SceneZone[] = [
   {
     id: 'crown',
-    label: 'Crown Platform',
+    label: 'Boss Desk',
     description: 'Orchestration hub',
-    position: { x: 50, y: 15 },
-    width: 28,
-    height: 18,
+    position: { x: 50, y: 42 },
+    width: 22,
+    height: 14,
     accentColor: '#f59e0b',
     glowColor: 'rgba(245,158,11,0.15)',
     defaultAgentId: 'atlas',
   },
   {
     id: 'forge',
-    label: 'Forge Console',
+    label: 'Forge',
     description: 'Execution engine',
-    position: { x: 22, y: 45 },
-    width: 26,
-    height: 18,
+    position: { x: 22, y: 60 },
+    width: 20,
+    height: 14,
     accentColor: '#1eaeff',
     glowColor: 'rgba(30,174,255,0.15)',
     defaultAgentId: 'voltaris',
   },
   {
     id: 'archive',
-    label: 'Archive Pillar',
+    label: 'Archive',
     description: 'Research & knowledge',
-    position: { x: 78, y: 45 },
-    width: 26,
-    height: 18,
+    position: { x: 78, y: 60 },
+    width: 20,
+    height: 14,
     accentColor: '#818cf8',
     glowColor: 'rgba(129,140,248,0.15)',
     defaultAgentId: 'aethon',
   },
   {
     id: 'memory',
-    label: 'Memory Core',
+    label: 'Memory',
     description: 'Long-term memory store',
-    position: { x: 50, y: 72 },
-    width: 24,
-    height: 16,
+    position: { x: 62, y: 78 },
+    width: 20,
+    height: 14,
     accentColor: '#93c5fd',
     glowColor: 'rgba(147,197,253,0.15)',
     defaultAgentId: 'thyros',
   },
   {
     id: 'monitor',
-    label: 'Monitoring Node',
+    label: 'Monitor',
     description: 'System watch & logs',
-    position: { x: 20, y: 72 },
-    width: 22,
-    height: 16,
+    position: { x: 36, y: 78 },
+    width: 20,
+    height: 14,
     accentColor: '#fb923c',
     glowColor: 'rgba(251,146,60,0.15)',
     defaultAgentId: 'pyron',

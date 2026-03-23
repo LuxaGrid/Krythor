@@ -64,6 +64,7 @@ export function GuardPanel() {
   const [form, setForm]           = useState<AddRuleForm>(EMPTY_FORM);
   const [safetyMode, setSafetyMode] = useState<SafetyMode | null>(null);
   const [modeLoading, setModeLoading] = useState(false);
+  const [savingMode, setSavingMode] = useState<SafetyMode | null>(null);
   const [savingRuleId, setSavingRuleId] = useState<string | null>(null);
   const [savingDefault, setSavingDefault] = useState(false);
   const [addingRule, setAddingRule] = useState(false);
@@ -157,30 +158,37 @@ export function GuardPanel() {
   };
 
   const handleSafetyMode = async (mode: SafetyMode) => {
+    if (modeLoading) return;
     setModeLoading(true);
+    setSavingMode(mode);
     setSavingDefault(true);
     try {
       if (mode === 'guarded') {
         await setGuardDefault('deny');
-        // Enable all rules
-        await Promise.all(rules.filter(r => !r.enabled).map(r => updateGuardRule(r.id, { enabled: true })));
+        // Enable all custom rules
+        await Promise.all(
+          rules.filter(r => !r.id.startsWith('builtin-') && !r.enabled)
+            .map(r => updateGuardRule(r.id, { enabled: true }))
+        );
       } else if (mode === 'balanced') {
         await setGuardDefault('allow');
-        // Enable warn rules, keep others
+        // Enable warn/allow rules, disable deny rules (default allow handles blocking)
         await Promise.all(
-          rules.map(r => updateGuardRule(r.id, { enabled: r.action === 'warn' || r.action === 'allow' }))
+          rules.filter(r => !r.id.startsWith('builtin-'))
+            .map(r => updateGuardRule(r.id, { enabled: r.action === 'warn' || r.action === 'allow' }))
         );
       } else {
         await setGuardDefault('allow');
-        // Disable all custom rules (preserve built-ins as-is)
+        // Disable all custom rules
         await Promise.all(
-          rules.filter(r => !r.id.startsWith('builtin-')).map(r => updateGuardRule(r.id, { enabled: false }))
+          rules.filter(r => !r.id.startsWith('builtin-') && r.enabled)
+            .map(r => updateGuardRule(r.id, { enabled: false }))
         );
       }
       setSafetyMode(mode);
       await load();
     } catch { /* ignore */ }
-    finally { setModeLoading(false); setSavingDefault(false); }
+    finally { setModeLoading(false); setSavingMode(null); setSavingDefault(false); }
   };
 
   return (
@@ -216,7 +224,7 @@ export function GuardPanel() {
                 : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 border border-transparent'
             }`}
           >
-            {savingDefault && safetyMode === m.value ? <Spinner /> : m.label}
+            {savingMode === m.value ? <Spinner /> : m.label}
           </button>
         ))}
       </div>

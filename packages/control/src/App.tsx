@@ -345,7 +345,7 @@ function TabBar({ tab, setTab, eventCount }: { tab: Tab; setTab: (t: Tab) => voi
             onDragEnd={handleDragEnd}
             onClick={() => setTab(t.id)}
             title={`${t.hint}\n(drag to reorder)`}
-            className={`px-4 py-2.5 text-sm font-medium transition-colors relative whitespace-nowrap cursor-pointer
+            className={`group px-3 py-2.5 text-sm font-medium transition-colors relative whitespace-nowrap cursor-grab active:cursor-grabbing flex items-center gap-1
               ${isDragTarget ? 'bg-zinc-800/60' : ''}
               ${isActive
                 ? isCC
@@ -355,6 +355,12 @@ function TabBar({ tab, setTab, eventCount }: { tab: Tab; setTab: (t: Tab) => voi
                   ? 'text-gold-600 hover:text-gold-400'
                   : 'text-zinc-500 hover:text-zinc-300'}`}
           >
+            {/* Drag handle — visible on hover */}
+            <span
+              className="text-[8px] leading-none opacity-0 group-hover:opacity-40 transition-opacity flex-shrink-0 select-none"
+              style={{ color: 'currentColor' }}
+              aria-hidden
+            >⠿</span>
             {t.label}
             {isDragTarget && (
               <span className="absolute left-0 top-1 bottom-1 w-0.5 bg-brand-500 rounded-full" />

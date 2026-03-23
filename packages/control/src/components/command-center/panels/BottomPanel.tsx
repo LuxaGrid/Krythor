@@ -10,8 +10,8 @@ interface BottomPanelProps {
 export function BottomPanel({ logEntries, isDemo }: BottomPanelProps): React.ReactElement {
   return (
     <div
-      className="h-full border border-zinc-800/60 rounded-xl overflow-hidden flex flex-col"
-      style={{ background: 'rgba(9,9,11,0.9)' }}
+      className="h-full overflow-hidden flex flex-col"
+      style={{ background: 'rgba(9,11,18,0.97)' }}
     >
       {/* Header */}
       <div className="flex-shrink-0 flex items-center gap-2 px-4 py-2 border-b border-zinc-800/60">

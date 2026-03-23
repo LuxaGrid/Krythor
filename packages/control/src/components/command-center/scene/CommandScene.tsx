@@ -65,9 +65,10 @@ export function CommandScene({ zones, activeZones, agents, focusedAgentId, onFoc
       />
 
       {/* Layer 5: scene header label */}
-      <div className="absolute top-3 left-4 pointer-events-none">
-        <span className="text-[9px] font-mono tracking-[0.25em] uppercase text-zinc-700">
-          ● Krythor Command Chamber
+      <div className="absolute top-2 left-3 pointer-events-none flex items-center gap-1.5">
+        <div className="w-1.5 h-1.5 rounded-full bg-amber-500/60" style={{ boxShadow: '0 0 5px rgba(245,158,11,0.5)' }} />
+        <span className="text-[9px] font-mono tracking-[0.2em] uppercase text-zinc-600">
+          Krythor Command Chamber
         </span>
       </div>
 

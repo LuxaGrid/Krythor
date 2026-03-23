@@ -20,26 +20,33 @@ export function CommandCenterPanel(): React.ReactElement {
 
   return (
     <div
-      className="h-full w-full flex flex-col overflow-hidden p-3 gap-3"
-      style={{ background: 'var(--kr-bg-primary)' }}
+      className="h-full w-full flex overflow-hidden"
+      style={{ background: '#090b12' }}
     >
-      {/* Top row: left panel + main scene */}
-      <div className="flex flex-1 gap-3 min-h-0">
+      {/* Left panel — fixed width, full height */}
+      <div
+        className="flex-shrink-0 flex flex-col border-r"
+        style={{
+          width: 'clamp(160px, 20%, 220px)',
+          borderColor: 'rgba(255,255,255,0.06)',
+          background: 'rgba(9,11,18,0.95)',
+        }}
+      >
+        <LeftPanel
+          agents={agents}
+          isDemo={isDemo}
+          focusedAgentId={focusedAgentId}
+          onFocusAgent={setFocusedAgentId}
+          activeRunCount={activeRunCount}
+          connectionState={connectionState}
+        />
+      </div>
 
-        {/* Left panel — fixed width */}
-        <div className="w-48 flex-shrink-0">
-          <LeftPanel
-            agents={agents}
-            isDemo={isDemo}
-            focusedAgentId={focusedAgentId}
-            onFocusAgent={setFocusedAgentId}
-            activeRunCount={activeRunCount}
-            connectionState={connectionState}
-          />
-        </div>
+      {/* Right side — scene on top, log on bottom */}
+      <div className="flex-1 flex flex-col min-w-0">
 
-        {/* Main scene — flex 1 */}
-        <div className="flex-1 min-w-0">
+        {/* Main scene — takes most of the height */}
+        <div className="flex-1 min-h-0">
           <CommandScene
             zones={zones}
             activeZones={activeZones}
@@ -49,11 +56,17 @@ export function CommandCenterPanel(): React.ReactElement {
             memoryPulseAgentId={memoryPulseAgentId}
           />
         </div>
-      </div>
 
-      {/* Bottom log — fixed height */}
-      <div className="h-40 flex-shrink-0">
-        <BottomPanel logEntries={logEntries} isDemo={isDemo} />
+        {/* Activity log — adaptive height, min 100px max 30% */}
+        <div
+          className="flex-shrink-0 border-t"
+          style={{
+            height: 'clamp(100px, 22%, 200px)',
+            borderColor: 'rgba(255,255,255,0.06)',
+          }}
+        >
+          <BottomPanel logEntries={logEntries} isDemo={isDemo} />
+        </div>
       </div>
     </div>
   );
