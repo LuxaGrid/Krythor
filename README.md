@@ -39,23 +39,29 @@ This is **AI you can operate**.
 
 * **Multi-model routing** — OpenAI, Anthropic, Ollama, LM Studio, GGUF (llama-server), OpenRouter, Groq, Venice, and any OpenAI-compatible API
 * **Automatic fallback** — seamless provider failover with circuit breaker and per-provider retry config
-* **Provider priority ordering** — configure which providers are tried first
+* **Provider priority ordering** — configure which providers are tried first via the ⚙ advanced settings panel (priority, maxRetries, enable/disable per provider)
 * **Dual-auth support** — connect cloud providers with an API key; "Connect" button opens provider dashboard in a new tab
 * **Persistent memory** — BM25 + semantic hybrid retrieval across sessions with tagging, export/import, and bulk pruning
 * **Agent system** — custom prompts, memory scope, model preferences, tool permissions, chaining/handoff per agent
 * **Agent import/export** — share agent configs as JSON files
-* **Skills** — reusable task templates with structured routing hints and built-in templates (summarize, translate, explain)
-* **Guard engine** — policy-based allow/deny control per operation with persistent audit trail
-* **Tool system** — exec (local commands), web_search (DuckDuckGo), web_fetch (URL content), user-defined webhook tools
-* **Session management** — named conversations, pinning, idle detection, export as JSON/Markdown
-* **Token spend history** — ring buffer of last 1000 inferences; Dashboard shows sparkline of recent usage
+* **Skills** — reusable task templates with structured routing hints, task profiles, and built-in templates (summarize, translate, explain)
+* **Guard engine** — policy-based allow/deny control per operation with persistent audit trail and live test mode
+* **Tool system** — exec (local commands), web_search (DuckDuckGo), web_fetch (URL content), user-defined webhook tools with one-click test-fire
+* **Session management** — named conversations, archive/restore, pinning, idle detection, export as JSON/Markdown
+* **Conversation search** — filter conversations by title in the sidebar
+* **Token spend history** — ring buffer of last 1000 inferences; Dashboard shows per-model sparkline with token breakdown
 * **Outbound channels** — webhook notifications on lifecycle events (agent runs, memory, providers); HMAC-SHA256 signed; compatible with Zapier, n8n, Discord/Slack incoming webhooks
 * **LAN discovery** — gateways on the same network find each other automatically via UDP multicast; manual peer registration for cross-network pairing
 * **Gateway identity** — stable UUID per installation; capability manifest at `GET /api/gateway/info`
 * **Command Center** — live animated operations view; mythic-tech agent entities (Atlas, Voltaris, Aethon, Thyros, Pyron) move between zones, react to real events, and fall back to a cycling demo when the gateway is idle
+* **Ctrl+K command palette** — global fuzzy-search command palette for instant tab navigation, new chat, and more
+* **Slash commands** — type `/` in the chat input to autocomplete commands: `/new`, `/clear`, `/memory`, `/agents`, `/models`, `/skills`, `/guard`, `/dash`, `/logs`, `/settings`
+* **Dashboard heartbeat + circuit breaker** — live view of background provider health checks, warnings, recent run stats, and per-circuit state (open/closed/half-open)
 * **Web chat widget** — embeddable chat page at `/chat`; no React bundle required
-* **Transparent execution** — see exactly which model ran, why, and fallback behavior
-* **Heartbeat monitoring** — background provider health tracking and anomaly detection
+* **Transparent execution** — see exactly which model ran, why, and fallback behavior; learning system improves recommendations from override feedback
+* **Heartbeat monitoring** — background provider health tracking and anomaly detection with warning indicators in the status bar
+* **Real-time event stream** — filterable event stream with timestamps, icons, type coloring, and payload detail extraction
+* **Live log viewer** — filterable, searchable logs with pause, copy, and expandable raw JSON per entry
 * **Terminal dashboard** — `krythor tui` for a live status view without a browser
 * **Auto-update check** — notified at startup when a newer release is available
 * **Config hot reload** — `providers.json` watched with `fs.watch()`; `POST /api/config/reload` for manual trigger
@@ -96,6 +102,40 @@ The scene also features:
 - **Focus mode** — click any agent to dim everything else and center attention
 - **Command log** — filterable live event log (all / tasks / tools / memory / errors) with pause toggle and auto-scroll
 - **Demo mode** — when no gateway events arrive for 8 seconds, the scene runs a cycling demo scenario automatically; it seamlessly switches back to live data when the gateway reconnects
+
+---
+
+## ⌨️ Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+K` | Open command palette (fuzzy-search all tabs, actions) |
+| `Ctrl+/` | Open About dialog |
+| `Enter` | Send message (Command tab) |
+| `Shift+Enter` | New line in message input |
+| `/` | Begin a slash command in the chat input (autocomplete shows) |
+| `↑` / `↓` | Navigate slash command or palette suggestions |
+| `Tab` or `Enter` | Apply selected slash command or palette action |
+| `Escape` | Close command palette or dismiss slash dropdown |
+
+---
+
+## 💬 Slash Commands
+
+Type `/` in the chat input to see the autocomplete dropdown. Arrow keys or Tab to select, Enter to apply, Escape to dismiss.
+
+| Command | Action |
+|---------|--------|
+| `/new` | Start a new conversation |
+| `/clear` | Clear the current conversation |
+| `/memory` | Jump to the Memory tab |
+| `/agents` | Jump to the Agents tab |
+| `/models` | Jump to the Models tab |
+| `/skills` | Jump to the Skills tab |
+| `/guard` | Jump to the Guard tab |
+| `/dash` | Jump to the Dashboard tab |
+| `/logs` | Jump to the Logs tab |
+| `/settings` | Jump to Settings |
 
 ---
 
@@ -258,6 +298,71 @@ krythor
 
 ---
 
+## 🖥️ Terminal Commands Reference
+
+All commands assume Krythor is installed via the one-line installer or a release zip. If running from source, prefix with `node start.js` or use the pnpm scripts listed separately.
+
+### Runtime commands
+
+| Command | Description |
+|---------|-------------|
+| `krythor` | Start Krythor (foreground — Ctrl+C to stop) |
+| `krythor start --daemon` | Start Krythor in background (daemon mode) |
+| `krythor stop` | Stop the running daemon |
+| `krythor restart` | Stop and restart the daemon |
+| `krythor status` | Show whether the daemon is running and its PID |
+| `krythor update` | Download and install the latest release (preserves all data) |
+| `krythor tui` | Open the terminal dashboard (live status without a browser) |
+
+### Diagnostics and maintenance
+
+| Command | Description |
+|---------|-------------|
+| `krythor doctor` | Run all diagnostics — prints pass/fail for runtime, DB, migrations, credentials |
+| `krythor repair` | Auto-fix issues found by doctor (re-compiles native modules, reruns migrations) |
+| `krythor backup` | Create a timestamped `.tar.gz` / `.zip` archive of the data directory |
+
+### Source / development commands
+
+Run these from the repository root with pnpm installed (`npm install -g pnpm`).
+
+| Command | Description |
+|---------|-------------|
+| `pnpm install` | Install all workspace dependencies |
+| `pnpm build` | Build all packages (gateway + control UI + all libraries) |
+| `pnpm dev` | Start gateway in watch mode with hot-reload; control UI auto-reloads on save |
+| `pnpm test` | Run the full test suite across all packages |
+| `pnpm doctor` | Run diagnostics via the pnpm script alias |
+
+### Distribution / release commands
+
+| Command | Description |
+|---------|-------------|
+| `node scripts/tag-release.js <version>` | Bump version in all package.json files, create and push a git tag — triggers GitHub Actions release CI |
+| `node bundle.js` | Build a self-contained distribution folder (`krythor-dist-{platform}/`) for the current platform |
+| `node build-installer.js` | Build a Windows `.exe` installer (Windows only; requires Inno Setup) |
+| `node build-exe.js` | Build a Windows SEA (Single Executable Application) binary |
+
+### Docker commands
+
+| Command | Description |
+|---------|-------------|
+| `docker compose up -d` | Start Krythor in Docker (detached) |
+| `docker compose down` | Stop and remove Docker containers |
+| `docker compose logs -f` | Follow container logs |
+| `docker build -t krythor .` | Build the Docker image from source |
+| `docker run -p 47200:47200 -v krythor-data:/data krythor` | Run the image with persistent data volume |
+
+### Git workflow (contributors)
+
+| Command | Description |
+|---------|-------------|
+| `git clone https://github.com/LuxaGrid/Krythor` | Clone the repository |
+| `git checkout -b my-feature` | Create a feature branch |
+| `git push origin my-feature` | Push branch and open a pull request on GitHub |
+
+---
+
 ## 📚 Documentation
 
 **[docs/START_HERE.md](./docs/START_HERE.md)** — the single entry point for all documentation.
@@ -380,6 +485,10 @@ Krythor will:
 2. Show you the response
 3. Display which model was used and why (at the bottom of the response)
 
+**Tips:**
+- Press **Ctrl+K** to open the command palette and jump to any tab instantly
+- Type `/` in the chat input to see a list of slash commands
+
 ---
 
 ### Step 7 — Explore the features
@@ -388,12 +497,19 @@ The dashboard has several tabs:
 
 | Tab | What it does |
 |-----|-------------|
-| **Command** | Send messages and get responses from AI |
+| **Command** | Send messages and get AI responses; archive/restore conversations; slash commands |
 | **Memory** | View and manage what Krythor remembers across sessions |
-| **Models** | Add, test, and configure AI providers |
+| **Models** | Add, test, and configure AI providers; set priority and retry settings with ⚙ |
 | **Agents** | Create custom AI assistants with their own instructions |
-| **Guard** | Set rules for what Krythor is and isn't allowed to do |
-| **Skills** | Reusable task templates |
+| **Guard** | Set rules for what Krythor is and isn't allowed to do; live test mode |
+| **Skills** | Reusable task templates with routing profiles |
+| **Dashboard** | Token usage sparklines, heartbeat last-run, circuit breaker status |
+| **Logs** | Live log stream with filter, search, pause, copy, and expandable JSON rows |
+| **Events** | Real-time event stream with icons, timestamps, type coloring, and filter |
+| **Workflow** | View agent run history and stop active runs |
+| **Channels** | Configure outbound webhook notifications |
+| **Custom Tools** | Define webhook tools; test-fire each one from the UI |
+| **Config Editor** | Edit raw configuration files |
 | **Command Center** | Live animated scene showing all agents working in real time |
 
 ---
@@ -401,6 +517,12 @@ The dashboard has several tabs:
 ### Stopping Krythor
 
 Press **Ctrl + C** in the terminal where Krythor is running. The dashboard will become unavailable until you start it again.
+
+To run in the background instead:
+```bash
+krythor start --daemon
+krythor stop        # when you want to stop it
+```
 
 ---
 
@@ -479,6 +601,9 @@ This is normal when no real agent runs are happening. The scene runs a pre-scrip
 | llama-server (GGUF) | Local | Free | None required |
 | OpenAI (GPT-4o, o1, etc.) | Cloud | Pay per use | API key or OAuth |
 | Anthropic (Claude) | Cloud | Pay per use | API key or OAuth |
+| OpenRouter | Cloud | Pay per use | API key |
+| Groq | Cloud | Pay per use | API key |
+| Venice | Cloud | Pay per use | API key |
 | Any OpenAI-compatible API | Cloud/Local | Varies | Optional API key |
 
 Krythor auto-detects Ollama and LM Studio on first launch.
@@ -491,11 +616,12 @@ All API endpoints are served at `http://127.0.0.1:47200`. Most require a Bearer 
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| GET | `/health` | Public | Status, version, provider/model/agent counts, data dirs |
+| GET | `/health` | Public | Status, version, provider/model/agent counts, heartbeat, circuit info |
 | GET | `/ready` | Public | Readiness check — 200 OK or 503 Not Ready |
 | POST | `/api/command` | Required | Send a command to the default agent |
 | GET | `/api/models` | Required | List all configured models |
 | GET | `/api/providers` | Required | List providers (safe summary — no secrets) |
+| POST | `/api/providers/:id` | Required | Update provider meta (priority, maxRetries, isEnabled) |
 | POST | `/api/providers/:id/test` | Required | Test a provider with a minimal inference |
 | GET | `/api/agents` | Required | List all defined agents |
 | POST | `/api/agents` | Required | Create a new agent |
@@ -507,6 +633,8 @@ All API endpoints are served at `http://127.0.0.1:47200`. Most require a Bearer 
 | GET | `/api/skills` | Required | List registered skills |
 | GET | `/api/stats` | Required | Token usage for this session |
 | GET | `/api/conversations` | Required | List recent conversations |
+| POST | `/api/conversations/:id/archive` | Required | Archive a conversation |
+| POST | `/api/conversations/:id/restore` | Required | Restore an archived conversation |
 | POST | `/api/config/reload` | Required | Reload providers.json without restart |
 | GET | `/api/heartbeat/status` | Required | Heartbeat status and active warnings |
 | GET | `/api/templates` | Required | List workspace template files |
@@ -516,12 +644,13 @@ All API endpoints are served at `http://127.0.0.1:47200`. Most require a Bearer 
 | DELETE | `/api/channels/:id` | Required | Delete a webhook channel |
 | GET | `/api/channels/events` | Required | List supported channel event types |
 | POST | `/api/channels/:id/test` | Required | Send a test delivery to a channel |
+| POST | `/api/recommend/override` | Required | Report a model override for learning system feedback |
 | GET | `/api/gateway/info` | Required | Gateway identity and capability manifest |
 | GET | `/api/gateway/peers` | Required | List known remote gateway peers |
 | POST | `/api/gateway/peers` | Required | Register a remote gateway peer |
 | DELETE | `/api/gateway/peers/:id` | Required | Remove a registered peer |
 | GET | `/api/gateway/probe` | Required | Probe connectivity to known peers |
-| WS | `/ws/stream` | Required | Real-time event stream (used by Command Center) |
+| WS | `/ws/stream` | Required | Real-time event stream (used by Command Center and Event Stream panel) |
 
 ---
 
@@ -636,7 +765,8 @@ Dockerfile    — Docker image (node:20-alpine, non-root user)
 ## 🧪 Development
 
 ```bash
-pnpm dev        # gateway in watch mode
+pnpm install    # install all dependencies
+pnpm dev        # gateway in watch mode + control UI hot-reload
 pnpm test       # run all tests
 pnpm build      # build all packages
 pnpm doctor     # run diagnostics
@@ -688,18 +818,26 @@ To uninstall: remove the application folder (`~/.krythor`) and the data folder a
 * [x] Transparent execution (selectionReason, fallbackOccurred in all run paths)
 * [x] One-line curl/PowerShell installers
 * [x] Dual-auth system (API key + OAuth) for cloud providers
-* [x] Guard engine (policy-based allow/deny per operation)
-* [x] Tool system (exec, web_search, web_fetch)
+* [x] Guard engine (policy-based allow/deny per operation) with live test mode
+* [x] Tool system (exec, web_search, web_fetch) with webhook custom tools and test-fire
 * [x] Terminal dashboard (krythor tui)
 * [x] Auto-update check on startup
 * [x] Outbound webhook channels (10 event types, HMAC signing, delivery stats)
 * [x] LAN peer discovery (mDNS UDP multicast) + manual peer registry
 * [x] Command Center — live animated agent scene with distinct silhouettes, state machine, zone transitions, energy paths, ambient reactor, focus mode, and command log
+* [x] Ctrl+K global command palette with fuzzy search
+* [x] Slash commands in chat input (/new, /clear, /memory, /agents, /models, /skills, /guard, /dash, /logs, /settings)
+* [x] Provider advanced settings panel (priority, maxRetries, enable/disable per provider)
+* [x] Dashboard heartbeat last-run info and circuit breaker summary
+* [x] LogsPanel copy to clipboard and expandable raw JSON per entry
+* [x] EventStream filter, timestamps, icons, and payload detail extraction
+* [x] Model override feedback wired into learning system (reportOverride)
 * [ ] Code signing (OV certificate — eliminates SmartScreen warning)
 * [ ] Auto-updater UI (download and replace in-place)
 * [ ] macOS / Linux native installers
 * [ ] Docker image on GitHub Container Registry (ghcr.io)
 * [ ] npm global package publish
+* [ ] Full OAuth browser sign-in flow (no copy-paste)
 
 ---
 
