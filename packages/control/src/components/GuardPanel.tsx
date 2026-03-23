@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  guardStats, guardRules, guardDecisions, updateGuardRule, deleteGuardRule, createGuardRule, setGuardDefault,
-  type GuardRule, type GuardStats, type GuardDecision,
+  guardStats, guardRules, guardDecisions, guardCheck, updateGuardRule, deleteGuardRule, createGuardRule, setGuardDefault,
+  type GuardRule, type GuardStats, type GuardDecision, type GuardVerdict,
 } from '../api.ts';
 import { PanelHeader } from './PanelHeader.tsx';
 
@@ -67,9 +67,14 @@ export function GuardPanel() {
   const [savingRuleId, setSavingRuleId] = useState<string | null>(null);
   const [savingDefault, setSavingDefault] = useState(false);
   const [addingRule, setAddingRule] = useState(false);
-  const [activeTab, setActiveTab]   = useState<'rules' | 'audit'>('rules');
+  const [activeTab, setActiveTab]   = useState<'rules' | 'audit' | 'test'>('rules');
   const [decisions, setDecisions]   = useState<GuardDecision[]>([]);
   const [decisionsLoading, setDecisionsLoading] = useState(false);
+  // Guard live-check state
+  const [checkForm, setCheckForm]   = useState({ operation: '', source: 'user', scope: '', content: '' });
+  const [checkResult, setCheckResult] = useState<GuardVerdict | null>(null);
+  const [checkError, setCheckError] = useState<string | null>(null);
+  const [checking, setChecking]     = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -218,7 +223,7 @@ export function GuardPanel() {
 
       {/* Tab bar */}
       <div className="px-4 border-b border-zinc-800 flex gap-1">
-        {(['rules', 'audit'] as const).map(t => (
+        {(['rules', 'audit', 'test'] as const).map(t => (
           <button key={t} onClick={async () => {
             setActiveTab(t);
             if (t === 'audit' && decisions.length === 0) {
@@ -233,7 +238,7 @@ export function GuardPanel() {
                 : 'border-transparent text-zinc-500 hover:text-zinc-300'
             }`}
           >
-            {t === 'audit' ? 'Audit Log' : 'Rules'}
+            {t === 'audit' ? 'Audit Log' : t === 'test' ? 'Live Test' : 'Rules'}
           </button>
         ))}
       </div>
@@ -337,6 +342,110 @@ export function GuardPanel() {
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Live test tab */}
+      {activeTab === 'test' && (
+        <div className="flex-1 overflow-y-auto scrollbar-thin p-4 space-y-4">
+          <p className="text-xs text-zinc-500 leading-relaxed">
+            Simulate a guard check without actually running an operation. Useful for verifying that your rules behave as expected.
+          </p>
+          <div className="space-y-2">
+            <div>
+              <label className="block text-[10px] text-zinc-600 mb-1 uppercase tracking-wide">Operation</label>
+              <input
+                value={checkForm.operation}
+                onChange={e => setCheckForm(f => ({ ...f, operation: e.target.value }))}
+                placeholder="e.g. run_command, send_message, delete_file"
+                className={`w-full ${INPUT_CLS}`}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-[10px] text-zinc-600 mb-1 uppercase tracking-wide">Source</label>
+                <input
+                  value={checkForm.source}
+                  onChange={e => setCheckForm(f => ({ ...f, source: e.target.value }))}
+                  placeholder="user, agent, api"
+                  className={`w-full ${INPUT_CLS}`}
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] text-zinc-600 mb-1 uppercase tracking-wide">Scope</label>
+                <input
+                  value={checkForm.scope}
+                  onChange={e => setCheckForm(f => ({ ...f, scope: e.target.value }))}
+                  placeholder="user, workspace, agent"
+                  className={`w-full ${INPUT_CLS}`}
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-[10px] text-zinc-600 mb-1 uppercase tracking-wide">Content (optional)</label>
+              <textarea
+                rows={3}
+                value={checkForm.content}
+                onChange={e => setCheckForm(f => ({ ...f, content: e.target.value }))}
+                placeholder="The content or payload being checked…"
+                className={`w-full ${INPUT_CLS} resize-none`}
+              />
+            </div>
+            {checkError && <p className="text-red-400 text-xs">{checkError}</p>}
+            <button
+              onClick={async () => {
+                if (!checkForm.operation.trim()) { setCheckError('Operation is required.'); return; }
+                setCheckError(null);
+                setCheckResult(null);
+                setChecking(true);
+                try {
+                  const verdict = await guardCheck({
+                    operation: checkForm.operation.trim(),
+                    source: checkForm.source.trim() || 'user',
+                    ...(checkForm.scope.trim() && { scope: checkForm.scope.trim() }),
+                    ...(checkForm.content.trim() && { content: checkForm.content.trim() }),
+                  });
+                  setCheckResult(verdict);
+                } catch (e: unknown) {
+                  setCheckError(e instanceof Error ? e.message : 'Check failed');
+                } finally {
+                  setChecking(false);
+                }
+              }}
+              disabled={checking}
+              className="px-3 py-1.5 text-xs rounded-lg bg-brand-700/40 hover:bg-brand-600/40 border border-brand-700/50 text-brand-300 disabled:opacity-40 transition-colors"
+            >
+              {checking ? <><Spinner /> Checking…</> : 'Run guard check'}
+            </button>
+          </div>
+
+          {checkResult && (
+            <div className={`rounded-xl border p-4 space-y-2 ${
+              checkResult.allowed
+                ? 'bg-emerald-950/20 border-emerald-800/40'
+                : 'bg-red-950/20 border-red-800/40'
+            }`}>
+              <div className="flex items-center gap-2">
+                <span className={`text-sm font-bold font-mono ${checkResult.allowed ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {checkResult.allowed ? '✓ ALLOWED' : '✗ DENIED'}
+                </span>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${ACTION_COLOR[checkResult.action] ?? 'text-zinc-400'} bg-zinc-800`}>
+                  {checkResult.action}
+                </span>
+                {checkResult.ruleName && (
+                  <span className="text-[10px] text-zinc-600">rule: {checkResult.ruleName}</span>
+                )}
+              </div>
+              <p className="text-xs text-zinc-400">{checkResult.reason}</p>
+              {checkResult.warnings.length > 0 && (
+                <div className="pt-1 border-t border-zinc-800/60">
+                  {checkResult.warnings.map((w, i) => (
+                    <p key={i} className="text-[10px] text-amber-500">{w}</p>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 

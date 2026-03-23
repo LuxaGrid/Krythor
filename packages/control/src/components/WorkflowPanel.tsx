@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { listAgents, listRuns, runAgentsParallel, runAgentsSequential, type Agent, type AgentRun } from '../api.ts';
+import { listAgents, listRuns, runAgentsParallel, runAgentsSequential, stopAgentRun, type Agent, type AgentRun } from '../api.ts';
 import { useGatewayContext } from '../GatewayContext.tsx';
 
 // ─── WorkflowPanel ────────────────────────────────────────────────────────────
@@ -313,6 +313,13 @@ export function WorkflowPanel() {
     }
   }, [events]);
 
+  async function handleStop(runId: string) {
+    try {
+      await stopAgentRun(runId);
+      await loadData();
+    } catch { /* ignore */ }
+  }
+
   async function handleDispatch() {
     setDispatchError(null);
     setDispatchResult(null);
@@ -475,6 +482,19 @@ export function WorkflowPanel() {
               <FlowArrow active={selectedRun.status === 'completed'} />
               <OutputBlock text={selectedRun.output} status={selectedRun.status} />
             </div>
+
+            {/* Stop button for running runs */}
+            {selectedRun.status === 'running' && (
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => handleStop(selectedRun.id)}
+                  className="px-3 py-1.5 text-xs rounded-lg border border-red-800/50 bg-red-950/30 hover:bg-red-900/40 text-red-400 transition-colors"
+                >
+                  ■ Stop run
+                </button>
+                <span className="text-[10px] text-zinc-600">Run {selectedRun.id.slice(0, 8)}</span>
+              </div>
+            )}
 
             {/* Error display */}
             {selectedRun.errorMessage && (

@@ -230,6 +230,7 @@ export const createConversation = (agentId?: string) => req<Conversation>('POST'
 export const deleteConversation        = (id: string) => req<void>('DELETE', `/conversations/${id}`);
 export const updateConversation        = (id: string, title: string) => req<Conversation>('PATCH', `/conversations/${id}`, { title });
 export const pinConversation           = (id: string, pinned: boolean) => req<Conversation>('PATCH', `/conversations/${id}`, { pinned });
+export const archiveConversation       = (id: string, archived: boolean) => req<Conversation>('PATCH', `/conversations/${id}`, { archived });
 export const getMessages               = (id: string) => req<Message[]>('GET', `/conversations/${id}/messages`);
 export const deleteLastAssistantMessage = (id: string) => req<void>('DELETE', `/conversations/${id}/messages/last-assistant`);
 export const exportConversation = async (id: string, format: 'json' | 'markdown', title: string): Promise<void> => {

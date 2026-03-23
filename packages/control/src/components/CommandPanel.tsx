@@ -9,6 +9,7 @@ import {
   deleteConversation,
   updateConversation,
   pinConversation,
+  archiveConversation,
   getMessages,
   deleteLastAssistantMessage,
   exportConversation,
@@ -236,9 +237,12 @@ interface SidebarProps {
   onDelete: (id: string) => void;
   onRename: (id: string, title: string) => void;
   onPin: (id: string, pinned: boolean) => void;
+  onArchive: (id: string, archived: boolean) => void;
+  showArchived: boolean;
+  onToggleArchived: () => void;
 }
 
-function Sidebar({ conversations, activeId, onSelect, onNew, onDelete, onRename, onPin }: SidebarProps) {
+function Sidebar({ conversations, activeId, onSelect, onNew, onDelete, onRename, onPin, onArchive, showArchived, onToggleArchived }: SidebarProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
@@ -272,11 +276,12 @@ function Sidebar({ conversations, activeId, onSelect, onNew, onDelete, onRename,
     setDeleteConfirm(null);
   };
 
-  // Pinned conversations shown first
-  const pinned = conversations.filter(c => c.pinned);
-  const unpinned = conversations.filter(c => !c.pinned);
+  // Pinned conversations shown first; archived shown only when toggled
+  const pinned   = conversations.filter(c => c.pinned && !c.archived);
+  const archived = conversations.filter(c => c.archived);
+  const unpinned = conversations.filter(c => !c.pinned && !c.archived);
 
-  // Group unpinned by time
+  // Group unpinned (non-archived) by time
   const groups: Record<string, Conversation[]> = {};
   for (const conv of unpinned) {
     const label = groupLabel(conv.updatedAt);
@@ -287,7 +292,7 @@ function Sidebar({ conversations, activeId, onSelect, onNew, onDelete, onRename,
 
   return (
     <div className="w-[220px] shrink-0 border-r border-zinc-800 flex flex-col bg-zinc-950">
-      <div className="p-2 border-b border-zinc-800">
+      <div className="p-2 border-b border-zinc-800 flex flex-col gap-1">
         <button
           onClick={onNew}
           className="w-full flex items-center gap-2 px-3 py-2 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs transition-colors"
@@ -295,10 +300,21 @@ function Sidebar({ conversations, activeId, onSelect, onNew, onDelete, onRename,
           <span className="text-brand-400 text-sm leading-none">+</span>
           New Chat
         </button>
+        <button
+          onClick={onToggleArchived}
+          className={`w-full flex items-center gap-2 px-3 py-1.5 rounded text-xs transition-colors ${
+            showArchived
+              ? 'bg-zinc-700 text-zinc-300'
+              : 'text-zinc-600 hover:text-zinc-400 hover:bg-zinc-800/60'
+          }`}
+        >
+          <span className="text-[10px]">{showArchived ? '▾' : '▸'}</span>
+          Archived
+        </button>
       </div>
 
       <div className="flex-1 overflow-y-auto scrollbar-thin">
-        {conversations.length === 0 && (
+        {conversations.filter(c => !c.archived).length === 0 && !showArchived && (
           <p className="text-zinc-700 text-xs p-3 leading-relaxed">No conversations yet. Start one above.</p>
         )}
         {pinned.length > 0 && (
@@ -325,6 +341,38 @@ function Sidebar({ conversations, activeId, onSelect, onNew, onDelete, onRename,
             ))}
           </div>
         )}
+        {showArchived && archived.length > 0 && (
+          <div>
+            <p className="text-zinc-600 text-xs px-3 pt-3 pb-1 font-medium uppercase tracking-wide">Archived</p>
+            {archived.map(conv => (
+              <div
+                key={conv.id}
+                onClick={() => onSelect(conv.id)}
+                className={`px-3 py-2 cursor-pointer text-xs border-b border-zinc-800/30 group flex items-center gap-1 relative opacity-60 hover:opacity-100 transition-opacity ${
+                  activeId === conv.id ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-500 hover:bg-zinc-900 hover:text-zinc-200 transition-colors'
+                }`}
+              >
+                <span className="flex-1 truncate italic">{conv.title}</span>
+                <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 shrink-0">
+                  <button
+                    onClick={e => { e.stopPropagation(); onArchive(conv.id, false); }}
+                    className="text-indigo-400 hover:text-indigo-300 p-0.5 rounded text-[10px]"
+                    title="Restore from archive"
+                  >⊘</button>
+                  <button
+                    onClick={e => { e.stopPropagation(); onDelete(conv.id); }}
+                    className="text-zinc-600 hover:text-red-400 p-0.5 rounded"
+                    title="Delete permanently"
+                  >✕</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {showArchived && archived.length === 0 && (
+          <p className="text-zinc-700 text-xs px-3 py-2">No archived conversations.</p>
+        )}
+
         {groupOrder.map(label => {
           const items = groups[label];
           if (!items || items.length === 0) return null;
@@ -384,6 +432,11 @@ function Sidebar({ conversations, activeId, onSelect, onNew, onDelete, onRename,
                             className={`p-0.5 rounded ${conv.pinned ? 'text-amber-600 hover:text-amber-400' : 'text-zinc-600 hover:text-amber-500'}`}
                             title={conv.pinned ? 'Unpin' : 'Pin'}
                           >📌</button>
+                          <button
+                            onClick={e => { e.stopPropagation(); onArchive(conv.id, !conv.archived); }}
+                            className={`p-0.5 rounded text-[10px] ${conv.archived ? 'text-indigo-400 hover:text-indigo-300' : 'text-zinc-600 hover:text-indigo-400'}`}
+                            title={conv.archived ? 'Restore from archive' : 'Archive'}
+                          >{conv.archived ? '⊘' : '⊡'}</button>
                           <button
                             onClick={e => { e.stopPropagation(); setExportMenuId(id => id === conv.id ? null : conv.id); }}
                             className="text-zinc-600 hover:text-zinc-300 p-0.5 rounded"
@@ -475,6 +528,7 @@ export function CommandPanel({ health, onTabChange, newChatRef }: Props) {
   const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
   const [selectedModelId, setSelectedModelId] = useState<string | undefined>(config.selectedModel);
   const [showFirstRun, setShowFirstRun]       = useState(() => !localStorage.getItem(FIRST_RUN_KEY));
+  const [showArchived, setShowArchived]       = useState(false);
   const abortRef                              = useRef<AbortController | null>(null);
   const bottomRef                             = useRef<HTMLDivElement>(null);
   const textareaRef                           = useRef<HTMLTextAreaElement>(null);
@@ -492,10 +546,10 @@ export function CommandPanel({ health, onTabChange, newChatRef }: Props) {
     listModels().then(setAvailableModels).catch(() => {});
   }, [health?.models.modelCount]);
 
-  // Load conversations
-  const loadConversations = useCallback(() => {
-    listConversations().then(setConversations).catch(() => {});
-  }, []);
+  // Load conversations (including archived when the toggle is on)
+  const loadConversations = useCallback((includeArchived = showArchived) => {
+    listConversations(includeArchived).then(setConversations).catch(() => {});
+  }, [showArchived]);
 
   useEffect(() => { loadConversations(); }, [loadConversations]);
 
@@ -565,6 +619,27 @@ export function CommandPanel({ health, onTabChange, newChatRef }: Props) {
       const updated = await pinConversation(id, pinned);
       setConversations(prev => prev.map(c => c.id === id ? { ...c, pinned: updated.pinned } : c));
     } catch { /* non-fatal */ }
+  };
+
+  const handleArchive = async (id: string, archived: boolean) => {
+    try {
+      const updated = await archiveConversation(id, archived);
+      setConversations(prev => {
+        const next = prev.map(c => c.id === id ? { ...c, archived: updated.archived } : c);
+        // If hiding archived and we just archived this one, and it's active — deselect
+        if (archived && !showArchived && id === activeConvId) {
+          setActiveConvId(null);
+          setMessages([]);
+        }
+        return next;
+      });
+    } catch { /* non-fatal */ }
+  };
+
+  const handleToggleArchived = () => {
+    const next = !showArchived;
+    setShowArchived(next);
+    loadConversations(next);
   };
 
   const handleRename = async (id: string, title: string) => {
@@ -750,6 +825,9 @@ export function CommandPanel({ health, onTabChange, newChatRef }: Props) {
         onDelete={handleDelete}
         onRename={handleRename}
         onPin={handlePin}
+        onArchive={handleArchive}
+        showArchived={showArchived}
+        onToggleArchived={handleToggleArchived}
       />
 
       {/* Chat area */}

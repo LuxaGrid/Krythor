@@ -1,5 +1,5 @@
 import { useState, useEffect, createContext, useContext, useCallback, useRef, useMemo } from 'react';
-import { health, getAppConfig, patchAppConfig, getGatewayToken, type Health, type AppConfig } from './api.ts';
+import { health, getAppConfig, patchAppConfig, getGatewayToken, getGatewayInfo, type Health, type AppConfig, type GatewayInfo } from './api.ts';
 import { GatewayProvider, useGatewayContext } from './GatewayContext.tsx';
 import { StatusBar } from './components/StatusBar.tsx';
 import { CommandPanel } from './components/CommandPanel.tsx';
@@ -71,6 +71,11 @@ interface AboutDialogProps {
 
 function AboutDialog({ health, onClose }: AboutDialogProps) {
   const [tokenCopied, setTokenCopied] = useState(false);
+  const [gatewayInfo, setGatewayInfo] = useState<GatewayInfo | null>(null);
+
+  useEffect(() => {
+    getGatewayInfo().then(setGatewayInfo).catch(() => {});
+  }, []);
 
   const copyToken = () => {
     const token = getGatewayToken();
@@ -125,6 +130,24 @@ function AboutDialog({ health, onClose }: AboutDialogProps) {
                 <span className="text-zinc-600 w-28 shrink-0">Node.js</span>
                 <span className="text-zinc-300 font-mono">{health.nodeVersion}</span>
               </div>
+            )}
+            {gatewayInfo && (
+              <>
+                <div className="flex items-center gap-2">
+                  <span className="text-zinc-600 w-28 shrink-0">Platform</span>
+                  <span className="text-zinc-300 font-mono">{gatewayInfo.platform} / {gatewayInfo.arch}</span>
+                </div>
+                {gatewayInfo.capabilities.length > 0 && (
+                  <div className="flex items-start gap-2">
+                    <span className="text-zinc-600 w-28 shrink-0 mt-0.5">Capabilities</span>
+                    <div className="flex flex-wrap gap-1">
+                      {gatewayInfo.capabilities.map(cap => (
+                        <span key={cap} className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500 font-mono">{cap}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
 
