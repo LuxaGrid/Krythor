@@ -260,6 +260,15 @@ function MetaRow({ run }: { run: AgentRun }) {
       {run.modelUsed && (
         <span>model <span className="text-zinc-500">{modelShortName(run.modelUsed)}</span></span>
       )}
+      {run.selectionReason && (
+        <span>reason <span className="text-zinc-500">{run.selectionReason}</span></span>
+      )}
+      {run.fallbackOccurred && (
+        <span className="text-amber-600">fallback</span>
+      )}
+      {run.memoryUsed !== undefined && run.memoryUsed > 0 && (
+        <span>memory <span className="text-zinc-500">{run.memoryUsed} entries</span></span>
+      )}
       <span className={STATUS_TEXT[run.status] ?? 'text-zinc-500'}>{run.status}</span>
     </div>
   );
@@ -564,6 +573,14 @@ export function WorkflowPanel() {
                   <span className="text-[9px] text-zinc-600 truncate max-w-[128px]">
                     {r.input.slice(0, 40)}
                   </span>
+                  <div className="flex items-center gap-1">
+                    {r.fallbackOccurred && (
+                      <span className="text-[9px] text-amber-600" title="Fallback occurred">⚡</span>
+                    )}
+                    {(r.memoryUsed ?? 0) > 0 && (
+                      <span className="text-[9px] text-zinc-700" title={`${r.memoryUsed} memory entries used`}>🧠{r.memoryUsed}</span>
+                    )}
+                  </div>
                 </button>
               );
             })}

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   listSkills, listBuiltinSkills, createSkill, updateSkill, deleteSkill, listProviders, runSkill,
-  type Skill, type CreateSkillInput, type Provider, type BuiltinSkill,
+  type Skill, type CreateSkillInput, type Provider, type BuiltinSkill, type SkillTaskProfile,
 } from '../api.ts';
 import { PanelHeader } from './PanelHeader.tsx';
 
@@ -30,10 +30,20 @@ interface SkillForm {
   tags: string;   // comma-separated in UI, split on submit
   modelId: string;
   providerId: string;
+  // Task profile — used by ModelRecommender
+  taskCategories: string;   // comma-separated
+  costTier: string;
+  speedTier: string;
+  requiresVision: boolean;
+  localOk: boolean;
+  reasoningDepth: string;
+  privacySensitive: boolean;
 }
 
 const EMPTY_FORM: SkillForm = {
   name: '', description: '', systemPrompt: '', tags: '', modelId: '', providerId: '',
+  taskCategories: '', costTier: '', speedTier: '', requiresVision: false, localOk: true,
+  reasoningDepth: '', privacySensitive: false,
 };
 
 function SkillFormPanel({
@@ -47,6 +57,7 @@ function SkillFormPanel({
   onSave: (skill: Skill) => void;
   onClose: () => void;
 }) {
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [form, setForm] = useState<SkillForm>(
     initial
       ? {
@@ -56,6 +67,13 @@ function SkillFormPanel({
           tags: initial.tags.join(', '),
           modelId: initial.modelId ?? '',
           providerId: initial.providerId ?? '',
+          taskCategories: initial.taskProfile?.taskCategories?.join(', ') ?? '',
+          costTier: initial.taskProfile?.costTier ?? '',
+          speedTier: initial.taskProfile?.speedTier ?? '',
+          requiresVision: initial.taskProfile?.requiresVision ?? false,
+          localOk: initial.taskProfile?.localOk ?? true,
+          reasoningDepth: initial.taskProfile?.reasoningDepth ?? '',
+          privacySensitive: initial.taskProfile?.privacySensitive ?? false,
         }
       : EMPTY_FORM
   );
@@ -73,6 +91,17 @@ function SkillFormPanel({
     setSaving(true);
     try {
       const tags = form.tags.split(',').map(t => t.trim()).filter(Boolean);
+      const taskCategories = form.taskCategories.split(',').map(t => t.trim()).filter(Boolean);
+      const taskProfile: SkillTaskProfile = {
+        ...(taskCategories.length > 0 && { taskCategories }),
+        ...(form.costTier && { costTier: form.costTier as SkillTaskProfile['costTier'] }),
+        ...(form.speedTier && { speedTier: form.speedTier as SkillTaskProfile['speedTier'] }),
+        ...(form.reasoningDepth && { reasoningDepth: form.reasoningDepth as SkillTaskProfile['reasoningDepth'] }),
+        requiresVision: form.requiresVision,
+        localOk: form.localOk,
+        privacySensitive: form.privacySensitive,
+      };
+      const hasTaskProfile = taskCategories.length > 0 || form.costTier || form.speedTier || form.requiresVision || !form.localOk || form.reasoningDepth || form.privacySensitive;
       const payload: CreateSkillInput = {
         name: form.name.trim(),
         description: form.description.trim(),
@@ -80,6 +109,7 @@ function SkillFormPanel({
         tags,
         ...(form.modelId && { modelId: form.modelId }),
         ...(form.providerId && { providerId: form.providerId }),
+        ...(hasTaskProfile && { taskProfile }),
       };
       const skill = initial
         ? await updateSkill(initial.id, payload)
@@ -141,6 +171,90 @@ function SkillFormPanel({
           ))}
         </select>
       </div>
+      {/* Task Profile — affects ModelRecommender routing */}
+      <div className="border border-zinc-700/60 rounded-lg overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setShowAdvanced(s => !s)}
+          className="w-full flex items-center gap-2 px-3 py-2 text-xs text-zinc-500 hover:text-zinc-300 bg-zinc-800/30 hover:bg-zinc-800/60 transition-colors text-left"
+        >
+          <span>{showAdvanced ? '▾' : '▸'}</span>
+          Task Profile
+          <span className="text-zinc-700 ml-1">(model routing hints)</span>
+        </button>
+        {showAdvanced && (
+          <div className="px-3 py-3 space-y-2 bg-zinc-900/30">
+            <div>
+              <label className="text-[10px] text-zinc-600 block mb-1 uppercase tracking-wide">Task categories</label>
+              <input
+                value={form.taskCategories}
+                onChange={e => setForm(f => ({ ...f, taskCategories: e.target.value }))}
+                placeholder="e.g. coding, writing, analysis"
+                className={INPUT_CLS}
+              />
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label className="text-[10px] text-zinc-600 block mb-1 uppercase tracking-wide">Cost</label>
+                <select value={form.costTier} onChange={e => setForm(f => ({ ...f, costTier: e.target.value }))} className={SELECT_CLS}>
+                  <option value="">auto</option>
+                  <option value="local_preferred">local preferred</option>
+                  <option value="cost_aware">cost aware</option>
+                  <option value="quality_first">quality first</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-[10px] text-zinc-600 block mb-1 uppercase tracking-wide">Speed</label>
+                <select value={form.speedTier} onChange={e => setForm(f => ({ ...f, speedTier: e.target.value }))} className={SELECT_CLS}>
+                  <option value="">auto</option>
+                  <option value="fast">fast</option>
+                  <option value="normal">normal</option>
+                  <option value="thorough">thorough</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-[10px] text-zinc-600 block mb-1 uppercase tracking-wide">Reasoning</label>
+                <select value={form.reasoningDepth} onChange={e => setForm(f => ({ ...f, reasoningDepth: e.target.value }))} className={SELECT_CLS}>
+                  <option value="">auto</option>
+                  <option value="shallow">shallow</option>
+                  <option value="medium">medium</option>
+                  <option value="deep">deep</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <label className="flex items-center gap-1.5 text-xs text-zinc-500 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.requiresVision}
+                  onChange={e => setForm(f => ({ ...f, requiresVision: e.target.checked }))}
+                  className="rounded"
+                />
+                Requires vision
+              </label>
+              <label className="flex items-center gap-1.5 text-xs text-zinc-500 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.localOk}
+                  onChange={e => setForm(f => ({ ...f, localOk: e.target.checked }))}
+                  className="rounded"
+                />
+                Local models OK
+              </label>
+              <label className="flex items-center gap-1.5 text-xs text-zinc-500 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.privacySensitive}
+                  onChange={e => setForm(f => ({ ...f, privacySensitive: e.target.checked }))}
+                  className="rounded"
+                />
+                Privacy sensitive
+              </label>
+            </div>
+          </div>
+        )}
+      </div>
+
       {error && <p className="text-red-400 text-xs bg-red-950/30 rounded-lg p-2">{error}</p>}
       <div className="flex gap-2">
         <button
@@ -489,6 +603,34 @@ export function SkillsPanel() {
                 )}
                 {selected.modelId && (
                   <p className="text-xs text-zinc-600 mt-1">model: {selected.modelId}</p>
+                )}
+                {selected.taskProfile && Object.keys(selected.taskProfile).length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {selected.taskProfile.costTier && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-amber-600 border border-zinc-700">
+                        {selected.taskProfile.costTier.replace('_', ' ')}
+                      </span>
+                    )}
+                    {selected.taskProfile.speedTier && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-blue-500 border border-zinc-700">
+                        {selected.taskProfile.speedTier}
+                      </span>
+                    )}
+                    {selected.taskProfile.reasoningDepth && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-purple-500 border border-zinc-700">
+                        {selected.taskProfile.reasoningDepth} reasoning
+                      </span>
+                    )}
+                    {selected.taskProfile.requiresVision && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">vision</span>
+                    )}
+                    {selected.taskProfile.privacySensitive && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">private</span>
+                    )}
+                    {selected.taskProfile.localOk === false && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500 border border-zinc-700">cloud only</span>
+                    )}
+                  </div>
                 )}
               </div>
               <div className="flex gap-1 shrink-0">

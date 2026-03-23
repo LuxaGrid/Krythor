@@ -158,27 +158,41 @@ export function DashboardPanel() {
         {tokenHistory.length === 0 ? (
           <p className="text-xs text-zinc-700">No inference history yet — make a request to see data.</p>
         ) : (
-          <div className="bg-zinc-800/40 border border-zinc-700/50 rounded-lg px-3 py-2">
+          <div className="bg-zinc-800/40 border border-zinc-700/50 rounded-lg px-3 py-2 space-y-2">
             <p className="font-mono text-sm text-brand-400 tracking-widest leading-none">
               {sparkline(tokenHistory.slice(-20).map(r => r.inputTokens + r.outputTokens))}
             </p>
-            <p className="text-xs text-zinc-600 mt-1">
+            <p className="text-xs text-zinc-600">
               {Math.min(tokenHistory.length, 20)} of {tokenHistory.length} recorded inference{tokenHistory.length !== 1 ? 's' : ''}
             </p>
+            {/* Per-model breakdown */}
+            {(() => {
+              const byModel: Record<string, { input: number; output: number; count: number }> = {};
+              for (const r of tokenHistory) {
+                const key = `${r.provider}/${r.model}`;
+                if (!byModel[key]) byModel[key] = { input: 0, output: 0, count: 0 };
+                byModel[key]!.input  += r.inputTokens;
+                byModel[key]!.output += r.outputTokens;
+                byModel[key]!.count  += 1;
+              }
+              const rows = Object.entries(byModel).sort((a, b) => (b[1].input + b[1].output) - (a[1].input + a[1].output));
+              if (rows.length === 0) return null;
+              return (
+                <div className="border-t border-zinc-700/40 pt-2 space-y-1">
+                  {rows.map(([key, stats]) => (
+                    <div key={key} className="flex items-center gap-2 text-[10px] font-mono">
+                      <span className="text-zinc-500 truncate flex-1" title={key}>{key.split('/').pop() ?? key}</span>
+                      <span className="text-zinc-600">{stats.count}×</span>
+                      <span className="text-zinc-500">{(stats.input + stats.output).toLocaleString()} tok</span>
+                      <span className="text-zinc-700">({stats.input.toLocaleString()}↑ {stats.output.toLocaleString()}↓)</span>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
           </div>
         )}
       </div>
-
-      {!!data.lastHeartbeat && (
-        <div className="px-4 pb-4">
-          <p className="text-xs text-zinc-500 uppercase tracking-wider font-medium mb-2">Last Heartbeat</p>
-          <div className="bg-zinc-800/40 border border-zinc-700/50 rounded-lg px-3 py-2 text-xs text-zinc-400">
-            <pre className="text-[10px] text-zinc-600 overflow-auto whitespace-pre-wrap">
-              {JSON.stringify(data.lastHeartbeat, null, 2)}
-            </pre>
-          </div>
-        </div>
-      )}
 
       <div className="px-4 pb-4">
         <p className="text-xs text-zinc-700">Auto-refreshes every 30 seconds</p>
