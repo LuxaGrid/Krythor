@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import {
   getRecommendation,
   setPreference,
+  reportOverride,
   type ModelRecommendation as ApiRecommendation,
   type ModelInfo,
 } from '../api.ts';
@@ -91,6 +92,11 @@ export function ModelRecommendationBar({
   };
 
   const handleDismiss = () => {
+    // If user dismisses recommendation while already on a different model,
+    // treat it as an implicit override — feed the learning system.
+    if (recommendation && taskType && selectedModelId && selectedModelId !== recommendation.modelId) {
+      void reportOverride(taskType, recommendation.modelId, selectedModelId);
+    }
     setDismissed(true);
     setRecommendation(null);
   };

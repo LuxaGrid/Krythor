@@ -24,7 +24,7 @@ import {
 import { useAppConfig } from '../App.tsx';
 import { ModelRecommendationBar, ModelSwitcher } from './ModelRecommendation.tsx';
 
-type Tab = 'command' | 'agents' | 'memory' | 'models' | 'guard' | 'events';
+type Tab = 'command' | 'agents' | 'memory' | 'models' | 'guard' | 'events' | 'skills' | 'dashboard' | 'settings' | 'logs' | 'workflow' | 'channels' | 'custom-tools' | 'config-editor' | 'mission' | 'command-center';
 
 interface Props {
   health: Health | null;
@@ -534,6 +534,27 @@ function FirstRunBanner({ onDismiss, onTabChange }: { onDismiss: () => void; onT
   );
 }
 
+// ── Slash commands ─────────────────────────────────────────────────────────────
+
+interface SlashCmd {
+  cmd: string;
+  hint: string;
+  apply: (ctx: { handleNew: () => void; setInput: (s: string) => void; onTabChange: (t: Tab) => void }) => void;
+}
+
+const SLASH_CMDS: SlashCmd[] = [
+  { cmd: '/new',     hint: 'Start a new conversation',           apply: ({ handleNew }) => handleNew() },
+  { cmd: '/clear',   hint: 'Clear the current conversation',     apply: ({ handleNew }) => handleNew() },
+  { cmd: '/memory',  hint: 'Open Memory panel',                  apply: ({ onTabChange }) => onTabChange('memory') },
+  { cmd: '/agents',  hint: 'Open Agents panel',                  apply: ({ onTabChange }) => onTabChange('agents') },
+  { cmd: '/models',  hint: 'Open Models panel',                  apply: ({ onTabChange }) => onTabChange('models') },
+  { cmd: '/skills',  hint: 'Open Skills panel',                  apply: ({ onTabChange }) => onTabChange('skills') },
+  { cmd: '/guard',   hint: 'Open Guard panel',                   apply: ({ onTabChange }) => onTabChange('guard') },
+  { cmd: '/dash',    hint: 'Open Dashboard',                     apply: ({ onTabChange }) => onTabChange('dashboard') },
+  { cmd: '/logs',    hint: 'Open Logs panel',                    apply: ({ onTabChange }) => onTabChange('logs') },
+  { cmd: '/settings',hint: 'Open Settings panel',               apply: ({ onTabChange }) => onTabChange('settings') },
+];
+
 export function CommandPanel({ health, onTabChange, newChatRef }: Props) {
   const { config } = useAppConfig();
 
@@ -548,9 +569,16 @@ export function CommandPanel({ health, onTabChange, newChatRef }: Props) {
   const [selectedModelId, setSelectedModelId] = useState<string | undefined>(config.selectedModel);
   const [showFirstRun, setShowFirstRun]       = useState(() => !localStorage.getItem(FIRST_RUN_KEY));
   const [showArchived, setShowArchived]       = useState(false);
+  const [slashIdx, setSlashIdx]               = useState(0);
   const abortRef                              = useRef<AbortController | null>(null);
   const bottomRef                             = useRef<HTMLDivElement>(null);
   const textareaRef                           = useRef<HTMLTextAreaElement>(null);
+
+  // Slash command suggestions
+  const slashMatches = input.startsWith('/')
+    ? SLASH_CMDS.filter(c => c.cmd.startsWith(input.split(' ')[0]!.toLowerCase()))
+    : [];
+  const showSlash = slashMatches.length > 0 && !input.includes(' ');
 
   const dismissFirstRun = useCallback(() => {
     localStorage.setItem(FIRST_RUN_KEY, '1');
@@ -564,6 +592,9 @@ export function CommandPanel({ health, onTabChange, newChatRef }: Props) {
   useEffect(() => {
     listModels().then(setAvailableModels).catch(() => {});
   }, [health?.models.modelCount]);
+
+  // Reset slash idx when matches change
+  useEffect(() => { setSlashIdx(0); }, [slashMatches.length]);
 
   // Load conversations (including archived when the toggle is on)
   const loadConversations = useCallback((includeArchived = showArchived) => {
@@ -801,7 +832,26 @@ export function CommandPanel({ health, onTabChange, newChatRef }: Props) {
     await submit(lastUser.content);
   };
 
+  const applySlash = (cmd: SlashCmd) => {
+    setInput('');
+    setSlashIdx(0);
+    cmd.apply({ handleNew, setInput, onTabChange });
+  };
+
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Slash command navigation
+    if (showSlash) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); setSlashIdx(i => Math.min(i + 1, slashMatches.length - 1)); return; }
+      if (e.key === 'ArrowUp')   { e.preventDefault(); setSlashIdx(i => Math.max(i - 1, 0)); return; }
+      if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
+        e.preventDefault();
+        const chosen = slashMatches[slashIdx];
+        if (chosen) applySlash(chosen);
+        return;
+      }
+      if (e.key === 'Escape') { setInput(''); return; }
+    }
+
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       void submit();
@@ -906,6 +956,25 @@ export function CommandPanel({ health, onTabChange, newChatRef }: Props) {
 
         {/* Input area */}
         <div className="border-t border-zinc-800 px-4 py-3 shrink-0 bg-zinc-950">
+          {/* Slash command autocomplete */}
+          {showSlash && (
+            <div className="mb-1 bg-zinc-900 border border-zinc-700 rounded-lg overflow-hidden shadow-xl">
+              {slashMatches.map((cmd, i) => (
+                <button
+                  key={cmd.cmd}
+                  onMouseDown={e => { e.preventDefault(); applySlash(cmd); }}
+                  onMouseEnter={() => setSlashIdx(i)}
+                  className={`w-full flex items-center gap-3 px-3 py-2 text-xs text-left transition-colors ${
+                    i === slashIdx ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-400 hover:bg-zinc-800/50'
+                  }`}
+                >
+                  <span className="font-mono text-brand-400 shrink-0">{cmd.cmd}</span>
+                  <span className="text-zinc-600">{cmd.hint}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
           {/* Inline model recommendation bar */}
           {!noProvider && (
             <ModelRecommendationBar

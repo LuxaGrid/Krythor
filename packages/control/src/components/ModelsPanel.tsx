@@ -207,6 +207,11 @@ export function ModelsPanel({ health }: Props) {
   const [oauthSaving, setOauthSaving]   = useState(false);
   const [disconnecting, setDisconnecting] = useState<Record<string, boolean>>({});
 
+  // Provider advanced settings (priority / maxRetries)
+  const [advancedPanel, setAdvancedPanel] = useState<string | null>(null);
+  const [advancedForm, setAdvancedForm]   = useState<Record<string, { priority: string; maxRetries: string }>>({});
+  const [savingAdvanced, setSavingAdvanced] = useState<string | null>(null);
+
   // Embeddings state
   const [embeddingInfo, setEmbeddingInfo]   = useState<{ active: string; providers: string[] } | null>(null);
   const [embeddingForm, setEmbeddingForm]   = useState({ baseUrl: 'http://localhost:11434', model: '' });
@@ -382,6 +387,21 @@ export function ModelsPanel({ health }: Props) {
   };
 
   // ── Set default ───────────────────────────────────────────────────────────
+
+  const handleSaveAdvanced = async (id: string) => {
+    const vals = advancedForm[id];
+    if (!vals) return;
+    setSavingAdvanced(id);
+    try {
+      await updateProviderMeta(id, {
+        priority:   vals.priority   ? parseInt(vals.priority, 10)   : undefined,
+        maxRetries: vals.maxRetries ? parseInt(vals.maxRetries, 10) : undefined,
+      });
+      setAdvancedPanel(null);
+      await load();
+    } catch { /* ignore */ }
+    finally { setSavingAdvanced(null); }
+  };
 
   const handleSetDefault = async (id: string) => {
     try {
@@ -1025,6 +1045,25 @@ export function ModelsPanel({ health }: Props) {
 
                   {/* Action buttons */}
                   <div className="flex gap-1 flex-wrap justify-end">
+                    <button
+                      onClick={() => {
+                        if (advancedPanel === p.id) {
+                          setAdvancedPanel(null);
+                        } else {
+                          setAdvancedPanel(p.id);
+                          setAdvancedForm(f => ({
+                            ...f,
+                            [p.id]: f[p.id] ?? { priority: '', maxRetries: '' },
+                          }));
+                        }
+                      }}
+                      className={`text-xs px-2 py-1 rounded-lg transition-colors ${
+                        advancedPanel === p.id
+                          ? 'bg-zinc-700 text-zinc-200'
+                          : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-500 hover:text-zinc-300'
+                      }`}
+                      title="Priority and retry settings"
+                    >⚙</button>
                     {!p.isDefault && (
                       <button onClick={() => handleSetDefault(p.id)} className="text-xs px-2 py-1 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-zinc-400 transition-colors">default</button>
                     )}
@@ -1092,6 +1131,51 @@ export function ModelsPanel({ health }: Props) {
                     >✕</button>
                   </div>
                 </div>
+
+                {/* Advanced settings panel — full-width, below main row */}
+                {advancedPanel === p.id && (
+                  <div className="mt-2 p-3 bg-zinc-900/60 rounded-lg border border-zinc-700/60 space-y-2">
+                    <p className="text-xs text-zinc-400 font-medium">Advanced settings</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[10px] text-zinc-600 block mb-1 uppercase tracking-wide">Priority (lower = preferred)</label>
+                        <input
+                          type="number"
+                          min={0}
+                          value={advancedForm[p.id]?.priority ?? ''}
+                          onChange={e => setAdvancedForm(f => ({ ...f, [p.id]: { ...(f[p.id] ?? { priority: '', maxRetries: '' }), priority: e.target.value } }))}
+                          placeholder="e.g. 10"
+                          className={`w-full ${INPUT_CLS}`}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-zinc-600 block mb-1 uppercase tracking-wide">Max retries</label>
+                        <input
+                          type="number"
+                          min={0}
+                          max={10}
+                          value={advancedForm[p.id]?.maxRetries ?? ''}
+                          onChange={e => setAdvancedForm(f => ({ ...f, [p.id]: { ...(f[p.id] ?? { priority: '', maxRetries: '' }), maxRetries: e.target.value } }))}
+                          placeholder="e.g. 3"
+                          className={`w-full ${INPUT_CLS}`}
+                        />
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => void handleSaveAdvanced(p.id)}
+                        disabled={savingAdvanced === p.id}
+                        className="px-2 py-1 text-xs bg-brand-700/40 hover:bg-brand-600/40 border border-brand-700/50 text-brand-300 rounded-lg disabled:opacity-40 transition-colors"
+                      >
+                        {savingAdvanced === p.id ? 'Saving…' : 'Save'}
+                      </button>
+                      <button
+                        onClick={() => setAdvancedPanel(null)}
+                        className="px-2 py-1 text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-400 rounded-lg transition-colors"
+                      >Cancel</button>
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })

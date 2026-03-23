@@ -176,6 +176,7 @@ export function StatusBar({ health, connected, onTabChange, onAbout }: Props) {
         {health && (
           <span className="text-zinc-500">v{health.version}</span>
         )}
+        <kbd className="hidden sm:inline text-[10px] text-zinc-700 border border-zinc-800 rounded px-1.5 py-0.5 font-mono" title="Open command palette (Ctrl+K)">⌘K</kbd>
         <button
           onClick={onAbout}
           title="About Krythor (Ctrl+/)"

@@ -24,6 +24,8 @@ export function CustomToolsPanel() {
   const [saving, setSaving]     = useState(false);
   const [error, setError]       = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [firing, setFiring]     = useState<string | null>(null);
+  const [fireResult, setFireResult] = useState<Record<string, { ok: boolean; status?: number; body?: string; error?: string }>>({});
 
   const load = useCallback(async () => {
     try {
@@ -79,6 +81,36 @@ export function CustomToolsPanel() {
       setTools(ts => ts.filter(t => t.name !== name));
     } catch { /* non-fatal */ }
     finally { setDeleting(null); }
+  }
+
+  async function handleFire(tool: CustomTool) {
+    setFiring(tool.name);
+    setFireResult(r => ({ ...r, [tool.name]: { ok: false } }));
+    try {
+      const testInput = 'test';
+      const body = tool.bodyTemplate
+        ? tool.bodyTemplate.replace('{{input}}', testInput)
+        : (tool.method !== 'GET' ? JSON.stringify({ input: testInput }) : undefined);
+      const headers: Record<string, string> = { 'Content-Type': 'application/json', ...tool.headers };
+      const res = await fetch(tool.url, {
+        method: tool.method,
+        headers,
+        body: tool.method !== 'GET' && body ? body : undefined,
+      });
+      let respBody = '';
+      try { respBody = await res.text(); } catch { /* ignore */ }
+      setFireResult(r => ({
+        ...r,
+        [tool.name]: { ok: res.ok, status: res.status, body: respBody.slice(0, 200) },
+      }));
+    } catch (e: unknown) {
+      setFireResult(r => ({
+        ...r,
+        [tool.name]: { ok: false, error: e instanceof Error ? e.message : 'Request failed' },
+      }));
+    } finally {
+      setFiring(null);
+    }
   }
 
   return (
@@ -214,14 +246,35 @@ export function CustomToolsPanel() {
                     </p>
                   )}
                 </div>
-                <button
-                  onClick={() => handleDelete(tool.name)}
-                  disabled={deleting === tool.name}
-                  className="px-2 py-1 text-xs rounded-lg bg-zinc-800 hover:bg-red-900/40 text-zinc-500 hover:text-red-400 transition-colors shrink-0"
-                >
-                  {deleting === tool.name ? '…' : 'Delete'}
-                </button>
+                <div className="flex gap-1 shrink-0">
+                  <button
+                    onClick={() => void handleFire(tool)}
+                    disabled={firing === tool.name}
+                    className="px-2 py-1 text-xs rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-400 transition-colors"
+                    title="Fire a test request to this webhook"
+                  >
+                    {firing === tool.name ? '…' : 'Test'}
+                  </button>
+                  <button
+                    onClick={() => handleDelete(tool.name)}
+                    disabled={deleting === tool.name}
+                    className="px-2 py-1 text-xs rounded-lg bg-zinc-800 hover:bg-red-900/40 text-zinc-500 hover:text-red-400 transition-colors"
+                  >
+                    {deleting === tool.name ? '…' : 'Delete'}
+                  </button>
+                </div>
               </div>
+              {fireResult[tool.name] && (
+                <div className={`mt-2 px-2 py-1.5 rounded text-[10px] font-mono border ${
+                  fireResult[tool.name]!.ok
+                    ? 'bg-emerald-950/30 border-emerald-800/40 text-emerald-400'
+                    : 'bg-red-950/30 border-red-800/40 text-red-400'
+                }`}>
+                  {fireResult[tool.name]!.error
+                    ? `error: ${fireResult[tool.name]!.error}`
+                    : `HTTP ${fireResult[tool.name]!.status} — ${fireResult[tool.name]!.body ?? '(empty body)'}`}
+                </div>
+              )}
             </div>
           ))}
         </div>

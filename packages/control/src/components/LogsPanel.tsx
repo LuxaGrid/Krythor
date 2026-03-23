@@ -56,6 +56,48 @@ function formatTime(ts: number): string {
 
 const MAX_ENTRIES = 500;
 
+function LogRow({ entry }: { entry: LogEntry }) {
+  const [expanded, setExpanded] = useState(false);
+
+  // Try to pretty-print raw JSON
+  const prettyRaw = (() => {
+    try { return JSON.stringify(JSON.parse(entry.raw), null, 2); }
+    catch { return entry.raw; }
+  })();
+  const isJson = prettyRaw !== entry.raw || entry.raw.trimStart().startsWith('{');
+
+  return (
+    <div
+      className="border-b border-zinc-900/60 hover:bg-zinc-900/40 group transition-colors"
+      style={{ background: LEVEL_BG[entry.level] }}
+    >
+      <div
+        className="flex items-start gap-2 px-3 py-1 cursor-pointer"
+        onClick={() => setExpanded(e => !e)}
+      >
+        <span className="text-[10px] text-zinc-700 tabular-nums flex-shrink-0 pt-px w-16">
+          {formatTime(entry.ts)}
+        </span>
+        <span className="text-[10px] font-bold flex-shrink-0 pt-px w-10 uppercase"
+          style={{ color: LEVEL_COLOR[entry.level] }}>
+          {entry.level}
+        </span>
+        <span className="text-[10px] text-zinc-400 flex-1 leading-relaxed group-hover:text-zinc-300 transition-colors break-all pt-px">
+          {entry.event}
+        </span>
+        {isJson && (
+          <span className="text-[10px] text-zinc-700 flex-shrink-0 pt-px">{expanded ? '▲' : '▼'}</span>
+        )}
+      </div>
+      {expanded && (
+        <pre className="px-3 pb-2 text-[10px] text-zinc-500 leading-relaxed whitespace-pre-wrap break-all bg-zinc-950/60 max-h-48 overflow-y-auto">
+          {prettyRaw}
+        </pre>
+      )}
+    </div>
+  );
+}
+
 export function LogsPanel() {
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [filter, setFilter] = useState<LevelFilter>('all');
@@ -63,6 +105,7 @@ export function LogsPanel() {
   const [paused, setPaused] = useState(false);
   const [autoScroll, setAutoScroll] = useState(true);
   const [wsState, setWsState] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
+  const [copied, setCopied] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const pausedRef = useRef(false);
@@ -142,6 +185,14 @@ export function LogsPanel() {
 
   const clear = () => setEntries([]);
 
+  const copyVisible = () => {
+    const text = visible.map(e => `[${formatTime(e.ts)}] ${e.level.toUpperCase()} ${e.event}`).join('\n');
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }).catch(() => {});
+  };
+
   return (
     <div className="flex flex-col h-full">
       <PanelHeader
@@ -200,6 +251,12 @@ export function LogsPanel() {
             {paused ? '▶ resume' : '⏸ pause'}
           </button>
 
+          <button onClick={copyVisible}
+            disabled={visible.length === 0}
+            className="text-[10px] font-mono px-2 py-0.5 rounded border border-zinc-800 text-zinc-600 hover:text-zinc-400 hover:border-zinc-600 transition-colors disabled:opacity-30">
+            {copied ? 'copied!' : 'copy'}
+          </button>
+
           <button onClick={clear}
             className="text-[10px] font-mono px-2 py-0.5 rounded border border-zinc-800 text-zinc-600 hover:text-zinc-400 hover:border-zinc-600 transition-colors">
             clear
@@ -224,20 +281,7 @@ export function LogsPanel() {
         ) : (
           <div className="flex flex-col">
             {visible.map(entry => (
-              <div key={entry.id}
-                className="flex items-start gap-2 px-3 py-1 border-b border-zinc-900/60 hover:bg-zinc-900/40 group transition-colors"
-                style={{ background: LEVEL_BG[entry.level] }}>
-                <span className="text-[10px] text-zinc-700 tabular-nums flex-shrink-0 pt-px w-16">
-                  {formatTime(entry.ts)}
-                </span>
-                <span className="text-[10px] font-bold flex-shrink-0 pt-px w-10 uppercase"
-                  style={{ color: LEVEL_COLOR[entry.level] }}>
-                  {entry.level}
-                </span>
-                <span className="text-[10px] text-zinc-400 flex-1 leading-relaxed group-hover:text-zinc-300 transition-colors break-all pt-px">
-                  {entry.event}
-                </span>
-              </div>
+              <LogRow key={entry.id} entry={entry} />
             ))}
           </div>
         )}

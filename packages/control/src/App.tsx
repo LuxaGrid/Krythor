@@ -412,6 +412,93 @@ function TabBar({ tab, setTab, eventCount }: { tab: Tab; setTab: (t: Tab) => voi
 
 // ── Main inner component ───────────────────────────────────────────────────
 
+// ── Command Palette ─────────────────────────────────────────────────────────
+
+interface PaletteAction {
+  id: string;
+  label: string;
+  hint?: string;
+  icon?: string;
+  action: () => void;
+}
+
+interface CommandPaletteProps {
+  onClose: () => void;
+  actions: PaletteAction[];
+}
+
+function CommandPalette({ onClose, actions }: CommandPaletteProps) {
+  const [query, setQuery] = useState('');
+  const [idx, setIdx] = useState(0);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  const filtered = query.trim()
+    ? actions.filter(a =>
+        a.label.toLowerCase().includes(query.toLowerCase()) ||
+        (a.hint ?? '').toLowerCase().includes(query.toLowerCase())
+      )
+    : actions;
+
+  useEffect(() => { setIdx(0); }, [query]);
+
+  const run = (a: PaletteAction) => {
+    a.action();
+    onClose();
+  };
+
+  const onKey = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') { onClose(); return; }
+    if (e.key === 'ArrowDown') { e.preventDefault(); setIdx(i => Math.min(i + 1, filtered.length - 1)); }
+    if (e.key === 'ArrowUp')   { e.preventDefault(); setIdx(i => Math.max(i - 1, 0)); }
+    if (e.key === 'Enter') { e.preventDefault(); if (filtered[idx]) run(filtered[idx]!); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[300] flex items-start justify-center pt-[15vh] bg-black/60 backdrop-blur-sm"
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="w-full max-w-md mx-4 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl overflow-hidden">
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-zinc-800">
+          <span className="text-zinc-500 shrink-0">⌘</span>
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            onKeyDown={onKey}
+            placeholder="Type to search actions…"
+            className="flex-1 bg-transparent text-sm text-zinc-200 placeholder-zinc-600 outline-none"
+          />
+          <kbd className="text-zinc-700 text-[10px] border border-zinc-800 rounded px-1">Esc</kbd>
+        </div>
+        <div className="max-h-[50vh] overflow-y-auto py-1">
+          {filtered.length === 0 && (
+            <div className="px-4 py-3 text-xs text-zinc-600">No actions match "{query}"</div>
+          )}
+          {filtered.map((a, i) => (
+            <button
+              key={a.id}
+              onClick={() => run(a)}
+              onMouseEnter={() => setIdx(i)}
+              className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${
+                i === idx ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-300 hover:bg-zinc-800/50'
+              }`}
+            >
+              {a.icon && <span className="text-zinc-500 shrink-0 text-sm">{a.icon}</span>}
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium truncate">{a.label}</p>
+                {a.hint && <p className="text-[10px] text-zinc-600 truncate">{a.hint}</p>}
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Main inner component ───────────────────────────────────────────────────
+
 function AppInner({ onTokenReady }: { onTokenReady: (token: string) => void }) {
   const [tab, setTab]               = useState<Tab>('command');
   const [healthData, setHealthData] = useState<Health | null>(null);
@@ -419,6 +506,7 @@ function AppInner({ onTokenReady }: { onTokenReady: (token: string) => void }) {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showTour, setShowTour]     = useState(false);
   const [showAbout, setShowAbout]   = useState(false);
+  const [showPalette, setShowPalette] = useState(false);
   const { connected, events, clearEvents } = useGatewayContext();
 
   // Ref to trigger "new chat" from CommandPanel via global shortcut
@@ -483,12 +571,20 @@ function AppInner({ onTokenReady }: { onTokenReady: (token: string) => void }) {
 
       // Escape — close modals
       if (e.key === 'Escape') {
+        if (showPalette) { setShowPalette(false); return; }
         if (showAbout) { setShowAbout(false); return; }
         if (showOnboarding) return; // let OnboardingWizard handle it
         return;
       }
 
       if (inInput) return;
+
+      // Ctrl+K — command palette
+      if (e.ctrlKey && e.key === 'k') {
+        e.preventDefault();
+        setShowPalette(s => !s);
+        return;
+      }
 
       // Ctrl+/ — open About
       if (e.ctrlKey && e.key === '/') {
@@ -517,7 +613,36 @@ function AppInner({ onTokenReady }: { onTokenReady: (token: string) => void }) {
 
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [showAbout, showOnboarding]);
+  }, [showAbout, showOnboarding, showPalette]);
+
+  const paletteActions = useMemo<PaletteAction[]>(() => [
+    // Navigation — all tabs
+    ...ALL_TABS.map(t => ({
+      id: `tab:${t.id}`,
+      label: t.label,
+      hint: t.hint,
+      icon: '→',
+      action: () => setTab(t.id),
+    })),
+    // Common actions
+    {
+      id: 'action:new-chat',
+      label: 'New Chat',
+      hint: 'Start a fresh conversation',
+      icon: '+',
+      action: () => {
+        setTab('command');
+        setTimeout(() => { newChatRef.current?.(); }, 20);
+      },
+    },
+    {
+      id: 'action:about',
+      label: 'About Krythor',
+      hint: 'Version info and gateway details',
+      icon: '?',
+      action: () => setShowAbout(true),
+    },
+  ], []);
 
   return (
     <AppConfigContext.Provider value={{ config: appConfig, setConfig }}>
@@ -525,6 +650,7 @@ function AppInner({ onTokenReady }: { onTokenReady: (token: string) => void }) {
         {showOnboarding && <OnboardingWizard onComplete={handleOnboardingComplete} />}
         {showTour && !showOnboarding && <WalkthroughTour onClose={() => setShowTour(false)} />}
         {showAbout && <AboutDialog health={healthData} onClose={() => setShowAbout(false)} />}
+        {showPalette && <CommandPalette onClose={() => setShowPalette(false)} actions={paletteActions} />}
 
         <StatusBar
           health={healthData}
