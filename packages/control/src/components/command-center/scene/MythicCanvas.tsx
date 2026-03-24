@@ -21,15 +21,29 @@ const AGENT_PALETTE: Record<string, { body: string; accent: string; skin: string
 };
 const DEFAULT_PAL = { body: '#6366f1', accent: '#818cf8', skin: '#fcd9b0', hair: '#3730a3' };
 
+// ─── Bridge layout constants ───────────────────────────────────────────────────
+// All positions are expressed as fractions of W/H and computed at render time.
+// This ensures correct layout at any canvas size — no hardcoded pixel offsets.
+
+// Station positions (fraction of W, fraction of H) — Star Trek bridge arc layout
+// Atlas: center-top command chair
+// Others: arc consoles around the command area
+const STATION_POSITIONS: Record<string, { fx: number; fy: number }> = {
+  atlas:    { fx: 0.50, fy: 0.38 }, // center — command chair
+  voltaris: { fx: 0.22, fy: 0.58 }, // left arc — helm
+  aethon:   { fx: 0.78, fy: 0.58 }, // right arc — science
+  thyros:   { fx: 0.68, fy: 0.74 }, // lower right — ops
+  pyron:    { fx: 0.32, fy: 0.74 }, // lower left — engineering
+};
+
 // ─── Wandering system ─────────────────────────────────────────────────────────
-// Agents walk between their home desk and random waypoints when idle
 interface AgentWander {
-  x: number; y: number;       // current pixel position (% * W/H)
+  x: number; y: number;
   targetX: number; targetY: number;
   homeX: number; homeY: number;
-  walkPhase: number;          // walk animation accumulator
-  facing: 1 | -1;            // 1=right, -1=left
-  wanderTimer: number;        // frames until next wander decision
+  walkPhase: number;
+  facing: 1 | -1;
+  wanderTimer: number;
   isWalking: boolean;
 }
 
@@ -37,26 +51,8 @@ interface AgentWander {
 function p(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, color: string, a = 1) {
   if (a !== 1) ctx.globalAlpha = a;
   ctx.fillStyle = color;
-  ctx.fillRect(Math.round(x), Math.round(y), w, h);
+  ctx.fillRect(Math.round(x), Math.round(y), Math.max(1, Math.round(w)), Math.max(1, Math.round(h)));
   if (a !== 1) ctx.globalAlpha = 1;
-}
-
-// Draw pixel pattern from string array — exactly like OpenClaw
-function pattern(
-  ctx: CanvasRenderingContext2D,
-  rows: string[],
-  ox: number, oy: number,
-  PX: number,
-  color: string,
-) {
-  ctx.fillStyle = color;
-  for (let r = 0; r < rows.length; r++) {
-    for (let c = 0; c < rows[r].length; c++) {
-      if (rows[r][c] === 'X') {
-        ctx.fillRect(Math.round(ox + c * PX), Math.round(oy + r * PX), PX, PX);
-      }
-    }
-  }
 }
 
 // ─── Sprite drawing ───────────────────────────────────────────────────────────
@@ -70,18 +66,17 @@ function drawSprite(
   PX: number,
   focused: boolean,
 ) {
-  const working = state === 'working';
-  const thinking = state === 'thinking';
-  const speaking = state === 'speaking';
-  const offline = state === 'offline';
-  const handoff = state === 'handoff';
+  const working   = state === 'working';
+  const thinking  = state === 'thinking';
+  const speaking  = state === 'speaking';
+  const offline   = state === 'offline';
+  const handoff   = state === 'handoff';
   const listening = state === 'listening';
 
-  // Body bob
-  const bob = Math.abs(Math.sin(walkPhase * 3)) * PX * 0.5;
+  const bob     = Math.abs(Math.sin(walkPhase * 3)) * PX * 0.5;
   const legSwing = Math.sin(walkPhase * 6);
 
-  // Base position — sprite is 8px wide, 14px tall (in logical pixels)
+  // Sprite is 8px wide, 14px tall (logical pixels)
   const bx = cx - 4 * PX;
   const by = cy - 14 * PX - bob;
 
@@ -90,12 +85,10 @@ function drawSprite(
     ctx.scale(-1, 1);
     ctx.translate(-cx * 2, 0);
   }
-
   if (offline) ctx.globalAlpha = 0.3;
 
-  // ── Hair / hat ──────────────────────────────────────────────────────────────
+  // Hair / hat
   if (working) {
-    // Hard hat
     p(ctx, bx + PX, by - PX, 6 * PX, PX * 2, '#f59e0b');
     p(ctx, bx, by, 8 * PX, PX, '#d97706');
   } else {
@@ -104,164 +97,90 @@ function drawSprite(
     p(ctx, bx + 5 * PX, by, 2 * PX, PX, pal.hair);
   }
 
-  // ── Head (6×5) ──────────────────────────────────────────────────────────────
-  const headRows = [
-    ' XXXXXX ',
-    'XXXXXXXX',
-    'XXXXXXXX',
-    'XXXXXXXX',
-    ' XXXXXX ',
-  ];
-  pattern(ctx, headRows, bx, by, PX, pal.skin);
+  // Head
+  p(ctx, bx + PX, by, 6 * PX, 5 * PX, pal.skin);
+  p(ctx, bx, by + PX, 8 * PX, 3 * PX, pal.skin);
 
   // Eyes
   const eyeY = by + 2 * PX;
   p(ctx, bx + 2 * PX, eyeY, PX, PX, '#1e293b');
   p(ctx, bx + 5 * PX, eyeY, PX, PX, '#1e293b');
-  // Pupils / highlights
-  p(ctx, bx + 2 * PX, eyeY, PX / 2, PX / 2, '#ffffff');
-  p(ctx, bx + 5 * PX, eyeY, PX / 2, PX / 2, '#ffffff');
+  p(ctx, bx + 2 * PX, eyeY, PX * 0.5, PX * 0.5, '#ffffff');
+  p(ctx, bx + 5 * PX, eyeY, PX * 0.5, PX * 0.5, '#ffffff');
 
-  // Mouth — state-specific expressions
+  // Mouth
   const mouthY = by + 4 * PX;
   if (speaking) {
-    // Open mouth (talking)
     p(ctx, bx + 3 * PX, mouthY, 2 * PX, PX, '#dc2626');
   } else if (thinking) {
-    // Pursed lips (thinking)
     p(ctx, bx + 3 * PX, mouthY, PX, PX, '#78716c');
-    p(ctx, bx + 5 * PX, mouthY, PX / 2, PX, '#78716c');
-    p(ctx, bx + 6 * PX, mouthY, PX / 2, PX, '#78716c');
+    p(ctx, bx + 5 * PX, mouthY, PX * 0.5, PX, '#78716c');
+    p(ctx, bx + 6 * PX, mouthY, PX * 0.5, PX, '#78716c');
   } else if (handoff) {
-    // Slight smile (passing work off)
-    p(ctx, bx + 2 * PX, mouthY, PX, PX / 2, '#78716c');
-    p(ctx, bx + 3 * PX, mouthY + PX / 2, 2 * PX, PX / 2, '#78716c');
-    p(ctx, bx + 5 * PX, mouthY, PX, PX / 2, '#78716c');
+    p(ctx, bx + 2 * PX, mouthY, PX, PX * 0.5, '#78716c');
+    p(ctx, bx + 3 * PX, mouthY + PX * 0.5, 2 * PX, PX * 0.5, '#78716c');
+    p(ctx, bx + 5 * PX, mouthY, PX, PX * 0.5, '#78716c');
   } else if (listening) {
-    // Neutral, slightly open
-    p(ctx, bx + 2 * PX, mouthY, 4 * PX, PX / 2, '#78716c');
-    p(ctx, bx + 3 * PX, mouthY + PX / 2, 2 * PX, PX / 2, '#4b5563');
+    p(ctx, bx + 2 * PX, mouthY, 4 * PX, PX * 0.5, '#78716c');
+    p(ctx, bx + 3 * PX, mouthY + PX * 0.5, 2 * PX, PX * 0.5, '#4b5563');
   } else {
-    p(ctx, bx + 2 * PX, mouthY, 4 * PX, PX / 2, '#78716c');
+    p(ctx, bx + 2 * PX, mouthY, 4 * PX, PX * 0.5, '#78716c');
   }
 
-  // ── Body (8×5) ──────────────────────────────────────────────────────────────
+  // Body
   const bodyY = by + 5 * PX;
-  const bodyRows = [
-    'XXXXXXXX',
-    'XXXXXXXX',
-    'XXXXXXXX',
-    'XXXXXXXX',
-    'XXXXXXXX',
-  ];
-  pattern(ctx, bodyRows, bx, bodyY, PX, pal.body);
-  // Collar
-  p(ctx, bx + 3 * PX, bodyY, 2 * PX, PX, pal.accent);
-  // Chest detail
-  p(ctx, bx + PX, bodyY + 2 * PX, 2 * PX, 2 * PX, pal.accent);
+  p(ctx, bx, bodyY, 8 * PX, 5 * PX, pal.body);
+  p(ctx, bx + 3 * PX, bodyY, 2 * PX, PX, pal.accent);      // collar
+  p(ctx, bx + PX, bodyY + 2 * PX, 2 * PX, 2 * PX, pal.accent); // chest
 
   // Arms
   const armY = bodyY + PX;
   const armSwing = working ? Math.sin(walkPhase * 8) * PX
-    : handoff ? -PX * 2   // both arms raised — passing work forward
+    : handoff   ? -PX * 2
     : 0;
   const rightArmSwing = working ? -armSwing
-    : handoff ? -PX * 2   // symmetric raise
-    : listening ? Math.sin(walkPhase * 3) * PX * 0.5  // slight lean
+    : handoff   ? -PX * 2
+    : listening ? Math.sin(walkPhase * 3) * PX * 0.5
     : 0;
-  p(ctx, bx - PX, armY + armSwing, PX, 3 * PX, pal.skin);
+  p(ctx, bx - PX, armY + armSwing,       PX, 3 * PX, pal.skin);
   p(ctx, bx + 8 * PX, armY + rightArmSwing, PX, 3 * PX, pal.skin);
 
-  // ── Legs ────────────────────────────────────────────────────────────────────
+  // Legs
   const legY = bodyY + 5 * PX;
-  // Pants
   p(ctx, bx + PX, legY, 6 * PX, 2 * PX, '#1e3a8a');
-  // Left leg
   const lLegX = bx + PX + legSwing * PX * 0.8;
   p(ctx, lLegX, legY + 2 * PX, 2 * PX, 3 * PX, '#1e3a8a');
-  p(ctx, lLegX - PX / 2, legY + 5 * PX, 3 * PX, PX, '#0f172a'); // shoe
-  // Right leg
+  p(ctx, lLegX - PX * 0.5, legY + 5 * PX, 3 * PX, PX, '#0f172a');
   const rLegX = bx + 5 * PX - legSwing * PX * 0.8;
   p(ctx, rLegX, legY + 2 * PX, 2 * PX, 3 * PX, '#1e3a8a');
-  p(ctx, rLegX - PX / 2, legY + 5 * PX, 3 * PX, PX, '#0f172a'); // shoe
+  p(ctx, rLegX - PX * 0.5, legY + 5 * PX, 3 * PX, PX, '#0f172a');
 
-  // ── Focus glow ──────────────────────────────────────────────────────────────
+  // Focus glow
   if (focused) {
     ctx.strokeStyle = pal.accent;
     ctx.lineWidth = PX * 0.75;
     ctx.shadowColor = pal.body;
-    ctx.shadowBlur = 10;
+    ctx.shadowBlur = 12;
     ctx.strokeRect(bx - PX, by - PX * 2, 10 * PX, 18 * PX);
     ctx.shadowBlur = 0;
   }
 
-  // ── State dot ───────────────────────────────────────────────────────────────
-  const dotColor = state === 'working' ? '#4ade80'
+  // State dot
+  const dotColor = state === 'working'  ? '#4ade80'
     : state === 'thinking' ? '#a78bfa'
     : state === 'speaking' ? '#fb923c'
-    : state === 'error' ? '#f87171'
-    : state === 'offline' ? '#52525b'
+    : state === 'error'    ? '#f87171'
+    : state === 'offline'  ? '#52525b'
     : '#22d3ee';
   ctx.beginPath();
   ctx.arc(cx + 5 * PX, by - PX, PX * 1.2, 0, Math.PI * 2);
   ctx.fillStyle = dotColor;
   ctx.shadowColor = dotColor;
-  ctx.shadowBlur = 6;
+  ctx.shadowBlur = 8;
   ctx.fill();
   ctx.shadowBlur = 0;
 
   ctx.restore();
-}
-
-// ─── Desk ─────────────────────────────────────────────────────────────────────
-function drawDesk(
-  ctx: CanvasRenderingContext2D,
-  cx: number, cy: number,
-  color: string, PX: number,
-  state: string, tick: number,
-) {
-  const dw = 20 * PX, dh = 6 * PX;
-  const dx = cx - dw / 2, dy = cy;
-
-  // Surface
-  p(ctx, dx, dy, dw, dh, '#1e293b');
-  p(ctx, dx, dy, dw, PX, '#334155'); // top edge highlight
-  p(ctx, dx, dy + dh - PX, dw, PX, '#0f172a'); // bottom shadow
-
-  // Accent border
-  ctx.save();
-  ctx.strokeStyle = color;
-  ctx.lineWidth = PX * 0.5;
-  ctx.globalAlpha = 0.5;
-  ctx.strokeRect(dx + PX, dy + PX, dw - 2 * PX, dh - 2 * PX);
-  ctx.restore();
-
-  // Monitor
-  const mx = cx - 4 * PX, my = dy - 7 * PX;
-  p(ctx, mx, my, 8 * PX, 6 * PX, '#0f172a');
-  p(ctx, mx + PX, my + PX, 6 * PX, 4 * PX, '#0c1a2e');
-  // Screen content
-  if (state !== 'idle' && state !== 'offline') {
-    const row = Math.floor(tick / 6) % 3;
-    for (let i = 0; i < 3; i++) {
-      if (i !== row) {
-        p(ctx, mx + 2 * PX, my + PX + i * PX, 3 * PX, PX * 0.75, color, 0.5);
-      }
-    }
-    p(ctx, mx + 2 * PX, my + PX + row * PX, 5 * PX, PX * 0.75, color, 0.9);
-  } else {
-    p(ctx, mx + 2 * PX, my + 3 * PX, 4 * PX, PX * 0.75, '#334155');
-  }
-  // Stand
-  p(ctx, cx - PX, dy - PX, 2 * PX, PX, '#334155');
-  p(ctx, cx - 2 * PX, dy, 4 * PX, PX * 0.5, '#334155');
-
-  // Keyboard
-  p(ctx, cx - 4 * PX, dy + PX, 8 * PX, PX * 1.5, '#1e3a5f');
-
-  // Legs
-  p(ctx, dx + PX, dy + dh, 2 * PX, 3 * PX, '#0f172a');
-  p(ctx, dx + dw - 3 * PX, dy + dh, 2 * PX, 3 * PX, '#0f172a');
 }
 
 // ─── Speech bubble ────────────────────────────────────────────────────────────
@@ -276,13 +195,12 @@ function drawBubble(
   const bw = tw + pad * 2, bh = PX * 5;
   const bx = cx - bw / 2, by = cy - bh;
 
-  ctx.fillStyle = 'rgba(8,12,24,0.95)';
+  ctx.fillStyle = 'rgba(4,8,20,0.96)';
   ctx.strokeStyle = color;
   ctx.lineWidth = PX * 0.5;
   ctx.shadowColor = color;
-  ctx.shadowBlur = 6;
+  ctx.shadowBlur = 8;
   ctx.beginPath();
-  // roundRect polyfill — Safari <15.4 and older Chromium lack it
   if (typeof ctx.roundRect === 'function') {
     ctx.roundRect(bx, by, bw, bh, PX);
   } else {
@@ -292,7 +210,6 @@ function drawBubble(
   ctx.stroke();
   ctx.shadowBlur = 0;
 
-  // Tail
   ctx.fillStyle = color;
   ctx.beginPath();
   ctx.moveTo(cx - PX, by + bh);
@@ -307,118 +224,351 @@ function drawBubble(
   ctx.textBaseline = 'alphabetic';
 }
 
-// ─── Floor ────────────────────────────────────────────────────────────────────
-function drawFloor(ctx: CanvasRenderingContext2D, W: number, H: number, PX: number) {
-  const tileW = PX * 8, tileH = PX * 8;
-  const cols = Math.ceil(W / tileW) + 1;
-  const rows = Math.ceil(H / tileH) + 1;
-  const wallH = H * 0.1;
+// ─── Star Trek Bridge background ─────────────────────────────────────────────
+function drawBridge(ctx: CanvasRenderingContext2D, W: number, H: number, PX: number, tick: number) {
+  // Deep space void
+  ctx.fillStyle = '#020409';
+  ctx.fillRect(0, 0, W, H);
 
-  // Ceiling/wall strip
-  ctx.fillStyle = '#060a14';
-  ctx.fillRect(0, 0, W, wallH);
-  ctx.fillStyle = '#0d1a2e';
-  ctx.fillRect(0, wallH - 2, W, 2);
-  // Wall accent lights
-  const lightSpacing = W / 5;
-  for (let i = 0; i < 5; i++) {
-    const lx = lightSpacing * (i + 0.5);
-    // Light fixture
-    p(ctx, lx - PX * 2, wallH - PX * 3, PX * 4, PX, '#334155');
-    p(ctx, lx - PX, wallH - PX * 2, PX * 2, PX * 2, '#fbbf24', 0.6);
-    // Light cone
-    ctx.save();
-    ctx.globalAlpha = 0.04;
-    const cone = ctx.createRadialGradient(lx, wallH, 0, lx, wallH, H * 0.4);
-    cone.addColorStop(0, '#fbbf24');
-    cone.addColorStop(1, 'transparent');
-    ctx.fillStyle = cone;
-    ctx.beginPath();
-    ctx.moveTo(lx, wallH);
-    ctx.lineTo(lx - H * 0.3, H);
-    ctx.lineTo(lx + H * 0.3, H);
-    ctx.fill();
-    ctx.restore();
+  // ── Starfield ──────────────────────────────────────────────────────────────
+  // Static seed-based stars — consistent per render, no random() per frame
+  const starCount = 120;
+  for (let i = 0; i < starCount; i++) {
+    // Deterministic position from index
+    const sx = ((i * 137.508 + 43) % W);
+    const sy = ((i * 97.345 + 17) % (H * 0.72));
+    const brightness = 0.3 + (i % 7) * 0.1;
+    const twinkle = Math.sin(tick * 0.02 + i * 0.7) * 0.15;
+    const sz = i % 5 === 0 ? 1.5 : 0.8;
+    ctx.globalAlpha = brightness + twinkle;
+    ctx.fillStyle = i % 11 === 0 ? '#bfdbfe' : i % 7 === 0 ? '#fde68a' : '#ffffff';
+    ctx.fillRect(Math.round(sx), Math.round(sy), sz, sz);
   }
+  ctx.globalAlpha = 1;
 
-  // Checkerboard floor tiles
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const x = c * tileW;
-      const y = wallH + r * tileH;
-      ctx.fillStyle = (r + c) % 2 === 0 ? '#080d1a' : '#0a1020';
-      ctx.fillRect(x, y, tileW, tileH);
-    }
+  // ── Viewscreen (upper center — main display) ───────────────────────────────
+  const vsW = W * 0.55, vsH = H * 0.30;
+  const vsX = (W - vsW) / 2, vsY = H * 0.02;
+
+  // Outer frame — LCARS orange bar
+  ctx.fillStyle = '#c47c2c';
+  ctx.fillRect(vsX - PX * 2, vsY - PX * 2, vsW + PX * 4, PX * 2);
+  ctx.fillRect(vsX - PX * 2, vsY + vsH, vsW + PX * 4, PX * 2);
+  ctx.fillStyle = '#1a5f8a';
+  ctx.fillRect(vsX - PX * 2, vsY, PX * 2, vsH);
+  ctx.fillRect(vsX + vsW, vsY, PX * 2, vsH);
+
+  // Screen interior
+  const grad = ctx.createLinearGradient(vsX, vsY, vsX, vsY + vsH);
+  grad.addColorStop(0, '#040c1e');
+  grad.addColorStop(0.5, '#050f25');
+  grad.addColorStop(1, '#030810');
+  ctx.fillStyle = grad;
+  ctx.fillRect(vsX, vsY, vsW, vsH);
+
+  // Planet / nebula in viewscreen
+  const nebX = vsX + vsW * 0.5, nebY = vsY + vsH * 0.5;
+  const nebGrd = ctx.createRadialGradient(nebX, nebY, 0, nebX, nebY, vsW * 0.28);
+  nebGrd.addColorStop(0, 'rgba(30,100,180,0.18)');
+  nebGrd.addColorStop(0.5, 'rgba(80,30,140,0.10)');
+  nebGrd.addColorStop(1, 'transparent');
+  ctx.fillStyle = nebGrd;
+  ctx.beginPath();
+  ctx.ellipse(nebX, nebY, vsW * 0.28, vsH * 0.42, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Planet sphere
+  const pGrd = ctx.createRadialGradient(nebX - vsW * 0.04, nebY - vsH * 0.08, 0, nebX, nebY, vsW * 0.09);
+  pGrd.addColorStop(0, '#4fb3e8');
+  pGrd.addColorStop(0.4, '#1a5fa0');
+  pGrd.addColorStop(1, '#0a1e3a');
+  ctx.fillStyle = pGrd;
+  ctx.beginPath();
+  ctx.arc(nebX, nebY, vsW * 0.09, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Scan lines on viewscreen
+  ctx.save();
+  ctx.globalAlpha = 0.06;
+  ctx.fillStyle = '#000000';
+  for (let sy2 = vsY; sy2 < vsY + vsH; sy2 += 2) {
+    ctx.fillRect(vsX, sy2, vsW, 1);
   }
+  ctx.restore();
 
-  // Grid lines
-  ctx.strokeStyle = 'rgba(30,174,255,0.05)';
+  // Moving scan beam
+  const scanY = vsY + ((tick * 0.8) % vsH);
+  const scanGrd = ctx.createLinearGradient(vsX, scanY - 4, vsX, scanY + 4);
+  scanGrd.addColorStop(0, 'transparent');
+  scanGrd.addColorStop(0.5, 'rgba(0,200,255,0.12)');
+  scanGrd.addColorStop(1, 'transparent');
+  ctx.fillStyle = scanGrd;
+  ctx.fillRect(vsX, scanY - 4, vsW, 8);
+
+  // Viewscreen label
+  ctx.font = `bold ${PX * 2.5}px "JetBrains Mono", monospace`;
+  ctx.textAlign = 'right';
+  ctx.fillStyle = 'rgba(255,200,80,0.7)';
+  ctx.fillText('MAIN VIEWER', vsX + vsW - PX, vsY + PX * 3);
+
+  // ── Bridge floor gradient ──────────────────────────────────────────────────
+  const floorY = H * 0.32;
+  const floorGrd = ctx.createLinearGradient(0, floorY, 0, H);
+  floorGrd.addColorStop(0, 'rgba(3,8,20,0)');
+  floorGrd.addColorStop(0.3, 'rgba(5,12,28,0.8)');
+  floorGrd.addColorStop(1, 'rgba(4,8,18,0.95)');
+  ctx.fillStyle = floorGrd;
+  ctx.fillRect(0, floorY, W, H - floorY);
+
+  // ── Bridge deck grid (subtle perspective lines) ────────────────────────────
+  const horizonY = H * 0.38;
+  const vanishX = W * 0.5;
+  ctx.save();
+  ctx.globalAlpha = 0.06;
+  ctx.strokeStyle = '#1eaeff';
   ctx.lineWidth = 0.5;
-  for (let c = 0; c <= cols; c++) {
-    ctx.beginPath(); ctx.moveTo(c * tileW, wallH); ctx.lineTo(c * tileW, H); ctx.stroke();
+  // Radial perspective lines from vanishing point
+  for (let i = 0; i <= 12; i++) {
+    const bx2 = (W / 12) * i;
+    ctx.beginPath();
+    ctx.moveTo(vanishX, horizonY);
+    ctx.lineTo(bx2, H);
+    ctx.stroke();
   }
-  for (let r = 0; r <= rows; r++) {
-    const y = wallH + r * tileH;
-    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+  // Horizontal deck lines
+  for (let r = 0; r < 8; r++) {
+    const py2 = horizonY + (H - horizonY) * (r / 7) ** 1.5;
+    ctx.beginPath();
+    ctx.moveTo(0, py2);
+    ctx.lineTo(W, py2);
+    ctx.stroke();
   }
+  ctx.restore();
+
+  // ── LCARS side panels ──────────────────────────────────────────────────────
+  drawLCARSPanel(ctx, PX * 2, H * 0.35, PX * 18, H * 0.55, tick, 'left');
+  drawLCARSPanel(ctx, W - PX * 20, H * 0.35, PX * 18, H * 0.55, tick, 'right');
+
+  // ── Command arc console (curved desk around command chair) ─────────────────
+  drawCommandArc(ctx, W, H, PX, tick);
 }
 
-// ─── Props ────────────────────────────────────────────────────────────────────
-function drawProps(ctx: CanvasRenderingContext2D, W: number, H: number, PX: number, tick: number) {
-  // Plant left
-  const p1x = PX * 3, p1y = H * 0.15;
-  p(ctx, p1x + 3 * PX, p1y + 4 * PX, PX * 2, 5 * PX, '#166534');
-  p(ctx, p1x, p1y, 4 * PX, 5 * PX, '#15803d');
-  p(ctx, p1x + 4 * PX, p1y + 2 * PX, 4 * PX, 4 * PX, '#16a34a');
-  p(ctx, p1x + 2 * PX, p1y + 2 * PX, 3 * PX, 4 * PX, '#22c55e');
-  p(ctx, p1x + 2 * PX, p1y + 9 * PX, 3 * PX, 3 * PX, '#92400e'); // pot
+// ─── LCARS side panel ─────────────────────────────────────────────────────────
+function drawLCARSPanel(
+  ctx: CanvasRenderingContext2D,
+  x: number, y: number, w: number, h: number,
+  tick: number, side: 'left' | 'right',
+) {
+  const colors = ['#c47c2c', '#1a5f8a', '#9b59b6', '#27ae60', '#1eaeff', '#c0392b'];
+  const barH = h / 8;
 
-  // Plant right
-  const p2x = W - PX * 12, p2y = H * 0.15;
-  p(ctx, p2x + 3 * PX, p2y + 4 * PX, PX * 2, 5 * PX, '#166534');
-  p(ctx, p2x, p2y + 2 * PX, 4 * PX, 4 * PX, '#15803d');
-  p(ctx, p2x + 4 * PX, p2y, 4 * PX, 5 * PX, '#16a34a');
-  p(ctx, p2x + 2 * PX, p2y + 2 * PX, 3 * PX, 4 * PX, '#22c55e');
-  p(ctx, p2x + 2 * PX, p2y + 9 * PX, 3 * PX, 3 * PX, '#92400e');
+  // Corner bracket
+  ctx.strokeStyle = '#1a5f8a';
+  ctx.lineWidth = 1;
+  ctx.globalAlpha = 0.6;
+  ctx.beginPath();
+  if (side === 'left') {
+    ctx.moveTo(x + w, y);
+    ctx.lineTo(x, y);
+    ctx.lineTo(x, y + h);
+    ctx.lineTo(x + w, y + h);
+  } else {
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + w, y);
+    ctx.lineTo(x + w, y + h);
+    ctx.lineTo(x, y + h);
+  }
+  ctx.stroke();
+  ctx.globalAlpha = 1;
 
-  // Server rack (left wall)
-  const sx = PX * 3, sy = H * 0.5;
-  p(ctx, sx, sy, 12 * PX, 18 * PX, '#0f172a');
-  p(ctx, sx + PX, sy + PX, 10 * PX, 16 * PX, '#1e293b');
-  for (let i = 0; i < 4; i++) {
-    const ry = sy + 2 * PX + i * 4 * PX;
-    p(ctx, sx + PX, ry, 10 * PX, 3 * PX, '#0c1a2e');
-    const blink = Math.floor(tick / (10 + i * 4)) % 2 === 0;
-    p(ctx, sx + 9 * PX, ry + PX, PX, PX, blink ? '#4ade80' : '#166534');
+  // Colored status blocks
+  for (let i = 0; i < 7; i++) {
+    const by2 = y + i * barH + 2;
+    const bh2 = barH - 3;
+    const color = colors[i % colors.length];
+    const active = Math.floor(tick / 30) % 7 === i;
+    ctx.globalAlpha = active ? 0.85 : 0.35;
+    ctx.fillStyle = color;
+    ctx.fillRect(x + 2, by2, w - 4, bh2);
+    if (active) {
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 6;
+      ctx.fillRect(x + 2, by2, w - 4, bh2);
+      ctx.shadowBlur = 0;
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ─── Command arc console ──────────────────────────────────────────────────────
+function drawCommandArc(
+  ctx: CanvasRenderingContext2D,
+  W: number, H: number, PX: number, tick: number,
+) {
+  const cx = W * 0.5;
+  const cy = H * 0.82; // arc center below screen center
+  const rx = W * 0.42; // horizontal radius
+  const ry = H * 0.22; // vertical radius
+
+  // Outer arc console surface
+  ctx.save();
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, rx, ry, 0, Math.PI, Math.PI * 2);
+  ctx.closePath();
+
+  const arcGrd = ctx.createLinearGradient(cx, cy - ry, cx, cy);
+  arcGrd.addColorStop(0, '#0d1f3c');
+  arcGrd.addColorStop(0.5, '#0a1628');
+  arcGrd.addColorStop(1, '#060e1c');
+  ctx.fillStyle = arcGrd;
+  ctx.fill();
+
+  // Arc edge glow
+  ctx.strokeStyle = '#1eaeff';
+  ctx.lineWidth = PX * 0.6;
+  ctx.shadowColor = '#1eaeff';
+  ctx.shadowBlur = 8;
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Inner arc (raised inner edge)
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, rx * 0.72, ry * 0.72, 0, Math.PI, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(30,174,255,0.3)';
+  ctx.lineWidth = PX * 0.4;
+  ctx.stroke();
+
+  ctx.restore();
+
+  // Console panels on the arc surface — 5 stations
+  const stations = [
+    { fx: 0.18, label: 'HELM',   color: '#1eaeff' },
+    { fx: 0.34, label: 'ENG',    color: '#fb923c' },
+    { fx: 0.50, label: 'CMD',    color: '#f59e0b' },
+    { fx: 0.66, label: 'OPS',    color: '#93c5fd' },
+    { fx: 0.82, label: 'SCI',    color: '#818cf8' },
+  ];
+
+  stations.forEach((st, i) => {
+    const angle = Math.PI + st.fx * Math.PI; // spread across arc
+    const consX = cx + Math.cos(angle) * rx * 0.86;
+    const consY = cy + Math.sin(angle) * ry * 0.86;
+    const pw = PX * 10, ph = PX * 4;
+
+    // Panel surface
+    ctx.fillStyle = '#0a1628';
+    ctx.fillRect(consX - pw / 2, consY - ph / 2, pw, ph);
+    ctx.strokeStyle = st.color;
+    ctx.lineWidth = PX * 0.4;
+    ctx.globalAlpha = 0.7;
+    ctx.strokeRect(consX - pw / 2, consY - ph / 2, pw, ph);
+    ctx.globalAlpha = 1;
+
+    // Blinking indicator
+    const blink = Math.floor(tick / (15 + i * 7)) % 2 === 0;
+    ctx.fillStyle = blink ? st.color : 'rgba(30,174,255,0.2)';
+    ctx.fillRect(consX - pw / 2 + PX, consY - ph / 4, PX * 1.5, PX * 1.5);
+
+    // Data bars
+    for (let b = 0; b < 3; b++) {
+      const barW = PX * (1.5 + (Math.sin(tick * 0.05 + i + b * 1.3) * 0.5 + 0.5) * 3);
+      ctx.globalAlpha = 0.55;
+      ctx.fillStyle = st.color;
+      ctx.fillRect(consX - pw / 2 + PX * 3 + b * PX * 2.2, consY - PX * 0.8, barW, PX * 1.5);
+    }
+    ctx.globalAlpha = 1;
+
+    // Label
+    ctx.font = `bold ${PX * 2}px "JetBrains Mono", monospace`;
+    ctx.textAlign = 'center';
+    ctx.fillStyle = st.color;
+    ctx.globalAlpha = 0.65;
+    ctx.fillText(st.label, consX, consY + ph / 2 + PX * 2.5);
+    ctx.globalAlpha = 1;
+  });
+
+  // Center command chair platform
+  const chairX = cx, chairY = cy - ry * 0.15;
+  const chairRx = PX * 14, chairRy = PX * 5;
+  ctx.save();
+  ctx.beginPath();
+  ctx.ellipse(chairX, chairY, chairRx, chairRy, 0, 0, Math.PI * 2);
+  const chairGrd = ctx.createRadialGradient(chairX, chairY, 0, chairX, chairY, chairRx);
+  chairGrd.addColorStop(0, 'rgba(245,158,11,0.15)');
+  chairGrd.addColorStop(0.6, 'rgba(245,158,11,0.06)');
+  chairGrd.addColorStop(1, 'transparent');
+  ctx.fillStyle = chairGrd;
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(245,158,11,0.5)';
+  ctx.lineWidth = PX * 0.5;
+  ctx.shadowColor = '#f59e0b';
+  ctx.shadowBlur = 10;
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+  ctx.restore();
+}
+
+// ─── Station console (holographic panel at each agent's desk) ─────────────────
+function drawStationConsole(
+  ctx: CanvasRenderingContext2D,
+  cx: number, cy: number,
+  color: string, PX: number,
+  state: string, tick: number,
+  label: string,
+) {
+  const cw = PX * 18, ch = PX * 8;
+  const cx2 = cx - cw / 2, cy2 = cy;
+
+  // Console base
+  ctx.fillStyle = '#080f1e';
+  ctx.fillRect(cx2, cy2, cw, ch);
+
+  // Glowing border
+  ctx.strokeStyle = color;
+  ctx.lineWidth = PX * 0.4;
+  ctx.globalAlpha = 0.6;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = state !== 'idle' && state !== 'offline' ? 10 : 3;
+  ctx.strokeRect(cx2, cy2, cw, ch);
+  ctx.shadowBlur = 0;
+  ctx.globalAlpha = 1;
+
+  // Screen content
+  if (state !== 'idle' && state !== 'offline') {
+    // Animated data readout
+    const lineCount = 3;
+    for (let l = 0; l < lineCount; l++) {
+      const active = Math.floor(tick / 5) % lineCount === l;
+      const lineW = PX * (3 + (Math.sin(tick * 0.07 + l * 2.1) * 0.5 + 0.5) * 6);
+      ctx.globalAlpha = active ? 0.9 : 0.35;
+      ctx.fillStyle = color;
+      ctx.fillRect(cx2 + PX * 1.5, cy2 + PX * 1.5 + l * PX * 2, lineW, PX);
+    }
+    ctx.globalAlpha = 1;
+
+    // Active pulse dot
+    const pd = Math.sin(tick * 0.15) * 0.4 + 0.6;
+    ctx.globalAlpha = pd;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(cx2 + cw - PX * 2, cy2 + PX * 1.5, PX * 0.8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  } else {
+    // Idle — dim flat line
+    ctx.globalAlpha = 0.2;
+    ctx.fillStyle = color;
+    ctx.fillRect(cx2 + PX, cy2 + ch / 2 - PX * 0.4, cw - PX * 2, PX * 0.8);
+    ctx.globalAlpha = 1;
   }
 
-  // Water cooler (right wall)
-  const wx = W - PX * 10, wy = H * 0.5;
-  p(ctx, wx + PX, wy - 4 * PX, 4 * PX, 3 * PX, '#93c5fd', 0.8); // bottle
-  p(ctx, wx, wy, 6 * PX, 8 * PX, '#e2e8f0'); // body
-  p(ctx, wx + 2 * PX, wy + 2 * PX, 2 * PX, PX, '#3b82f6'); // spigot
-
-  // Couch (bottom center)
-  const couchX = W / 2, couchY = H * 0.88;
-  p(ctx, couchX - 18 * PX, couchY, 36 * PX, 7 * PX, '#1e3a5f'); // base
-  p(ctx, couchX - 20 * PX, couchY - 5 * PX, 5 * PX, 5 * PX, '#1d4ed8'); // left arm
-  p(ctx, couchX + 15 * PX, couchY - 5 * PX, 5 * PX, 5 * PX, '#1d4ed8'); // right arm
-  p(ctx, couchX - 18 * PX, couchY - 5 * PX, 36 * PX, 2 * PX, '#2563eb'); // back
-  p(ctx, couchX - 15 * PX, couchY - 3 * PX, 30 * PX, 4 * PX, '#3b82f6'); // cushion
-
-  // Round table (center)
-  const tx = W / 2, ty = H * 0.72;
-  ctx.save();
-  ctx.fillStyle = '#1e3a5f';
-  ctx.beginPath();
-  ctx.ellipse(tx, ty, 12 * PX, 5 * PX, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = '#334155';
-  ctx.beginPath();
-  ctx.ellipse(tx, ty - PX, 12 * PX, 4 * PX, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
-  p(ctx, tx - PX, ty, 2 * PX, 5 * PX, '#1e293b'); // leg
+  // Zone label below console
+  ctx.font = `${PX * 2}px "JetBrains Mono", monospace`;
+  ctx.textAlign = 'center';
+  ctx.fillStyle = color;
+  ctx.globalAlpha = 0.5;
+  ctx.fillText(label.toUpperCase(), cx, cy2 + ch + PX * 2.5);
+  ctx.globalAlpha = 1;
 }
 
 // ─── Particle ─────────────────────────────────────────────────────────────────
@@ -474,15 +624,13 @@ export function MythicCanvas({
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
-    const mx = (e.clientX - rect.left);
-    const my = (e.clientY - rect.top);
-    const W = canvas.width / dpr, H = canvas.height / dpr;
+    const mx = (e.clientX - rect.left) * (canvas.width / dpr / rect.width);
+    const my = (e.clientY - rect.top)  * (canvas.height / dpr / rect.height);
 
     for (const agent of agentsRef.current) {
       const w = stateRef.current.wander[agent.id];
-      const ax = w ? w.x : (agent.position.x / 100) * W;
-      const ay = w ? w.y : (agent.position.y / 100) * H;
-      if (Math.hypot(mx - ax, my - ay) < 30) {
+      if (!w) continue;
+      if (Math.hypot(mx - w.x, my - w.y) < 30) {
         onFocusAgent(focusRef.current === agent.id ? null : agent.id);
         return;
       }
@@ -490,21 +638,22 @@ export function MythicCanvas({
     onFocusAgent(null);
   }, [onFocusAgent]);
 
-  // ── Wander update ───────────────────────────────────────────────────────────
+  // ── Wander update ────────────────────────────────────────────────────────────
   function updateWander(agent: CommandCenterAgent, W: number, H: number) {
     const sr = stateRef.current;
+
     if (!sr.wander[agent.id]) {
-      const rawX = agent.position?.x ?? 50;
-      const rawY = agent.position?.y ?? 50;
-      const hx = (isNaN(rawX) ? 50 : rawX) / 100 * W;
-      const hy = (isNaN(rawY) ? 50 : rawY) / 100 * H;
+      // Use bridge station positions — guaranteed to be within canvas bounds
+      const station = STATION_POSITIONS[agent.id] ?? { fx: 0.5, fy: 0.55 };
+      const hx = station.fx * W;
+      const hy = station.fy * H;
       sr.wander[agent.id] = {
         x: hx, y: hy,
         targetX: hx, targetY: hy,
         homeX: hx, homeY: hy,
         walkPhase: Math.random() * Math.PI * 2,
         facing: 1,
-        wanderTimer: 180, // 3s grace period — agents start at their desk
+        wanderTimer: 180,
         isWalking: false,
       };
     }
@@ -512,29 +661,26 @@ export function MythicCanvas({
     const w = sr.wander[agent.id];
     const isIdle = agent.currentState === 'idle' || agent.currentState === 'listening';
 
-    // Wander timer — only when idle
     if (isIdle) {
       w.wanderTimer--;
       if (w.wanderTimer <= 0) {
-        // Pick new target: either home desk or a random waypoint in the room
-        const goHome = Math.random() < 0.4;
+        const goHome = Math.random() < 0.45;
         if (goHome) {
           w.targetX = w.homeX;
           w.targetY = w.homeY;
         } else {
-          // Wander to a random spot within the lower 60% of screen
-          w.targetX = W * (0.15 + Math.random() * 0.7);
-          w.targetY = H * (0.45 + Math.random() * 0.4);
+          // Wander within the bridge floor area only (below viewscreen, above bottom edge)
+          w.targetX = W * (0.15 + Math.random() * 0.70);
+          w.targetY = H * (0.50 + Math.random() * 0.32);
         }
         w.wanderTimer = Math.floor(Math.random() * 240) + 120;
       }
     } else {
-      // Working/thinking/speaking — return to home desk
+      // Active — return to station
       w.targetX = w.homeX;
       w.targetY = w.homeY;
     }
 
-    // Move toward target
     const dx = w.targetX - w.x;
     const dy = w.targetY - w.y;
     const dist = Math.hypot(dx, dy);
@@ -548,11 +694,11 @@ export function MythicCanvas({
       w.walkPhase += 0.12;
     } else {
       w.isWalking = false;
-      w.walkPhase += 0.02; // gentle idle bob
+      w.walkPhase += 0.02;
     }
   }
 
-  // ── Render ──────────────────────────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────────────────────────
   function render(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D) {
     const sr = stateRef.current;
     sr.tick++;
@@ -561,107 +707,79 @@ export function MythicCanvas({
     const W = canvas.width / dpr;
     const H = canvas.height / dpr;
 
-    // Pixel scale — OpenClaw uses PX=5 at ~500px wide. We target ~3-4px.
-    const PX = Math.max(2, Math.min(4, Math.round(W / 280)));
+    // Pixel scale — keep sprites readable but not massive
+    // At 800px wide → PX=3, at 1400px → PX=4, min 2
+    const PX = Math.max(2, Math.min(4, Math.round(W / 320)));
 
     ctx.imageSmoothingEnabled = false;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Background
-    ctx.fillStyle = '#070b15';
-    ctx.fillRect(0, 0, W, H);
+    // ── Bridge environment ─────────────────────────────────────────────────────
+    drawBridge(ctx, W, H, PX, t);
 
-    // ── Floor & room ──────────────────────────────────────────────────────────
-    drawFloor(ctx, W, H, PX);
-
-    // ── Props ─────────────────────────────────────────────────────────────────
-    drawProps(ctx, W, H, PX, t);
-
-    // ── Update wander positions ───────────────────────────────────────────────
+    // ── Wander positions ───────────────────────────────────────────────────────
     agentsRef.current.forEach(agent => updateWander(agent, W, H));
 
-    // ── Zone floor glows ──────────────────────────────────────────────────────
+    // ── Connection lines from Atlas to all agents ──────────────────────────────
+    const atlasAgent = agentsRef.current.find(a => a.id === 'atlas');
+    if (atlasAgent) {
+      const aw = sr.wander['atlas'];
+      if (aw) {
+        agentsRef.current.filter(a => a.id !== 'atlas').forEach(agent => {
+          const bw = sr.wander[agent.id];
+          if (!bw) return;
+          const isActive = agent.currentState !== 'idle' && agent.currentState !== 'offline';
+          ctx.save();
+          ctx.globalAlpha = isActive ? 0.30 : 0.08;
+          ctx.setLineDash([PX * 2, PX * 4]);
+          ctx.lineDashOffset = isActive ? -(t * 1.0) % (PX * 6) : 0;
+          ctx.strokeStyle = agent.themeColor;
+          ctx.lineWidth = isActive ? PX * 0.6 : PX * 0.3;
+          ctx.shadowColor = agent.themeColor;
+          ctx.shadowBlur = isActive ? 6 : 0;
+          ctx.beginPath();
+          ctx.moveTo(aw.x, aw.y);
+          ctx.lineTo(bw.x, bw.y);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.shadowBlur = 0;
+          ctx.restore();
+        });
+      }
+    }
+
+    // ── Station consoles (at home positions, behind agents) ───────────────────
+    agentsRef.current.forEach(agent => {
+      const w = sr.wander[agent.id];
+      if (!w) return;
+      const pal = AGENT_PALETTE[agent.id] ?? DEFAULT_PAL;
+      const zone = zonesRef.current.find(z => z.id === agent.homeZone);
+      const zoneLabel = zone?.label ?? agent.displayName;
+      drawStationConsole(ctx, w.homeX, w.homeY + PX * 2, pal.body, PX, agent.currentState, t, zoneLabel);
+    });
+
+    // ── Zone glow rings on floor ───────────────────────────────────────────────
     zonesRef.current.forEach(zone => {
       const agent = agentsRef.current.find(a => a.homeZone === zone.id);
       const zoneExplicitlyActive = activeZonesRef.current.has(zone.id as SceneZoneId);
       const isActive = zoneExplicitlyActive || (agent && agent.currentState !== 'idle' && agent.currentState !== 'offline');
       const w = agent && sr.wander[agent.id];
-      const zx = w ? w.homeX : (zone.position.x / 100) * W;
-      const zy = w ? w.homeY : (zone.position.y / 100) * H;
+      if (!w) return;
 
       ctx.save();
-      ctx.globalAlpha = isActive ? 0.18 : 0.06;
-      const grd = ctx.createRadialGradient(zx, zy + PX * 8, 0, zx, zy + PX * 8, PX * 28);
+      ctx.globalAlpha = isActive ? 0.22 : 0.07;
+      const grd = ctx.createRadialGradient(w.homeX, w.homeY + PX * 4, 0, w.homeX, w.homeY + PX * 4, PX * 22);
       grd.addColorStop(0, zone.accentColor);
       grd.addColorStop(1, 'transparent');
       ctx.fillStyle = grd;
       ctx.beginPath();
-      ctx.ellipse(zx, zy + PX * 10, PX * 22, PX * 7, 0, 0, Math.PI * 2);
+      ctx.ellipse(w.homeX, w.homeY + PX * 6, PX * 18, PX * 5, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
     });
 
-    // ── Desks (at home positions) ─────────────────────────────────────────────
-    agentsRef.current.forEach(agent => {
-      const w = sr.wander[agent.id];
-      const hx = w ? w.homeX : (agent.position.x / 100) * W;
-      const hy = w ? w.homeY : (agent.position.y / 100) * H;
-      const pal = AGENT_PALETTE[agent.id] ?? DEFAULT_PAL;
-      drawDesk(ctx, hx, hy + PX * 6, pal.body, PX, agent.currentState, t);
-    });
-
-    // ── Connection lines from Atlas to all agents ─────────────────────────────
-    const atlasAgent = agentsRef.current.find(a => a.id === 'atlas');
-    if (atlasAgent) {
-      const aw = sr.wander['atlas'];
-      const ax = aw ? aw.homeX : (atlasAgent.position.x / 100) * W;
-      const ay = aw ? aw.homeY + PX * 8 : (atlasAgent.position.y / 100) * H;
-      agentsRef.current.filter(a => a.id !== 'atlas').forEach(agent => {
-        const bw = sr.wander[agent.id];
-        const bx = bw ? bw.homeX : (agent.position.x / 100) * W;
-        const by2 = bw ? bw.homeY + PX * 8 : (agent.position.y / 100) * H;
-        const isActive = agent.currentState !== 'idle' && agent.currentState !== 'offline';
-        ctx.save();
-        ctx.globalAlpha = isActive ? 0.25 : 0.07;
-        ctx.setLineDash([PX * 2, PX * 4]);
-        ctx.lineDashOffset = isActive ? -(t * 1.2) % (PX * 6) : 0;
-        ctx.strokeStyle = agent.themeColor;
-        ctx.lineWidth = isActive ? PX * 0.75 : PX * 0.4;
-        ctx.shadowColor = agent.themeColor;
-        ctx.shadowBlur = isActive ? 4 : 0;
-        ctx.beginPath();
-        ctx.moveTo(ax, ay);
-        ctx.lineTo(bx, by2);
-        ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.shadowBlur = 0;
-        ctx.restore();
-      });
-    }
-
-    // ── Zone labels (above desks, on wall) ───────────────────────────────────
-    zonesRef.current.forEach(zone => {
-      const agent = agentsRef.current.find(a => a.homeZone === zone.id);
-      const w = agent && sr.wander[agent.id];
-      const zx = w ? w.homeX : (zone.position.x / 100) * W;
-      const zy = w ? w.homeY : (zone.position.y / 100) * H;
-      const isActive = agent && agent.currentState !== 'idle' && agent.currentState !== 'offline';
-
-      ctx.font = `bold ${PX * 3}px "JetBrains Mono", monospace`;
-      ctx.textAlign = 'center';
-      ctx.fillStyle = zone.accentColor;
-      ctx.globalAlpha = isActive ? 0.85 : 0.35;
-      ctx.shadowColor = zone.accentColor;
-      ctx.shadowBlur = isActive ? 6 : 0;
-      ctx.fillText(zone.label.toUpperCase(), zx, zy - PX * 28);
-      ctx.shadowBlur = 0;
-      ctx.globalAlpha = 1;
-    });
-
-    // ── Agents ────────────────────────────────────────────────────────────────
+    // ── Agents (Y-sorted) ──────────────────────────────────────────────────────
     const focId = focusRef.current;
-
-    // Sort by Y so agents in front render on top
     const sorted = [...agentsRef.current].sort((a, b) => {
       const wa = sr.wander[a.id], wb = sr.wander[b.id];
       return (wa?.y ?? 0) - (wb?.y ?? 0);
@@ -670,7 +788,6 @@ export function MythicCanvas({
     sorted.forEach(agent => {
       const w = sr.wander[agent.id];
       if (!w) return;
-      const ax = w.x, ay = w.y;
       const pal = AGENT_PALETTE[agent.id] ?? DEFAULT_PAL;
       const focused = focId === agent.id;
       const dimmed = focId !== null && !focused;
@@ -682,59 +799,59 @@ export function MythicCanvas({
       if (sr.memPulseTimer > 0 && sr.memPulseAgent === agent.id) {
         const pr = PX * 10 + (1 - sr.memPulseTimer / 90) * PX * 8;
         ctx.beginPath();
-        ctx.arc(ax, ay, pr, 0, Math.PI * 2);
+        ctx.arc(w.x, w.y, pr, 0, Math.PI * 2);
         ctx.strokeStyle = '#93c5fd';
         ctx.lineWidth = PX * 0.75;
         ctx.shadowColor = '#93c5fd';
-        ctx.shadowBlur = 10;
+        ctx.shadowBlur = 12;
         ctx.stroke();
         ctx.shadowBlur = 0;
       }
 
-      drawSprite(ctx, ax, ay, pal, agent.currentState, w.walkPhase, w.facing, PX, focused);
+      drawSprite(ctx, w.x, w.y, pal, agent.currentState, w.walkPhase, w.facing, PX, focused);
 
       // Name label
       ctx.font = `bold ${PX * 3}px "JetBrains Mono", monospace`;
       ctx.textAlign = 'center';
       ctx.fillStyle = pal.body;
       ctx.shadowColor = pal.body;
-      ctx.shadowBlur = 4;
-      ctx.fillText(agent.displayName.toUpperCase(), ax, ay + PX * 18);
+      ctx.shadowBlur = 6;
+      ctx.fillText(agent.displayName.toUpperCase(), w.x, w.y + PX * 18);
       ctx.shadowBlur = 0;
 
       // State label
-      ctx.font = `${PX * 2.5}px "JetBrains Mono", monospace`;
+      ctx.font = `${PX * 2.2}px "JetBrains Mono", monospace`;
       ctx.fillStyle = 'rgba(148,163,184,0.75)';
-      ctx.fillText(agent.currentState, ax, ay + PX * 21);
+      ctx.fillText(agent.currentState, w.x, w.y + PX * 21);
 
       // LC/RM badge
       if (agent.localOrRemote === 'local') {
         ctx.font = `bold ${PX * 2}px "JetBrains Mono", monospace`;
         ctx.fillStyle = '#4ade80';
-        ctx.fillText('LC', ax + PX * 7, ay - PX * 12);
+        ctx.fillText('LC', w.x + PX * 7, w.y - PX * 12);
       } else if (agent.localOrRemote === 'remote') {
         ctx.font = `bold ${PX * 2}px "JetBrains Mono", monospace`;
         ctx.fillStyle = '#facc15';
-        ctx.fillText('RM', ax + PX * 7, ay - PX * 12);
+        ctx.fillText('RM', w.x + PX * 7, w.y - PX * 12);
       }
 
       ctx.restore();
 
       // Speech bubble
       if (agent.currentTask && (agent.currentState === 'working' || agent.currentState === 'speaking' || agent.currentState === 'thinking')) {
-        const truncated = agent.currentTask.length > 20
-          ? agent.currentTask.slice(0, 18) + '…'
+        const truncated = agent.currentTask.length > 22
+          ? agent.currentTask.slice(0, 20) + '…'
           : agent.currentTask;
-        drawBubble(ctx, ax, ay - PX * 16, truncated, pal.body, PX);
+        drawBubble(ctx, w.x, w.y - PX * 16, truncated, pal.body, PX);
       }
 
-      // Celebration sparks — capped at 80 total particles
+      // Celebration sparks
       if (sr.celebrationAgent === agent.id && sr.celebrationTimer > 0 && Math.random() < 0.5 && sr.particles.length < 80) {
         for (let i = 0; i < 3; i++) {
           const angle = Math.random() * Math.PI * 2;
           const speed = 1.5 + Math.random() * 2;
           sr.particles.push({
-            x: ax, y: ay - PX * 8,
+            x: w.x, y: w.y - PX * 8,
             vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed - 2,
             life: 1, color: pal.body, size: PX * 1.5,
           });
@@ -742,53 +859,82 @@ export function MythicCanvas({
       }
     });
 
-    // ── Particles ─────────────────────────────────────────────────────────────
-    sr.particles = sr.particles.filter(p2 => p2.life > 0);
-    sr.particles.forEach(p2 => {
-      p2.life -= 0.04;
-      p2.x += p2.vx; p2.y += p2.vy;
-      p2.vy += 0.1; p2.vx *= 0.95;
-      const sz = Math.max(1, Math.round(p2.size * p2.life));
-      ctx.globalAlpha = p2.life;
-      ctx.fillStyle = p2.color;
-      ctx.fillRect(Math.round(p2.x), Math.round(p2.y), sz, sz);
+    // ── Particles ──────────────────────────────────────────────────────────────
+    sr.particles = sr.particles.filter(pt => pt.life > 0);
+    sr.particles.forEach(pt => {
+      pt.life -= 0.04;
+      pt.x += pt.vx; pt.y += pt.vy;
+      pt.vy += 0.1; pt.vx *= 0.95;
+      const sz = Math.max(1, Math.round(pt.size * pt.life));
+      ctx.globalAlpha = pt.life;
+      ctx.fillStyle = pt.color;
+      ctx.fillRect(Math.round(pt.x), Math.round(pt.y), sz, sz);
       ctx.globalAlpha = 1;
     });
 
-    // ── Timers ────────────────────────────────────────────────────────────────
+    // ── Timers ─────────────────────────────────────────────────────────────────
     if (sr.celebrationTimer > 0) sr.celebrationTimer--;
     else sr.celebrationAgent = null;
     if (sr.memPulseTimer > 0) sr.memPulseTimer--;
     else sr.memPulseAgent = null;
 
-    // ── HUD ───────────────────────────────────────────────────────────────────
-    ctx.fillStyle = 'rgba(5,8,18,0.85)';
-    ctx.fillRect(0, 0, W, H * 0.08);
+    // ── HUD overlay ────────────────────────────────────────────────────────────
+    // Scanline overlay (full screen, very subtle)
+    ctx.save();
+    ctx.globalAlpha = 0.03;
+    ctx.fillStyle = '#000000';
+    for (let sy = 0; sy < H; sy += 3) {
+      ctx.fillRect(0, sy, W, 1);
+    }
+    ctx.restore();
+
+    // Top LCARS bar
+    ctx.fillStyle = 'rgba(3,6,16,0.88)';
+    ctx.fillRect(0, 0, W, H * 0.065);
+    ctx.fillStyle = '#c47c2c';
+    ctx.fillRect(0, H * 0.065, W, PX * 0.5);
 
     ctx.font = `bold ${PX * 3.5}px "JetBrains Mono", monospace`;
     ctx.textAlign = 'left';
-    ctx.fillStyle = 'rgba(30,174,255,0.85)';
-    ctx.fillText('● AGENT WORKSPACE', PX * 3, H * 0.057);
+    ctx.fillStyle = '#1eaeff';
+    ctx.shadowColor = '#1eaeff';
+    ctx.shadowBlur = 6;
+    ctx.fillText('● KRYTHOR BRIDGE', PX * 3, H * 0.048);
+    ctx.shadowBlur = 0;
+
+    // Stardate
+    const sd = `SD ${(t / 100).toFixed(1)}`;
+    ctx.font = `${PX * 2.5}px "JetBrains Mono", monospace`;
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(255,200,80,0.7)';
+    ctx.fillText(sd, W * 0.5, H * 0.048);
 
     if (isDemo) {
       ctx.textAlign = 'right';
       ctx.fillStyle = '#f59e0b';
-      ctx.fillText('DEMO MODE', W - PX * 3, H * 0.057);
+      ctx.font = `bold ${PX * 3}px "JetBrains Mono", monospace`;
+      ctx.fillText('DEMO MODE', W - PX * 3, H * 0.048);
     }
 
     const focA = agentsRef.current.find(a => a.id === focId);
     if (focA) {
       ctx.textAlign = 'right';
       ctx.fillStyle = (AGENT_PALETTE[focA.id] ?? DEFAULT_PAL).body;
-      ctx.fillText(`◉ ${focA.displayName.toUpperCase()}`, W - PX * 3, H * 0.057);
+      ctx.font = `bold ${PX * 3}px "JetBrains Mono", monospace`;
+      ctx.fillText(`◉ ${focA.displayName.toUpperCase()}`, W - PX * 3, H * 0.048);
     }
 
-    // Corner brackets
-    const bSz = PX * 5;
-    ctx.strokeStyle = 'rgba(30,174,255,0.3)';
+    // Corner brackets (LCARS style)
+    const bSz = PX * 6;
+    ctx.strokeStyle = 'rgba(30,174,255,0.35)';
     ctx.lineWidth = PX * 0.5;
-    [[PX * 2, H * 0.08 + PX * 2, 1, 1], [W - PX * 2, H * 0.08 + PX * 2, -1, 1],
-     [PX * 2, H - PX * 2, 1, -1], [W - PX * 2, H - PX * 2, -1, -1]].forEach(([x, y, sx, sy]) => {
+    const corners: [number, number, number, number][] = [
+      [PX * 2, H * 0.075, 1, 1],
+      [W - PX * 2, H * 0.075, -1, 1],
+      [PX * 2, H - PX * 2, 1, -1],
+      [W - PX * 2, H - PX * 2, -1, -1],
+    ];
+    corners.forEach(([x, y, sx, sy]) => {
       ctx.beginPath();
       ctx.moveTo(x, y + sy * bSz); ctx.lineTo(x, y); ctx.lineTo(x + sx * bSz, y);
       ctx.stroke();
@@ -798,27 +944,57 @@ export function MythicCanvas({
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+
+    let ctx: CanvasRenderingContext2D | null = null;
 
     const resize = () => {
       const dpr = window.devicePixelRatio || 1;
       const rect = canvas.getBoundingClientRect();
-      canvas.width = rect.width * dpr;
-      canvas.height = rect.height * dpr;
-      ctx.scale(dpr, dpr);
-      ctx.imageSmoothingEnabled = false;
+      if (rect.width === 0 || rect.height === 0) return;
+      // Reset wander home positions when canvas resizes so agents reanchor
+      const newW = rect.width;
+      const newH = rect.height;
+      const sr = stateRef.current;
+      Object.keys(sr.wander).forEach(id => {
+        const station = STATION_POSITIONS[id] ?? { fx: 0.5, fy: 0.55 };
+        const hx = station.fx * newW;
+        const hy = station.fy * newH;
+        sr.wander[id].homeX = hx;
+        sr.wander[id].homeY = hy;
+        // Snap to home if near it (avoid drift after resize)
+        const w = sr.wander[id];
+        const dist = Math.hypot(w.x - w.homeX, w.y - w.homeY);
+        if (dist > newW * 0.3) {
+          w.x = hx; w.y = hy;
+          w.targetX = hx; w.targetY = hy;
+        }
+      });
+      // Resize canvas — must set width/height before getting new context scale
+      canvas.width = Math.round(rect.width * dpr);
+      canvas.height = Math.round(rect.height * dpr);
+      ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.imageSmoothingEnabled = false;
+      }
     };
+
     resize();
-    const ro = new ResizeObserver(resize);
+
+    const ro = new ResizeObserver(() => resize());
     ro.observe(canvas);
 
     function loop() {
-      render(canvas!, ctx!);
+      const c = ctx ?? canvas!.getContext('2d');
+      if (c) render(canvas!, c);
       stateRef.current.rafId = requestAnimationFrame(loop);
     }
     stateRef.current.rafId = requestAnimationFrame(loop);
-    return () => { cancelAnimationFrame(stateRef.current.rafId); ro.disconnect(); };
+
+    return () => {
+      cancelAnimationFrame(stateRef.current.rafId);
+      ro.disconnect();
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
