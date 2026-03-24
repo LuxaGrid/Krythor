@@ -262,7 +262,12 @@ function drawBubble(
   ctx.shadowColor = color;
   ctx.shadowBlur = 6;
   ctx.beginPath();
-  ctx.roundRect(bx, by, bw, bh, PX);
+  // roundRect polyfill — Safari <15.4 and older Chromium lack it
+  if (typeof ctx.roundRect === 'function') {
+    ctx.roundRect(bx, by, bw, bh, PX);
+  } else {
+    ctx.rect(bx, by, bw, bh);
+  }
   ctx.fill();
   ctx.stroke();
   ctx.shadowBlur = 0;
@@ -475,7 +480,7 @@ export function MythicCanvas({
         homeX: hx, homeY: hy,
         walkPhase: Math.random() * Math.PI * 2,
         facing: 1,
-        wanderTimer: Math.floor(Math.random() * 180) + 60,
+        wanderTimer: 180, // 3s grace period — agents start at their desk
         isWalking: false,
       };
     }
@@ -698,8 +703,8 @@ export function MythicCanvas({
         drawBubble(ctx, ax, ay - PX * 16, truncated, pal.body, PX);
       }
 
-      // Celebration sparks
-      if (sr.celebrationAgent === agent.id && sr.celebrationTimer > 0 && Math.random() < 0.5) {
+      // Celebration sparks — capped at 80 total particles
+      if (sr.celebrationAgent === agent.id && sr.celebrationTimer > 0 && Math.random() < 0.5 && sr.particles.length < 80) {
         for (let i = 0; i < 3; i++) {
           const angle = Math.random() * Math.PI * 2;
           const speed = 1.5 + Math.random() * 2;
