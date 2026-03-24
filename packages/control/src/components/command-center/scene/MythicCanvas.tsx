@@ -10,39 +10,328 @@ interface MythicCanvasProps {
   isDemo: boolean;
 }
 
-// ── Particle system ──────────────────────────────────────────────────────────
+// ─── Pixel art palette ────────────────────────────────────────────────────────
+// Each agent has a body color, accent, and skin tone
+const AGENT_PALETTE: Record<string, { body: string; accent: string; skin: string; hair: string }> = {
+  atlas:    { body: '#f59e0b', accent: '#fbbf24', skin: '#fcd9b0', hair: '#92400e' },
+  voltaris: { body: '#1eaeff', accent: '#38bdf8', skin: '#fcd9b0', hair: '#1d4ed8' },
+  aethon:   { body: '#818cf8', accent: '#a5b4fc', skin: '#e8c5a0', hair: '#4c1d95' },
+  thyros:   { body: '#93c5fd', accent: '#bfdbfe', skin: '#fcd9b0', hair: '#1e3a8a' },
+  pyron:    { body: '#fb923c', accent: '#fdba74', skin: '#fcd9b0', hair: '#7c2d12' },
+};
 
-interface Particle {
-  x: number; y: number;
-  vx: number; vy: number;
-  life: number; maxLife: number;
-  size: number;
-  color: string;
-  type: 'spark' | 'rune' | 'bubble' | 'wave' | 'star';
-  angle?: number; angleV?: number;
-  char?: string;
+const DEFAULT_PAL = { body: '#6366f1', accent: '#818cf8', skin: '#fcd9b0', hair: '#3730a3' };
+
+// ─── Pixel drawing helpers ────────────────────────────────────────────────────
+
+function px(
+  ctx: CanvasRenderingContext2D,
+  x: number, y: number,
+  w: number, h: number,
+  color: string,
+  alpha = 1,
+) {
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = color;
+  ctx.fillRect(Math.round(x), Math.round(y), w, h);
+  ctx.globalAlpha = 1;
 }
 
-const RUNE_CHARS = ['⬡', '◈', '◆', '⌘', '⌖', '✦', '❖', '⬟', '◉', '⊕', '⊗', '⋆'];
-const SPARK_CHARS = ['✧', '★', '⁕', '·', '✦'];
+// Draw a pixel-art character sprite (16×24 px block, scaled by `scale`)
+function drawSprite(
+  ctx: CanvasRenderingContext2D,
+  cx: number, cy: number,
+  pal: typeof DEFAULT_PAL,
+  state: string,
+  tick: number,
+  scale: number,
+  focused: boolean,
+) {
+  const s = scale;
+  const ox = cx - 8 * s; // left edge
+  const oy = cy - 24 * s; // top of sprite
 
-function hexToRgb(hex: string): [number, number, number] {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  return [r, g, b];
+  // Walk cycle: bob up 1px every other frame
+  const walk = (state === 'working' || state === 'thinking') && Math.floor(tick / 6) % 2 === 0;
+  const legOpen = Math.floor(tick / 8) % 2 === 0;
+  const yOff = walk ? -s : 0;
+
+  // ── Head (6×6) ─────────────────────────────────────────────────────────────
+  const hx = ox + 5 * s, hy = oy + yOff;
+  // Hair / hat
+  if (state === 'working') {
+    // Hard hat
+    px(ctx, hx - s, hy - 2 * s, 8 * s, 3 * s, '#fbbf24');
+    px(ctx, hx - 2 * s, hy - s, 10 * s, 2 * s, '#f59e0b');
+  } else {
+    px(ctx, hx, hy - s, 6 * s, 2 * s, pal.hair);
+    px(ctx, hx - s, hy, 2 * s, 2 * s, pal.hair);
+  }
+  // Skin
+  px(ctx, hx, hy, 6 * s, 6 * s, pal.skin);
+  // Eyes
+  px(ctx, hx + s, hy + 2 * s, s, s, '#1e293b');
+  px(ctx, hx + 4 * s, hy + 2 * s, s, s, '#1e293b');
+  // Mouth — smile when speaking, flat otherwise
+  if (state === 'speaking') {
+    px(ctx, hx + s, hy + 4 * s, s, s, '#dc2626');
+    px(ctx, hx + 2 * s, hy + 5 * s, 2 * s, s, '#dc2626');
+    px(ctx, hx + 4 * s, hy + 4 * s, s, s, '#dc2626');
+  } else {
+    px(ctx, hx + s, hy + 4 * s, 4 * s, s, '#78716c');
+  }
+
+  // ── Body / shirt (6×7) ─────────────────────────────────────────────────────
+  const bx = ox + 5 * s, by = oy + 6 * s + yOff;
+  px(ctx, bx, by, 6 * s, 7 * s, pal.body);
+  // Collar detail
+  px(ctx, bx + 2 * s, by, 2 * s, 2 * s, pal.accent);
+  // Arms
+  px(ctx, bx - 2 * s, by, 2 * s, 5 * s, pal.skin);
+  px(ctx, bx + 6 * s, by, 2 * s, 5 * s, pal.skin);
+  // Active arm raise (working)
+  if (state === 'working') {
+    px(ctx, bx - 2 * s, by - 2 * s, 2 * s, 3 * s, pal.skin);
+    px(ctx, bx + 6 * s, by - 2 * s, 2 * s, 3 * s, pal.skin);
+  }
+
+  // ── Legs (5×5) ─────────────────────────────────────────────────────────────
+  const lx = ox + 5 * s, ly = oy + 13 * s + yOff;
+  // Pants
+  px(ctx, lx, ly, 6 * s, 4 * s, '#1e3a8a');
+  if (legOpen && walk) {
+    // Left leg forward
+    px(ctx, lx, ly + 4 * s, 2 * s, 3 * s, '#1e3a8a');
+    px(ctx, lx + 4 * s, ly + 3 * s, 2 * s, 4 * s, '#1e3a8a');
+    // Shoes
+    px(ctx, lx - s, ly + 7 * s, 3 * s, 2 * s, '#0f172a');
+    px(ctx, lx + 4 * s, ly + 6 * s, 3 * s, 2 * s, '#0f172a');
+  } else {
+    // Legs together
+    px(ctx, lx + s, ly + 4 * s, 2 * s, 3 * s, '#1e3a8a');
+    px(ctx, lx + 3 * s, ly + 4 * s, 2 * s, 3 * s, '#1e3a8a');
+    // Shoes
+    px(ctx, lx, ly + 6 * s, 3 * s, 2 * s, '#0f172a');
+    px(ctx, lx + 3 * s, ly + 6 * s, 3 * s, 2 * s, '#0f172a');
+  }
+
+  // ── Focus glow outline ─────────────────────────────────────────────────────
+  if (focused) {
+    ctx.save();
+    ctx.strokeStyle = pal.accent;
+    ctx.lineWidth = s * 1.5;
+    ctx.shadowColor = pal.body;
+    ctx.shadowBlur = 12;
+    ctx.strokeRect(ox + 3 * s - 2, oy - 2 * s - 2, 10 * s + 4, 26 * s + 4);
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  }
+
+  // ── State indicator dot ────────────────────────────────────────────────────
+  const dotColor = state === 'working' ? '#4ade80'
+    : state === 'thinking' ? '#a78bfa'
+    : state === 'speaking' ? '#fb923c'
+    : state === 'error' ? '#f87171'
+    : state === 'offline' ? '#52525b'
+    : '#22d3ee';
+  ctx.beginPath();
+  ctx.arc(ox + 14 * s, oy - s, 2 * s, 0, Math.PI * 2);
+  ctx.fillStyle = dotColor;
+  ctx.shadowColor = dotColor;
+  ctx.shadowBlur = 6;
+  ctx.fill();
+  ctx.shadowBlur = 0;
 }
 
-function colorWithAlpha(hex: string, alpha: number): string {
-  try {
-    const [r, g, b] = hexToRgb(hex);
-    return `rgba(${r},${g},${b},${alpha})`;
-  } catch {
-    return hex;
+// Draw a pixel-art desk
+function drawDesk(
+  ctx: CanvasRenderingContext2D,
+  cx: number, cy: number,
+  color: string,
+  s: number,
+  state: string,
+  tick: number,
+) {
+  const dx = cx - 18 * s, dy = cy - 4 * s;
+  const dw = 36 * s, dh = 12 * s;
+
+  // Desk surface
+  px(ctx, dx, dy, dw, dh, '#1e293b');
+  px(ctx, dx, dy, dw, 2 * s, '#334155'); // highlight edge
+  px(ctx, dx, dy + dh - s, dw, s, '#0f172a'); // shadow edge
+
+  // Accent border
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = s;
+  ctx.globalAlpha = 0.5;
+  ctx.strokeRect(dx + s, dy + s, dw - 2 * s, dh - 2 * s);
+  ctx.globalAlpha = 1;
+  ctx.restore();
+
+  // Monitor on desk
+  const mx = cx - 5 * s, my = dy - 10 * s;
+  px(ctx, mx, my, 10 * s, 8 * s, '#0f172a'); // screen bezel
+  px(ctx, mx + s, my + s, 8 * s, 6 * s, '#0c1a2e'); // screen bg
+  // Screen content — scrolling lines if active
+  if (state !== 'idle' && state !== 'offline') {
+    const lineOffset = Math.floor(tick / 4) % 3;
+    for (let i = 0; i < 3; i++) {
+      const ly2 = my + (i + 1) * 2 * s - lineOffset * s;
+      if (ly2 > my + s && ly2 < my + 7 * s) {
+        px(ctx, mx + 2 * s, ly2, (3 + Math.floor(Math.random() * 4)) * s, s, color, 0.7);
+      }
+    }
+  } else {
+    px(ctx, mx + 3 * s, my + 3 * s, 4 * s, s, '#334155');
+  }
+  // Monitor stand
+  px(ctx, cx - s, dy - 2 * s, 2 * s, 2 * s, '#334155');
+  px(ctx, cx - 3 * s, dy - s, 6 * s, s, '#334155');
+
+  // Keyboard
+  px(ctx, cx - 5 * s, dy, 10 * s, 2 * s, '#1e3a5f');
+  px(ctx, cx - 4 * s, dy + s, 8 * s, s, '#172554');
+
+  // Desk legs
+  px(ctx, dx + 2 * s, dy + dh, 3 * s, 4 * s, '#0f172a');
+  px(ctx, dx + dw - 5 * s, dy + dh, 3 * s, 4 * s, '#0f172a');
+}
+
+// Draw a speech/task bubble
+function drawBubble(
+  ctx: CanvasRenderingContext2D,
+  cx: number, cy: number,
+  text: string,
+  color: string,
+  s: number,
+) {
+  ctx.font = `bold ${Math.max(9, s * 5)}px "JetBrains Mono", monospace`;
+  const textW = ctx.measureText(text).width;
+  const pad = 6;
+  const bw = textW + pad * 2;
+  const bh = 18;
+  const bx = cx - bw / 2;
+  const by = cy - bh - 4;
+
+  // Pixel-art box — flat fill + colored border
+  ctx.fillStyle = '#0a0f1e';
+  ctx.fillRect(bx, by, bw, bh);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 6;
+  ctx.strokeRect(bx, by, bw, bh);
+  ctx.shadowBlur = 0;
+
+  // Tail
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(cx - 3, by + bh);
+  ctx.lineTo(cx + 3, by + bh);
+  ctx.lineTo(cx, by + bh + 5);
+  ctx.fill();
+
+  ctx.fillStyle = color;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, cx, by + bh / 2);
+  ctx.textBaseline = 'alphabetic';
+}
+
+// Draw tiled floor
+function drawFloor(ctx: CanvasRenderingContext2D, W: number, H: number, tileSize: number) {
+  const cols = Math.ceil(W / tileSize) + 1;
+  const rows = Math.ceil(H / tileSize) + 1;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const x = c * tileSize;
+      const y = r * tileSize;
+      const dark = (r + c) % 2 === 0;
+      ctx.fillStyle = dark ? '#0a0e1a' : '#0c1120';
+      ctx.fillRect(x, y, tileSize, tileSize);
+    }
+  }
+  // Grid lines
+  ctx.strokeStyle = 'rgba(30,174,255,0.06)';
+  ctx.lineWidth = 0.5;
+  for (let c = 0; c <= cols; c++) {
+    ctx.beginPath();
+    ctx.moveTo(c * tileSize, 0);
+    ctx.lineTo(c * tileSize, H);
+    ctx.stroke();
+  }
+  for (let r = 0; r <= rows; r++) {
+    ctx.beginPath();
+    ctx.moveTo(0, r * tileSize);
+    ctx.lineTo(W, r * tileSize);
+    ctx.stroke();
   }
 }
 
-// ── Main canvas renderer ─────────────────────────────────────────────────────
+// Draw pixel decorations — plants, servers, etc.
+function drawProps(ctx: CanvasRenderingContext2D, W: number, H: number, s: number, tick: number) {
+  // Corner plant (bottom-left)
+  const px2 = (x: number, y: number, w: number, h: number, c: string, a = 1) => {
+    ctx.globalAlpha = a;
+    ctx.fillStyle = c;
+    ctx.fillRect(Math.round(x), Math.round(y), w, h);
+    ctx.globalAlpha = 1;
+  };
+
+  // Plant top-left
+  const p1x = 18, p1y = H * 0.12;
+  px2(p1x + 4 * s, p1y + 6 * s, 2 * s, 6 * s, '#166534'); // stem
+  px2(p1x, p1y, 5 * s, 6 * s, '#15803d'); // leaf left
+  px2(p1x + 5 * s, p1y + 2 * s, 5 * s, 5 * s, '#16a34a'); // leaf right
+  px2(p1x + 2 * s, p1y + 3 * s, 4 * s, 4 * s, '#22c55e'); // center
+  px2(p1x + 3 * s, p1y + 12 * s, 4 * s, 4 * s, '#92400e'); // pot
+
+  // Plant top-right
+  const p2x = W - 30, p2y = H * 0.12;
+  px2(p2x + 4 * s, p2y + 6 * s, 2 * s, 6 * s, '#166534');
+  px2(p2x, p2y + 2 * s, 5 * s, 5 * s, '#15803d');
+  px2(p2x + 5 * s, p2y, 5 * s, 6 * s, '#16a34a');
+  px2(p2x + 2 * s, p2y + 3 * s, 4 * s, 4 * s, '#22c55e');
+  px2(p2x + 3 * s, p2y + 12 * s, 4 * s, 4 * s, '#92400e');
+
+  // Server rack bottom-left
+  const sx = 14, sy = H * 0.55;
+  px2(sx, sy, 16 * s, 22 * s, '#0f172a');
+  px2(sx + s, sy + s, 14 * s, 20 * s, '#1e293b');
+  for (let i = 0; i < 5; i++) {
+    const ry = sy + 2 * s + i * 4 * s;
+    px2(sx + 2 * s, ry, 10 * s, 3 * s, '#0c1a2e');
+    const blinkOn = Math.floor(tick / (8 + i * 3)) % 2 === 0;
+    px2(sx + 11 * s, ry + s, 2 * s, s, blinkOn ? '#4ade80' : '#166534');
+  }
+
+  // Couch / lounge area (bottom center)
+  const cx2 = W / 2, cy2 = H * 0.88;
+  px2(cx2 - 26 * s, cy2, 52 * s, 10 * s, '#1e3a5f'); // base
+  px2(cx2 - 28 * s, cy2 - 8 * s, 8 * s, 8 * s, '#1d4ed8'); // left arm
+  px2(cx2 + 20 * s, cy2 - 8 * s, 8 * s, 8 * s, '#1d4ed8'); // right arm
+  px2(cx2 - 26 * s, cy2 - 8 * s, 52 * s, 4 * s, '#2563eb'); // back
+  px2(cx2 - 22 * s, cy2 - 5 * s, 44 * s, 6 * s, '#3b82f6'); // seat cushion
+
+  // Circular rug under couch
+  ctx.save();
+  ctx.globalAlpha = 0.18;
+  ctx.fillStyle = '#6366f1';
+  ctx.beginPath();
+  ctx.ellipse(cx2, cy2 + 6 * s, 30 * s, 10 * s, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+// ─── Particle system ─────────────────────────────────────────────────────────
+
+interface Particle {
+  x: number; y: number; vx: number; vy: number;
+  life: number; color: string; size: number; type: 'spark' | 'pixel';
+}
+
+// ─── Main canvas component ────────────────────────────────────────────────────
 
 export function MythicCanvas({
   agents, zones, focusedAgentId, onFocusAgent, memoryPulseAgentId, isDemo,
@@ -51,871 +340,314 @@ export function MythicCanvas({
   const stateRef = useRef({
     tick: 0,
     particles: [] as Particle[],
-    stars: [] as { x: number; y: number; r: number; twinkle: number }[],
-    starsReady: false,
+    rafId: 0,
     prevStates: {} as Record<string, string>,
-    agentBobPhase: {} as Record<string, number>,
-    agentBobOffset: {} as Record<string, number>,
     celebrationAgent: null as string | null,
     celebrationTimer: 0,
-    memoryPulseTimer: 0,
-    memoryPulseAgent: null as string | null,
-    rafId: 0,
-    lastFocusedId: null as string | null,
+    memPulseTimer: 0,
+    memPulseAgent: null as string | null,
+    scale: 1,
   });
   const focusRef = useRef(focusedAgentId);
   const agentsRef = useRef(agents);
   const zonesRef = useRef(zones);
-  const memPulseRef = useRef(memoryPulseAgentId);
 
   focusRef.current = focusedAgentId;
   agentsRef.current = agents;
   zonesRef.current = zones;
 
-  // Track memory pulse
   useEffect(() => {
-    if (memoryPulseAgentId && memoryPulseAgentId !== stateRef.current.memoryPulseAgent) {
-      stateRef.current.memoryPulseAgent = memoryPulseAgentId;
-      stateRef.current.memoryPulseTimer = 90;
+    if (memoryPulseAgentId && memoryPulseAgentId !== stateRef.current.memPulseAgent) {
+      stateRef.current.memPulseAgent = memoryPulseAgentId;
+      stateRef.current.memPulseTimer = 90;
     }
-    memPulseRef.current = memoryPulseAgentId;
   }, [memoryPulseAgentId]);
 
-  // Track celebrations (TASK_COMPLETED transitions)
   useEffect(() => {
     agents.forEach(a => {
       const prev = stateRef.current.prevStates[a.id];
       if (prev === 'working' && (a.currentState === 'idle' || a.currentState === 'listening')) {
         stateRef.current.celebrationAgent = a.id;
-        stateRef.current.celebrationTimer = 80;
+        stateRef.current.celebrationTimer = 60;
       }
       stateRef.current.prevStates[a.id] = a.currentState;
-      if (!(a.id in stateRef.current.agentBobPhase)) {
-        stateRef.current.agentBobPhase[a.id] = Math.random() * Math.PI * 2;
-      }
     });
   }, [agents]);
 
-  // Click handler
+  // Click hit-test
   const handleClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
     const mx = (e.clientX - rect.left) * (canvas.width / rect.width);
     const my = (e.clientY - rect.top) * (canvas.height / rect.height);
-    const W = canvas.width, H = canvas.height;
+    const W = canvas.width / window.devicePixelRatio;
+    const H = canvas.height / window.devicePixelRatio;
+    const dpr = window.devicePixelRatio;
+    const mxl = mx / dpr, myl = my / dpr;
 
     for (const agent of agentsRef.current) {
       const ax = (agent.position.x / 100) * W;
       const ay = (agent.position.y / 100) * H;
-      const bob = stateRef.current.agentBobOffset[agent.id] ?? 0;
-      const dist = Math.hypot(mx - ax, my - (ay + bob));
-      if (dist < 36) {
-        const current = focusRef.current;
-        onFocusAgent(current === agent.id ? null : agent.id);
+      if (Math.hypot(mxl - ax, myl - ay) < 32) {
+        onFocusAgent(focusRef.current === agent.id ? null : agent.id);
         return;
       }
     }
     onFocusAgent(null);
   }, [onFocusAgent]);
 
-  // Spawn particles
-  function spawnParticles(
-    s: typeof stateRef.current,
-    agent: CommandCenterAgent,
-    ax: number, ay: number,
-    bobOffset: number,
-  ) {
-    const cy = ay + bobOffset;
-    const color = agent.themeColor;
-    const state = agent.currentState;
-    const rate = state === 'working' ? 0.6 : state === 'thinking' ? 0.3 : state === 'speaking' ? 0.4 : 0.05;
-    if (Math.random() > rate) return;
-
-    if (state === 'working') {
-      // Sparks
-      const count = Math.floor(Math.random() * 3) + 1;
-      for (let i = 0; i < count; i++) {
-        const angle = Math.random() * Math.PI * 2;
-        const speed = 0.8 + Math.random() * 2;
-        s.particles.push({
-          x: ax + (Math.random() - 0.5) * 20,
-          y: cy + (Math.random() - 0.5) * 20,
-          vx: Math.cos(angle) * speed,
-          vy: Math.sin(angle) * speed - 1.5,
-          life: 1, maxLife: 1,
-          size: 1.5 + Math.random() * 2,
-          color,
-          type: 'spark',
-          char: SPARK_CHARS[Math.floor(Math.random() * SPARK_CHARS.length)],
-        });
-      }
-    } else if (state === 'thinking') {
-      // Orbiting rune
+  // Spawn celebration sparks
+  function spawnSparks(s: typeof stateRef.current, agent: CommandCenterAgent, ax: number, ay: number) {
+    if (s.celebrationAgent !== agent.id || s.celebrationTimer <= 0) return;
+    for (let i = 0; i < 4; i++) {
       const angle = Math.random() * Math.PI * 2;
-      const r = 28 + Math.random() * 14;
+      const speed = 1.5 + Math.random() * 2.5;
       s.particles.push({
-        x: ax + Math.cos(angle) * r,
-        y: cy + Math.sin(angle) * r * 0.55,
-        vx: 0, vy: 0,
-        life: 1, maxLife: 1,
-        size: 9,
-        color,
-        type: 'rune',
-        angle,
-        angleV: (0.015 + Math.random() * 0.01) * (Math.random() < 0.5 ? 1 : -1),
-        char: RUNE_CHARS[Math.floor(Math.random() * RUNE_CHARS.length)],
+        x: ax, y: ay,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 2,
+        life: 1,
+        color: agent.themeColor,
+        size: 3 + Math.random() * 3,
+        type: 'pixel',
       });
-    } else if (state === 'speaking') {
-      // Concentric wave ring
-      s.particles.push({
-        x: ax, y: cy,
-        vx: 0, vy: 0,
-        life: 1, maxLife: 1,
-        size: 10,
-        color,
-        type: 'wave',
-      });
-    } else if (state === 'idle') {
-      // Gentle floating bubble
-      if (Math.random() < 0.04) {
-        s.particles.push({
-          x: ax + (Math.random() - 0.5) * 30,
-          y: cy + 10 + Math.random() * 20,
-          vx: (Math.random() - 0.5) * 0.3,
-          vy: -(0.3 + Math.random() * 0.4),
-          life: 1, maxLife: 1,
-          size: 2 + Math.random() * 3,
-          color,
-          type: 'bubble',
-        });
-      }
     }
   }
 
-  // Draw a mythic agent glyph at (cx, cy)
-  function drawAgent(
-    ctx: CanvasRenderingContext2D,
-    agent: CommandCenterAgent,
-    cx: number, cy: number,
-    focused: boolean,
-    dimmed: boolean,
-    memPulse: boolean,
-    celebrating: boolean,
-    tick: number,
-  ) {
-    const alpha = dimmed ? 0.18 : 1;
-    ctx.save();
-    ctx.globalAlpha = alpha;
-
-    const color = agent.themeColor;
-    const state = agent.currentState;
-    const t = tick;
-
-    // ── Outer aura ring (state-dependent) ──────────────────────────────────
-    const auraR = state === 'working' ? 32 + Math.sin(t * 0.12) * 4
-      : state === 'thinking' ? 28
-      : state === 'speaking' ? 30 + Math.sin(t * 0.18) * 6
-      : state === 'idle' ? 24
-      : 22;
-
-    if (state !== 'offline') {
-      const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, auraR + 12);
-      grad.addColorStop(0, colorWithAlpha(color, state === 'working' ? 0.22 : 0.1));
-      grad.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.beginPath();
-      ctx.arc(cx, cy, auraR + 12, 0, Math.PI * 2);
-      ctx.fillStyle = grad;
-      ctx.fill();
-    }
-
-    // ── Platform base ───────────────────────────────────────────────────────
-    const zone = zonesRef.current.find(z => z.id === agent.homeZone);
-    const zoneColor = zone?.accentColor ?? color;
-    const platW = 70;
-    const platY = cy + 28;
-    const platGrad = ctx.createLinearGradient(cx - platW / 2, platY, cx + platW / 2, platY);
-    platGrad.addColorStop(0, 'rgba(0,0,0,0)');
-    platGrad.addColorStop(0.2, colorWithAlpha(zoneColor, 0.25));
-    platGrad.addColorStop(0.5, colorWithAlpha(zoneColor, 0.4));
-    platGrad.addColorStop(0.8, colorWithAlpha(zoneColor, 0.25));
-    platGrad.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.beginPath();
-    ctx.rect(cx - platW / 2, platY, platW, 2);
-    ctx.fillStyle = platGrad;
-    ctx.fill();
-    // Platform glow
-    ctx.shadowColor = zoneColor;
-    ctx.shadowBlur = 8;
-    ctx.fill();
-    ctx.shadowBlur = 0;
-
-    // ── Role-specific body glyph ────────────────────────────────────────────
-    drawRoleGlyph(ctx, agent, cx, cy, color, state, t, auraR);
-
-    // ── Focus ring ─────────────────────────────────────────────────────────
-    if (focused) {
-      ctx.beginPath();
-      ctx.arc(cx, cy, auraR + 2, 0, Math.PI * 2);
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 1.5;
-      ctx.shadowColor = color;
-      ctx.shadowBlur = 12;
-      ctx.stroke();
-      ctx.shadowBlur = 0;
-    }
-
-    // ── Memory recall pulse ─────────────────────────────────────────────────
-    if (memPulse) {
-      const pAlpha = 0.7;
-      ctx.beginPath();
-      ctx.arc(cx, cy, auraR + 18, 0, Math.PI * 2);
-      ctx.strokeStyle = `rgba(147,197,253,${pAlpha})`;
-      ctx.lineWidth = 2;
-      ctx.shadowColor = '#93c5fd';
-      ctx.shadowBlur = 20;
-      ctx.stroke();
-      ctx.shadowBlur = 0;
-    }
-
-    // ── Celebration burst (task complete) ──────────────────────────────────
-    if (celebrating) {
-      for (let i = 0; i < 8; i++) {
-        const a = (i / 8) * Math.PI * 2;
-        const r2 = auraR + 24;
-        ctx.beginPath();
-        ctx.arc(cx + Math.cos(a) * r2, cy + Math.sin(a) * r2, 3, 0, Math.PI * 2);
-        ctx.fillStyle = color;
-        ctx.shadowColor = color;
-        ctx.shadowBlur = 8;
-        ctx.fill();
-        ctx.shadowBlur = 0;
-      }
-    }
-
-    // ── Name label ─────────────────────────────────────────────────────────
-    ctx.shadowBlur = 0;
-    ctx.font = 'bold 11px "JetBrains Mono", monospace';
-    ctx.textAlign = 'center';
-    ctx.fillStyle = state === 'offline' ? '#3f3f46' : color;
-    ctx.fillText(agent.displayName.toUpperCase(), cx, cy + 48);
-
-    // State label
-    ctx.font = '9px "JetBrains Mono", monospace';
-    ctx.fillStyle = 'rgba(255,255,255,0.32)';
-    ctx.fillText(state, cx, cy + 60);
-
-    // LC/RM badge
-    if (state !== 'offline' && agent.localOrRemote !== 'unknown') {
-      const badge = agent.localOrRemote === 'local' ? 'LC' : 'RM';
-      const badgeColor = agent.localOrRemote === 'local' ? '#4ade80' : '#facc15';
-      ctx.font = 'bold 7px "JetBrains Mono", monospace';
-      ctx.fillStyle = badgeColor;
-      ctx.fillText(badge, cx + 22, cy + 16);
-    }
-
-    ctx.restore();
-  }
-
-  function drawRoleGlyph(
-    ctx: CanvasRenderingContext2D,
-    agent: CommandCenterAgent,
-    cx: number, cy: number,
-    color: string,
-    state: string,
-    t: number,
-    _auraR: number,
-  ) {
-    const working = state === 'working';
-    const thinking = state === 'thinking';
-    const speaking = state === 'speaking';
-    const offline = state === 'offline';
-    const err = state === 'error';
-    const bodyAlpha = offline ? 0.15 : 1;
-    const activeColor = err ? '#f87171' : color;
-    const pulseR = working ? 4 + Math.sin(t * 0.2) * 1.5
-      : thinking ? 3.5 + Math.sin(t * 0.12) * 1
-      : 3;
-
-    ctx.save();
-    ctx.globalAlpha *= bodyAlpha;
-    ctx.lineJoin = 'round';
-
-    switch (agent.role) {
-      case 'orchestrator': {
-        // Crown + hexagon
-        // Crown arch
-        ctx.beginPath();
-        ctx.moveTo(cx - 16, cy - 10);
-        ctx.lineTo(cx - 14, cy - 18);
-        ctx.lineTo(cx, cy - 22);
-        ctx.lineTo(cx + 14, cy - 18);
-        ctx.lineTo(cx + 16, cy - 10);
-        ctx.strokeStyle = colorWithAlpha(activeColor, offline ? 0.2 : 0.7);
-        ctx.lineWidth = 1.5;
-        ctx.shadowColor = activeColor;
-        ctx.shadowBlur = speaking ? 14 : working ? 10 : 6;
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-
-        // Hexagon body
-        ctx.beginPath();
-        for (let i = 0; i < 6; i++) {
-          const a = (i / 6) * Math.PI * 2 - Math.PI / 6;
-          const r = 16;
-          if (i === 0) ctx.moveTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
-          else ctx.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
-        }
-        ctx.closePath();
-        ctx.fillStyle = colorWithAlpha(activeColor, 0.08);
-        ctx.fill();
-        ctx.strokeStyle = colorWithAlpha(activeColor, 0.8);
-        ctx.lineWidth = 1.5;
-        ctx.shadowColor = activeColor;
-        ctx.shadowBlur = working ? 12 : 5;
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-
-        // Core orb
-        ctx.beginPath();
-        ctx.arc(cx, cy, pulseR, 0, Math.PI * 2);
-        ctx.fillStyle = activeColor;
-        ctx.shadowColor = activeColor;
-        ctx.shadowBlur = 18;
-        ctx.fill();
-        ctx.shadowBlur = 0;
-
-        // Speaking halo
-        if (speaking) {
-          const waveR = 20 + ((t * 2) % 24);
-          ctx.beginPath();
-          ctx.arc(cx, cy, waveR, 0, Math.PI * 2);
-          ctx.strokeStyle = colorWithAlpha(activeColor, Math.max(0, 1 - waveR / 44));
-          ctx.lineWidth = 1;
-          ctx.stroke();
-        }
-        break;
-      }
-
-      case 'builder': {
-        // Diamond with spikes
-        const pts: [number, number][] = [[cx, cy - 18], [cx + 14, cy], [cx, cy + 18], [cx - 14, cy]];
-        ctx.beginPath();
-        pts.forEach(([x, y], i) => { if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); });
-        ctx.closePath();
-        ctx.fillStyle = colorWithAlpha(activeColor, 0.1);
-        ctx.fill();
-        ctx.strokeStyle = colorWithAlpha(activeColor, 0.85);
-        ctx.lineWidth = 1.5;
-        ctx.shadowColor = activeColor;
-        ctx.shadowBlur = working ? 14 : 5;
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-
-        // Spikes
-        const spikeAlpha = working ? 0.9 : 0.3;
-        ctx.strokeStyle = colorWithAlpha(activeColor, spikeAlpha);
-        ctx.lineWidth = 1.2;
-        [[cx - 14, cy, cx - 20, cy - 4], [cx - 14, cy, cx - 20, cy + 4],
-         [cx + 14, cy, cx + 20, cy - 4], [cx + 14, cy, cx + 20, cy + 4]].forEach(([x1, y1, x2, y2]) => {
-          ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
-        });
-
-        // Core
-        const coreR = err ? 5 : pulseR;
-        ctx.save();
-        ctx.translate(cx, cy);
-        ctx.rotate(Math.PI / 4 + (working ? t * 0.04 : 0));
-        ctx.fillStyle = activeColor;
-        ctx.shadowColor = activeColor;
-        ctx.shadowBlur = 14;
-        ctx.fillRect(-coreR, -coreR, coreR * 2, coreR * 2);
-        ctx.shadowBlur = 0;
-        ctx.restore();
-        break;
-      }
-
-      case 'researcher': {
-        // Eye / lens form
-        ctx.beginPath();
-        ctx.ellipse(cx, cy, 20, 12, 0, 0, Math.PI * 2);
-        ctx.fillStyle = colorWithAlpha(activeColor, 0.08);
-        ctx.fill();
-        ctx.strokeStyle = colorWithAlpha(activeColor, 0.8);
-        ctx.lineWidth = 1.5;
-        ctx.shadowColor = activeColor;
-        ctx.shadowBlur = working ? 12 : 5;
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-
-        // Iris ring — spins when thinking/working
-        ctx.save();
-        ctx.translate(cx, cy);
-        if (thinking || working) ctx.rotate(t * (working ? 0.06 : 0.025));
-        ctx.beginPath();
-        ctx.arc(0, 0, 7, 0, Math.PI * 2);
-        ctx.strokeStyle = colorWithAlpha(activeColor, 0.5);
-        ctx.setLineDash([2, 3]);
-        ctx.lineWidth = 0.8;
-        ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.restore();
-
-        // Pupil
-        ctx.beginPath();
-        ctx.arc(cx, cy, pulseR, 0, Math.PI * 2);
-        ctx.fillStyle = activeColor;
-        ctx.shadowColor = activeColor;
-        ctx.shadowBlur = 16;
-        ctx.fill();
-        ctx.shadowBlur = 0;
-
-        // Orbiting data fragments
-        const fragCount = 2;
-        for (let i = 0; i < fragCount; i++) {
-          const fa = t * 0.04 + (i / fragCount) * Math.PI * 2;
-          const fr = 22;
-          ctx.fillStyle = colorWithAlpha(activeColor, working ? 0.8 : 0.35);
-          ctx.fillRect(
-            cx + Math.cos(fa) * fr - 2,
-            cy + Math.sin(fa) * fr * 0.5 - 1.5,
-            4, 3,
-          );
-        }
-        break;
-      }
-
-      case 'archivist': {
-        // Layered memory pillar (stacked slabs)
-        const slabs = [
-          { y: cy - 16, w: 28, h: 5, op: working ? 0.9 : 0.7 },
-          { y: cy - 8, w: 24, h: 5, op: working ? 0.8 : 0.55 },
-          { y: cy + 0, w: 20, h: 5, op: working ? 0.7 : 0.4 },
-          { y: cy + 8, w: 16, h: 4, op: working ? 0.5 : 0.25 },
-        ];
-        slabs.forEach(({ y, w, h, op }, i) => {
-          ctx.fillStyle = colorWithAlpha(activeColor, 0.12);
-          ctx.strokeStyle = colorWithAlpha(activeColor, op);
-          ctx.lineWidth = 1;
-          ctx.shadowColor = activeColor;
-          ctx.shadowBlur = (working || thinking) ? 6 : 2;
-          const rx = cx - w / 2;
-          ctx.beginPath();
-          ctx.roundRect(rx, y, w, h, 2);
-          ctx.fill();
-          ctx.stroke();
-          ctx.shadowBlur = 0;
-          // Delay flicker
-          if ((working || thinking) && Math.sin(t * 0.1 + i * 1.2) > 0.3) {
-            ctx.fillStyle = colorWithAlpha(activeColor, 0.08);
-            ctx.fill();
-          }
-        });
-
-        // Spine
-        ctx.beginPath();
-        ctx.moveTo(cx, cy - 16);
-        ctx.lineTo(cx, cy + 12);
-        ctx.strokeStyle = colorWithAlpha(activeColor, 0.3);
-        ctx.setLineDash([1, 4]);
-        ctx.lineWidth = 0.8;
-        ctx.stroke();
-        ctx.setLineDash([]);
-
-        // Top orb
-        ctx.beginPath();
-        ctx.arc(cx, cy - 13, pulseR, 0, Math.PI * 2);
-        ctx.fillStyle = activeColor;
-        ctx.shadowColor = activeColor;
-        ctx.shadowBlur = 14;
-        ctx.fill();
-        ctx.shadowBlur = 0;
-        break;
-      }
-
-      case 'monitor': {
-        // Warning diamond with scan arc
-        const dPts: [number, number][] = [
-          [cx, cy - 18], [cx + 16, cy], [cx, cy + 16], [cx - 16, cy],
-        ];
-        ctx.beginPath();
-        dPts.forEach(([x, y], i) => { if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); });
-        ctx.closePath();
-        ctx.fillStyle = colorWithAlpha(activeColor, 0.1);
-        ctx.fill();
-        ctx.strokeStyle = colorWithAlpha(activeColor, 0.85);
-        ctx.lineWidth = 1.5;
-        ctx.shadowColor = activeColor;
-        ctx.shadowBlur = err ? 20 : working ? 12 : 5;
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-
-        // Scan arc — rotates
-        ctx.save();
-        ctx.translate(cx, cy);
-        ctx.rotate(t * (working ? 0.09 : 0.03));
-        ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.lineTo(14, -6);
-        ctx.strokeStyle = colorWithAlpha(activeColor, working ? 0.9 : 0.5);
-        ctx.lineWidth = working ? 1.8 : 1;
-        ctx.shadowColor = activeColor;
-        ctx.shadowBlur = 6;
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-        ctx.restore();
-
-        // Alert core
-        const errR = err ? 6 : pulseR;
-        ctx.beginPath();
-        ctx.arc(cx, cy, errR, 0, Math.PI * 2);
-        ctx.fillStyle = activeColor;
-        ctx.shadowColor = activeColor;
-        ctx.shadowBlur = 16;
-        ctx.fill();
-        ctx.shadowBlur = 0;
-        break;
-      }
-    }
-    ctx.restore();
-  }
-
-  // Draw connection beam from Atlas to agent
-  function drawBeam(
-    ctx: CanvasRenderingContext2D,
-    x1: number, y1: number,
-    x2: number, y2: number,
-    color: string,
-    isActive: boolean,
-    tick: number,
-  ) {
-    const midX = (x1 + x2) / 2 + (x2 > x1 ? -1 : 1) * Math.abs(y2 - y1) * 0.08;
-    const midY = (y1 + y2) / 2 - Math.abs(x2 - x1) * 0.06;
-
-    // Ghost line — always
-    ctx.beginPath();
-    ctx.moveTo(x1, y1);
-    ctx.quadraticCurveTo(midX, midY, x2, y2);
-    ctx.strokeStyle = isActive
-      ? colorWithAlpha(color, 0.15)
-      : 'rgba(30,174,255,0.05)';
-    ctx.lineWidth = isActive ? 1 : 0.5;
-    ctx.stroke();
-
-    if (isActive) {
-      // Animated energy dash
-      const dashLen = 8, gapLen = 20;
-      const speed = 2.5;
-      const offset = (tick * speed) % (dashLen + gapLen);
-
-      ctx.beginPath();
-      ctx.moveTo(x1, y1);
-      ctx.quadraticCurveTo(midX, midY, x2, y2);
-      ctx.strokeStyle = colorWithAlpha(color, 0.75);
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([dashLen, gapLen]);
-      ctx.lineDashOffset = -offset;
-      ctx.shadowColor = color;
-      ctx.shadowBlur = 6;
-      ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.shadowBlur = 0;
-      ctx.lineDashOffset = 0;
-
-      // Endpoint dot
-      ctx.beginPath();
-      ctx.arc(x2, y2, 3, 0, Math.PI * 2);
-      ctx.fillStyle = color;
-      ctx.shadowColor = color;
-      ctx.shadowBlur = 10;
-      ctx.fill();
-      ctx.shadowBlur = 0;
-    }
-  }
-
-  // Render a single frame
   function render(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D) {
-    const s = stateRef.current;
-    const W = canvas.width, H = canvas.height;
-    s.tick++;
-    const t = s.tick;
+    const sr = stateRef.current;
+    sr.tick++;
+    const t = sr.tick;
+    const W = canvas.width / window.devicePixelRatio;
+    const H = canvas.height / window.devicePixelRatio;
 
-    // ── Background ─────────────────────────────────────────────────────────
-    ctx.clearRect(0, 0, W, H);
-    const bgGrad = ctx.createRadialGradient(W / 2, H * 0.45, 0, W / 2, H * 0.45, W * 0.7);
-    bgGrad.addColorStop(0, '#0d1220');
-    bgGrad.addColorStop(0.5, '#090c16');
-    bgGrad.addColorStop(1, '#060810');
-    ctx.fillStyle = bgGrad;
-    ctx.fillRect(0, 0, W, H);
+    // Pixel scale — base tile is ~2px at 800px wide
+    const s = Math.max(1, Math.round(W / 400));
+    sr.scale = s;
+    const tileSize = 32;
 
-    // ── Stars ──────────────────────────────────────────────────────────────
-    if (!s.starsReady) {
-      s.stars = Array.from({ length: 80 }, () => ({
-        x: Math.random() * W,
-        y: Math.random() * H * 0.7,
-        r: 0.5 + Math.random() * 1.2,
-        twinkle: Math.random() * Math.PI * 2,
-      }));
-      s.starsReady = true;
-    }
-    s.stars.forEach(star => {
-      star.twinkle += 0.02;
-      const alpha = 0.1 + Math.abs(Math.sin(star.twinkle)) * 0.35;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // ── Floor tiles ──────────────────────────────────────────────────────────
+    drawFloor(ctx, W, H, tileSize);
+
+    // ── Top wall / ceiling strip ─────────────────────────────────────────────
+    ctx.fillStyle = '#060a14';
+    ctx.fillRect(0, 0, W, H * 0.08);
+    ctx.fillStyle = '#0d1526';
+    ctx.fillRect(0, H * 0.08, W, 3);
+
+    // ── Props (plants, server, couch) ────────────────────────────────────────
+    drawProps(ctx, W, H, s, t);
+
+    // ── Zone labels (wall-mounted station signs) ─────────────────────────────
+    zonesRef.current.forEach(zone => {
+      const zx = (zone.position.x / 100) * W;
+      const zy = (zone.position.y / 100) * H;
+      const agent = agentsRef.current.find(a => a.homeZone === zone.id);
+      const isActive = agent && agent.currentState !== 'idle' && agent.currentState !== 'offline';
+
+      // Station platform glow on floor
+      ctx.save();
+      ctx.globalAlpha = isActive ? 0.15 : 0.07;
+      const grd = ctx.createRadialGradient(zx, zy + 8 * s, 0, zx, zy + 8 * s, 40 * s);
+      grd.addColorStop(0, zone.accentColor);
+      grd.addColorStop(1, 'transparent');
+      ctx.fillStyle = grd;
       ctx.beginPath();
-      ctx.arc(star.x, star.y, star.r, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(200,220,255,${alpha})`;
+      ctx.ellipse(zx, zy + 14 * s, 32 * s, 10 * s, 0, 0, Math.PI * 2);
       ctx.fill();
+      ctx.restore();
+
+      // Zone label above desk
+      ctx.font = `bold ${Math.max(8, s * 5)}px "JetBrains Mono", monospace`;
+      ctx.textAlign = 'center';
+      ctx.fillStyle = zone.accentColor;
+      ctx.globalAlpha = isActive ? 0.9 : 0.45;
+      ctx.shadowColor = zone.accentColor;
+      ctx.shadowBlur = isActive ? 8 : 0;
+      ctx.fillText(zone.label.toUpperCase(), zx, zy - 52 * s);
+      ctx.shadowBlur = 0;
+      ctx.globalAlpha = 1;
     });
 
-    // ── Perspective grid ───────────────────────────────────────────────────
-    ctx.save();
-    ctx.globalAlpha = 0.12;
-    const VPX = W / 2, VPY = H * 0.18;
-    const gridColor = 'rgba(30,174,255,1)';
-    // Horizontals
-    [0.35, 0.5, 0.62, 0.72, 0.8, 0.87, 0.93, 0.97, 1.0].forEach((frac, i) => {
-      const y = H * frac;
-      const t2 = (frac - 0.35) / 0.65;
-      const xL = W * 0 + (VPX - W * 0) * (1 - t2);
-      const xR = W * 1 - (W * 1 - VPX) * (1 - t2);
-      ctx.beginPath();
-      ctx.moveTo(Math.max(0, xL), y);
-      ctx.lineTo(Math.min(W, xR), y);
-      ctx.strokeStyle = gridColor;
-      ctx.lineWidth = 0.5 + i * 0.1;
-      ctx.stroke();
-    });
-    // Verticals (converging to vanishing point)
-    [-3, -2, -1, 0, 1, 2, 3].forEach(i => {
-      const xBot = VPX + i * (W / 7) * 0.9;
-      ctx.beginPath();
-      ctx.moveTo(VPX, VPY);
-      ctx.lineTo(xBot, H);
-      ctx.strokeStyle = gridColor;
-      ctx.lineWidth = 0.4;
-      ctx.stroke();
-    });
-    ctx.restore();
-
-    // ── Atlas ambient glow (center aura) ────────────────────────────────────
-    const atlas = agentsRef.current.find(a => a.id === 'atlas');
-    if (atlas) {
-      const ax = (atlas.position.x / 100) * W;
-      const ay = (atlas.position.y / 100) * H;
-      const aGrad = ctx.createRadialGradient(ax, ay, 0, ax, ay, H * 0.4);
-      const atlasActive = atlas.currentState !== 'idle' && atlas.currentState !== 'offline';
-      aGrad.addColorStop(0, `rgba(245,158,11,${atlasActive ? 0.08 : 0.04})`);
-      aGrad.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = aGrad;
-      ctx.fillRect(0, 0, W, H);
-    }
-
-    // ── Connection beams ────────────────────────────────────────────────────
-    if (atlas) {
-      const ax = (atlas.position.x / 100) * W;
-      const ay = (atlas.position.y / 100) * H + (s.agentBobOffset[atlas.id] ?? 0);
-      agentsRef.current.filter(a => a.id !== 'atlas').forEach(agent => {
-        const bx = (agent.position.x / 100) * W;
-        const by = (agent.position.y / 100) * H + (s.agentBobOffset[agent.id] ?? 0);
-        const isActive = agent.currentState !== 'idle' && agent.currentState !== 'offline';
-        drawBeam(ctx, ax, ay, bx, by, agent.themeColor, isActive, t);
-      });
-    }
-
-    // ── Particles ──────────────────────────────────────────────────────────
-    // Spawn
+    // ── Desks ────────────────────────────────────────────────────────────────
     agentsRef.current.forEach(agent => {
       const ax = (agent.position.x / 100) * W;
       const ay = (agent.position.y / 100) * H;
-      spawnParticles(s, agent, ax, ay, s.agentBobOffset[agent.id] ?? 0);
+      const pal = AGENT_PALETTE[agent.id] ?? DEFAULT_PAL;
+      drawDesk(ctx, ax, ay + 14 * s, pal.body, s, agent.currentState, t);
     });
 
-    // Update + draw
-    s.particles = s.particles.filter(p => p.life > 0);
-    s.particles.forEach(p => {
-      p.life -= 1 / 55;
+    // ── Connection lines (beams on floor) ────────────────────────────────────
+    const atlas = agentsRef.current.find(a => a.id === 'atlas');
+    if (atlas) {
+      const ax = (atlas.position.x / 100) * W;
+      const ay = (atlas.position.y / 100) * H + 18 * s;
+      agentsRef.current.filter(a => a.id !== 'atlas').forEach(agent => {
+        const bx = (agent.position.x / 100) * W;
+        const by = (agent.position.y / 100) * H + 18 * s;
+        const isActive = agent.currentState !== 'idle' && agent.currentState !== 'offline';
 
-      if (p.type === 'rune' && p.angle !== undefined && p.angleV !== undefined) {
-        // Orbit around agent center
-        const agent = agentsRef.current.find(a => a.currentState === 'thinking');
-        if (agent) {
-          const ax = (agent.position.x / 100) * W;
-          const ay = (agent.position.y / 100) * H + (s.agentBobOffset[agent.id] ?? 0);
-          p.angle += p.angleV;
-          const r = 30;
-          p.x = ax + Math.cos(p.angle) * r;
-          p.y = ay + Math.sin(p.angle) * r * 0.55;
-        }
-        const a = p.life * 0.9;
-        ctx.font = `${p.size}px monospace`;
-        ctx.textAlign = 'center';
-        ctx.fillStyle = colorWithAlpha(p.color, a);
-        ctx.shadowColor = p.color;
-        ctx.shadowBlur = 6;
-        ctx.fillText(p.char ?? '◈', p.x, p.y);
-        ctx.shadowBlur = 0;
-
-      } else if (p.type === 'spark') {
-        p.x += p.vx;
-        p.y += p.vy;
-        p.vy += 0.08; // gravity
-        p.vx *= 0.96;
-        const a = p.life * 0.9;
+        ctx.save();
+        ctx.globalAlpha = isActive ? 0.22 : 0.06;
+        ctx.setLineDash([4, 8]);
+        ctx.lineDashOffset = isActive ? -(t * 1.5) % 12 : 0;
+        ctx.strokeStyle = agent.themeColor;
+        ctx.lineWidth = isActive ? 1.5 : 0.75;
+        ctx.shadowColor = agent.themeColor;
+        ctx.shadowBlur = isActive ? 6 : 0;
         ctx.beginPath();
-        ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
-        ctx.fillStyle = colorWithAlpha(p.color, a);
-        ctx.shadowColor = p.color;
-        ctx.shadowBlur = 4;
-        ctx.fill();
-        ctx.shadowBlur = 0;
-
-      } else if (p.type === 'bubble') {
-        p.x += p.vx;
-        p.y += p.vy;
-        const a = p.life * 0.5;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.size * (1 - p.life * 0.3), 0, Math.PI * 2);
-        ctx.strokeStyle = colorWithAlpha(p.color, a);
-        ctx.lineWidth = 0.8;
+        ctx.moveTo(ax, ay);
+        ctx.lineTo(bx, by);
         ctx.stroke();
-
-      } else if (p.type === 'wave') {
-        const elapsed = 1 - p.life;
-        const r = elapsed * 60;
-        const a = p.life * 0.6;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
-        ctx.strokeStyle = colorWithAlpha(p.color, a);
-        ctx.lineWidth = 1.5;
-        ctx.shadowColor = p.color;
-        ctx.shadowBlur = 4;
-        ctx.stroke();
+        ctx.setLineDash([]);
         ctx.shadowBlur = 0;
-      }
-    });
+        ctx.restore();
+      });
+    }
 
-    // ── Agent body-bob offsets ──────────────────────────────────────────────
-    agentsRef.current.forEach(agent => {
-      if (!(agent.id in s.agentBobPhase)) {
-        s.agentBobPhase[agent.id] = Math.random() * Math.PI * 2;
-      }
-      s.agentBobPhase[agent.id] += agent.currentState === 'idle' ? 0.018
-        : agent.currentState === 'working' ? 0.06
-        : agent.currentState === 'thinking' ? 0.03
-        : 0.025;
-      const amp = agent.currentState === 'working' ? 5
-        : agent.currentState === 'idle' ? 3
-        : 4;
-      s.agentBobOffset[agent.id] = Math.sin(s.agentBobPhase[agent.id]) * amp;
-    });
-
-    // ── Task bubble overlays ────────────────────────────────────────────────
-    agentsRef.current.forEach(agent => {
-      if (!agent.currentTask) return;
-      if (agent.currentState !== 'working' && agent.currentState !== 'thinking') return;
-      const ax = (agent.position.x / 100) * W;
-      const ay = (agent.position.y / 100) * H + (s.agentBobOffset[agent.id] ?? 0);
-      const text = agent.currentTask.slice(0, 22) + (agent.currentTask.length > 22 ? '…' : '');
-      const padding = 8;
-
-      ctx.font = '9px "JetBrains Mono", monospace';
-      const textW = ctx.measureText(text).width;
-      const boxW = textW + padding * 2;
-      const boxH = 20;
-      const bx = ax - boxW / 2;
-      const by = ay - 55;
-
-      ctx.fillStyle = 'rgba(9,9,11,0.95)';
-      ctx.strokeStyle = agent.themeColor;
-      ctx.lineWidth = 1;
-      ctx.shadowColor = agent.themeColor;
-      ctx.shadowBlur = 8;
-      ctx.beginPath();
-      ctx.roundRect(bx, by, boxW, boxH, 4);
-      ctx.fill();
-      ctx.stroke();
-      ctx.shadowBlur = 0;
-
-      // Arrow
-      ctx.beginPath();
-      ctx.moveTo(ax - 5, by + boxH);
-      ctx.lineTo(ax + 5, by + boxH);
-      ctx.lineTo(ax, by + boxH + 6);
-      ctx.fillStyle = agent.themeColor;
-      ctx.fill();
-
-      ctx.fillStyle = agent.themeColor;
-      ctx.font = '9px "JetBrains Mono", monospace';
-      ctx.textAlign = 'center';
-      ctx.fillText(text, ax, by + 13);
-    });
-
-    // ── Draw agents ─────────────────────────────────────────────────────────
+    // ── Agents (sprites) ─────────────────────────────────────────────────────
     const focId = focusRef.current;
     agentsRef.current.forEach(agent => {
       const ax = (agent.position.x / 100) * W;
       const ay = (agent.position.y / 100) * H;
-      const bob = s.agentBobOffset[agent.id] ?? 0;
+      const pal = AGENT_PALETTE[agent.id] ?? DEFAULT_PAL;
       const focused = focId === agent.id;
       const dimmed = focId !== null && !focused;
-      const memPulse = s.memoryPulseTimer > 0 && s.memoryPulseAgent === agent.id;
-      const celebrating = s.celebrationTimer > 0 && s.celebrationAgent === agent.id;
-      drawAgent(ctx, agent, ax, ay + bob, focused, dimmed, memPulse, celebrating, t);
+
+      ctx.save();
+      ctx.globalAlpha = dimmed ? 0.3 : 1;
+
+      // Memory pulse ring
+      if (sr.memPulseTimer > 0 && sr.memPulseAgent === agent.id) {
+        const pr = 28 + (1 - sr.memPulseTimer / 90) * 20;
+        ctx.beginPath();
+        ctx.arc(ax, ay, pr, 0, Math.PI * 2);
+        ctx.strokeStyle = '#93c5fd';
+        ctx.lineWidth = 2;
+        ctx.shadowColor = '#93c5fd';
+        ctx.shadowBlur = 12;
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+      }
+
+      drawSprite(ctx, ax, ay, pal, agent.currentState, t + parseInt(agent.id, 36) % 20, s, focused);
+
+      // Name label
+      ctx.font = `bold ${Math.max(8, s * 5)}px "JetBrains Mono", monospace`;
+      ctx.textAlign = 'center';
+      ctx.fillStyle = pal.body;
+      ctx.shadowColor = pal.body;
+      ctx.shadowBlur = 4;
+      ctx.fillText(agent.displayName.toUpperCase(), ax, ay + 32 * s);
+      ctx.shadowBlur = 0;
+
+      // State label
+      ctx.font = `${Math.max(7, s * 4)}px "JetBrains Mono", monospace`;
+      ctx.fillStyle = 'rgba(148,163,184,0.75)';
+      ctx.fillText(agent.currentState, ax, ay + 32 * s + Math.max(8, s * 5) + 2);
+
+      // LC badge
+      if (agent.localOrRemote === 'local') {
+        ctx.font = `bold ${Math.max(6, s * 3.5)}px "JetBrains Mono", monospace`;
+        ctx.fillStyle = '#4ade80';
+        ctx.fillText('LC', ax + 16 * s, ay - 22 * s);
+      } else if (agent.localOrRemote === 'remote') {
+        ctx.font = `bold ${Math.max(6, s * 3.5)}px "JetBrains Mono", monospace`;
+        ctx.fillStyle = '#facc15';
+        ctx.fillText('RM', ax + 16 * s, ay - 22 * s);
+      }
+
+      ctx.restore();
+
+      // Task speech bubble
+      if (agent.currentTask && (agent.currentState === 'working' || agent.currentState === 'speaking' || agent.currentState === 'thinking')) {
+        const text = agent.currentTask.length > 20 ? agent.currentTask.slice(0, 18) + '…' : agent.currentTask;
+        drawBubble(ctx, ax, ay - 26 * s, text, pal.body, s);
+      }
+
+      // Celebration sparks spawn
+      if (Math.random() < 0.4) {
+        spawnSparks(sr, agent, ax, ay - 8 * s);
+      }
     });
 
-    // ── Tick celebration/memPulse timers ────────────────────────────────────
-    if (s.celebrationTimer > 0) s.celebrationTimer--;
-    else s.celebrationAgent = null;
-    if (s.memoryPulseTimer > 0) s.memoryPulseTimer--;
-    else s.memoryPulseAgent = null;
+    // ── Particles ────────────────────────────────────────────────────────────
+    sr.particles = sr.particles.filter(p => p.life > 0);
+    sr.particles.forEach(p => {
+      p.life -= 0.035;
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vy += 0.12;
+      p.vx *= 0.94;
+      if (p.type === 'pixel') {
+        const sz = Math.max(1, Math.round(p.size * p.life));
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = p.life;
+        ctx.fillRect(Math.round(p.x), Math.round(p.y), sz, sz);
+        ctx.globalAlpha = 1;
+      }
+    });
 
-    // ── HUD: scene label ────────────────────────────────────────────────────
-    ctx.font = '9px "JetBrains Mono", monospace';
+    // ── Timers ───────────────────────────────────────────────────────────────
+    if (sr.celebrationTimer > 0) sr.celebrationTimer--;
+    else sr.celebrationAgent = null;
+    if (sr.memPulseTimer > 0) sr.memPulseTimer--;
+    else sr.memPulseAgent = null;
+
+    // ── HUD overlay ──────────────────────────────────────────────────────────
+    // Top bar
+    ctx.fillStyle = 'rgba(6,10,20,0.82)';
+    ctx.fillRect(0, 0, W, H * 0.08);
+
+    ctx.font = `bold ${Math.max(9, s * 5)}px "JetBrains Mono", monospace`;
     ctx.textAlign = 'left';
-    ctx.fillStyle = 'rgba(255,255,255,0.18)';
-    ctx.letterSpacing = '0.2em';
-    ctx.fillText('• KRYTHOR COMMAND CHAMBER', 12, 16);
+    ctx.fillStyle = 'rgba(30,174,255,0.8)';
+    ctx.fillText('● AGENT WORKSPACE', 12, H * 0.055);
+
     if (isDemo) {
-      ctx.fillStyle = '#92400e';
-      ctx.fillText('DEMO MODE', W - 80, 16);
+      ctx.textAlign = 'right';
+      ctx.fillStyle = '#f59e0b';
+      ctx.fillText('DEMO MODE', W - 12, H * 0.055);
     }
 
     // Focus indicator
-    if (focId) {
-      const fa = agentsRef.current.find(a => a.id === focId);
-      if (fa) {
-        ctx.textAlign = 'right';
-        ctx.font = 'bold 9px "JetBrains Mono", monospace';
-        ctx.fillStyle = fa.themeColor;
-        ctx.fillText(`◉ FOCUS: ${fa.displayName.toUpperCase()}`, W - 12, 16);
-      }
+    const focA = agentsRef.current.find(a => a.id === focId);
+    if (focA) {
+      ctx.textAlign = 'right';
+      ctx.font = `bold ${Math.max(9, s * 5)}px "JetBrains Mono", monospace`;
+      ctx.fillStyle = (AGENT_PALETTE[focA.id] ?? DEFAULT_PAL).body;
+      ctx.fillText(`◉ ${focA.displayName.toUpperCase()}`, W - 12, H * 0.055);
     }
 
-    // Corner brackets (HUD)
-    const bSize = 12, bPad = 6;
-    const bracketColor = 'rgba(30,174,255,0.25)';
-    ctx.strokeStyle = bracketColor;
-    ctx.lineWidth = 1;
-    [[bPad, bPad, 1, 1], [W - bPad, bPad, -1, 1], [bPad, H - bPad, 1, -1], [W - bPad, H - bPad, -1, -1]].forEach(([x, y, sx, sy]) => {
-      ctx.beginPath(); ctx.moveTo(x, y + sy * bSize); ctx.lineTo(x, y); ctx.lineTo(x + sx * bSize, y); ctx.stroke();
+    // Corner HUD brackets
+    const bSz = 12, bPad = 4;
+    ctx.strokeStyle = 'rgba(30,174,255,0.3)';
+    ctx.lineWidth = 1.5;
+    [[bPad, H * 0.08 + bPad, 1, 1], [W - bPad, H * 0.08 + bPad, -1, 1],
+     [bPad, H - bPad, 1, -1], [W - bPad, H - bPad, -1, -1]].forEach(([x, y, sx2, sy2]) => {
+      ctx.beginPath();
+      ctx.moveTo(x, y + sy2 * bSz);
+      ctx.lineTo(x, y);
+      ctx.lineTo(x + sx2 * bSz, y);
+      ctx.stroke();
     });
   }
 
-  // rAF loop
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Resize canvas to match CSS size
     const resize = () => {
       const rect = canvas.getBoundingClientRect();
-      canvas.width = rect.width * window.devicePixelRatio;
-      canvas.height = rect.height * window.devicePixelRatio;
-      ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
-      stateRef.current.starsReady = false; // re-seed stars on resize
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      ctx.scale(dpr, dpr);
     };
     resize();
     const ro = new ResizeObserver(resize);
@@ -939,7 +671,7 @@ export function MythicCanvas({
       ref={canvasRef}
       className="absolute inset-0 w-full h-full cursor-pointer"
       onClick={handleClick}
-      style={{ display: 'block' }}
+      style={{ display: 'block', imageRendering: 'pixelated' }}
     />
   );
 }
