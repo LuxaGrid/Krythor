@@ -124,8 +124,7 @@ if (!existsSync(gatewayDist)) {
     require('child_process').execSync(pnpmCmd + ' build', {
       cwd: __dirname, stdio: 'inherit', env: { ...process.env },
     });
-    console.log('[32mBuild complete.[0m
-');
+    console.log('\x1b[32mBuild complete.\x1b[0m\n');
   } catch {
     console.error('[31mAuto-build failed. Run: pnpm build[0m');
     process.exit(1);
