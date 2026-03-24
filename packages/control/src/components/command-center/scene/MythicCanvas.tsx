@@ -13,13 +13,24 @@ interface MythicCanvasProps {
 
 // ─── Palette ──────────────────────────────────────────────────────────────────
 const AGENT_PALETTE: Record<string, { body: string; accent: string; skin: string; hair: string }> = {
-  atlas:    { body: '#f59e0b', accent: '#fbbf24', skin: '#fcd9b0', hair: '#92400e' },
-  voltaris: { body: '#1eaeff', accent: '#38bdf8', skin: '#fcd9b0', hair: '#1d4ed8' },
-  aethon:   { body: '#818cf8', accent: '#a5b4fc', skin: '#e8c5a0', hair: '#4c1d95' },
-  thyros:   { body: '#93c5fd', accent: '#bfdbfe', skin: '#fcd9b0', hair: '#1e3a8a' },
-  pyron:    { body: '#fb923c', accent: '#fdba74', skin: '#fcd9b0', hair: '#7c2d12' },
+  atlas:    { body: '#f59e0b', accent: '#fde68a', skin: '#d4a96a', hair: '#92400e' }, // Titan — gold/amber
+  voltaris: { body: '#06b6d4', accent: '#67e8f9', skin: '#a5f3fc', hair: '#0e7490' }, // Elemental — cyan/teal
+  aethon:   { body: '#7c3aed', accent: '#c4b5fd', skin: '#ddd6fe', hair: '#4c1d95' }, // Mage — violet/arcane
+  thyros:   { body: '#3b82f6', accent: '#bfdbfe', skin: '#e0f2fe', hair: '#1e3a8a' }, // Wraith — ice-blue
+  pyron:    { body: '#dc2626', accent: '#fca5a5', skin: '#fcd9b0', hair: '#7f1d1d' }, // Elemental — fire-red
 };
 const DEFAULT_PAL = { body: '#6366f1', accent: '#818cf8', skin: '#fcd9b0', hair: '#3730a3' };
+
+// ─── Archetype metadata ────────────────────────────────────────────────────────
+// Drives unique silhouette features per agent
+type Archetype = 'titan' | 'water' | 'mage' | 'wraith' | 'fire';
+const AGENT_ARCHETYPE: Record<string, Archetype> = {
+  atlas:    'titan',
+  voltaris: 'water',
+  aethon:   'mage',
+  thyros:   'wraith',
+  pyron:    'fire',
+};
 
 // ─── Bridge layout constants ───────────────────────────────────────────────────
 // All positions are expressed as fractions of W/H and computed at render time.
@@ -65,192 +76,418 @@ function drawSprite(
   facing: number,
   PX: number,
   focused: boolean,
+  agentId: string,
 ) {
   const working   = state === 'working';
   const thinking  = state === 'thinking';
   const speaking  = state === 'speaking';
   const offline   = state === 'offline';
   const handoff   = state === 'handoff';
-  const listening = state === 'listening';
+  void state; // listening/handoff used per-archetype branch
+  const archetype = AGENT_ARCHETYPE[agentId] ?? 'titan';
 
-  const bob     = Math.abs(Math.sin(walkPhase * 3)) * PX * 0.5;
+  const bob      = Math.abs(Math.sin(walkPhase * 3)) * PX * 0.5;
   const legSwing = Math.sin(walkPhase * 6);
+  const breathe  = Math.sin(walkPhase * 2) * PX * 0.3; // gentle ethereal float
 
-  // Sprite is 8px wide, 14px tall (logical pixels)
+  // Sprite anchor
   const bx = cx - 4 * PX;
-  const by = cy - 14 * PX - bob;
+  const by = cy - 16 * PX - bob - (archetype === 'wraith' ? breathe : 0);
 
   ctx.save();
   if (facing === -1) {
     ctx.scale(-1, 1);
     ctx.translate(-cx * 2, 0);
   }
-  if (offline) ctx.globalAlpha = 0.25;
+  if (offline) ctx.globalAlpha = 0.22;
 
-  // Tron identity — all geometry lines drawn glowing in accent color
-  // Helper: draw a glowing line segment
-  const glow = (lx: number, ly: number, lw: number, lh: number, alpha = 1) => {
+  // ── Aura / ambient glow beneath figure ────────────────────────────────────
+  if (!offline) {
     ctx.save();
-    ctx.globalAlpha = offline ? 0.15 : alpha;
-    ctx.fillStyle = pal.accent;
-    ctx.shadowColor = pal.accent;
-    ctx.shadowBlur = PX * 2.5;
-    ctx.fillRect(Math.round(lx), Math.round(ly), Math.max(1, Math.round(lw)), Math.max(1, Math.round(lh)));
-    ctx.shadowBlur = 0;
+    const auraIntensity = (working || speaking) ? 0.22 : thinking ? 0.14 : 0.08;
+    const auraGrd = ctx.createRadialGradient(cx, cy, 0, cx, cy, PX * 10);
+    auraGrd.addColorStop(0, pal.body);
+    auraGrd.addColorStop(1, 'transparent');
+    ctx.globalAlpha = auraIntensity;
+    ctx.fillStyle = auraGrd;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy - PX * 2, PX * 9, PX * 14, 0, 0, Math.PI * 2);
+    ctx.fill();
     ctx.restore();
-  };
-
-  // ── Helmet ───────────────────────────────────────────────────────────────────
-  const headW = 6 * PX, headH = 6 * PX;
-  const hx = bx + PX;
-  const hy = by;
-
-  // Helmet body — near-black
-  p(ctx, hx, hy, headW, headH, '#080c14');
-  p(ctx, hx, hy, PX, PX, '#020409');               // tl corner cut
-  p(ctx, hx + headW - PX, hy, PX, PX, '#020409');  // tr corner cut
-
-  // Helmet outline — glowing circuit trim
-  glow(hx, hy + PX, PX * 0.5, headH - PX);           // left edge
-  glow(hx + headW - PX * 0.5, hy + PX, PX * 0.5, headH - PX); // right edge
-  glow(hx, hy + PX, headW, PX * 0.5);                // top
-  glow(hx, hy + headH - PX * 0.5, headW, PX * 0.5);  // bottom
-
-  // Visor — wide glowing slit across the face
-  const visorY = hy + PX * 2;
-  // Visor dark recess
-  p(ctx, hx + PX * 0.5, visorY, headW - PX, PX * 1.5, '#040810');
-  // Visor glow — bright accent bar
-  ctx.save();
-  ctx.globalAlpha = offline ? 0.1 : 0.9;
-  ctx.fillStyle = pal.accent;
-  ctx.shadowColor = pal.accent;
-  ctx.shadowBlur = PX * 4;
-  ctx.fillRect(Math.round(hx + PX * 0.5), Math.round(visorY + PX * 0.25), Math.round(headW - PX), Math.round(PX));
-  // Extra outer bloom
-  ctx.shadowBlur = PX * 8;
-  ctx.globalAlpha = 0.3;
-  ctx.fillRect(Math.round(hx + PX * 0.5), Math.round(visorY + PX * 0.25), Math.round(headW - PX), Math.round(PX));
-  ctx.shadowBlur = 0;
-  ctx.restore();
-
-  // State-based mouth indicator — small circuit segment below visor
-  const mouthY = hy + PX * 4;
-  if (speaking) {
-    glow(hx + PX * 1.5, mouthY, PX * 3, PX * 0.75, 0.9); // wide open
-    glow(hx + PX * 1.5, mouthY + PX * 0.75, PX * 3, PX * 0.5, 0.4);
-  } else if (thinking) {
-    glow(hx + PX * 2, mouthY + PX * 0.25, PX * 1.5, PX * 0.5, 0.7);
-    glow(hx + PX * 4, mouthY + PX * 0.25, PX, PX * 0.5, 0.4);
-  } else {
-    glow(hx + PX * 1.5, mouthY + PX * 0.3, PX * 3, PX * 0.4, 0.45);
   }
 
-  // ── Tron suit body ────────────────────────────────────────────────────────────
-  const bodyY = hy + headH;
-  const bodyW = 8 * PX;
+  // ─── ATLAS — TITAN / ORACLE ────────────────────────────────────────────────
+  // Golden armored giant with crown horns and a glowing third eye
+  if (archetype === 'titan') {
+    // Crown horns
+    ctx.save();
+    ctx.fillStyle = pal.accent;
+    ctx.shadowColor = pal.accent;
+    ctx.shadowBlur = PX * 3;
+    // Left horn
+    ctx.beginPath();
+    ctx.moveTo(bx + PX, by);
+    ctx.lineTo(bx, by - PX * 3);
+    ctx.lineTo(bx + PX * 2, by - PX);
+    ctx.fill();
+    // Right horn
+    ctx.beginPath();
+    ctx.moveTo(bx + PX * 6, by);
+    ctx.lineTo(bx + PX * 8, by - PX * 3);
+    ctx.lineTo(bx + PX * 5, by - PX);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.restore();
 
-  // Suit base — deep black
-  p(ctx, bx, bodyY, bodyW, 5 * PX, '#050810');
+    // Head — bronzed titan skin
+    p(ctx, bx + PX, by, 6 * PX, 6 * PX, pal.skin);
+    p(ctx, bx, by + PX, PX, PX * 4, pal.skin); // left cheek
+    p(ctx, bx + 7 * PX, by + PX, PX, PX * 4, pal.skin); // right cheek
+    // Brow ridge
+    p(ctx, bx + PX, by, 6 * PX, PX, '#b45309');
+    // Eyes — glowing gold
+    ctx.save();
+    ctx.fillStyle = pal.accent; ctx.shadowColor = pal.accent; ctx.shadowBlur = PX * 3;
+    p(ctx, bx + 2 * PX, by + PX * 2, PX * 1.5, PX, pal.accent);
+    p(ctx, bx + 5 * PX, by + PX * 2, PX * 1.5, PX, pal.accent);
+    ctx.shadowBlur = 0; ctx.restore();
+    // Third eye — center forehead
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, by + PX, PX * 0.7, 0, Math.PI * 2);
+    ctx.fillStyle = '#fde68a';
+    ctx.shadowColor = '#fde68a'; ctx.shadowBlur = PX * 5;
+    ctx.fill(); ctx.shadowBlur = 0; ctx.restore();
+    // Jaw
+    p(ctx, bx + PX * 2, by + PX * 5, PX * 4, PX, '#b45309');
 
-  // Shoulder circuit lines (top edge of torso)
-  glow(bx, bodyY, bodyW, PX * 0.5);
+    // Armored torso — golden plate
+    const bodyY = by + 6 * PX;
+    p(ctx, bx, bodyY, 8 * PX, 6 * PX, pal.body);
+    // Plate highlights
+    p(ctx, bx + PX, bodyY, 6 * PX, PX, '#fde68a', 0.6);
+    p(ctx, bx + PX * 3, bodyY + PX, 2 * PX, PX * 4, '#fde68a', 0.25);
+    // Shoulder pauldrons
+    p(ctx, bx - PX, bodyY, PX * 2, PX * 2, pal.accent);
+    p(ctx, bx + 7 * PX, bodyY, PX * 2, PX * 2, pal.accent);
 
-  // Chest circuit grid — identity disc mount in center
-  // Vertical center line
-  glow(cx - PX * 0.25, bodyY + PX, PX * 0.5, PX * 3.5, 0.55);
-  // Horizontal cross bar
-  glow(bx + PX, bodyY + PX * 2, bodyW - PX * 2, PX * 0.5, 0.45);
-  // Identity disc — small glowing circle on chest
-  ctx.save();
-  ctx.globalAlpha = offline ? 0.1 : 0.85;
-  ctx.beginPath();
-  ctx.arc(cx, bodyY + PX * 2, PX * 1.2, 0, Math.PI * 2);
-  ctx.strokeStyle = pal.accent;
-  ctx.lineWidth = PX * 0.5;
-  ctx.shadowColor = pal.accent;
-  ctx.shadowBlur = PX * 3;
-  ctx.stroke();
-  // Inner disc fill
-  ctx.globalAlpha = 0.25;
-  ctx.fillStyle = pal.accent;
-  ctx.fill();
-  ctx.shadowBlur = 0;
-  ctx.restore();
+    // Arms — armored gauntlets
+    const armSwing = working ? Math.sin(walkPhase * 8) * PX : handoff ? -PX * 2 : 0;
+    p(ctx, bx - PX, bodyY + PX + armSwing, PX, PX * 3, pal.body);
+    p(ctx, bx + 8 * PX, bodyY + PX - armSwing, PX, PX * 3, pal.body);
+    // Gauntlet cuffs
+    p(ctx, bx - PX, bodyY + PX * 3 + armSwing, PX, PX, pal.accent);
+    p(ctx, bx + 8 * PX, bodyY + PX * 3 - armSwing, PX, PX, pal.accent);
 
-  // Side edge lines
-  glow(bx, bodyY, PX * 0.5, 5 * PX, 0.6);
-  glow(bx + bodyW - PX * 0.5, bodyY, PX * 0.5, 5 * PX, 0.6);
-  // Bottom edge
-  glow(bx, bodyY + 5 * PX - PX * 0.5, bodyW, PX * 0.5, 0.5);
+    // Legs — golden greaves
+    const legY = bodyY + 6 * PX;
+    p(ctx, bx + PX, legY, 6 * PX, PX * 2, pal.body);
+    const lLx = bx + PX + legSwing * PX * 0.8;
+    p(ctx, lLx, legY + 2 * PX, 2 * PX, 3 * PX, pal.body);
+    p(ctx, lLx - PX * 0.5, legY + 5 * PX, 3 * PX, PX, '#b45309');
+    const rLx = bx + 5 * PX - legSwing * PX * 0.8;
+    p(ctx, rLx, legY + 2 * PX, 2 * PX, 3 * PX, pal.body);
+    p(ctx, rLx - PX * 0.5, legY + 5 * PX, 3 * PX, PX, '#b45309');
 
-  // Arms — black with single glowing circuit stripe down the outside
-  const armY = bodyY + PX;
-  const armSwing = working ? Math.sin(walkPhase * 8) * PX
-    : handoff   ? -PX * 2
-    : 0;
-  const rightArmSwing = working ? -armSwing
-    : handoff   ? -PX * 2
-    : listening ? Math.sin(walkPhase * 3) * PX * 0.5
-    : 0;
-  // Left arm
-  p(ctx, bx - PX, armY + armSwing,        PX, PX * 3.5, '#050810');
-  glow(bx - PX, armY + armSwing,          PX * 0.4, PX * 3.5, 0.7); // outer line
-  glow(bx - PX, armY + armSwing + PX * 3, PX, PX * 0.5, 0.5);       // wrist
-  // Right arm
-  p(ctx, bx + 8 * PX, armY + rightArmSwing,        PX, PX * 3.5, '#050810');
-  glow(bx + 8 * PX + PX * 0.6, armY + rightArmSwing, PX * 0.4, PX * 3.5, 0.7);
-  glow(bx + 8 * PX, armY + rightArmSwing + PX * 3,   PX, PX * 0.5, 0.5);
+  // ─── VOLTARIS — WATER ELEMENTAL ────────────────────────────────────────────
+  // Translucent teal being — fluid, no solid edges, wave crest head
+  } else if (archetype === 'water') {
+    const wave = Math.sin(walkPhase * 4) * PX * 0.5;
+    // Wave crest crown
+    ctx.save();
+    ctx.fillStyle = pal.accent; ctx.shadowColor = pal.accent; ctx.shadowBlur = PX * 4;
+    for (let w = 0; w < 4; w++) {
+      ctx.beginPath();
+      ctx.arc(bx + PX * (1.5 + w * 1.5), by - PX * (1 + (w % 2) * 1.5) + wave, PX * 0.8, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.shadowBlur = 0; ctx.restore();
 
-  // ── Legs ─────────────────────────────────────────────────────────────────────
-  const legY = bodyY + 5 * PX;
-  p(ctx, bx + PX, legY, 6 * PX, 2 * PX, '#050810'); // hip block
-  glow(bx + PX, legY, 6 * PX, PX * 0.5, 0.5);        // hip line
+    // Fluid head — semi-transparent
+    ctx.save(); ctx.globalAlpha = 0.75;
+    p(ctx, bx + PX, by, 6 * PX, 6 * PX, pal.body);
+    p(ctx, bx, by + PX, PX, PX * 4, pal.body);
+    p(ctx, bx + 7 * PX, by + PX, PX, PX * 4, pal.body);
+    ctx.restore();
+    // Inner glow core
+    ctx.save();
+    const coreGrd = ctx.createRadialGradient(cx, by + PX * 3, 0, cx, by + PX * 3, PX * 3);
+    coreGrd.addColorStop(0, pal.accent); coreGrd.addColorStop(1, 'transparent');
+    ctx.globalAlpha = 0.5; ctx.fillStyle = coreGrd;
+    ctx.beginPath(); ctx.ellipse(cx, by + PX * 3, PX * 3, PX * 3, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    // Eyes — deep swirling voids
+    p(ctx, bx + 2 * PX, by + PX * 2, PX * 1.5, PX * 1.5, '#0e7490');
+    p(ctx, bx + 5 * PX, by + PX * 2, PX * 1.5, PX * 1.5, '#0e7490');
+    ctx.save(); ctx.fillStyle = pal.accent; ctx.shadowColor = pal.accent; ctx.shadowBlur = PX * 2;
+    p(ctx, bx + 2 * PX, by + PX * 2, PX, PX, pal.accent);
+    p(ctx, bx + 5 * PX, by + PX * 2, PX, PX, pal.accent);
+    ctx.shadowBlur = 0; ctx.restore();
 
-  const lLegX = bx + PX + legSwing * PX * 0.8;
-  p(ctx, lLegX, legY + 2 * PX, 2 * PX, 4 * PX, '#050810');
-  glow(lLegX, legY + 2 * PX, PX * 0.4, PX * 4, 0.65);           // outer line
-  glow(lLegX, legY + 5 * PX, PX * 2.5, PX * 0.5, 0.5);          // boot top
-  p(ctx, lLegX - PX * 0.5, legY + 5 * PX + PX * 0.5, PX * 3, PX * 0.5, '#050810'); // boot sole
+    // Fluid body
+    const bodyY = by + 6 * PX;
+    ctx.save(); ctx.globalAlpha = 0.65;
+    p(ctx, bx, bodyY, 8 * PX, 6 * PX, pal.body);
+    ctx.restore();
+    // Wave ripples across torso
+    ctx.save(); ctx.strokeStyle = pal.accent; ctx.lineWidth = PX * 0.5; ctx.globalAlpha = 0.5;
+    ctx.shadowColor = pal.accent; ctx.shadowBlur = PX * 2;
+    for (let r = 0; r < 3; r++) {
+      ctx.beginPath();
+      ctx.moveTo(bx + PX, bodyY + PX * (1.5 + r * 1.5) + wave * (r % 2 === 0 ? 1 : -1));
+      ctx.lineTo(bx + 7 * PX, bodyY + PX * (1.5 + r * 1.5) - wave * (r % 2 === 0 ? 1 : -1));
+      ctx.stroke();
+    }
+    ctx.shadowBlur = 0; ctx.restore();
 
-  const rLegX = bx + 5 * PX - legSwing * PX * 0.8;
-  p(ctx, rLegX, legY + 2 * PX, 2 * PX, 4 * PX, '#050810');
-  glow(rLegX + PX * 1.6, legY + 2 * PX, PX * 0.4, PX * 4, 0.65);
-  glow(rLegX, legY + 5 * PX, PX * 2.5, PX * 0.5, 0.5);
-  p(ctx, rLegX - PX * 0.5, legY + 5 * PX + PX * 0.5, PX * 3, PX * 0.5, '#050810');
+    // Fluid arms
+    const armSwing = working ? Math.sin(walkPhase * 8) * PX : 0;
+    ctx.save(); ctx.globalAlpha = 0.6;
+    p(ctx, bx - PX, bodyY + PX + armSwing, PX, PX * 3, pal.body);
+    p(ctx, bx + 8 * PX, bodyY + PX - armSwing, PX, PX * 3, pal.body);
+    ctx.restore();
 
-  // ── Focus glow ───────────────────────────────────────────────────────────────
+    // Flowing lower body (no distinct legs — dissolves)
+    ctx.save();
+    for (let d = 0; d < 4; d++) {
+      ctx.globalAlpha = 0.5 - d * 0.1;
+      p(ctx, bx + PX + d * PX * 0.3, bodyY + 6 * PX + d * PX, 6 * PX - d * PX * 0.6, PX, pal.body);
+    }
+    ctx.restore();
+
+  // ─── AETHON — ARCANE MAGE ──────────────────────────────────────────────────
+  // Purple robed scholar — tall pointed hat, star runes, staff hand
+  } else if (archetype === 'mage') {
+    // Pointed wizard/arcane hat
+    ctx.save();
+    ctx.fillStyle = '#4c1d95'; ctx.shadowColor = pal.accent; ctx.shadowBlur = PX * 2;
+    ctx.beginPath();
+    ctx.moveTo(cx, by - PX * 5);
+    ctx.lineTo(bx + PX * 0.5, by);
+    ctx.lineTo(bx + PX * 7.5, by);
+    ctx.closePath(); ctx.fill();
+    // Hat brim
+    p(ctx, bx - PX * 0.5, by, PX * 9, PX, '#6d28d9');
+    // Star on hat
+    ctx.fillStyle = pal.accent; ctx.shadowBlur = PX * 4;
+    ctx.beginPath(); ctx.arc(cx, by - PX * 3, PX * 0.6, 0, Math.PI * 2); ctx.fill();
+    ctx.shadowBlur = 0; ctx.restore();
+
+    // Head — pale arcane skin
+    p(ctx, bx + PX, by, 6 * PX, 6 * PX, pal.skin);
+    p(ctx, bx, by + PX, PX, PX * 4, pal.skin);
+    p(ctx, bx + 7 * PX, by + PX, PX, PX * 4, pal.skin);
+    // Eyes — glowing arcane violet
+    ctx.save(); ctx.fillStyle = pal.accent; ctx.shadowColor = pal.accent; ctx.shadowBlur = PX * 3;
+    p(ctx, bx + 2 * PX, by + PX * 2, PX * 1.5, PX * 1.5, pal.accent);
+    p(ctx, bx + 5 * PX, by + PX * 2, PX * 1.5, PX * 1.5, pal.accent);
+    ctx.shadowBlur = 0; ctx.restore();
+    // Beard / rune markings
+    p(ctx, bx + PX * 2, by + PX * 5, PX * 4, PX, '#6d28d9', 0.6);
+    // Arcane rune on cheek
+    ctx.save(); ctx.fillStyle = pal.accent; ctx.shadowColor = pal.accent; ctx.shadowBlur = PX * 2;
+    p(ctx, bx + PX, by + PX * 3, PX * 0.5, PX * 2, pal.accent, 0.7);
+    ctx.shadowBlur = 0; ctx.restore();
+
+    // Robed torso
+    const bodyY = by + 6 * PX;
+    p(ctx, bx, bodyY, 8 * PX, 6 * PX, '#3b0764');
+    // Robe highlights
+    p(ctx, bx + PX, bodyY, 6 * PX, PX, '#6d28d9', 0.5);
+    p(ctx, bx + PX * 3, bodyY + PX, 2 * PX, PX * 5, '#6d28d9', 0.2);
+    // Arcane sigil on chest
+    ctx.save();
+    ctx.strokeStyle = pal.accent; ctx.lineWidth = PX * 0.4;
+    ctx.shadowColor = pal.accent; ctx.shadowBlur = PX * 3;
+    ctx.beginPath(); ctx.arc(cx, bodyY + PX * 2.5, PX * 1.5, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx, bodyY + PX); ctx.lineTo(cx, bodyY + PX * 4); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx - PX * 1.5, bodyY + PX * 2.5); ctx.lineTo(cx + PX * 1.5, bodyY + PX * 2.5); ctx.stroke();
+    ctx.shadowBlur = 0; ctx.restore();
+
+    // Arms — robed sleeves
+    const armSwing = working ? Math.sin(walkPhase * 8) * PX : handoff ? -PX * 2 : 0;
+    p(ctx, bx - PX, bodyY + PX + armSwing, PX * 1.5, PX * 3, '#3b0764');
+    p(ctx, bx + 7 * PX, bodyY + PX - armSwing, PX * 1.5, PX * 3, '#3b0764');
+    // Staff hand (right) when working/thinking
+    if (working || thinking) {
+      ctx.save(); ctx.strokeStyle = pal.accent; ctx.lineWidth = PX * 0.5;
+      ctx.shadowColor = pal.accent; ctx.shadowBlur = PX * 4;
+      ctx.beginPath();
+      ctx.moveTo(bx + 9 * PX, bodyY + PX - armSwing);
+      ctx.lineTo(bx + 9 * PX, by - PX * 2);
+      ctx.stroke();
+      ctx.beginPath(); ctx.arc(bx + 9 * PX, by - PX * 2, PX, 0, Math.PI * 2);
+      ctx.fillStyle = pal.accent; ctx.fill();
+      ctx.shadowBlur = 0; ctx.restore();
+    }
+
+    // Robed legs
+    const legY = bodyY + 6 * PX;
+    p(ctx, bx + PX, legY, 6 * PX, PX * 2, '#3b0764');
+    const lLx = bx + PX + legSwing * PX * 0.5;
+    p(ctx, lLx, legY + 2 * PX, 2 * PX, 3 * PX, '#3b0764');
+    const rLx = bx + 5 * PX - legSwing * PX * 0.5;
+    p(ctx, rLx, legY + 2 * PX, 2 * PX, 3 * PX, '#3b0764');
+
+  // ─── THYROS — FROST WRAITH ─────────────────────────────────────────────────
+  // Ice-blue spectral ghost — jagged crown, translucent, trailing wisps
+  } else if (archetype === 'wraith') {
+    const shimmer = Math.sin(walkPhase * 5) * 0.15;
+    ctx.save(); ctx.globalAlpha = 0.82 + shimmer;
+
+    // Jagged ice crown
+    ctx.fillStyle = pal.accent; ctx.shadowColor = pal.accent; ctx.shadowBlur = PX * 5;
+    for (let sp = 0; sp < 5; sp++) {
+      const spH = sp % 2 === 0 ? PX * 3 : PX * 1.5;
+      ctx.beginPath();
+      ctx.moveTo(bx + PX * (sp * 1.4 + 0.5), by);
+      ctx.lineTo(bx + PX * (sp * 1.4 + 1), by - spH);
+      ctx.lineTo(bx + PX * (sp * 1.4 + 1.5), by);
+      ctx.fill();
+    }
+    ctx.shadowBlur = 0;
+
+    // Head — pale spectral face
+    p(ctx, bx + PX, by, 6 * PX, 6 * PX, '#dbeafe');
+    p(ctx, bx, by + PX, PX, PX * 4, '#dbeafe');
+    p(ctx, bx + 7 * PX, by + PX, PX, PX * 4, '#dbeafe');
+    // Hollow eye sockets — deep blue voids
+    p(ctx, bx + 2 * PX, by + PX * 2, PX * 1.5, PX * 1.5, '#1e3a8a');
+    p(ctx, bx + 5 * PX, by + PX * 2, PX * 1.5, PX * 1.5, '#1e3a8a');
+    // Soul glow in sockets
+    ctx.shadowColor = pal.accent; ctx.shadowBlur = PX * 4;
+    p(ctx, bx + 2 * PX, by + PX * 2, PX, PX, pal.accent);
+    p(ctx, bx + 5 * PX, by + PX * 2, PX, PX, pal.accent);
+    ctx.shadowBlur = 0;
+    // Gaunt mouth
+    p(ctx, bx + PX * 2, by + PX * 4, PX * 4, PX * 0.5, '#93c5fd', 0.7);
+
+    // Spectral robe
+    const bodyY = by + 6 * PX;
+    p(ctx, bx, bodyY, 8 * PX, 6 * PX, '#1e3a8a', 0.75);
+    // Ice crystal veins
+    ctx.strokeStyle = pal.accent; ctx.lineWidth = PX * 0.4;
+    ctx.shadowColor = pal.accent; ctx.shadowBlur = PX * 2;
+    ctx.beginPath(); ctx.moveTo(cx, bodyY); ctx.lineTo(cx - PX, bodyY + PX * 3); ctx.lineTo(cx + PX, bodyY + PX * 5); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx, bodyY); ctx.lineTo(cx + PX, bodyY + PX * 3); ctx.lineTo(cx - PX, bodyY + PX * 5); ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // Spectral arms — wispy, no hands
+    const armSwing = working ? Math.sin(walkPhase * 8) * PX : 0;
+    p(ctx, bx - PX, bodyY + PX + armSwing, PX, PX * 3, '#3b82f6', 0.55);
+    p(ctx, bx + 8 * PX, bodyY + PX - armSwing, PX, PX * 3, '#3b82f6', 0.55);
+
+    // Wispy lower body — fades into nothing
+    for (let d = 0; d < 5; d++) {
+      ctx.globalAlpha = (0.65 - d * 0.12) + shimmer;
+      p(ctx, bx + PX + d * PX * 0.3, bodyY + 6 * PX + d * PX, 6 * PX - d * PX * 0.6, PX, '#3b82f6');
+    }
+    ctx.restore();
+
+  // ─── PYRON — FIRE ELEMENTAL ────────────────────────────────────────────────
+  // Red/orange blazing warrior — flame crown, ember skin, burning outline
+  } else {
+    const flicker = Math.sin(walkPhase * 7) * PX * 0.4;
+
+    // Flame crown — animated spikes
+    ctx.save(); ctx.shadowColor = '#fbbf24'; ctx.shadowBlur = PX * 5;
+    const flameColors = ['#fbbf24', '#f97316', '#dc2626'];
+    for (let fl = 0; fl < 5; fl++) {
+      ctx.fillStyle = flameColors[fl % 3];
+      const fh = PX * (2 + (fl % 3)) + (fl % 2 === 0 ? flicker : -flicker);
+      ctx.beginPath();
+      ctx.moveTo(bx + PX * (fl * 1.5 + 0.5), by);
+      ctx.lineTo(bx + PX * (fl * 1.5 + 1), by - fh);
+      ctx.lineTo(bx + PX * (fl * 1.5 + 1.8), by);
+      ctx.fill();
+    }
+    ctx.shadowBlur = 0; ctx.restore();
+
+    // Head — ember-dark skin with heat cracks
+    p(ctx, bx + PX, by, 6 * PX, 6 * PX, '#7f1d1d');
+    p(ctx, bx, by + PX, PX, PX * 4, '#7f1d1d');
+    p(ctx, bx + 7 * PX, by + PX, PX, PX * 4, '#7f1d1d');
+    // Lava cracks
+    ctx.save(); ctx.strokeStyle = '#f97316'; ctx.lineWidth = PX * 0.4;
+    ctx.shadowColor = '#fbbf24'; ctx.shadowBlur = PX * 3;
+    ctx.beginPath(); ctx.moveTo(bx + PX * 2, by); ctx.lineTo(bx + PX * 3, by + PX * 3); ctx.lineTo(bx + PX * 2, by + PX * 5); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(bx + PX * 6, by); ctx.lineTo(bx + PX * 5, by + PX * 2); ctx.stroke();
+    ctx.shadowBlur = 0; ctx.restore();
+    // Burning eyes
+    ctx.save(); ctx.fillStyle = '#fbbf24'; ctx.shadowColor = '#fbbf24'; ctx.shadowBlur = PX * 5;
+    p(ctx, bx + 2 * PX, by + PX * 2, PX * 1.5, PX * 1.5, '#fbbf24');
+    p(ctx, bx + 5 * PX, by + PX * 2, PX * 1.5, PX * 1.5, '#fbbf24');
+    ctx.shadowBlur = 0; ctx.restore();
+
+    // Blazing torso
+    const bodyY = by + 6 * PX;
+    p(ctx, bx, bodyY, 8 * PX, 6 * PX, '#7f1d1d');
+    // Magma core
+    ctx.save();
+    const magmaGrd = ctx.createRadialGradient(cx, bodyY + PX * 3, 0, cx, bodyY + PX * 3, PX * 3);
+    magmaGrd.addColorStop(0, '#fbbf24'); magmaGrd.addColorStop(0.4, '#f97316'); magmaGrd.addColorStop(1, 'transparent');
+    ctx.globalAlpha = 0.5 + Math.sin(walkPhase * 6) * 0.15;
+    ctx.fillStyle = magmaGrd;
+    ctx.beginPath(); ctx.ellipse(cx, bodyY + PX * 3, PX * 3, PX * 3, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    // Flame fringe on shoulders
+    ctx.save(); ctx.fillStyle = '#f97316'; ctx.shadowColor = '#fbbf24'; ctx.shadowBlur = PX * 4;
+    p(ctx, bx - PX, bodyY + flicker, PX, PX * 2, '#f97316');
+    p(ctx, bx + 8 * PX, bodyY - flicker, PX, PX * 2, '#f97316');
+    ctx.shadowBlur = 0; ctx.restore();
+
+    // Arms — ember-charred
+    const armSwing = working ? Math.sin(walkPhase * 8) * PX : handoff ? -PX * 2 : 0;
+    p(ctx, bx - PX, bodyY + PX + armSwing, PX, PX * 3, '#92400e');
+    p(ctx, bx + 8 * PX, bodyY + PX - armSwing, PX, PX * 3, '#92400e');
+    // Flame hands
+    ctx.save(); ctx.fillStyle = '#f97316'; ctx.shadowColor = '#fbbf24'; ctx.shadowBlur = PX * 3;
+    p(ctx, bx - PX, bodyY + PX * 3.5 + armSwing, PX, PX, '#f97316');
+    p(ctx, bx + 8 * PX, bodyY + PX * 3.5 - armSwing, PX, PX, '#fbbf24');
+    ctx.shadowBlur = 0; ctx.restore();
+
+    // Legs — scorched stone
+    const legY = bodyY + 6 * PX;
+    p(ctx, bx + PX, legY, 6 * PX, PX * 2, '#92400e');
+    const lLx = bx + PX + legSwing * PX * 0.8;
+    p(ctx, lLx, legY + 2 * PX, 2 * PX, 3 * PX, '#7f1d1d');
+    p(ctx, lLx - PX * 0.5, legY + 5 * PX, 3 * PX, PX, '#44403c');
+    const rLx = bx + 5 * PX - legSwing * PX * 0.8;
+    p(ctx, rLx, legY + 2 * PX, 2 * PX, 3 * PX, '#7f1d1d');
+    p(ctx, rLx - PX * 0.5, legY + 5 * PX, 3 * PX, PX, '#44403c');
+  }
+
+  // ── Focus glow ────────────────────────────────────────────────────────────
   if (focused) {
     ctx.save();
     ctx.strokeStyle = pal.accent;
     ctx.lineWidth = PX * 0.5;
     ctx.shadowColor = pal.accent;
     ctx.shadowBlur = 16;
-    ctx.strokeRect(bx - PX, by - PX * 2, 10 * PX, 20 * PX);
+    ctx.strokeRect(bx - PX, by - PX * 6, 10 * PX, 24 * PX);
     ctx.shadowBlur = 28;
-    ctx.globalAlpha = 0.18;
-    ctx.strokeRect(bx - PX * 2, by - PX * 3, 12 * PX, 23 * PX);
+    ctx.globalAlpha = 0.15;
+    ctx.strokeRect(bx - PX * 2, by - PX * 7, 12 * PX, 27 * PX);
     ctx.shadowBlur = 0;
     ctx.restore();
   }
 
-  // State dot — circuit node above head
-  const dotColor = state === 'working'  ? '#4ade80'
-    : state === 'thinking' ? '#a78bfa'
-    : state === 'speaking' ? pal.accent
-    : state === 'error'    ? '#f87171'
-    : state === 'offline'  ? '#334155'
+  // ── State dot ─────────────────────────────────────────────────────────────
+  const dotColor = working  ? '#4ade80'
+    : thinking ? '#a78bfa'
+    : speaking ? pal.accent
+    : state === 'error'   ? '#f87171'
+    : state === 'offline' ? '#334155'
     : pal.accent;
   ctx.save();
   ctx.beginPath();
-  ctx.arc(cx + 5 * PX, by - PX, PX * 1.2, 0, Math.PI * 2);
+  ctx.arc(cx + 5 * PX, by - PX * 2, PX * 1.2, 0, Math.PI * 2);
   ctx.fillStyle = dotColor;
   ctx.shadowColor = dotColor;
   ctx.shadowBlur = 10;
   ctx.fill();
   ctx.shadowBlur = 0;
   ctx.restore();
-  ctx.shadowBlur = 0;
 
   ctx.restore();
 }
@@ -890,7 +1127,7 @@ export function MythicCanvas({
         ctx.shadowBlur = 0;
       }
 
-      drawSprite(ctx, w.x, w.y, pal, agent.currentState, w.walkPhase, w.facing, PX, focused);
+      drawSprite(ctx, w.x, w.y, pal, agent.currentState, w.walkPhase, w.facing, PX, focused, agent.id);
 
       // Name label
       ctx.font = `bold ${PX * 3}px "JetBrains Mono", monospace`;
