@@ -236,7 +236,16 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
   // Serve control UI from packages/control/dist if present.
   // On every request for index.html, inject the auth token as a global so the
   // UI can bootstrap without reading the public /health endpoint.
-  const uiDist = join(__dirname, '..', '..', 'control', 'dist');
+  //
+  // Path resolution: try multiple candidates in priority order so this works
+  // whether the gateway is run from the monorepo source tree or from a binary
+  // install where __dirname points inside ~/.krythor/packages/gateway/dist/.
+  const uiDistCandidates = [
+    join(__dirname, '..', '..', 'control', 'dist'),           // monorepo: packages/gateway/dist → packages/control/dist
+    join(__dirname, '..', '..', '..', 'control', 'dist'),     // binary:   .krythor/packages/gateway/dist/../../control/dist
+    join(homedir(), '.krythor', 'packages', 'control', 'dist'), // absolute fallback
+  ];
+  const uiDist = uiDistCandidates.find(d => existsSync(join(d, 'index.html'))) ?? uiDistCandidates[0];
   if (existsSync(uiDist)) {
     await app.register(fastifyStatic, { root: uiDist, prefix: '/', index: false });
 

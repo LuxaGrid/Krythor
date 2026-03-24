@@ -1,31 +1,28 @@
 // Krythor PWA Service Worker
-// Strategy: network-first for API/WS, cache-first for static assets
-// This allows the UI shell to load offline while live data always hits the network.
+// CACHE_NAME is injected by scripts/deploy-dist.js at build time.
+// Changing it forces all clients to evict old cached assets on next load.
+//
+// Caching strategy:
+//   - /assets/* (content-hashed)  → cache-first, immutable (safe forever)
+//   - /index.html, /manifest.json → network-first (picks up new bundles immediately)
+//   - /api/*, /ws/*               → network-only (never cache live data)
+//   - everything else             → network-first with cache fallback
 
-const CACHE_NAME = 'krythor-v2';
-
-// Static assets to pre-cache on install
-const PRECACHE_URLS = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/logo.png',
-];
+const CACHE_NAME = 'krythor-0.1.0-1774357556155'; // replaced by deploy-dist.js
 
 // ── Install ────────────────────────────────────────────────────────────────────
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(PRECACHE_URLS))
-      .then(() => self.skipWaiting())
-  );
+  // Skip waiting so the new SW activates immediately (don't wait for tab close)
+  event.waitUntil(self.skipWaiting());
 });
 
 // ── Activate ───────────────────────────────────────────────────────────────────
 self.addEventListener('activate', (event) => {
+  // Delete all caches from previous versions
   event.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
-    ).then(() => self.clients.claim())
+    caches.keys()
+      .then(keys => Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))))
+      .then(() => self.clients.claim())
   );
 });
 
@@ -33,31 +30,50 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Skip non-GET requests and cross-origin requests
   if (event.request.method !== 'GET') return;
   if (url.origin !== self.location.origin) return;
 
-  // API calls and WebSocket upgrades — always network-first, never cache
+  // API + WebSocket — network-only, never cache
   if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/ws/')) {
-    event.respondWith(fetch(event.request).catch(() =>
-      new Response(JSON.stringify({ error: 'offline' }), {
-        status: 503,
-        headers: { 'Content-Type': 'application/json' },
-      })
-    ));
+    event.respondWith(
+      fetch(event.request).catch(() =>
+        new Response(JSON.stringify({ error: 'offline' }), {
+          status: 503,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      )
+    );
     return;
   }
 
-  // Static assets — stale-while-revalidate
-  event.respondWith(
-    caches.open(CACHE_NAME).then(async cache => {
-      const cached = await cache.match(event.request);
-      const networkFetch = fetch(event.request).then(response => {
+  // Hashed assets (/assets/index-XXXX.js, /assets/index-XXXX.css, fonts)
+  // These are safe to cache forever — the hash changes when content changes.
+  if (url.pathname.startsWith('/assets/') || url.pathname.startsWith('/fonts/')) {
+    event.respondWith(
+      caches.open(CACHE_NAME).then(async cache => {
+        const cached = await cache.match(event.request);
+        if (cached) return cached;
+        const response = await fetch(event.request);
         if (response.ok) cache.put(event.request, response.clone());
         return response;
-      }).catch(() => null);
+      })
+    );
+    return;
+  }
 
-      return cached || networkFetch || new Response('Offline', { status: 503 });
-    })
+  // index.html, manifest.json, logo.png — network-first so new bundles
+  // are picked up immediately without requiring a hard refresh.
+  event.respondWith(
+    fetch(event.request)
+      .then(response => {
+        if (response.ok) {
+          caches.open(CACHE_NAME).then(cache => cache.put(event.request, response.clone()));
+        }
+        return response;
+      })
+      .catch(async () => {
+        const cached = await caches.match(event.request);
+        return cached || new Response('Offline', { status: 503 });
+      })
   );
 });
