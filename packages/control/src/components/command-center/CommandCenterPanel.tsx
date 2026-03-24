@@ -54,6 +54,7 @@ export function CommandCenterPanel(): React.ReactElement {
             focusedAgentId={focusedAgentId}
             onFocusAgent={setFocusedAgentId}
             memoryPulseAgentId={memoryPulseAgentId}
+            isDemo={isDemo}
           />
         </div>
 
