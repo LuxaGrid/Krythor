@@ -2,7 +2,7 @@
 // Strategy: network-first for API/WS, cache-first for static assets
 // This allows the UI shell to load offline while live data always hits the network.
 
-const CACHE_NAME = 'krythor-v1';
+const CACHE_NAME = 'krythor-v2';
 
 // Static assets to pre-cache on install
 const PRECACHE_URLS = [
