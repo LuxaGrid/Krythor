@@ -19,34 +19,23 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, '..');
 const srcDist = join(root, 'dist');
 
-// ── 0. Derive version from git commit count ───────────────────────────────────
-// Uses `git rev-list --count HEAD` as the patch segment so every push
-// automatically produces a higher, unique version without needing to commit
-// package.json changes.
-import { execSync } from 'child_process';
+// ── 0. Read version from package.json ────────────────────────────────────────
+// Version is managed manually: minor UI updates bump patch (0.1.0 → 0.1.1),
+// major changes bump minor (0.1.x → 0.2.0). Edit package.json to change it.
 
 const pkgPath = join(root, 'package.json');
 const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
-const [major, minor] = pkg.version.split('.').map(Number);
+console.log(`\x1b[32m✔ Version: ${pkg.version}\x1b[0m`);
 
-let commitCount = 0;
-try {
-  commitCount = parseInt(execSync('git rev-list --count HEAD', { cwd: root }).toString().trim(), 10);
-} catch {
-  // Not a git repo or git unavailable — fall back to timestamp-based patch
-  commitCount = Math.floor(Date.now() / 1000) % 100000;
-}
-
-pkg.version = `${major}.${minor}.${commitCount}`;
-console.log(`\x1b[32m✔ Version: ${pkg.version} (${commitCount} commits)\x1b[0m`);
-
-// Also bump gateway package.json so health endpoint serves the same version
+// Sync gateway package.json so health endpoint serves the same version
 const gatewayPkgPath = join(root, '..', 'gateway', 'package.json');
 if (existsSync(gatewayPkgPath)) {
   const gatewayPkg = JSON.parse(readFileSync(gatewayPkgPath, 'utf8'));
-  gatewayPkg.version = pkg.version;
-  writeFileSync(gatewayPkgPath, JSON.stringify(gatewayPkg, null, 2) + '\n', 'utf8');
-  console.log(`\x1b[32m✔ Gateway version bumped to ${pkg.version}\x1b[0m`);
+  if (gatewayPkg.version !== pkg.version) {
+    gatewayPkg.version = pkg.version;
+    writeFileSync(gatewayPkgPath, JSON.stringify(gatewayPkg, null, 2) + '\n', 'utf8');
+    console.log(`\x1b[32m✔ Gateway version synced to ${pkg.version}\x1b[0m`);
+  }
 }
 
 // ── 1. Inject cache version into sw.js ────────────────────────────────────────
