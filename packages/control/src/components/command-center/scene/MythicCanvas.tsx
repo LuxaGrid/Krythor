@@ -386,7 +386,7 @@ function drawLCARSPanel(
     const by2 = y + i * barH + 2;
     const bh2 = barH - 3;
     const color = colors[i % colors.length];
-    const active = Math.floor(tick / 120) % 7 === i;
+    const active = Math.floor(tick / 360) % 7 === i;
     ctx.globalAlpha = active ? 0.85 : 0.35;
     ctx.fillStyle = color;
     ctx.fillRect(x + 2, by2, w - 4, bh2);
@@ -684,14 +684,14 @@ export function MythicCanvas({
     const dx = w.targetX - w.x;
     const dy = w.targetY - w.y;
     const dist = Math.hypot(dx, dy);
-    const speed = isIdle ? 2.2 : 3.0;
+    const speed = isIdle ? 0.9 : 1.6;
 
     if (dist > 2) {
       w.x += (dx / dist) * speed;
       w.y += (dy / dist) * speed;
       w.facing = dx > 0 ? 1 : -1;
       w.isWalking = true;
-      w.walkPhase += 0.18;
+      w.walkPhase += 0.09;
     } else {
       w.isWalking = false;
       w.walkPhase += 0.02;
