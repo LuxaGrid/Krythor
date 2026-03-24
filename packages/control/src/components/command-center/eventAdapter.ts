@@ -59,9 +59,12 @@ function resolveAgentId(
   agentMap: Record<string, CommandCenterAgent>,
 ): string {
   if (!gatewayAgentId) return 'atlas';
-  // Direct match (unlikely but possible if IDs align)
+  // 1. Direct CC id match (mythic agents)
   if (agentMap[gatewayAgentId]) return gatewayAgentId;
-  // Route by position in map — first entry that isn't orchestrator gets the work
+  // 2. Match by stored gateway UUID — user-created agents set gatewayAgentId
+  const byGatewayId = Object.values(agentMap).find(a => a.gatewayAgentId === gatewayAgentId);
+  if (byGatewayId) return byGatewayId.id;
+  // 3. Fallback: first non-orchestrator worker
   const workers = Object.values(agentMap).filter(a => a.role !== 'orchestrator');
   if (workers.length > 0) return workers[0]!.id;
   return 'atlas';

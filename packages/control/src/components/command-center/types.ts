@@ -12,12 +12,7 @@ export type AgentAnimationState =
   | 'error'
   | 'offline';
 
-export type SceneZoneId =
-  | 'crown'
-  | 'forge'
-  | 'archive'
-  | 'memory'
-  | 'monitor';
+export type SceneZoneId = string;
 
 export interface ScenePosition {
   x: number; // 0–100 percentage of scene width
@@ -39,6 +34,10 @@ export interface CommandCenterAgent {
   targetZone?: SceneZoneId;
   position: ScenePosition;
   lastEventAt?: number;
+  /** Gateway UUID — set for user-created agents so events can be matched by real ID */
+  gatewayAgentId?: string;
+  /** True for the five mythic default agents; false for user-created agents */
+  isMythic?: boolean;
 }
 
 export type CCEventType =

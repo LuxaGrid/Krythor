@@ -5,7 +5,8 @@ import { useGatewayContext } from '../../GatewayContext';
 import type { ConnectionState } from '../../GatewayContext';
 import { useDemoAdapter } from './demoAdapter';
 import { adaptGatewayEvent } from './eventAdapter';
-import { DEFAULT_AGENTS, SCENE_ZONES, ZONE_MAP } from './agents';
+import { DEFAULT_AGENTS, SCENE_ZONES, ZONE_MAP, createUserAgent, createUserZone } from './agents';
+import { listAgents } from '../../api';
 import { AGENT_STATE_TRANSITIONS } from './events';
 import type { CCEvent, CommandCenterAgent, SceneZone, SceneZoneId } from './types';
 
@@ -33,6 +34,7 @@ export function useCommandCenter(): {
 
   // ── Local state ───────────────────────────────────────────────────────────
   const [agents, setAgents] = useState<CommandCenterAgent[]>(DEFAULT_AGENTS);
+  const [zones, setZones]   = useState<SceneZone[]>(SCENE_ZONES);
   const [logEntries, setLogEntries] = useState<CCEvent[]>([]);
   const [activeZones, setActiveZones] = useState<Set<SceneZoneId>>(new Set());
   const [focusedAgentId, setFocusedAgentId] = useState<string | null>(null);
@@ -52,6 +54,44 @@ export function useCommandCenter(): {
 
   // Demo adapter — always running internally, only surfaces when needed
   const demo = useDemoAdapter();
+
+  // ── Load user-created agents from gateway and merge into scene ────────────
+  useEffect(() => {
+    listAgents().then(gatewayAgents => {
+      if (!gatewayAgents.length) return;
+      setAgents(prev => {
+        // Collect gateway IDs already represented in the scene
+        const knownGatewayIds = new Set(prev.map(a => a.gatewayAgentId).filter(Boolean));
+        const newCCAgents: CommandCenterAgent[] = [];
+        let userIndex = 0;
+        for (const ga of gatewayAgents) {
+          if (knownGatewayIds.has(ga.id)) continue;
+          newCCAgents.push(createUserAgent(ga.id, ga.name, userIndex));
+          userIndex++;
+        }
+        return newCCAgents.length ? [...prev, ...newCCAgents] : prev;
+      });
+      setZones(prevZones => {
+        // Build zones for any new user agents that don't already have one
+        const knownZoneIds = new Set(prevZones.map(z => z.id));
+        const knownGatewayIds = new Set(
+          DEFAULT_AGENTS.map(a => a.gatewayAgentId).filter(Boolean)
+        );
+        let userIndex = 0;
+        const newZones: SceneZone[] = [];
+        for (const ga of gatewayAgents) {
+          if (knownGatewayIds.has(ga.id)) continue;
+          const zoneId = `user-${ga.id.slice(0, 8)}`;
+          if (!knownZoneIds.has(zoneId)) {
+            const tempAgent = createUserAgent(ga.id, ga.name, userIndex);
+            newZones.push(createUserZone(tempAgent));
+          }
+          userIndex++;
+        }
+        return newZones.length ? [...prevZones, ...newZones] : prevZones;
+      });
+    }).catch(() => { /* non-fatal — scene still works with mythic agents */ });
+  }, []);
 
   // ── Cleanup idle timers on unmount ────────────────────────────────────────
   useEffect(() => {
@@ -219,7 +259,7 @@ export function useCommandCenter(): {
 
   return {
     agents,
-    zones: SCENE_ZONES,
+    zones,
     logEntries,
     activeZones,
     isDemo,
