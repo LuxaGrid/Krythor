@@ -13,13 +13,14 @@ interface CommandSceneProps {
 }
 
 export function CommandScene({
-  zones, agents, focusedAgentId, onFocusAgent, memoryPulseAgentId, isDemo,
+  zones, activeZones, agents, focusedAgentId, onFocusAgent, memoryPulseAgentId, isDemo,
 }: CommandSceneProps): React.ReactElement {
   return (
     <div className="relative w-full h-full overflow-hidden rounded-xl" style={{ minHeight: 0 }}>
       <MythicCanvas
         agents={agents}
         zones={zones}
+        activeZones={activeZones}
         focusedAgentId={focusedAgentId}
         onFocusAgent={onFocusAgent}
         memoryPulseAgentId={memoryPulseAgentId}

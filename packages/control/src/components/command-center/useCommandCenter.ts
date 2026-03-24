@@ -115,26 +115,35 @@ export function useCommandCenter(): {
       agentIdleTimers.current.set(agentId, timer);
     }
 
-    // Manage active zones
+    // Manage active zones — use event.zoneId if present; otherwise look up
+    // currentZone from the functional setAgents updater to avoid stale closure.
     if (event.type === 'TASK_STARTED') {
-      const agent = agents.find(a => a.id === event.agentId);
-      const zoneId = event.zoneId ?? agent?.currentZone;
-      if (zoneId) {
-        setActiveZones(prev => new Set([...prev, zoneId]));
+      if (event.zoneId) {
+        setActiveZones(prev => new Set([...prev, event.zoneId!]));
+      } else {
+        // Read currentZone without capturing stale agents
+        setAgents(prev => {
+          const agent = prev.find(a => a.id === event.agentId);
+          const zoneId = agent?.currentZone;
+          if (zoneId) setActiveZones(az => new Set([...az, zoneId]));
+          return prev; // no agent mutation here
+        });
       }
     }
 
     if (event.type === 'AGENT_IDLE' || event.type === 'RESPONSE_COMPLETE') {
-      const agent = agents.find(a => a.id === event.agentId);
-      const zoneId = event.zoneId ?? agent?.currentZone;
-      if (zoneId) {
-        setTimeout(() => {
-          setActiveZones(prev => {
-            const next = new Set(prev);
-            next.delete(zoneId);
-            return next;
-          });
-        }, ACTIVE_ZONE_CLEAR_MS);
+      if (event.zoneId) {
+        const zoneId = event.zoneId;
+        setTimeout(() => setActiveZones(prev => { const n = new Set(prev); n.delete(zoneId); return n; }), ACTIVE_ZONE_CLEAR_MS);
+      } else {
+        setAgents(prev => {
+          const agent = prev.find(a => a.id === event.agentId);
+          const zoneId = agent?.currentZone;
+          if (zoneId) {
+            setTimeout(() => setActiveZones(az => { const n = new Set(az); n.delete(zoneId); return n; }), ACTIVE_ZONE_CLEAR_MS);
+          }
+          return prev;
+        });
       }
     }
 
@@ -146,7 +155,9 @@ export function useCommandCenter(): {
 
     // Prepend to log, cap at MAX_LOG_ENTRIES
     setLogEntries(prev => [event, ...prev].slice(0, MAX_LOG_ENTRIES));
-  }, [agents]);
+  // No state reads in this callback — all mutations use functional updaters.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Watch real gateway events ─────────────────────────────────────────────
   useEffect(() => {

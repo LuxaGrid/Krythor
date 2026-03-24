@@ -1,9 +1,10 @@
 import React, { useRef, useEffect, useCallback } from 'react';
-import type { CommandCenterAgent, SceneZone } from '../types';
+import type { CommandCenterAgent, SceneZone, SceneZoneId } from '../types';
 
 interface MythicCanvasProps {
   agents: CommandCenterAgent[];
   zones: SceneZone[];
+  activeZones: Set<SceneZoneId>;
   focusedAgentId: string | null;
   onFocusAgent: (id: string | null) => void;
   memoryPulseAgentId?: string | null;
@@ -73,6 +74,8 @@ function drawSprite(
   const thinking = state === 'thinking';
   const speaking = state === 'speaking';
   const offline = state === 'offline';
+  const handoff = state === 'handoff';
+  const listening = state === 'listening';
 
   // Body bob
   const bob = Math.abs(Math.sin(walkPhase * 3)) * PX * 0.5;
@@ -119,14 +122,25 @@ function drawSprite(
   p(ctx, bx + 2 * PX, eyeY, PX / 2, PX / 2, '#ffffff');
   p(ctx, bx + 5 * PX, eyeY, PX / 2, PX / 2, '#ffffff');
 
-  // Mouth
+  // Mouth — state-specific expressions
   const mouthY = by + 4 * PX;
   if (speaking) {
+    // Open mouth (talking)
     p(ctx, bx + 3 * PX, mouthY, 2 * PX, PX, '#dc2626');
   } else if (thinking) {
+    // Pursed lips (thinking)
     p(ctx, bx + 3 * PX, mouthY, PX, PX, '#78716c');
     p(ctx, bx + 5 * PX, mouthY, PX / 2, PX, '#78716c');
     p(ctx, bx + 6 * PX, mouthY, PX / 2, PX, '#78716c');
+  } else if (handoff) {
+    // Slight smile (passing work off)
+    p(ctx, bx + 2 * PX, mouthY, PX, PX / 2, '#78716c');
+    p(ctx, bx + 3 * PX, mouthY + PX / 2, 2 * PX, PX / 2, '#78716c');
+    p(ctx, bx + 5 * PX, mouthY, PX, PX / 2, '#78716c');
+  } else if (listening) {
+    // Neutral, slightly open
+    p(ctx, bx + 2 * PX, mouthY, 4 * PX, PX / 2, '#78716c');
+    p(ctx, bx + 3 * PX, mouthY + PX / 2, 2 * PX, PX / 2, '#4b5563');
   } else {
     p(ctx, bx + 2 * PX, mouthY, 4 * PX, PX / 2, '#78716c');
   }
@@ -148,9 +162,15 @@ function drawSprite(
 
   // Arms
   const armY = bodyY + PX;
-  const armSwing = working ? Math.sin(walkPhase * 8) * PX : 0;
+  const armSwing = working ? Math.sin(walkPhase * 8) * PX
+    : handoff ? -PX * 2   // both arms raised — passing work forward
+    : 0;
+  const rightArmSwing = working ? -armSwing
+    : handoff ? -PX * 2   // symmetric raise
+    : listening ? Math.sin(walkPhase * 3) * PX * 0.5  // slight lean
+    : 0;
   p(ctx, bx - PX, armY + armSwing, PX, 3 * PX, pal.skin);
-  p(ctx, bx + 8 * PX, armY - armSwing, PX, 3 * PX, pal.skin);
+  p(ctx, bx + 8 * PX, armY + rightArmSwing, PX, 3 * PX, pal.skin);
 
   // ── Legs ────────────────────────────────────────────────────────────────────
   const legY = bodyY + 5 * PX;
@@ -406,7 +426,7 @@ interface Particle { x: number; y: number; vx: number; vy: number; life: number;
 
 // ─── Main component ───────────────────────────────────────────────────────────
 export function MythicCanvas({
-  agents, zones, focusedAgentId, onFocusAgent, memoryPulseAgentId, isDemo,
+  agents, zones, activeZones, focusedAgentId, onFocusAgent, memoryPulseAgentId, isDemo,
 }: MythicCanvasProps): React.ReactElement {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stateRef = useRef({
@@ -423,10 +443,12 @@ export function MythicCanvas({
   const focusRef = useRef(focusedAgentId);
   const agentsRef = useRef(agents);
   const zonesRef = useRef(zones);
+  const activeZonesRef = useRef(activeZones);
 
   focusRef.current = focusedAgentId;
   agentsRef.current = agents;
   zonesRef.current = zones;
+  activeZonesRef.current = activeZones;
 
   useEffect(() => {
     if (memoryPulseAgentId && memoryPulseAgentId !== stateRef.current.memPulseAgent) {
@@ -472,8 +494,10 @@ export function MythicCanvas({
   function updateWander(agent: CommandCenterAgent, W: number, H: number) {
     const sr = stateRef.current;
     if (!sr.wander[agent.id]) {
-      const hx = (agent.position.x / 100) * W;
-      const hy = (agent.position.y / 100) * H;
+      const rawX = agent.position?.x ?? 50;
+      const rawY = agent.position?.y ?? 50;
+      const hx = (isNaN(rawX) ? 50 : rawX) / 100 * W;
+      const hy = (isNaN(rawY) ? 50 : rawY) / 100 * H;
       sr.wander[agent.id] = {
         x: hx, y: hy,
         targetX: hx, targetY: hy,
@@ -559,7 +583,8 @@ export function MythicCanvas({
     // ── Zone floor glows ──────────────────────────────────────────────────────
     zonesRef.current.forEach(zone => {
       const agent = agentsRef.current.find(a => a.homeZone === zone.id);
-      const isActive = agent && agent.currentState !== 'idle' && agent.currentState !== 'offline';
+      const zoneExplicitlyActive = activeZonesRef.current.has(zone.id as SceneZoneId);
+      const isActive = zoneExplicitlyActive || (agent && agent.currentState !== 'idle' && agent.currentState !== 'offline');
       const w = agent && sr.wander[agent.id];
       const zx = w ? w.homeX : (zone.position.x / 100) * W;
       const zy = w ? w.homeY : (zone.position.y / 100) * H;

@@ -245,8 +245,12 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
     join(__dirname, '..', '..', '..', 'control', 'dist'),     // binary:   .krythor/packages/gateway/dist/../../control/dist
     join(homedir(), '.krythor', 'packages', 'control', 'dist'), // absolute fallback
   ];
-  const uiDist = uiDistCandidates.find(d => existsSync(join(d, 'index.html'))) ?? uiDistCandidates[0];
-  if (existsSync(uiDist)) {
+  const resolvedUiDist = uiDistCandidates.find(d => existsSync(join(d, 'index.html')));
+  if (!resolvedUiDist) {
+    logger.warn({ candidates: uiDistCandidates }, 'Control UI dist not found — UI will not be served. Run `pnpm build` in packages/control.');
+  }
+  const uiDist = resolvedUiDist ?? uiDistCandidates[0];
+  if (resolvedUiDist) {
     await app.register(fastifyStatic, { root: uiDist, prefix: '/', index: false });
 
     const serveIndex = (_req: unknown, reply: { type: (t: string) => void; send: (b: unknown) => void; code: (n: number) => { send: (b: unknown) => void } }) => {
