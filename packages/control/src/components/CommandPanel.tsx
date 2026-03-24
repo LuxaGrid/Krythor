@@ -1001,7 +1001,7 @@ export function CommandPanel({ health, onTabChange, newChatRef }: Props) {
               disabled={loading && !abortRef.current}
               placeholder={noProvider ? 'Add a provider to start…' : 'Message Krythor… (Enter to send, Shift+Enter for new line)'}
               rows={1}
-              className="flex-1 bg-zinc-800 rounded-xl px-4 py-3 text-sm text-zinc-200 placeholder-zinc-600 outline-none resize-none font-mono leading-relaxed overflow-hidden focus:ring-1 focus:ring-brand-700 transition-all"
+              className="flex-1 bg-zinc-800 rounded-xl px-4 py-3 text-base text-zinc-200 placeholder-zinc-400 outline-none resize-none font-mono leading-relaxed overflow-hidden focus:ring-1 focus:ring-brand-700 transition-all"
               autoFocus
             />
             {loading ? (
@@ -1024,7 +1024,7 @@ export function CommandPanel({ health, onTabChange, newChatRef }: Props) {
           </div>
 
           <div className="flex items-center justify-between mt-1.5 px-1">
-            <p className="text-zinc-700 text-xs">Enter to send · Shift+Enter for newline</p>
+            <p className="text-zinc-400 text-sm">Enter to send · Shift+Enter for newline</p>
             {availableModels.length > 1 && (
               <ModelSwitcher
                 selectedModelId={selectedModelId}

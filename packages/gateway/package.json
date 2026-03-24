@@ -1,6 +1,6 @@
 {
   "name": "@krythor/gateway",
-  "version": "0.1.210",
+  "version": "0.1.213",
   "private": true,
   "description": "Krythor Gateway — local HTTP and WebSocket service layer",
   "type": "commonjs",
