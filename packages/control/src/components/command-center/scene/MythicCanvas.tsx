@@ -232,15 +232,36 @@ function drawSprite(
   p(ctx, lLegX, legY + PX * 1.5, PX * 2, PX * 4, '#050810');
   glow(lLegX, legY + PX * 1.5, PX * 0.5, PX * 4, 0.65);     // outer stripe
   glow(lLegX, legY + PX * 5, PX * 2.5, PX * 0.5, 0.5);      // ankle
-  p(ctx, lLegX - PX * 0.5, legY + PX * 5.5, PX * 3, PX, '#050810'); // foot
-  glow(lLegX - PX * 0.5, legY + PX * 5.5, PX * 3, PX * 0.4, 0.4);
+  // Orb foot — glowing sphere at the end of each leg
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(lLegX + PX, legY + PX * 6.2, PX * 1.4, 0, Math.PI * 2);
+  ctx.fillStyle = '#050810'; ctx.fill();
+  ctx.strokeStyle = pal.accent; ctx.lineWidth = PX * 0.5;
+  ctx.shadowColor = pal.accent; ctx.shadowBlur = PX * 5;
+  ctx.globalAlpha = offline ? 0.12 : 0.9; ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(lLegX + PX, legY + PX * 6.2, PX * 0.6, 0, Math.PI * 2);
+  ctx.fillStyle = pal.accent; ctx.shadowBlur = PX * 8;
+  ctx.globalAlpha = offline ? 0.08 : 0.55; ctx.fill();
+  ctx.shadowBlur = 0; ctx.restore();
 
   const rLegX = bx + 5 * PX - legSwing * PX * 0.8;
   p(ctx, rLegX, legY + PX * 1.5, PX * 2, PX * 4, '#050810');
   glow(rLegX + PX * 1.5, legY + PX * 1.5, PX * 0.5, PX * 4, 0.65);
   glow(rLegX, legY + PX * 5, PX * 2.5, PX * 0.5, 0.5);
-  p(ctx, rLegX - PX * 0.5, legY + PX * 5.5, PX * 3, PX, '#050810');
-  glow(rLegX - PX * 0.5, legY + PX * 5.5, PX * 3, PX * 0.4, 0.4);
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(rLegX + PX, legY + PX * 6.2, PX * 1.4, 0, Math.PI * 2);
+  ctx.fillStyle = '#050810'; ctx.fill();
+  ctx.strokeStyle = pal.accent; ctx.lineWidth = PX * 0.5;
+  ctx.shadowColor = pal.accent; ctx.shadowBlur = PX * 5;
+  ctx.globalAlpha = offline ? 0.12 : 0.9; ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(rLegX + PX, legY + PX * 6.2, PX * 0.6, 0, Math.PI * 2);
+  ctx.fillStyle = pal.accent; ctx.shadowBlur = PX * 8;
+  ctx.globalAlpha = offline ? 0.08 : 0.55; ctx.fill();
+  ctx.shadowBlur = 0; ctx.restore();
 
   // ── Focus glow ────────────────────────────────────────────────────────────────
   if (focused) {
