@@ -138,6 +138,10 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 
+# Control UI dist — must be committed so the gateway can serve the UI on a fresh clone
+!packages/control/dist/
+!packages/control/dist/**
+
 # Krythor build artifacts
 krythor-dist/
 krythor-dist-win/
