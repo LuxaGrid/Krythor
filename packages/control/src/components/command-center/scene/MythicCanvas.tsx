@@ -87,53 +87,85 @@ function drawSprite(
   }
   if (offline) ctx.globalAlpha = 0.3;
 
-  // Hair / hat
-  if (working) {
-    p(ctx, bx + PX, by - PX, 6 * PX, PX * 2, '#f59e0b');
-    p(ctx, bx, by, 8 * PX, PX, '#d97706');
-  } else {
-    p(ctx, bx + PX, by - PX, 6 * PX, PX * 2, pal.hair);
-    p(ctx, bx + PX, by, 2 * PX, PX, pal.hair);
-    p(ctx, bx + 5 * PX, by, 2 * PX, PX, pal.hair);
-  }
+  // ── Head ─────────────────────────────────────────────────────────────────────
+  // Slightly taller head — more humanoid, less boxy
+  const headW = 6 * PX, headH = 6 * PX;
+  const hx = bx + PX;
+  const hy = by;
 
-  // Head
-  p(ctx, bx + PX, by, 6 * PX, 5 * PX, pal.skin);
-  p(ctx, bx, by + PX, 8 * PX, 3 * PX, pal.skin);
+  // Head shape
+  p(ctx, hx, hy, headW, headH, pal.skin);
+  // Rounded top corners (1px chop)
+  p(ctx, hx, hy, PX, PX, '#020409');              // tl cut
+  p(ctx, hx + headW - PX, hy, PX, PX, '#020409'); // tr cut
+  // Ears
+  p(ctx, bx, hy + PX * 2, PX, PX * 2, pal.skin);
+  p(ctx, bx + 7 * PX, hy + PX * 2, PX, PX * 2, pal.skin);
+  // Ear shadow
+  p(ctx, bx, hy + PX * 2, PX * 0.5, PX * 2, '#c4a882');
 
-  // Eyes
-  const eyeY = by + 2 * PX;
-  p(ctx, bx + 2 * PX, eyeY, PX, PX, '#1e293b');
-  p(ctx, bx + 5 * PX, eyeY, PX, PX, '#1e293b');
-  p(ctx, bx + 2 * PX, eyeY, PX * 0.5, PX * 0.5, '#ffffff');
-  p(ctx, bx + 5 * PX, eyeY, PX * 0.5, PX * 0.5, '#ffffff');
+  // Eyes — slightly wider apart, colored iris
+  const eyeY = hy + PX * 2;
+  p(ctx, hx + PX, eyeY, PX * 1.5, PX * 1.5, '#1e293b');       // left eye white bg
+  p(ctx, hx + headW - PX * 2.5, eyeY, PX * 1.5, PX * 1.5, '#1e293b'); // right
+  // Iris
+  p(ctx, hx + PX * 1.25, eyeY + PX * 0.25, PX, PX, '#60a5fa'); // blue iris
+  p(ctx, hx + headW - PX * 2.25, eyeY + PX * 0.25, PX, PX, '#60a5fa');
+  // Pupil
+  p(ctx, hx + PX * 1.5, eyeY + PX * 0.5, PX * 0.5, PX * 0.5, '#0f172a');
+  p(ctx, hx + headW - PX * 2, eyeY + PX * 0.5, PX * 0.5, PX * 0.5, '#0f172a');
 
-  // Mouth
-  const mouthY = by + 4 * PX;
+  // Mouth — state expressions
+  const mouthY = hy + PX * 4;
   if (speaking) {
-    p(ctx, bx + 3 * PX, mouthY, 2 * PX, PX, '#dc2626');
+    p(ctx, hx + PX * 1.5, mouthY, PX * 3, PX * 1.5, '#991b1b'); // open mouth
+    p(ctx, hx + PX * 1.5, mouthY, PX * 3, PX * 0.5, '#dc2626');  // upper lip
   } else if (thinking) {
-    p(ctx, bx + 3 * PX, mouthY, PX, PX, '#78716c');
-    p(ctx, bx + 5 * PX, mouthY, PX * 0.5, PX, '#78716c');
-    p(ctx, bx + 6 * PX, mouthY, PX * 0.5, PX, '#78716c');
+    p(ctx, hx + PX * 1.5, mouthY + PX * 0.5, PX * 1.5, PX * 0.5, '#78716c');
+    p(ctx, hx + PX * 3.5, mouthY + PX * 0.25, PX, PX * 0.5, '#78716c');
   } else if (handoff) {
-    p(ctx, bx + 2 * PX, mouthY, PX, PX * 0.5, '#78716c');
-    p(ctx, bx + 3 * PX, mouthY + PX * 0.5, 2 * PX, PX * 0.5, '#78716c');
-    p(ctx, bx + 5 * PX, mouthY, PX, PX * 0.5, '#78716c');
+    // Smile
+    p(ctx, hx + PX, mouthY + PX * 0.5, PX, PX * 0.5, '#78716c');
+    p(ctx, hx + PX * 2, mouthY + PX, PX * 2, PX * 0.5, '#78716c');
+    p(ctx, hx + PX * 4, mouthY + PX * 0.5, PX, PX * 0.5, '#78716c');
   } else if (listening) {
-    p(ctx, bx + 2 * PX, mouthY, 4 * PX, PX * 0.5, '#78716c');
-    p(ctx, bx + 3 * PX, mouthY + PX * 0.5, 2 * PX, PX * 0.5, '#4b5563');
+    p(ctx, hx + PX * 1.5, mouthY + PX * 0.5, PX * 3, PX * 0.5, '#78716c');
   } else {
-    p(ctx, bx + 2 * PX, mouthY, 4 * PX, PX * 0.5, '#78716c');
+    p(ctx, hx + PX * 1.5, mouthY + PX * 0.5, PX * 3, PX * 0.5, '#78716c');
   }
 
-  // Body
-  const bodyY = by + 5 * PX;
-  p(ctx, bx, bodyY, 8 * PX, 5 * PX, pal.body);
-  p(ctx, bx + 3 * PX, bodyY, 2 * PX, PX, pal.accent);      // collar
-  p(ctx, bx + PX, bodyY + 2 * PX, 2 * PX, 2 * PX, pal.accent); // chest
+  // ── Starfleet uniform body ────────────────────────────────────────────────────
+  const bodyY = hy + headH;
+  const bodyW = 8 * PX;
 
-  // Arms
+  // Main uniform — black base
+  p(ctx, bx, bodyY, bodyW, 5 * PX, '#0d1117');
+
+  // Division color: top 2px shoulder stripe + yoke panel
+  // Atlas=gold(command), Voltaris=red(ops), Aethon=blue(science), Thyros=blue, Pyron=gold
+  p(ctx, bx, bodyY, bodyW, PX, pal.body);             // shoulder stripe
+  p(ctx, bx, bodyY + PX, bodyW, PX, pal.body, 0.5);   // fade second row
+
+  // Collar — dark turtleneck
+  p(ctx, bx + PX * 2, bodyY, PX * 4, PX * 2, '#111827');
+  p(ctx, bx + PX * 2, bodyY, PX * 4, PX, '#1f2937');   // collar highlight
+
+  // Comm badge — small gold delta on chest (left side)
+  ctx.save();
+  ctx.fillStyle = '#fbbf24';
+  ctx.shadowColor = '#fbbf24';
+  ctx.shadowBlur = 4;
+  // Delta shape: triangle
+  ctx.beginPath();
+  ctx.moveTo(bx + PX * 1.5, bodyY + PX * 1.5);
+  ctx.lineTo(bx + PX * 3,   bodyY + PX * 3.5);
+  ctx.lineTo(bx + PX * 0.5, bodyY + PX * 3);
+  ctx.closePath();
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.restore();
+
+  // Arms — black uniform sleeves, skin hands
   const armY = bodyY + PX;
   const armSwing = working ? Math.sin(walkPhase * 8) * PX
     : handoff   ? -PX * 2
@@ -142,18 +174,23 @@ function drawSprite(
     : handoff   ? -PX * 2
     : listening ? Math.sin(walkPhase * 3) * PX * 0.5
     : 0;
-  p(ctx, bx - PX, armY + armSwing,       PX, 3 * PX, pal.skin);
-  p(ctx, bx + 8 * PX, armY + rightArmSwing, PX, 3 * PX, pal.skin);
+  // Left arm
+  p(ctx, bx - PX, armY + armSwing,          PX, PX * 2.5, '#0d1117'); // sleeve
+  p(ctx, bx - PX, armY + armSwing + PX * 2.5, PX, PX,     pal.skin);  // hand
+  // Right arm
+  p(ctx, bx + 8 * PX, armY + rightArmSwing,          PX, PX * 2.5, '#0d1117');
+  p(ctx, bx + 8 * PX, armY + rightArmSwing + PX * 2.5, PX, PX,     pal.skin);
 
-  // Legs
+  // ── Legs ─────────────────────────────────────────────────────────────────────
   const legY = bodyY + 5 * PX;
-  p(ctx, bx + PX, legY, 6 * PX, 2 * PX, '#1e3a8a');
+  // Trousers — dark charcoal (Starfleet standard)
+  p(ctx, bx + PX, legY, 6 * PX, 2 * PX, '#1c1f26');
   const lLegX = bx + PX + legSwing * PX * 0.8;
-  p(ctx, lLegX, legY + 2 * PX, 2 * PX, 3 * PX, '#1e3a8a');
-  p(ctx, lLegX - PX * 0.5, legY + 5 * PX, 3 * PX, PX, '#0f172a');
+  p(ctx, lLegX, legY + 2 * PX, 2 * PX, 3 * PX, '#1c1f26');
+  p(ctx, lLegX - PX * 0.5, legY + 5 * PX, 3 * PX, PX, '#080c14'); // boot
   const rLegX = bx + 5 * PX - legSwing * PX * 0.8;
-  p(ctx, rLegX, legY + 2 * PX, 2 * PX, 3 * PX, '#1e3a8a');
-  p(ctx, rLegX - PX * 0.5, legY + 5 * PX, 3 * PX, PX, '#0f172a');
+  p(ctx, rLegX, legY + 2 * PX, 2 * PX, 3 * PX, '#1c1f26');
+  p(ctx, rLegX - PX * 0.5, legY + 5 * PX, 3 * PX, PX, '#080c14');
 
   // Focus glow
   if (focused) {
@@ -360,7 +397,6 @@ function drawLCARSPanel(
   tick: number, side: 'left' | 'right',
 ) {
   const colors = ['#c47c2c', '#1a5f8a', '#9b59b6', '#27ae60', '#1eaeff', '#c0392b'];
-  const barH = h / 8;
 
   // Corner bracket
   ctx.strokeStyle = '#1a5f8a';
@@ -381,23 +417,34 @@ function drawLCARSPanel(
   ctx.stroke();
   ctx.globalAlpha = 1;
 
-  // Colored status blocks
-  for (let i = 0; i < 7; i++) {
-    const by2 = y + i * barH + 2;
-    const bh2 = barH - 3;
+  // Colored status blocks — more of them, smaller, stronger glow when active
+  const blockCount = 14;
+  const blockH = (h - 4) / blockCount;
+  for (let i = 0; i < blockCount; i++) {
+    const by2 = y + 2 + i * blockH;
+    const bh2 = blockH * 0.6; // only 60% filled — visible gap between blocks
     const color = colors[i % colors.length];
-    const active = Math.floor(tick / 360) % 7 === i;
-    ctx.globalAlpha = active ? 0.85 : 0.35;
-    ctx.fillStyle = color;
-    ctx.fillRect(x + 2, by2, w - 4, bh2);
+    const active = Math.floor(tick / 360) % blockCount === i;
     if (active) {
+      // Outer ambient halo
       ctx.shadowColor = color;
-      ctx.shadowBlur = 6;
+      ctx.shadowBlur = 20;
+      ctx.globalAlpha = 0.4;
+      ctx.fillStyle = color;
+      ctx.fillRect(x - 2, by2 - 2, w + 4, bh2 + 4);
+      // Core block — bright
+      ctx.shadowBlur = 12;
+      ctx.globalAlpha = 0.95;
       ctx.fillRect(x + 2, by2, w - 4, bh2);
       ctx.shadowBlur = 0;
+    } else {
+      ctx.globalAlpha = 0.28;
+      ctx.fillStyle = color;
+      ctx.fillRect(x + 2, by2, w - 4, bh2);
     }
   }
   ctx.globalAlpha = 1;
+  ctx.shadowBlur = 0;
 }
 
 // ─── Command arc console ──────────────────────────────────────────────────────
