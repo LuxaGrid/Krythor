@@ -74,8 +74,7 @@ function drawSprite(
   const offline   = state === 'offline';
   const handoff   = state === 'handoff';
 
-  const bob      = Math.abs(Math.sin(walkPhase * 3)) * PX * 0.5;
-  const legSwing = Math.sin(walkPhase * 6);
+  const bob = Math.abs(Math.sin(walkPhase * 3)) * PX * 0.5;
 
   const bx = cx - 4 * PX;
   const by = cy - 14 * PX - bob;
@@ -223,45 +222,86 @@ function drawSprite(
   glow(bx + bodyW + PX, armY + rightArmSwing, PX * 0.5, PX * 3.5, 0.7);
   glow(bx + bodyW, armY + PX * 3 + rightArmSwing, PX * 1.5, PX * 0.5, 0.55);
 
-  // ── Legs ──────────────────────────────────────────────────────────────────────
-  const legY = bodyY + 5 * PX;
-  p(ctx, bx + PX, legY, 6 * PX, PX * 1.5, '#050810');       // hip block
-  glow(bx + PX, legY, 6 * PX, PX * 0.5, 0.5);               // hip line
+  // ── Hover flame — no legs, single thruster orb-flame below body ──────────────
+  const flameBaseY = bodyY + 5 * PX;
+  const flameOrbY  = flameBaseY + PX * 6;       // orb center
+  const flicker    = Math.sin(walkPhase * 9) * PX * 0.6; // fast flicker
+  const flicker2   = Math.sin(walkPhase * 11 + 1.2) * PX * 0.4;
 
-  const lLegX = bx + PX + legSwing * PX * 0.8;
-  p(ctx, lLegX, legY + PX * 1.5, PX * 2, PX * 4, '#050810');
-  glow(lLegX, legY + PX * 1.5, PX * 0.5, PX * 4, 0.65);     // outer stripe
-  glow(lLegX, legY + PX * 5, PX * 2.5, PX * 0.5, 0.5);      // ankle
-  // Orb foot — glowing sphere at the end of each leg
   ctx.save();
-  ctx.beginPath();
-  ctx.arc(lLegX + PX, legY + PX * 6.2, PX * 1.4, 0, Math.PI * 2);
-  ctx.fillStyle = '#050810'; ctx.fill();
-  ctx.strokeStyle = pal.accent; ctx.lineWidth = PX * 0.5;
-  ctx.shadowColor = pal.accent; ctx.shadowBlur = PX * 5;
-  ctx.globalAlpha = offline ? 0.12 : 0.9; ctx.stroke();
-  ctx.beginPath();
-  ctx.arc(lLegX + PX, legY + PX * 6.2, PX * 0.6, 0, Math.PI * 2);
-  ctx.fillStyle = pal.accent; ctx.shadowBlur = PX * 8;
-  ctx.globalAlpha = offline ? 0.08 : 0.55; ctx.fill();
-  ctx.shadowBlur = 0; ctx.restore();
+  ctx.globalAlpha = offline ? 0.1 : 1;
 
-  const rLegX = bx + 5 * PX - legSwing * PX * 0.8;
-  p(ctx, rLegX, legY + PX * 1.5, PX * 2, PX * 4, '#050810');
-  glow(rLegX + PX * 1.5, legY + PX * 1.5, PX * 0.5, PX * 4, 0.65);
-  glow(rLegX, legY + PX * 5, PX * 2.5, PX * 0.5, 0.5);
-  ctx.save();
+  // Flame cone — tapers from body bottom down to the orb
+  // Outer soft cone (wide, very transparent)
+  const coneGrd = ctx.createLinearGradient(cx, flameBaseY, cx, flameOrbY);
+  coneGrd.addColorStop(0, 'transparent');
+  coneGrd.addColorStop(0.4, pal.body + '55');
+  coneGrd.addColorStop(1, pal.accent + 'aa');
+  ctx.fillStyle = coneGrd;
   ctx.beginPath();
-  ctx.arc(rLegX + PX, legY + PX * 6.2, PX * 1.4, 0, Math.PI * 2);
-  ctx.fillStyle = '#050810'; ctx.fill();
-  ctx.strokeStyle = pal.accent; ctx.lineWidth = PX * 0.5;
-  ctx.shadowColor = pal.accent; ctx.shadowBlur = PX * 5;
-  ctx.globalAlpha = offline ? 0.12 : 0.9; ctx.stroke();
+  ctx.moveTo(cx - PX * 3, flameBaseY);
+  ctx.lineTo(cx + PX * 3, flameBaseY);
+  ctx.lineTo(cx + PX * 1.5 + flicker2, flameOrbY);
+  ctx.lineTo(cx - PX * 1.5 + flicker,  flameOrbY);
+  ctx.closePath();
+  ctx.fill();
+
+  // Inner bright core cone
+  const innerConeGrd = ctx.createLinearGradient(cx, flameBaseY + PX, cx, flameOrbY);
+  innerConeGrd.addColorStop(0, 'transparent');
+  innerConeGrd.addColorStop(0.6, pal.accent + '88');
+  innerConeGrd.addColorStop(1, '#ffffff99');
+  ctx.fillStyle = innerConeGrd;
   ctx.beginPath();
-  ctx.arc(rLegX + PX, legY + PX * 6.2, PX * 0.6, 0, Math.PI * 2);
-  ctx.fillStyle = pal.accent; ctx.shadowBlur = PX * 8;
-  ctx.globalAlpha = offline ? 0.08 : 0.55; ctx.fill();
-  ctx.shadowBlur = 0; ctx.restore();
+  ctx.moveTo(cx - PX * 1.5, flameBaseY + PX);
+  ctx.lineTo(cx + PX * 1.5, flameBaseY + PX);
+  ctx.lineTo(cx + PX * 0.6 + flicker2 * 0.5, flameOrbY);
+  ctx.lineTo(cx - PX * 0.6 + flicker  * 0.5, flameOrbY);
+  ctx.closePath();
+  ctx.fill();
+
+  // Bottom body edge — nozzle trim line
+  glow(bx + PX, flameBaseY, 6 * PX, PX * 0.5, 0.6);
+
+  // Orb — bright glowing sphere at flame tip
+  // Outer ambient halo
+  const haloGrd = ctx.createRadialGradient(cx + flicker * 0.3, flameOrbY, 0, cx + flicker * 0.3, flameOrbY, PX * 5);
+  haloGrd.addColorStop(0, pal.accent + 'cc');
+  haloGrd.addColorStop(0.5, pal.body + '44');
+  haloGrd.addColorStop(1, 'transparent');
+  ctx.fillStyle = haloGrd;
+  ctx.beginPath();
+  ctx.arc(cx + flicker * 0.3, flameOrbY, PX * 5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Orb dark core shell
+  ctx.beginPath();
+  ctx.arc(cx + flicker * 0.3, flameOrbY, PX * 2, 0, Math.PI * 2);
+  ctx.fillStyle = '#020509';
+  ctx.fill();
+
+  // Orb ring
+  ctx.beginPath();
+  ctx.arc(cx + flicker * 0.3, flameOrbY, PX * 2, 0, Math.PI * 2);
+  ctx.strokeStyle = pal.accent;
+  ctx.lineWidth = PX * 0.6;
+  ctx.shadowColor = pal.accent;
+  ctx.shadowBlur = PX * 7;
+  ctx.stroke();
+
+  // Orb bright inner fill
+  const orbFill = ctx.createRadialGradient(cx + flicker * 0.3 - PX * 0.4, flameOrbY - PX * 0.4, 0, cx + flicker * 0.3, flameOrbY, PX * 1.5);
+  orbFill.addColorStop(0, '#ffffff');
+  orbFill.addColorStop(0.3, pal.accent);
+  orbFill.addColorStop(1, pal.body + '88');
+  ctx.beginPath();
+  ctx.arc(cx + flicker * 0.3, flameOrbY, PX * 1.4, 0, Math.PI * 2);
+  ctx.fillStyle = orbFill;
+  ctx.shadowBlur = PX * 10;
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  ctx.restore();
 
   // ── Focus glow ────────────────────────────────────────────────────────────────
   if (focused) {
