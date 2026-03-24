@@ -89,6 +89,18 @@
   --cc-grid:     rgba(30,174,255,0.04);
 }
 
+/* ── Command Center keyframes (used via inline style animation:) ─────────────
+   Tailwind generates .animate-* utilities but inline style="animation:..." needs
+   the @keyframes declarations in global scope. */
+@keyframes cc-float    { 0%,100% { transform: translateY(0px); } 50% { transform: translateY(-6px); } }
+@keyframes cc-ring     { 0%      { transform: rotate(0deg); }   100% { transform: rotate(360deg); } }
+@keyframes cc-spin-fast{ 0%      { transform: rotate(0deg); }   100% { transform: rotate(360deg); } }
+@keyframes cc-flicker  { 0%,100% { opacity: 1; } 30% { opacity: 0.3; } 60% { opacity: 0.85; } }
+@keyframes cc-wave     { 0% { transform: scale(1); opacity: 0.7; } 100% { transform: scale(2.8); opacity: 0; } }
+@keyframes cc-strobe   { 0%,100% { opacity: 1; } 50% { opacity: 0.05; } }
+@keyframes cc-scan     { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+@keyframes cc-flow-arc { 0% { stroke-dashoffset: 200; } 100% { stroke-dashoffset: 0; } }
+
 /* Utility helpers that consume the tokens */
 @layer utilities {
   .kr-card          { background: var(--kr-bg-card); border: 1px solid var(--kr-border-subtle); border-radius: 0.75rem; }

@@ -7,14 +7,21 @@ interface SceneZoneProps {
   agentState?: string;
 }
 
+/**
+ * SceneZone — rectangular station card matching image-4 aesthetic.
+ *
+ * Each zone renders as a bordered card with:
+ *   - A top banner with the zone label
+ *   - Inner glow and corner accents when active
+ *   - The agent body floats in the center (rendered by AgentLayer above)
+ */
 export function SceneZone({ zone, isActive, agentState }: SceneZoneProps): React.ReactElement {
-  const glowIntensity = agentState === 'working'
-    ? '32px 6px'
-    : agentState === 'thinking'
-    ? '20px 3px'
-    : '12px 2px';
+  const isWorking = agentState === 'working';
+  const isThinking = agentState === 'thinking';
+  const isActive2 = isActive || isWorking || isThinking;
 
-  const innerGlow = agentState === 'working' ? '16px' : '8px';
+  const glowBlur = isWorking ? '28px' : isThinking ? '18px' : '12px';
+  const glowOpacity = isWorking ? 0.55 : isThinking ? 0.35 : isActive ? 0.2 : 0;
 
   return (
     <div
@@ -27,58 +34,85 @@ export function SceneZone({ zone, isActive, agentState }: SceneZoneProps): React
         transform: 'translate(-50%, -50%)',
       }}
     >
-      {/* Zone platform base */}
+      {/* Outer glow halo */}
+      {isActive2 && (
+        <div
+          className="absolute inset-0 rounded-xl pointer-events-none"
+          style={{
+            boxShadow: `0 0 ${glowBlur} ${zone.accentColor}`,
+            opacity: glowOpacity,
+            transition: 'all 0.7s ease',
+          }}
+        />
+      )}
+
+      {/* Station card */}
       <div
-        className="relative w-full h-full rounded-xl border transition-all duration-700"
+        className="relative w-full h-full flex flex-col overflow-hidden transition-all duration-700"
         style={{
-          borderColor: isActive ? zone.accentColor : 'rgba(255,255,255,0.06)',
-          background: isActive
-            ? `linear-gradient(135deg, ${zone.glowColor}, rgba(255,255,255,0.02))`
-            : 'rgba(255,255,255,0.02)',
-          boxShadow: isActive
-            ? `0 0 ${glowIntensity} ${zone.glowColor}, inset 0 0 ${innerGlow} ${zone.glowColor}`
+          borderRadius: '10px',
+          border: `1px solid ${isActive2 ? zone.accentColor : 'rgba(255,255,255,0.07)'}`,
+          background: isActive2
+            ? `linear-gradient(160deg, ${zone.glowColor}, rgba(6,9,15,0.92))`
+            : 'rgba(6,9,15,0.85)',
+          boxShadow: isActive2
+            ? `inset 0 0 20px ${zone.glowColor}`
             : 'none',
         }}
       >
         {/* Corner accents */}
-        <div className="absolute top-0 left-0 w-3 h-3 border-t border-l rounded-tl-xl transition-colors duration-700"
-          style={{ borderColor: isActive ? zone.accentColor : 'rgba(255,255,255,0.12)' }} />
-        <div className="absolute top-0 right-0 w-3 h-3 border-t border-r rounded-tr-xl transition-colors duration-700"
-          style={{ borderColor: isActive ? zone.accentColor : 'rgba(255,255,255,0.12)' }} />
-        <div className="absolute bottom-0 left-0 w-3 h-3 border-b border-l rounded-bl-xl transition-colors duration-700"
-          style={{ borderColor: isActive ? zone.accentColor : 'rgba(255,255,255,0.12)' }} />
-        <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r rounded-br-xl transition-colors duration-700"
-          style={{ borderColor: isActive ? zone.accentColor : 'rgba(255,255,255,0.12)' }} />
+        <div className="absolute top-0 left-0 w-4 h-4 pointer-events-none"
+          style={{ borderTop: `1.5px solid ${isActive2 ? zone.accentColor : 'rgba(255,255,255,0.15)'}`, borderLeft: `1.5px solid ${isActive2 ? zone.accentColor : 'rgba(255,255,255,0.15)'}`, borderRadius: '10px 0 0 0', transition: 'border-color 0.7s' }} />
+        <div className="absolute top-0 right-0 w-4 h-4 pointer-events-none"
+          style={{ borderTop: `1.5px solid ${isActive2 ? zone.accentColor : 'rgba(255,255,255,0.15)'}`, borderRight: `1.5px solid ${isActive2 ? zone.accentColor : 'rgba(255,255,255,0.15)'}`, borderRadius: '0 10px 0 0', transition: 'border-color 0.7s' }} />
+        <div className="absolute bottom-0 left-0 w-4 h-4 pointer-events-none"
+          style={{ borderBottom: `1.5px solid ${isActive2 ? zone.accentColor : 'rgba(255,255,255,0.15)'}`, borderLeft: `1.5px solid ${isActive2 ? zone.accentColor : 'rgba(255,255,255,0.15)'}`, borderRadius: '0 0 0 10px', transition: 'border-color 0.7s' }} />
+        <div className="absolute bottom-0 right-0 w-4 h-4 pointer-events-none"
+          style={{ borderBottom: `1.5px solid ${isActive2 ? zone.accentColor : 'rgba(255,255,255,0.15)'}`, borderRight: `1.5px solid ${isActive2 ? zone.accentColor : 'rgba(255,255,255,0.15)'}`, borderRadius: '0 0 10px 0', transition: 'border-color 0.7s' }} />
 
-        {/* Zone label — bottom center, below agent body */}
-        <div className="absolute bottom-2 left-0 right-0 text-center px-1">
+        {/* Top label banner */}
+        <div
+          className="flex-shrink-0 flex items-center justify-between px-2 py-1"
+          style={{
+            borderBottom: `1px solid ${isActive2 ? `${zone.accentColor}60` : 'rgba(255,255,255,0.05)'}`,
+            background: isActive2 ? `${zone.glowColor}` : 'transparent',
+            transition: 'all 0.7s ease',
+          }}
+        >
           <span
-            className="text-[9px] font-mono tracking-[0.1em] uppercase transition-colors duration-700 leading-none"
-            style={{ color: isActive ? zone.accentColor : 'rgba(255,255,255,0.18)' }}
+            className="text-[8px] font-mono tracking-[0.18em] uppercase font-semibold leading-none"
+            style={{ color: isActive2 ? zone.accentColor : 'rgba(255,255,255,0.2)', transition: 'color 0.7s' }}
           >
             {zone.label}
           </span>
+          {/* Active pulse indicator */}
+          {isActive2 && (
+            <span
+              className="block w-1 h-1 rounded-full flex-shrink-0"
+              style={{
+                background: zone.accentColor,
+                boxShadow: `0 0 4px ${zone.accentColor}`,
+                animation: 'cc-float 1.5s ease-in-out infinite',
+              }}
+            />
+          )}
         </div>
 
-        {/* Active pulse dot — top right corner */}
-        {isActive && (
-          <div className="absolute top-1.5 right-1.5">
-            <span
-              className="block w-1.5 h-1.5 rounded-full animate-pulse"
-              style={{ background: zone.accentColor }}
-            />
-          </div>
-        )}
+        {/* Inner content area — agent body floats here via AgentLayer */}
+        <div className="flex-1 relative" />
 
-        {/* Activity bar */}
-        <div className="absolute bottom-0 left-2 right-2 h-0.5 rounded-full overflow-hidden">
+        {/* Bottom scan bar — visible when active */}
+        <div
+          className="flex-shrink-0 h-px w-full overflow-hidden"
+          style={{ opacity: isActive2 ? 1 : 0, transition: 'opacity 0.7s' }}
+        >
           <div
-            className="h-full rounded-full transition-all duration-700"
+            className="h-full"
             style={{
-              width: isActive ? '100%' : '0%',
               background: `linear-gradient(90deg, transparent, ${zone.accentColor}, transparent)`,
-              opacity: isActive ? 1 : 0,
-              animation: isActive ? 'cc-float 2s ease-in-out infinite' : 'none',
+              animation: isActive2 ? 'cc-flow-arc 2s linear infinite' : 'none',
+              width: '200%',
+              marginLeft: '-100%',
             }}
           />
         </div>

@@ -18,7 +18,7 @@ export const DEFAULT_AGENTS: CommandCenterAgent[] = [
     localOrRemote: 'local',
     homeZone: 'crown',
     currentZone: 'crown',
-    position: { x: 50, y: 42 }, // boss desk — top center of floor
+    position: { x: 50, y: 28 }, // top center — command throne
   },
   {
     id: 'voltaris',
@@ -30,7 +30,7 @@ export const DEFAULT_AGENTS: CommandCenterAgent[] = [
     localOrRemote: 'local',
     homeZone: 'forge',
     currentZone: 'forge',
-    position: { x: 22, y: 60 }, // left workstation
+    position: { x: 20, y: 55 }, // left mid
   },
   {
     id: 'aethon',
@@ -42,7 +42,7 @@ export const DEFAULT_AGENTS: CommandCenterAgent[] = [
     localOrRemote: 'local',
     homeZone: 'archive',
     currentZone: 'archive',
-    position: { x: 78, y: 60 }, // right workstation
+    position: { x: 80, y: 55 }, // right mid
   },
   {
     id: 'thyros',
@@ -54,7 +54,7 @@ export const DEFAULT_AGENTS: CommandCenterAgent[] = [
     localOrRemote: 'local',
     homeZone: 'memory',
     currentZone: 'memory',
-    position: { x: 62, y: 78 }, // bottom-right desk
+    position: { x: 65, y: 80 }, // bottom-right
   },
   {
     id: 'pyron',
@@ -66,7 +66,7 @@ export const DEFAULT_AGENTS: CommandCenterAgent[] = [
     localOrRemote: 'local',
     homeZone: 'monitor',
     currentZone: 'monitor',
-    position: { x: 36, y: 78 }, // bottom-left desk
+    position: { x: 34, y: 80 }, // bottom-left
   },
 ];
 
@@ -77,57 +77,57 @@ export const DEFAULT_AGENTS: CommandCenterAgent[] = [
 export const SCENE_ZONES: SceneZone[] = [
   {
     id: 'crown',
-    label: 'Boss Desk',
+    label: 'Crown Platform',
     description: 'Orchestration hub',
-    position: { x: 50, y: 42 },
-    width: 22,
-    height: 14,
+    position: { x: 50, y: 28 },
+    width: 24,
+    height: 16,
     accentColor: '#f59e0b',
-    glowColor: 'rgba(245,158,11,0.15)',
+    glowColor: 'rgba(245,158,11,0.12)',
     defaultAgentId: 'atlas',
   },
   {
     id: 'forge',
-    label: 'Forge',
+    label: 'Forge Console',
     description: 'Execution engine',
-    position: { x: 22, y: 60 },
-    width: 20,
-    height: 14,
+    position: { x: 20, y: 55 },
+    width: 22,
+    height: 16,
     accentColor: '#1eaeff',
-    glowColor: 'rgba(30,174,255,0.15)',
+    glowColor: 'rgba(30,174,255,0.12)',
     defaultAgentId: 'voltaris',
   },
   {
     id: 'archive',
-    label: 'Archive',
+    label: 'Archive Pillar',
     description: 'Research & knowledge',
-    position: { x: 78, y: 60 },
-    width: 20,
-    height: 14,
+    position: { x: 80, y: 55 },
+    width: 22,
+    height: 16,
     accentColor: '#818cf8',
-    glowColor: 'rgba(129,140,248,0.15)',
+    glowColor: 'rgba(129,140,248,0.12)',
     defaultAgentId: 'aethon',
   },
   {
     id: 'memory',
-    label: 'Memory',
+    label: 'Memory Core',
     description: 'Long-term memory store',
-    position: { x: 62, y: 78 },
-    width: 20,
-    height: 14,
+    position: { x: 65, y: 80 },
+    width: 22,
+    height: 16,
     accentColor: '#93c5fd',
-    glowColor: 'rgba(147,197,253,0.15)',
+    glowColor: 'rgba(147,197,253,0.12)',
     defaultAgentId: 'thyros',
   },
   {
     id: 'monitor',
-    label: 'Monitor',
+    label: 'Monitor Node',
     description: 'System watch & logs',
-    position: { x: 36, y: 78 },
-    width: 20,
-    height: 14,
+    position: { x: 34, y: 80 },
+    width: 22,
+    height: 16,
     accentColor: '#fb923c',
-    glowColor: 'rgba(251,146,60,0.15)',
+    glowColor: 'rgba(251,146,60,0.12)',
     defaultAgentId: 'pyron',
   },
 ];
