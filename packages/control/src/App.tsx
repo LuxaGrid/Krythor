@@ -262,21 +262,43 @@ function AboutDialog({ health, onClose }: AboutDialogProps) {
 
 // ── Tab Bar ───────────────────────────────────────────────────────────────
 
-const TAB_ORDER_KEY = 'krythor_tab_order';
+const TAB_PINNED_KEY  = 'krythor_tab_pinned';
+const TAB_ORDER_KEY   = 'krythor_tab_order';
 
-function loadTabOrder(): Tab[] {
+// Default pinned tab ids (shown in bar on first run)
+const DEFAULT_PINNED: Tab[] = ['command', 'agents', 'memory', 'models', 'command-center', 'dashboard', 'settings'];
+
+function loadPinned(): Tab[] {
+  try {
+    const stored = localStorage.getItem(TAB_PINNED_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored) as Tab[];
+      const allIds = ALL_TABS.map(t => t.id);
+      const valid = parsed.filter(id => allIds.includes(id));
+      if (valid.length > 0) return valid;
+    }
+  } catch { /* ignore */ }
+  return DEFAULT_PINNED;
+}
+
+function savePinned(pinned: Tab[]) {
+  try { localStorage.setItem(TAB_PINNED_KEY, JSON.stringify(pinned)); } catch { /* ignore */ }
+}
+
+function loadTabOrder(pinned: Tab[]): Tab[] {
   try {
     const stored = localStorage.getItem(TAB_ORDER_KEY);
     if (stored) {
       const parsed = JSON.parse(stored) as Tab[];
-      // Validate — must contain all PRIMARY_TABS ids
-      const primaryIds = PRIMARY_TABS.map(t => t.id);
-      if (primaryIds.every(id => parsed.includes(id)) && parsed.every(id => primaryIds.includes(id))) {
-        return parsed;
-      }
+      // Must match current pinned set exactly
+      if (
+        parsed.length === pinned.length &&
+        pinned.every(id => parsed.includes(id)) &&
+        parsed.every(id => pinned.includes(id))
+      ) return parsed;
     }
   } catch { /* ignore */ }
-  return PRIMARY_TABS.map(t => t.id);
+  return pinned;
 }
 
 function saveTabOrder(order: Tab[]) {
@@ -284,18 +306,57 @@ function saveTabOrder(order: Tab[]) {
 }
 
 function TabBar({ tab, setTab, eventCount }: { tab: Tab; setTab: (t: Tab) => void; eventCount: number }) {
-  const [advOpen, setAdvOpen] = useState(false);
-  const [tabOrder, setTabOrder] = useState<Tab[]>(loadTabOrder);
-  const [dragOver, setDragOver] = useState<Tab | null>(null);
+  const [customOpen, setCustomOpen] = useState(false);
+  const [pinned, setPinned]         = useState<Tab[]>(loadPinned);
+  const [tabOrder, setTabOrder]     = useState<Tab[]>(() => loadTabOrder(loadPinned()));
+  const [dragOver, setDragOver]     = useState<Tab | null>(null);
   const dragSrc = useRef<Tab | null>(null);
-  const activeInAdvanced = ADVANCED_TABS.some(t => t.id === tab);
 
-  // Ordered primary tabs
-  const orderedPrimary = useMemo(() =>
-    tabOrder.map(id => PRIMARY_TABS.find(t => t.id === id)!).filter(Boolean),
+  // Sync tabOrder whenever pinned changes
+  const syncOrder = useCallback((nextPinned: Tab[]) => {
+    // Keep existing order for tabs that remain, append new ones at end
+    const existing = tabOrder.filter(id => nextPinned.includes(id));
+    const added    = nextPinned.filter(id => !existing.includes(id));
+    return [...existing, ...added];
+  }, [tabOrder]);
+
+  const pinTab = useCallback((id: Tab) => {
+    const nextPinned = [...pinned, id];
+    const nextOrder  = syncOrder(nextPinned);
+    setPinned(nextPinned);
+    setTabOrder(nextOrder);
+    savePinned(nextPinned);
+    saveTabOrder(nextOrder);
+    setTab(id);
+    setCustomOpen(false);
+  }, [pinned, syncOrder, setTab]);
+
+  const unpinTab = useCallback((id: Tab, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (pinned.length <= 1) return; // always keep at least one
+    const nextPinned = pinned.filter(p => p !== id);
+    const nextOrder  = tabOrder.filter(o => o !== id);
+    setPinned(nextPinned);
+    setTabOrder(nextOrder);
+    savePinned(nextPinned);
+    saveTabOrder(nextOrder);
+    // If we removed the active tab, switch to first pinned
+    if (tab === id) setTab(nextPinned[0]);
+  }, [pinned, tabOrder, tab, setTab]);
+
+  // Tabs currently shown in bar (ordered)
+  const pinnedTabs = useMemo(() =>
+    tabOrder.map(id => ALL_TABS.find(t => t.id === id)!).filter(Boolean),
     [tabOrder]
   );
 
+  // Tabs available to add
+  const unpinnedTabs = useMemo(() =>
+    ALL_TABS.filter(t => !pinned.includes(t.id)),
+    [pinned]
+  );
+
+  // ── Drag to reorder ──────────────────────────────────────────────────────
   const handleDragStart = (e: React.DragEvent, id: Tab) => {
     dragSrc.current = id;
     e.dataTransfer.effectAllowed = 'move';
@@ -314,7 +375,7 @@ function TabBar({ tab, setTab, eventCount }: { tab: Tab; setTab: (t: Tab) => voi
     if (!srcId || srcId === targetId) return;
     const next = [...tabOrder];
     const fromIdx = next.indexOf(srcId);
-    const toIdx = next.indexOf(targetId);
+    const toIdx   = next.indexOf(targetId);
     next.splice(fromIdx, 1);
     next.splice(toIdx, 0, srcId);
     setTabOrder(next);
@@ -323,18 +384,15 @@ function TabBar({ tab, setTab, eventCount }: { tab: Tab; setTab: (t: Tab) => voi
     dragSrc.current = null;
   };
 
-  const handleDragEnd = () => {
-    setDragOver(null);
-    dragSrc.current = null;
-  };
+  const handleDragEnd = () => { setDragOver(null); dragSrc.current = null; };
 
   return (
-    <div className="flex items-stretch border-b border-zinc-800 bg-zinc-950 relative select-none">
-      {/* Primary tabs — draggable to reorder */}
-      {orderedPrimary.map(t => {
-        const isActive = tab === t.id;
-        const isCC = t.id === 'command-center';
-        const isDragTarget = dragOver === t.id;
+    <div className="flex items-stretch border-b border-zinc-800 bg-zinc-950 relative select-none overflow-x-auto">
+      {/* Pinned tabs */}
+      {pinnedTabs.map(t => {
+        const isActive      = tab === t.id;
+        const isCC          = t.id === 'command-center';
+        const isDragTarget  = dragOver === t.id;
         return (
           <button
             key={t.id}
@@ -355,15 +413,20 @@ function TabBar({ tab, setTab, eventCount }: { tab: Tab; setTab: (t: Tab) => voi
                   ? 'text-gold-600 hover:text-gold-400'
                   : 'text-zinc-500 hover:text-zinc-300'}`}
           >
-            {/* Drag handle — visible on hover */}
-            <span
-              className="text-[8px] leading-none opacity-0 group-hover:opacity-40 transition-opacity flex-shrink-0 select-none"
-              style={{ color: 'currentColor' }}
-              aria-hidden
-            >⠿</span>
+            <span className="text-[8px] leading-none opacity-0 group-hover:opacity-40 transition-opacity flex-shrink-0 select-none" aria-hidden>⠿</span>
             {t.label}
-            {isDragTarget && (
-              <span className="absolute left-0 top-1 bottom-1 w-0.5 bg-brand-500 rounded-full" />
+            {t.id === 'events' && eventCount > 0 && (
+              <span className="bg-brand-600 text-white text-[10px] rounded-full px-1.5 py-px leading-none">{eventCount}</span>
+            )}
+            {isDragTarget && <span className="absolute left-0 top-1 bottom-1 w-0.5 bg-brand-500 rounded-full" />}
+            {/* Unpin ✕ — only shown on hover, not on last tab */}
+            {pinned.length > 1 && (
+              <span
+                onClick={e => unpinTab(t.id, e)}
+                title="Remove from bar"
+                className="ml-0.5 text-[10px] leading-none opacity-0 group-hover:opacity-50 hover:!opacity-100 transition-opacity cursor-pointer select-none"
+                aria-label="Remove tab"
+              >✕</span>
             )}
           </button>
         );
@@ -372,42 +435,53 @@ function TabBar({ tab, setTab, eventCount }: { tab: Tab; setTab: (t: Tab) => voi
       {/* Divider */}
       <div className="w-px bg-zinc-800 my-2 mx-1 flex-shrink-0" />
 
-      {/* Advanced overflow menu */}
+      {/* Customize / add tabs */}
       <div className="relative flex items-stretch">
         <button
-          onClick={() => setAdvOpen(o => !o)}
-          title="More tabs"
+          onClick={() => setCustomOpen(o => !o)}
+          title="Add or remove tabs"
           className={`px-3 py-2.5 text-sm font-medium transition-colors flex items-center gap-1.5 whitespace-nowrap
-            ${activeInAdvanced || advOpen ? 'text-zinc-300' : 'text-zinc-600 hover:text-zinc-400'}`}
+            ${customOpen ? 'text-zinc-300' : 'text-zinc-600 hover:text-zinc-400'}`}
         >
-          {activeInAdvanced ? ADVANCED_TABS.find(t => t.id === tab)?.label : 'More'}
-          <span className={`text-[10px] transition-transform ${advOpen ? 'rotate-180' : ''}`}>▾</span>
-          {eventCount > 0 && (
-            <span className="bg-brand-600 text-white text-[10px] rounded-full px-1.5 py-px leading-none">
-              {eventCount}
-            </span>
-          )}
+          <span className="text-base leading-none">＋</span>
+          <span className="text-xs">Tabs</span>
+          <span className={`text-[10px] transition-transform ${customOpen ? 'rotate-180' : ''}`}>▾</span>
         </button>
 
-        {advOpen && (
+        {customOpen && (
           <>
-            {/* Backdrop */}
-            <div className="fixed inset-0 z-40" onClick={() => setAdvOpen(false)} />
-            {/* Dropdown */}
-            <div className="absolute top-full left-0 z-50 mt-0 w-52 bg-zinc-900 border border-zinc-700 rounded-b-xl shadow-2xl overflow-hidden">
-              {ADVANCED_TABS.map(t => (
-                <button
-                  key={t.id}
-                  onClick={() => { setTab(t.id); setAdvOpen(false); }}
-                  className={`w-full text-left px-4 py-3 transition-colors flex flex-col gap-0.5
-                    ${tab === t.id
-                      ? 'bg-zinc-800 text-zinc-100'
-                      : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}`}
-                >
-                  <span className="text-sm font-medium">{t.label}</span>
-                  <span className="text-xs text-zinc-600">{t.hint}</span>
-                </button>
-              ))}
+            <div className="fixed inset-0 z-40" onClick={() => setCustomOpen(false)} />
+            <div className="absolute top-full right-0 z-50 mt-0 w-64 bg-zinc-900 border border-zinc-700 rounded-b-xl shadow-2xl overflow-hidden">
+              {/* Header */}
+              <div className="px-4 py-2.5 border-b border-zinc-800 flex items-center justify-between">
+                <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Available Tabs</span>
+                <span className="text-xs text-zinc-600">{unpinnedTabs.length} hidden</span>
+              </div>
+
+              {unpinnedTabs.length === 0 ? (
+                <div className="px-4 py-4 text-xs text-zinc-600 text-center">All tabs are visible</div>
+              ) : (
+                <div className="max-h-80 overflow-y-auto">
+                  {unpinnedTabs.map(t => (
+                    <button
+                      key={t.id}
+                      onClick={() => pinTab(t.id)}
+                      className="w-full text-left px-4 py-3 transition-colors flex items-center gap-3 hover:bg-zinc-800/60 group"
+                    >
+                      <span className="text-zinc-600 group-hover:text-brand-400 transition-colors text-base leading-none flex-shrink-0">＋</span>
+                      <span className="flex flex-col gap-0.5 min-w-0">
+                        <span className="text-sm font-medium text-zinc-300 group-hover:text-zinc-100">{t.label}</span>
+                        <span className="text-xs text-zinc-600 truncate">{t.hint}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Footer hint */}
+              <div className="px-4 py-2 border-t border-zinc-800 text-[10px] text-zinc-700">
+                Click ✕ on any tab to hide it · drag to reorder
+              </div>
             </div>
           </>
         )}

@@ -1,6 +1,6 @@
 # Krythor
 
-![Krythor Banner](./assets/krythor-banner.png)
+![Krythor](./logo.png)
 
 **Local-first AI command platform with intelligent model routing, memory, agent execution, and a live animated Command Center.**
 

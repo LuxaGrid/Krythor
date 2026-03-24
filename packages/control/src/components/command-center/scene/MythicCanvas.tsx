@@ -386,26 +386,179 @@ function drawBridge(ctx: CanvasRenderingContext2D, W: number, H: number, PX: num
   ctx.fillStyle = grad;
   ctx.fillRect(vsX, vsY, vsW, vsH);
 
-  // Planet / nebula in viewscreen
+  // ── Tron brain-planet — animated ──────────────────────────────────────────
   const nebX = vsX + vsW * 0.5, nebY = vsY + vsH * 0.5;
-  const nebGrd = ctx.createRadialGradient(nebX, nebY, 0, nebX, nebY, vsW * 0.28);
-  nebGrd.addColorStop(0, 'rgba(30,100,180,0.18)');
-  nebGrd.addColorStop(0.5, 'rgba(80,30,140,0.10)');
-  nebGrd.addColorStop(1, 'transparent');
-  ctx.fillStyle = nebGrd;
+  const PR = vsW * 0.115; // planet radius
+
+  // Outer ambient halo — deep nebula glow
+  const haloGrd = ctx.createRadialGradient(nebX, nebY, PR * 0.5, nebX, nebY, PR * 2.8);
+  haloGrd.addColorStop(0, 'rgba(0,120,255,0.22)');
+  haloGrd.addColorStop(0.4, 'rgba(40,20,120,0.13)');
+  haloGrd.addColorStop(0.7, 'rgba(0,200,255,0.05)');
+  haloGrd.addColorStop(1, 'transparent');
+  ctx.fillStyle = haloGrd;
   ctx.beginPath();
-  ctx.ellipse(nebX, nebY, vsW * 0.28, vsH * 0.42, 0, 0, Math.PI * 2);
+  ctx.ellipse(nebX, nebY, PR * 2.8, PR * 2.2, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // Planet sphere
-  const pGrd = ctx.createRadialGradient(nebX - vsW * 0.04, nebY - vsH * 0.08, 0, nebX, nebY, vsW * 0.09);
-  pGrd.addColorStop(0, '#4fb3e8');
-  pGrd.addColorStop(0.4, '#1a5fa0');
-  pGrd.addColorStop(1, '#0a1e3a');
-  ctx.fillStyle = pGrd;
+  // Clip all planet drawing to the sphere
+  ctx.save();
   ctx.beginPath();
-  ctx.arc(nebX, nebY, vsW * 0.09, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.arc(nebX, nebY, PR, 0, Math.PI * 2);
+  ctx.clip();
+
+  // Base sphere gradient — dark core lit from upper-left
+  const pGrd = ctx.createRadialGradient(nebX - PR * 0.35, nebY - PR * 0.30, 0, nebX, nebY, PR);
+  pGrd.addColorStop(0, '#1a4a7a');
+  pGrd.addColorStop(0.45, '#0c2244');
+  pGrd.addColorStop(0.8, '#06101e');
+  pGrd.addColorStop(1, '#020509');
+  ctx.fillStyle = pGrd;
+  ctx.fillRect(nebX - PR, nebY - PR, PR * 2, PR * 2);
+
+  // Rotating latitude lines (horizontal circuit bands)
+  const rotLat = (tick * 0.0017) % (Math.PI * 2);
+  ctx.strokeStyle = '#1eaeff';
+  ctx.lineWidth = 0.6;
+  for (let li = 0; li < 9; li++) {
+    const latFrac = (li / 8) - 0.5; // -0.5 to +0.5
+    const latR = Math.abs(Math.cos(latFrac * Math.PI));
+    if (latR < 0.08) continue;
+    const lcy = nebY + latFrac * PR * 2;
+    const lcr = Math.sqrt(Math.max(0, PR * PR - (lcy - nebY) ** 2));
+    if (lcr < 2) continue;
+    // Animated sweep — segments that travel around
+    const offset = rotLat + li * 0.4;
+    const segArc = Math.PI * 0.55;
+    ctx.save();
+    ctx.globalAlpha = 0.22 + 0.12 * Math.sin(tick * 0.04 + li * 0.9);
+    ctx.shadowColor = '#1eaeff';
+    ctx.shadowBlur = 3;
+    ctx.beginPath();
+    ctx.ellipse(nebX, lcy, lcr, lcr * 0.25, 0, offset, offset + segArc);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.ellipse(nebX, lcy, lcr, lcr * 0.25, 0, offset + Math.PI, offset + Math.PI + segArc * 0.6);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Rotating meridian lines (vertical great-circle arcs)
+  const rotMer = (tick * 0.0027) % Math.PI;
+  const meridianCount = 7;
+  for (let mi = 0; mi < meridianCount; mi++) {
+    const angle = rotMer + (mi / meridianCount) * Math.PI;
+    ctx.save();
+    ctx.globalAlpha = 0.18 + 0.10 * Math.sin(tick * 0.05 + mi * 1.1);
+    ctx.strokeStyle = '#00e5ff';
+    ctx.lineWidth = 0.7;
+    ctx.shadowColor = '#00e5ff';
+    ctx.shadowBlur = 4;
+    // Draw as squashed ellipse (perspective of a great circle)
+    const squeeze = Math.abs(Math.cos(angle));
+    ctx.beginPath();
+    ctx.ellipse(nebX, nebY, PR * squeeze + 0.5, PR, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Circuit node hotspots — bright intersection dots that pulse
+  const nodeCount = 8;
+  for (let ni = 0; ni < nodeCount; ni++) {
+    const theta = (ni / nodeCount) * Math.PI * 2 + tick * 0.002;
+    const phi   = ((ni * 137.5) % 180) * Math.PI / 180;
+    const nx = nebX + PR * 0.82 * Math.sin(phi) * Math.cos(theta);
+    const ny = nebY + PR * 0.82 * Math.sin(phi) * Math.sin(theta) * 0.4;
+    const pulse = 0.5 + 0.5 * Math.sin(tick * 0.12 + ni * 0.8);
+    ctx.save();
+    ctx.globalAlpha = 0.55 * pulse;
+    ctx.fillStyle = '#4fffff';
+    ctx.shadowColor = '#00e5ff';
+    ctx.shadowBlur = 6;
+    ctx.beginPath();
+    ctx.arc(nx, ny, 1.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Data pulse arcs — short bright arcs chasing around the equator
+  for (let pi2 = 0; pi2 < 3; pi2++) {
+    const pAngle = (tick * 0.006 + pi2 * Math.PI * 2 / 3) % (Math.PI * 2);
+    const px2 = nebX + PR * 0.96 * Math.cos(pAngle);
+    const py2 = nebY + PR * 0.96 * Math.sin(pAngle) * 0.28;
+    const pulseFade = 0.7 + 0.3 * Math.sin(tick * 0.18 + pi2);
+    ctx.save();
+    ctx.globalAlpha = pulseFade;
+    ctx.fillStyle = '#ffffff';
+    ctx.shadowColor = '#00e5ff';
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.arc(px2, py2, 1.8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Atmospheric rim — inner glow on sphere edge
+  const rimGrd = ctx.createRadialGradient(nebX, nebY, PR * 0.72, nebX, nebY, PR);
+  rimGrd.addColorStop(0, 'transparent');
+  rimGrd.addColorStop(0.7, 'rgba(0,140,255,0.08)');
+  rimGrd.addColorStop(1, 'rgba(0,200,255,0.38)');
+  ctx.fillStyle = rimGrd;
+  ctx.fillRect(nebX - PR, nebY - PR, PR * 2, PR * 2);
+
+  ctx.restore(); // end clip
+
+  // Outer sphere stroke — crisp glowing edge
+  ctx.save();
+  ctx.strokeStyle = '#1eaeff';
+  ctx.lineWidth = 1.2;
+  ctx.shadowColor = '#1eaeff';
+  ctx.shadowBlur = 16;
+  ctx.globalAlpha = 0.85;
+  ctx.beginPath();
+  ctx.arc(nebX, nebY, PR, 0, Math.PI * 2);
+  ctx.stroke();
+  // Double-pass for stronger bloom
+  ctx.shadowBlur = 30;
+  ctx.globalAlpha = 0.25;
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+  ctx.restore();
+
+  // Orbiting ring — tilted circuit loop around the planet
+  ctx.save();
+  ctx.strokeStyle = '#00e5ff';
+  ctx.lineWidth = 0.9;
+  ctx.shadowColor = '#00e5ff';
+  ctx.shadowBlur = 10;
+  ctx.globalAlpha = 0.50;
+  const ringRot = tick * 0.0022;
+  ctx.save();
+  ctx.translate(nebX, nebY);
+  ctx.rotate(ringRot);
+  ctx.beginPath();
+  ctx.ellipse(0, 0, PR * 1.42, PR * 0.30, Math.PI * 0.18, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+  ctx.restore();
+
+  // Thinking pulse — radial wave emitted from planet every ~3 s
+  const waveCycle = tick % 190;
+  if (waveCycle < 90) {
+    const wR = PR + (waveCycle / 90) * PR * 1.1;
+    const wAlpha = (1 - waveCycle / 90) * 0.45;
+    ctx.save();
+    ctx.strokeStyle = '#1eaeff';
+    ctx.lineWidth = 1;
+    ctx.shadowColor = '#1eaeff';
+    ctx.shadowBlur = 8;
+    ctx.globalAlpha = wAlpha;
+    ctx.beginPath();
+    ctx.arc(nebX, nebY, wR, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  }
 
   // Scan lines on viewscreen
   ctx.save();
