@@ -85,87 +85,106 @@ function drawSprite(
     ctx.scale(-1, 1);
     ctx.translate(-cx * 2, 0);
   }
-  if (offline) ctx.globalAlpha = 0.3;
+  if (offline) ctx.globalAlpha = 0.25;
 
-  // ── Head ─────────────────────────────────────────────────────────────────────
-  // Slightly taller head — more humanoid, less boxy
+  // Tron identity — all geometry lines drawn glowing in accent color
+  // Helper: draw a glowing line segment
+  const glow = (lx: number, ly: number, lw: number, lh: number, alpha = 1) => {
+    ctx.save();
+    ctx.globalAlpha = offline ? 0.15 : alpha;
+    ctx.fillStyle = pal.accent;
+    ctx.shadowColor = pal.accent;
+    ctx.shadowBlur = PX * 2.5;
+    ctx.fillRect(Math.round(lx), Math.round(ly), Math.max(1, Math.round(lw)), Math.max(1, Math.round(lh)));
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  };
+
+  // ── Helmet ───────────────────────────────────────────────────────────────────
   const headW = 6 * PX, headH = 6 * PX;
   const hx = bx + PX;
   const hy = by;
 
-  // Head shape
-  p(ctx, hx, hy, headW, headH, pal.skin);
-  // Rounded top corners (1px chop)
-  p(ctx, hx, hy, PX, PX, '#020409');              // tl cut
-  p(ctx, hx + headW - PX, hy, PX, PX, '#020409'); // tr cut
-  // Ears
-  p(ctx, bx, hy + PX * 2, PX, PX * 2, pal.skin);
-  p(ctx, bx + 7 * PX, hy + PX * 2, PX, PX * 2, pal.skin);
-  // Ear shadow
-  p(ctx, bx, hy + PX * 2, PX * 0.5, PX * 2, '#c4a882');
+  // Helmet body — near-black
+  p(ctx, hx, hy, headW, headH, '#080c14');
+  p(ctx, hx, hy, PX, PX, '#020409');               // tl corner cut
+  p(ctx, hx + headW - PX, hy, PX, PX, '#020409');  // tr corner cut
 
-  // Eyes — slightly wider apart, colored iris
-  const eyeY = hy + PX * 2;
-  p(ctx, hx + PX, eyeY, PX * 1.5, PX * 1.5, '#1e293b');       // left eye white bg
-  p(ctx, hx + headW - PX * 2.5, eyeY, PX * 1.5, PX * 1.5, '#1e293b'); // right
-  // Iris
-  p(ctx, hx + PX * 1.25, eyeY + PX * 0.25, PX, PX, '#60a5fa'); // blue iris
-  p(ctx, hx + headW - PX * 2.25, eyeY + PX * 0.25, PX, PX, '#60a5fa');
-  // Pupil
-  p(ctx, hx + PX * 1.5, eyeY + PX * 0.5, PX * 0.5, PX * 0.5, '#0f172a');
-  p(ctx, hx + headW - PX * 2, eyeY + PX * 0.5, PX * 0.5, PX * 0.5, '#0f172a');
+  // Helmet outline — glowing circuit trim
+  glow(hx, hy + PX, PX * 0.5, headH - PX);           // left edge
+  glow(hx + headW - PX * 0.5, hy + PX, PX * 0.5, headH - PX); // right edge
+  glow(hx, hy + PX, headW, PX * 0.5);                // top
+  glow(hx, hy + headH - PX * 0.5, headW, PX * 0.5);  // bottom
 
-  // Mouth — state expressions
+  // Visor — wide glowing slit across the face
+  const visorY = hy + PX * 2;
+  // Visor dark recess
+  p(ctx, hx + PX * 0.5, visorY, headW - PX, PX * 1.5, '#040810');
+  // Visor glow — bright accent bar
+  ctx.save();
+  ctx.globalAlpha = offline ? 0.1 : 0.9;
+  ctx.fillStyle = pal.accent;
+  ctx.shadowColor = pal.accent;
+  ctx.shadowBlur = PX * 4;
+  ctx.fillRect(Math.round(hx + PX * 0.5), Math.round(visorY + PX * 0.25), Math.round(headW - PX), Math.round(PX));
+  // Extra outer bloom
+  ctx.shadowBlur = PX * 8;
+  ctx.globalAlpha = 0.3;
+  ctx.fillRect(Math.round(hx + PX * 0.5), Math.round(visorY + PX * 0.25), Math.round(headW - PX), Math.round(PX));
+  ctx.shadowBlur = 0;
+  ctx.restore();
+
+  // State-based mouth indicator — small circuit segment below visor
   const mouthY = hy + PX * 4;
   if (speaking) {
-    p(ctx, hx + PX * 1.5, mouthY, PX * 3, PX * 1.5, '#991b1b'); // open mouth
-    p(ctx, hx + PX * 1.5, mouthY, PX * 3, PX * 0.5, '#dc2626');  // upper lip
+    glow(hx + PX * 1.5, mouthY, PX * 3, PX * 0.75, 0.9); // wide open
+    glow(hx + PX * 1.5, mouthY + PX * 0.75, PX * 3, PX * 0.5, 0.4);
   } else if (thinking) {
-    p(ctx, hx + PX * 1.5, mouthY + PX * 0.5, PX * 1.5, PX * 0.5, '#78716c');
-    p(ctx, hx + PX * 3.5, mouthY + PX * 0.25, PX, PX * 0.5, '#78716c');
-  } else if (handoff) {
-    // Smile
-    p(ctx, hx + PX, mouthY + PX * 0.5, PX, PX * 0.5, '#78716c');
-    p(ctx, hx + PX * 2, mouthY + PX, PX * 2, PX * 0.5, '#78716c');
-    p(ctx, hx + PX * 4, mouthY + PX * 0.5, PX, PX * 0.5, '#78716c');
-  } else if (listening) {
-    p(ctx, hx + PX * 1.5, mouthY + PX * 0.5, PX * 3, PX * 0.5, '#78716c');
+    glow(hx + PX * 2, mouthY + PX * 0.25, PX * 1.5, PX * 0.5, 0.7);
+    glow(hx + PX * 4, mouthY + PX * 0.25, PX, PX * 0.5, 0.4);
   } else {
-    p(ctx, hx + PX * 1.5, mouthY + PX * 0.5, PX * 3, PX * 0.5, '#78716c');
+    glow(hx + PX * 1.5, mouthY + PX * 0.3, PX * 3, PX * 0.4, 0.45);
   }
 
-  // ── Starfleet uniform body ────────────────────────────────────────────────────
+  // ── Tron suit body ────────────────────────────────────────────────────────────
   const bodyY = hy + headH;
   const bodyW = 8 * PX;
 
-  // Main uniform — black base
-  p(ctx, bx, bodyY, bodyW, 5 * PX, '#0d1117');
+  // Suit base — deep black
+  p(ctx, bx, bodyY, bodyW, 5 * PX, '#050810');
 
-  // Division color: top 2px shoulder stripe + yoke panel
-  // Atlas=gold(command), Voltaris=red(ops), Aethon=blue(science), Thyros=blue, Pyron=gold
-  p(ctx, bx, bodyY, bodyW, PX, pal.body);             // shoulder stripe
-  p(ctx, bx, bodyY + PX, bodyW, PX, pal.body, 0.5);   // fade second row
+  // Shoulder circuit lines (top edge of torso)
+  glow(bx, bodyY, bodyW, PX * 0.5);
 
-  // Collar — dark turtleneck
-  p(ctx, bx + PX * 2, bodyY, PX * 4, PX * 2, '#111827');
-  p(ctx, bx + PX * 2, bodyY, PX * 4, PX, '#1f2937');   // collar highlight
-
-  // Comm badge — small gold delta on chest (left side)
+  // Chest circuit grid — identity disc mount in center
+  // Vertical center line
+  glow(cx - PX * 0.25, bodyY + PX, PX * 0.5, PX * 3.5, 0.55);
+  // Horizontal cross bar
+  glow(bx + PX, bodyY + PX * 2, bodyW - PX * 2, PX * 0.5, 0.45);
+  // Identity disc — small glowing circle on chest
   ctx.save();
-  ctx.fillStyle = '#fbbf24';
-  ctx.shadowColor = '#fbbf24';
-  ctx.shadowBlur = 4;
-  // Delta shape: triangle
+  ctx.globalAlpha = offline ? 0.1 : 0.85;
   ctx.beginPath();
-  ctx.moveTo(bx + PX * 1.5, bodyY + PX * 1.5);
-  ctx.lineTo(bx + PX * 3,   bodyY + PX * 3.5);
-  ctx.lineTo(bx + PX * 0.5, bodyY + PX * 3);
-  ctx.closePath();
+  ctx.arc(cx, bodyY + PX * 2, PX * 1.2, 0, Math.PI * 2);
+  ctx.strokeStyle = pal.accent;
+  ctx.lineWidth = PX * 0.5;
+  ctx.shadowColor = pal.accent;
+  ctx.shadowBlur = PX * 3;
+  ctx.stroke();
+  // Inner disc fill
+  ctx.globalAlpha = 0.25;
+  ctx.fillStyle = pal.accent;
   ctx.fill();
   ctx.shadowBlur = 0;
   ctx.restore();
 
-  // Arms — black uniform sleeves, skin hands
+  // Side edge lines
+  glow(bx, bodyY, PX * 0.5, 5 * PX, 0.6);
+  glow(bx + bodyW - PX * 0.5, bodyY, PX * 0.5, 5 * PX, 0.6);
+  // Bottom edge
+  glow(bx, bodyY + 5 * PX - PX * 0.5, bodyW, PX * 0.5, 0.5);
+
+  // Arms — black with single glowing circuit stripe down the outside
   const armY = bodyY + PX;
   const armSwing = working ? Math.sin(walkPhase * 8) * PX
     : handoff   ? -PX * 2
@@ -175,46 +194,62 @@ function drawSprite(
     : listening ? Math.sin(walkPhase * 3) * PX * 0.5
     : 0;
   // Left arm
-  p(ctx, bx - PX, armY + armSwing,          PX, PX * 2.5, '#0d1117'); // sleeve
-  p(ctx, bx - PX, armY + armSwing + PX * 2.5, PX, PX,     pal.skin);  // hand
+  p(ctx, bx - PX, armY + armSwing,        PX, PX * 3.5, '#050810');
+  glow(bx - PX, armY + armSwing,          PX * 0.4, PX * 3.5, 0.7); // outer line
+  glow(bx - PX, armY + armSwing + PX * 3, PX, PX * 0.5, 0.5);       // wrist
   // Right arm
-  p(ctx, bx + 8 * PX, armY + rightArmSwing,          PX, PX * 2.5, '#0d1117');
-  p(ctx, bx + 8 * PX, armY + rightArmSwing + PX * 2.5, PX, PX,     pal.skin);
+  p(ctx, bx + 8 * PX, armY + rightArmSwing,        PX, PX * 3.5, '#050810');
+  glow(bx + 8 * PX + PX * 0.6, armY + rightArmSwing, PX * 0.4, PX * 3.5, 0.7);
+  glow(bx + 8 * PX, armY + rightArmSwing + PX * 3,   PX, PX * 0.5, 0.5);
 
   // ── Legs ─────────────────────────────────────────────────────────────────────
   const legY = bodyY + 5 * PX;
-  // Trousers — dark charcoal (Starfleet standard)
-  p(ctx, bx + PX, legY, 6 * PX, 2 * PX, '#1c1f26');
-  const lLegX = bx + PX + legSwing * PX * 0.8;
-  p(ctx, lLegX, legY + 2 * PX, 2 * PX, 3 * PX, '#1c1f26');
-  p(ctx, lLegX - PX * 0.5, legY + 5 * PX, 3 * PX, PX, '#080c14'); // boot
-  const rLegX = bx + 5 * PX - legSwing * PX * 0.8;
-  p(ctx, rLegX, legY + 2 * PX, 2 * PX, 3 * PX, '#1c1f26');
-  p(ctx, rLegX - PX * 0.5, legY + 5 * PX, 3 * PX, PX, '#080c14');
+  p(ctx, bx + PX, legY, 6 * PX, 2 * PX, '#050810'); // hip block
+  glow(bx + PX, legY, 6 * PX, PX * 0.5, 0.5);        // hip line
 
-  // Focus glow
+  const lLegX = bx + PX + legSwing * PX * 0.8;
+  p(ctx, lLegX, legY + 2 * PX, 2 * PX, 4 * PX, '#050810');
+  glow(lLegX, legY + 2 * PX, PX * 0.4, PX * 4, 0.65);           // outer line
+  glow(lLegX, legY + 5 * PX, PX * 2.5, PX * 0.5, 0.5);          // boot top
+  p(ctx, lLegX - PX * 0.5, legY + 5 * PX + PX * 0.5, PX * 3, PX * 0.5, '#050810'); // boot sole
+
+  const rLegX = bx + 5 * PX - legSwing * PX * 0.8;
+  p(ctx, rLegX, legY + 2 * PX, 2 * PX, 4 * PX, '#050810');
+  glow(rLegX + PX * 1.6, legY + 2 * PX, PX * 0.4, PX * 4, 0.65);
+  glow(rLegX, legY + 5 * PX, PX * 2.5, PX * 0.5, 0.5);
+  p(ctx, rLegX - PX * 0.5, legY + 5 * PX + PX * 0.5, PX * 3, PX * 0.5, '#050810');
+
+  // ── Focus glow ───────────────────────────────────────────────────────────────
   if (focused) {
+    ctx.save();
     ctx.strokeStyle = pal.accent;
-    ctx.lineWidth = PX * 0.75;
-    ctx.shadowColor = pal.body;
-    ctx.shadowBlur = 12;
-    ctx.strokeRect(bx - PX, by - PX * 2, 10 * PX, 18 * PX);
+    ctx.lineWidth = PX * 0.5;
+    ctx.shadowColor = pal.accent;
+    ctx.shadowBlur = 16;
+    ctx.strokeRect(bx - PX, by - PX * 2, 10 * PX, 20 * PX);
+    ctx.shadowBlur = 28;
+    ctx.globalAlpha = 0.18;
+    ctx.strokeRect(bx - PX * 2, by - PX * 3, 12 * PX, 23 * PX);
     ctx.shadowBlur = 0;
+    ctx.restore();
   }
 
-  // State dot
+  // State dot — circuit node above head
   const dotColor = state === 'working'  ? '#4ade80'
     : state === 'thinking' ? '#a78bfa'
-    : state === 'speaking' ? '#fb923c'
+    : state === 'speaking' ? pal.accent
     : state === 'error'    ? '#f87171'
-    : state === 'offline'  ? '#52525b'
-    : '#22d3ee';
+    : state === 'offline'  ? '#334155'
+    : pal.accent;
+  ctx.save();
   ctx.beginPath();
   ctx.arc(cx + 5 * PX, by - PX, PX * 1.2, 0, Math.PI * 2);
   ctx.fillStyle = dotColor;
   ctx.shadowColor = dotColor;
-  ctx.shadowBlur = 8;
+  ctx.shadowBlur = 10;
   ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.restore();
   ctx.shadowBlur = 0;
 
   ctx.restore();
