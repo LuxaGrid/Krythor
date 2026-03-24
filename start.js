@@ -118,12 +118,18 @@ async function checkForUpdate() {
 
 // ── Check build ────────────────────────────────────────────────────────────
 if (!existsSync(gatewayDist)) {
-  console.error('\x1b[31mKrythor has not been built yet.\x1b[0m');
-  console.error('');
-  console.error('Run "Krythor.bat" to auto-build, or manually run:');
-  console.error('  pnpm install');
-  console.error('  pnpm build');
-  process.exit(1);
+  console.log('[33mFirst run — building Krythor (this takes ~30s)…[0m');
+  try {
+    const pnpmCmd = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
+    require('child_process').execSync(pnpmCmd + ' build', {
+      cwd: __dirname, stdio: 'inherit', env: { ...process.env },
+    });
+    console.log('[32mBuild complete.[0m
+');
+  } catch {
+    console.error('[31mAuto-build failed. Run: pnpm build[0m');
+    process.exit(1);
+  }
 }
 
 // ── Check if Krythor health endpoint is responding ────────────────────────

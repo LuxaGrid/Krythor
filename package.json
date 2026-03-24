@@ -35,7 +35,9 @@
     "build:release": "node build-release.js",
     "build:pkg": "node build-pkg.js",
     "build:deb": "node build-deb.js",
-    "release": "node scripts/tag-release.js"
+    "release": "node scripts/tag-release.js",
+    "postinstall": "pnpm build",
+    "prepare": "pnpm build"
   },
   "devDependencies": {
     "node-gyp": "^12.2.0"
