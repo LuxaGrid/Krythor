@@ -15,5 +15,12 @@ if ('serviceWorker' in navigator && (import.meta as unknown as { env?: { PROD?: 
     navigator.serviceWorker.register('/sw.js').catch(() => {
       // SW registration failure is non-fatal — app works without it
     });
+
+    // When a new SW activates it sends SW_UPDATED — reload to get the new bundle.
+    navigator.serviceWorker.addEventListener('message', (event) => {
+      if (event.data?.type === 'SW_UPDATED') {
+        window.location.reload();
+      }
+    });
   });
 }

@@ -8,7 +8,7 @@
 //   - /api/*, /ws/*               → network-only (never cache live data)
 //   - everything else             → network-first with cache fallback
 
-const CACHE_NAME = 'krythor-0.1.0-1774360313425'; // replaced by deploy-dist.js
+const CACHE_NAME = 'krythor-0.1.0-1774365211216'; // replaced by deploy-dist.js
 
 // ── Install ────────────────────────────────────────────────────────────────────
 self.addEventListener('install', (event) => {
@@ -18,11 +18,14 @@ self.addEventListener('install', (event) => {
 
 // ── Activate ───────────────────────────────────────────────────────────────────
 self.addEventListener('activate', (event) => {
-  // Delete all caches from previous versions
+  // Delete all caches from previous versions, claim clients, then tell every
+  // open tab to reload so they pick up the new bundle immediately.
   event.waitUntil(
     caches.keys()
       .then(keys => Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))))
       .then(() => self.clients.claim())
+      .then(() => self.clients.matchAll({ type: 'window' }))
+      .then(clients => clients.forEach(client => client.postMessage({ type: 'SW_UPDATED' })))
   );
 });
 
