@@ -40,6 +40,15 @@ try {
 pkg.version = `${major}.${minor}.${commitCount}`;
 console.log(`\x1b[32m✔ Version: ${pkg.version} (${commitCount} commits)\x1b[0m`);
 
+// Also bump gateway package.json so health endpoint serves the same version
+const gatewayPkgPath = join(root, '..', 'gateway', 'package.json');
+if (existsSync(gatewayPkgPath)) {
+  const gatewayPkg = JSON.parse(readFileSync(gatewayPkgPath, 'utf8'));
+  gatewayPkg.version = pkg.version;
+  writeFileSync(gatewayPkgPath, JSON.stringify(gatewayPkg, null, 2) + '\n', 'utf8');
+  console.log(`\x1b[32m✔ Gateway version bumped to ${pkg.version}\x1b[0m`);
+}
+
 // ── 1. Inject cache version into sw.js ────────────────────────────────────────
 const cacheVersion = `krythor-${pkg.version}-${Date.now()}`;
 const swPath = join(srcDist, 'sw.js');

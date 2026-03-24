@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { listConfigFiles, readConfigFile, writeConfigFile, type ConfigFileEntry } from '../api.ts';
 import { PanelHeader } from './PanelHeader.tsx';
+import { useSidebarResize } from '../hooks/useSidebarResize.ts';
+import { SidebarResizeHandle } from './SidebarResizeHandle.tsx';
 
 const FILE_LABELS: Record<string, { label: string; description: string }> = {
   agents:    { label: 'agents.json',    description: 'Agent definitions — name, system prompt, model, memory scope, tools' },
@@ -37,6 +39,8 @@ export function ConfigEditorPanel() {
   const [saved, setSaved] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  const { width: sidebarW, onMouseDown: sidebarDrag } = useSidebarResize('config-editor', 192);
+
   const loadFiles = useCallback(async () => {
     try {
       const res = await listConfigFiles();
@@ -60,13 +64,8 @@ export function ConfigEditorPanel() {
     }
   }, []);
 
-  useEffect(() => {
-    void loadFiles();
-  }, [loadFiles]);
-
-  useEffect(() => {
-    void loadFile(activeKey);
-  }, [activeKey, loadFile]);
+  useEffect(() => { void loadFiles(); }, [loadFiles]);
+  useEffect(() => { void loadFile(activeKey); }, [activeKey, loadFile]);
 
   const handleSave = async () => {
     const validErr = validate(content);
@@ -85,32 +84,21 @@ export function ConfigEditorPanel() {
     }
   };
 
-  const handleFormat = () => {
-    const pretty = jsonPretty(content);
-    setContent(pretty);
-  };
+  const handleFormat = () => setContent(jsonPretty(content));
+  const handleReset  = () => { setContent(original); setError(null); };
 
-  const handleReset = () => {
-    setContent(original);
-    setError(null);
-  };
-
-  const isDirty = content !== original;
+  const isDirty   = content !== original;
   const jsonError = content.trim() ? validate(content) : null;
 
-  // Tab key inserts 2 spaces in textarea
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Tab') {
       e.preventDefault();
       const ta = textareaRef.current;
       if (!ta) return;
       const start = ta.selectionStart;
-      const end = ta.selectionEnd;
-      const newContent = content.slice(0, start) + '  ' + content.slice(end);
-      setContent(newContent);
-      requestAnimationFrame(() => {
-        ta.selectionStart = ta.selectionEnd = start + 2;
-      });
+      const end   = ta.selectionEnd;
+      setContent(content.slice(0, start) + '  ' + content.slice(end));
+      requestAnimationFrame(() => { ta.selectionStart = ta.selectionEnd = start + 2; });
     }
     if ((e.ctrlKey || e.metaKey) && e.key === 's') {
       e.preventDefault();
@@ -128,7 +116,7 @@ export function ConfigEditorPanel() {
 
       <div className="flex flex-1 min-h-0">
         {/* File list sidebar */}
-        <div className="w-48 flex-shrink-0 border-r border-zinc-800 flex flex-col">
+        <div style={{ width: sidebarW, flexShrink: 0 }} className="border-r border-zinc-800 flex flex-col overflow-hidden">
           <div className="px-3 py-2 border-b border-zinc-800/60">
             <span className="text-[10px] font-mono text-zinc-600 uppercase tracking-wider">Config files</span>
           </div>
@@ -152,6 +140,8 @@ export function ConfigEditorPanel() {
           </div>
         </div>
 
+        <SidebarResizeHandle onMouseDown={sidebarDrag} />
+
         {/* Editor area */}
         <div className="flex-1 flex flex-col min-w-0">
           {/* Toolbar */}
@@ -159,37 +149,26 @@ export function ConfigEditorPanel() {
             <span className="text-[11px] font-mono text-zinc-500 flex-1 truncate">
               {FILE_LABELS[activeKey]?.description}
             </span>
-            {isDirty && (
-              <span className="text-[10px] font-mono text-amber-500">unsaved</span>
-            )}
+            {isDirty && <span className="text-[10px] font-mono text-amber-500">unsaved</span>}
             {jsonError && (
               <span className="text-[10px] font-mono text-red-400 max-w-48 truncate" title={jsonError}>
                 ✗ {jsonError}
               </span>
             )}
-            <button
-              onClick={handleFormat}
-              disabled={loading || !!jsonError}
-              className="text-[10px] font-mono px-2 py-0.5 rounded border border-zinc-800 text-zinc-600 hover:text-zinc-400 hover:border-zinc-600 transition-colors disabled:opacity-30"
-            >
+            <button onClick={handleFormat} disabled={loading || !!jsonError}
+              className="text-[10px] font-mono px-2 py-0.5 rounded border border-zinc-800 text-zinc-600 hover:text-zinc-400 hover:border-zinc-600 transition-colors disabled:opacity-30">
               format
             </button>
-            <button
-              onClick={handleReset}
-              disabled={!isDirty || loading}
-              className="text-[10px] font-mono px-2 py-0.5 rounded border border-zinc-800 text-zinc-600 hover:text-zinc-400 hover:border-zinc-600 transition-colors disabled:opacity-30"
-            >
+            <button onClick={handleReset} disabled={!isDirty || loading}
+              className="text-[10px] font-mono px-2 py-0.5 rounded border border-zinc-800 text-zinc-600 hover:text-zinc-400 hover:border-zinc-600 transition-colors disabled:opacity-30">
               reset
             </button>
-            <button
-              onClick={handleSave}
-              disabled={saving || loading || !!jsonError || !isDirty}
+            <button onClick={handleSave} disabled={saving || loading || !!jsonError || !isDirty}
               className={`text-[10px] font-mono px-3 py-0.5 rounded border transition-colors disabled:opacity-30 ${
                 saved
                   ? 'border-emerald-700/40 text-emerald-400 bg-emerald-950/30'
                   : 'border-brand-700/40 text-brand-400 bg-brand-950/20 hover:border-brand-500/60 hover:text-brand-300'
-              }`}
-            >
+              }`}>
               {saving ? 'saving…' : saved ? '✓ saved' : 'save'}
             </button>
           </div>

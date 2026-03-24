@@ -37,7 +37,8 @@ This is **AI you can operate**.
 
 ## ✨ Features
 
-* **Multi-model routing** — OpenAI, Anthropic, Ollama, LM Studio, GGUF (llama-server), OpenRouter, Groq, Venice, and any OpenAI-compatible API
+* **Multi-model routing** — OpenAI, Anthropic, Ollama, LM Studio, GGUF (llama-server), OpenRouter, Groq, Venice, Kimi (Moonshot), Mistral, and any OpenAI-compatible API
+* **Quick-add provider presets** — one-click guided setup for Groq, OpenRouter, Google Gemini, Venice, Kimi, and Mistral
 * **Automatic fallback** — seamless provider failover with circuit breaker and per-provider retry config
 * **Provider priority ordering** — configure which providers are tried first via the ⚙ advanced settings panel (priority, maxRetries, enable/disable per provider)
 * **Dual-auth support** — connect cloud providers with an API key; "Connect" button opens provider dashboard in a new tab
@@ -45,7 +46,7 @@ This is **AI you can operate**.
 * **Agent system** — custom prompts, memory scope, model preferences, tool permissions, chaining/handoff per agent
 * **Agent import/export** — share agent configs as JSON files
 * **Skills** — reusable task templates with structured routing hints, task profiles, and built-in templates (summarize, translate, explain)
-* **Guard engine** — policy-based allow/deny control per operation with persistent audit trail and live test mode
+* **Guard engine** — policy-based allow/deny control per operation with persistent audit trail and live test mode; three distinct safety modes (Guarded, Balanced, Power User) with color-coded cards showing per-mode behavior
 * **Tool system** — exec (local commands), web_search (DuckDuckGo), web_fetch (URL content), user-defined webhook tools with one-click test-fire
 * **Session management** — named conversations, archive/restore, pinning, idle detection, export as JSON/Markdown
 * **Conversation search** — filter conversations by title in the sidebar
@@ -53,7 +54,9 @@ This is **AI you can operate**.
 * **Outbound channels** — webhook notifications on lifecycle events (agent runs, memory, providers); HMAC-SHA256 signed; compatible with Zapier, n8n, Discord/Slack incoming webhooks
 * **LAN discovery** — gateways on the same network find each other automatically via UDP multicast; manual peer registration for cross-network pairing
 * **Gateway identity** — stable UUID per installation; capability manifest at `GET /api/gateway/info`
-* **Command Center** — live animated operations view; mythic-tech agent entities (Atlas, Voltaris, Aethon, Thyros, Pyron) move between zones, react to real events, and fall back to a cycling demo when the gateway is idle
+* **Command Center** — live animated operations view with a Tron-style "thinking brain" planet, mythic-tech agent entities (Atlas, Voltaris, Aethon, Thyros, Pyron), resizable panels, and real-time event-driven animation
+* **Customizable tab bar** — pin/unpin any of the 16 tabs into the top bar; persisted to localStorage; `+ Tabs` dropdown to manage all panels
+* **Resizable sidebars** — every panel with a sidebar has a draggable resize handle; widths persist across sessions
 * **Ctrl+K command palette** — global fuzzy-search command palette for instant tab navigation, new chat, and more
 * **Slash commands** — type `/` in the chat input to autocomplete commands: `/new`, `/clear`, `/memory`, `/agents`, `/models`, `/skills`, `/guard`, `/dash`, `/logs`, `/settings`
 * **Dashboard heartbeat + circuit breaker** — live view of background provider health checks, warnings, recent run stats, and per-circuit state (open/closed/half-open)
@@ -64,8 +67,10 @@ This is **AI you can operate**.
 * **Live log viewer** — filterable, searchable logs with pause, copy, and expandable raw JSON per entry
 * **Terminal dashboard** — `krythor tui` for a live status view without a browser
 * **Auto-update check** — notified at startup when a newer release is available
+* **Auto-versioning** — build version is derived from git commit count and shown in the status bar; increments automatically on every push without manual version bumps
 * **Config hot reload** — `providers.json` watched with `fs.watch()`; `POST /api/config/reload` for manual trigger
 * **Config export/import** — portable provider config with secrets redacted
+* **Config editor** — edit raw JSON config files directly in the UI with syntax validation and Ctrl+S to save
 * **Daemon mode** — `krythor start --daemon`, `krythor stop`, `krythor restart`
 * **Backup command** — `krythor backup` creates a timestamped archive of the data directory
 * **Doctor + Repair** — comprehensive diagnostics with migration integrity check and credential validation
@@ -76,6 +81,20 @@ This is **AI you can operate**.
 ## 🎛️ Command Center
 
 The **Command Center** tab is a live animated scene that shows what your AI agents are doing right now.
+
+### Tron Brain Planet
+
+The centerpiece of the Command Center viewscreen is a **Tron-style "thinking brain" planet** — a fully animated canvas-rendered sphere that visualizes the gateway's processing activity:
+
+- **Rotating latitude bands** — multiple elliptical rings rotate at different speeds, clipped to the sphere, giving the impression of a scanning or processing globe
+- **Meridian arcs** — longitude lines rotate in the opposite direction, creating a cross-hatched neural grid
+- **Circuit nodes** — pulsing dot nodes placed along the sphere surface, connected to the grid lines, representing active computation points
+- **Data pulse runners** — bright particles that race along the meridian lines, simulating data traveling through the brain
+- **Orbiting ring** — a tilted elliptical ring orbits the sphere, echoing a planet's equatorial band
+- **Radial shockwave pulses** — periodic expanding rings emanate from the sphere center, representing broadcast events
+- All elements glow in Krythor's signature cyan/teal palette (`#1eaeff`) against a deep space background
+
+### Agent Entities
 
 Five mythic-tech agent entities inhabit the scene, each with a unique silhouette:
 
@@ -95,13 +114,29 @@ Each agent:
 - Displays a **local/remote badge** (LC / RM) and an active **model badge** (OPUS, SNT, etc.)
 - Pulses with a **memory recall flash** when Thyros retrieves from the memory store
 
-The scene also features:
+### Scene Features
+
 - **Energy paths** — animated dashed lines from Crown Platform to every active zone
 - **Ambient reactor** — a central orb that grows and shifts color as more agents become active
 - **Zone glow scaling** — zone platforms intensify their glow proportional to agent activity
 - **Focus mode** — click any agent to dim everything else and center attention
+- **Resizable panels** — drag the divider between the left info panel and the scene, and between the scene and the command log, to customize the layout
 - **Command log** — filterable live event log (all / tasks / tools / memory / errors) with pause toggle and auto-scroll
 - **Demo mode** — when no gateway events arrive for 8 seconds, the scene runs a cycling demo scenario automatically; it seamlessly switches back to live data when the gateway reconnects
+
+---
+
+## 🛡️ Safety Modes
+
+The **Guard** tab provides three visually distinct safety modes, each displayed as a color-coded card explaining exactly what it does:
+
+| Mode | Color | Default Action | Rules |
+|------|-------|---------------|-------|
+| **🔒 Guarded** | Red | DENY | All custom rules enabled — anything not explicitly allowed is blocked |
+| **⚖️ Balanced** | Amber | ALLOW | Warn rules active, deny rules off — flags risky requests without blocking |
+| **⚡ Power User** | Blue | ALLOW | All custom rules disabled — unrestricted access, full control |
+
+The active mode is highlighted with a colored ring and an "active" badge. Switching modes immediately applies the correct default action and rule state to the gateway.
 
 ---
 
@@ -117,6 +152,7 @@ The scene also features:
 | `↑` / `↓` | Navigate slash command or palette suggestions |
 | `Tab` or `Enter` | Apply selected slash command or palette action |
 | `Escape` | Close command palette or dismiss slash dropdown |
+| `Ctrl+S` | Save in Config Editor |
 
 ---
 
@@ -329,7 +365,7 @@ Run these from the repository root with pnpm installed (`npm install -g pnpm`).
 | Command | Description |
 |---------|-------------|
 | `pnpm install` | Install all workspace dependencies |
-| `pnpm build` | Build all packages (gateway + control UI + all libraries) |
+| `pnpm build` | Build all packages (gateway + control UI + all libraries) and auto-bump version |
 | `pnpm dev` | Start gateway in watch mode with hot-reload; control UI auto-reloads on save |
 | `pnpm test` | Run the full test suite across all packages |
 | `pnpm doctor` | Run diagnostics via the pnpm script alias |
@@ -464,13 +500,11 @@ Krythor supports two ways to connect — pick whichever suits you:
 2. Go to API Keys and create a new key
 3. In Krythor, add a provider, choose **openai** or **anthropic**, and paste your key
 
-**"Connect with OAuth later"** (deferred setup — opens provider dashboard in your browser)
-1. During setup, choose **"Connect with OAuth later — opens provider dashboard to get your API key"**
-2. Krythor saves a placeholder provider entry and shows an **OAuth Pending** badge in the Models tab
-3. Click **Connect ↗** next to the provider — this opens the provider's API key page in a new browser tab
-4. Copy your API key, then edit the provider in the Models tab to add it
-
-> **Note:** The current "OAuth" option is a convenience shortcut that opens the provider's API key page in your browser. It is not a full OAuth browser sign-in flow. A full OAuth sign-in flow (no key copy-paste) is on the roadmap.
+**Quick add** (for popular cloud providers)
+1. Click the **Quick add** button in the Models tab header
+2. Choose from Groq, OpenRouter, Google Gemini, Venice, Kimi, or Mistral
+3. Click the provider's dashboard link to get your API key
+4. Paste the key and click Connect
 
 > **Your credentials are stored on your computer.** They are never sent anywhere except directly to the AI provider when you make a request.
 
@@ -488,20 +522,21 @@ Krythor will:
 **Tips:**
 - Press **Ctrl+K** to open the command palette and jump to any tab instantly
 - Type `/` in the chat input to see a list of slash commands
+- Click **+ Tabs** in the top bar to pin or unpin panels
 
 ---
 
 ### Step 7 — Explore the features
 
-The dashboard has several tabs:
+The dashboard has a customizable tab bar — click **+ Tabs** to pin or unpin any panel. Available panels:
 
 | Tab | What it does |
 |-----|-------------|
 | **Command** | Send messages and get AI responses; archive/restore conversations; slash commands |
 | **Memory** | View and manage what Krythor remembers across sessions |
-| **Models** | Add, test, and configure AI providers; set priority and retry settings with ⚙ |
+| **Models** | Add, test, and configure AI providers; quick-add presets for popular services |
 | **Agents** | Create custom AI assistants with their own instructions |
-| **Guard** | Set rules for what Krythor is and isn't allowed to do; live test mode |
+| **Guard** | Set safety mode (Guarded / Balanced / Power User); define allow/deny/warn rules |
 | **Skills** | Reusable task templates with routing profiles |
 | **Dashboard** | Token usage sparklines, heartbeat last-run, circuit breaker status |
 | **Logs** | Live log stream with filter, search, pause, copy, and expandable JSON rows |
@@ -509,8 +544,8 @@ The dashboard has several tabs:
 | **Workflow** | View agent run history and stop active runs |
 | **Channels** | Configure outbound webhook notifications |
 | **Custom Tools** | Define webhook tools; test-fire each one from the UI |
-| **Config Editor** | Edit raw configuration files |
-| **Command Center** | Live animated scene showing all agents working in real time |
+| **Config Editor** | Edit raw configuration files with JSON validation |
+| **Command Center** | Live animated scene with Tron brain planet, agent entities, and command log |
 
 ---
 
@@ -603,7 +638,10 @@ This is normal when no real agent runs are happening. The scene runs a pre-scrip
 | Anthropic (Claude) | Cloud | Pay per use | API key or OAuth |
 | OpenRouter | Cloud | Pay per use | API key |
 | Groq | Cloud | Pay per use | API key |
+| Google Gemini | Cloud | Pay per use | API key |
 | Venice | Cloud | Pay per use | API key |
+| Kimi (Moonshot) | Cloud | Pay per use | API key |
+| Mistral | Cloud | Pay per use | API key |
 | Any OpenAI-compatible API | Cloud/Local | Varies | Optional API key |
 
 Krythor auto-detects Ollama and LM Studio on first launch.
@@ -738,16 +776,20 @@ Direct API: `POST /api/tools/web_fetch`
 packages/
   gateway/    — Fastify HTTP + WebSocket server, all API routes
   control/    — React control UI (served by gateway)
-    src/components/command-center/
-      agents/     — AgentBody, AgentEntity, AgentLayer, AgentRings, AgentGlyph, AgentTooltip, TaskBubble
-      scene/      — CommandScene, SceneGrid, SceneZone, EnergyPaths, AmbientReactor, HandoffArc
-      panels/     — LeftPanel, BottomPanel, CommandLog
-      agents.ts   — DEFAULT_AGENTS, SCENE_ZONES, ZONE_MAP, createAgent()
-      types.ts    — all Command Center types
-      events.ts   — AGENT_STATE_TRANSITIONS, makeEvent()
-      eventAdapter.ts  — gateway → CCEvent adapter
-      demoAdapter.ts   — 12-step cycling demo scenario
-      useCommandCenter.ts — master hook
+    src/components/
+      command-center/
+        agents/     — AgentBody, AgentEntity, AgentLayer, AgentRings, AgentGlyph, AgentTooltip, TaskBubble
+        scene/      — CommandScene, SceneGrid, SceneZone, EnergyPaths, AmbientReactor, HandoffArc, MythicCanvas
+        panels/     — LeftPanel, BottomPanel, CommandLog
+        agents.ts   — DEFAULT_AGENTS, SCENE_ZONES, ZONE_MAP, createAgent()
+        types.ts    — all Command Center types
+        events.ts   — AGENT_STATE_TRANSITIONS, makeEvent()
+        eventAdapter.ts  — gateway → CCEvent adapter
+        demoAdapter.ts   — 12-step cycling demo scenario
+        useCommandCenter.ts — master hook
+      hooks/
+        useSidebarResize.ts — shared drag-resize hook with localStorage persistence
+      SidebarResizeHandle.tsx — shared drag handle component (cyan highlight, col-resize cursor)
   core/       — Agent orchestration, runner, SOUL identity
   memory/     — SQLite memory engine, embeddings, conversation store
   models/     — Model registry, router, circuit breaker, providers
@@ -768,11 +810,13 @@ Dockerfile    — Docker image (node:20-alpine, non-root user)
 pnpm install    # install all dependencies
 pnpm dev        # gateway in watch mode + control UI hot-reload
 pnpm test       # run all tests
-pnpm build      # build all packages
+pnpm build      # build all packages + auto-bump version from git commit count
 pnpm doctor     # run diagnostics
 ```
 
 The control UI auto-reloads on save during `pnpm dev`. The Command Center connects to the gateway WebSocket at `ws://localhost:47200/ws/stream` and falls back to demo mode after 8 seconds of silence.
+
+Version is derived from `git rev-list --count HEAD` at build time — every push automatically produces a higher patch version with no manual bumping needed. The version is visible in the status bar and served by the gateway health endpoint.
 
 ---
 
@@ -818,13 +862,18 @@ To uninstall: remove the application folder (`~/.krythor`) and the data folder a
 * [x] Transparent execution (selectionReason, fallbackOccurred in all run paths)
 * [x] One-line curl/PowerShell installers
 * [x] Dual-auth system (API key + OAuth) for cloud providers
+* [x] Quick-add provider presets (Groq, OpenRouter, Gemini, Venice, Kimi, Mistral)
 * [x] Guard engine (policy-based allow/deny per operation) with live test mode
+* [x] Three distinct safety modes — Guarded (red), Balanced (amber), Power User (blue) with color-coded cards
 * [x] Tool system (exec, web_search, web_fetch) with webhook custom tools and test-fire
 * [x] Terminal dashboard (krythor tui)
 * [x] Auto-update check on startup
+* [x] Auto-versioning from git commit count — version always reflects latest push
 * [x] Outbound webhook channels (10 event types, HMAC signing, delivery stats)
 * [x] LAN peer discovery (mDNS UDP multicast) + manual peer registry
-* [x] Command Center — live animated agent scene with distinct silhouettes, state machine, zone transitions, energy paths, ambient reactor, focus mode, and command log
+* [x] Command Center — live animated agent scene with Tron brain planet, distinct agent silhouettes, state machine, zone transitions, energy paths, ambient reactor, focus mode, resizable panels, and command log
+* [x] Customizable tab bar — pin/unpin any of 16 panels; persisted to localStorage
+* [x] Resizable sidebars on all panels — drag handles persist widths across sessions
 * [x] Ctrl+K global command palette with fuzzy search
 * [x] Slash commands in chat input (/new, /clear, /memory, /agents, /models, /skills, /guard, /dash, /logs, /settings)
 * [x] Provider advanced settings panel (priority, maxRetries, enable/disable per provider)

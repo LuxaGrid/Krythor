@@ -860,8 +860,10 @@ export function ModelsPanel({ health }: Props) {
         </div>
       )}
 
+      {/* Scrollable body — provider list + bottom sections */}
+      <div className="flex-1 overflow-y-auto scrollbar-thin">
       {/* Provider list */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin divide-y divide-zinc-800/50">
+      <div className="divide-y divide-zinc-800/50">
         {loading ? (
           <div className="divide-y divide-zinc-800/50">
             {[1, 2].map(i => (
@@ -1180,7 +1182,7 @@ export function ModelsPanel({ health }: Props) {
             );
           })
         )}
-      </div>
+      </div>{/* end provider list */}
 
       {/* Guided connect modal */}
       {connectModalProvider && (
@@ -1276,7 +1278,7 @@ export function ModelsPanel({ health }: Props) {
       </div>
 
       {/* Embedding Provider Section */}
-      <div className="border-t border-zinc-800 p-4 space-y-2">
+      <div className="border-t border-zinc-800 p-4 pb-6 space-y-2">
         <div className="flex items-center justify-between">
           <div>
             <p className="text-xs text-zinc-400 font-medium">Semantic Memory (Embeddings)</p>
@@ -1324,6 +1326,7 @@ export function ModelsPanel({ health }: Props) {
           </div>
         )}
       </div>
+      </div>{/* end scrollable body */}
     </div>
   );
 }

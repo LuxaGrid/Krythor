@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useSidebarResize } from '../hooks/useSidebarResize.ts';
+import { SidebarResizeHandle } from './SidebarResizeHandle.tsx';
 import {
   listAgents, createAgent, updateAgent, deleteAgent, runAgent,
   listRuns, agentStats, listProviders, importAgent, exportAgent,
@@ -294,6 +296,8 @@ export function AgentsPanel() {
     (p.models ?? []).map(m => ({ label: `${m} (${p.name})`, modelId: m, providerId: p.id }))
   );
 
+  const { width: sidebarW, onMouseDown: sidebarDrag } = useSidebarResize('agents', 208);
+
   return (
     <div className="flex flex-col h-full">
       <PanelHeader
@@ -303,7 +307,7 @@ export function AgentsPanel() {
       />
       <div className="flex flex-1 min-h-0">
       {/* Agent list */}
-      <div className="w-52 shrink-0 border-r border-zinc-800 flex flex-col">
+      <div style={{ width: sidebarW, flexShrink: 0 }} className="border-r border-zinc-800 flex flex-col overflow-hidden">
         <div className="p-2 border-b border-zinc-800 flex items-center justify-between gap-1">
           <span className="text-xs text-zinc-500 shrink-0">
             {stats ? `${stats.agentCount} agent${stats.agentCount !== 1 ? 's' : ''}` : '—'}
@@ -380,6 +384,7 @@ export function AgentsPanel() {
           </div>
         )}
       </div>
+      <SidebarResizeHandle onMouseDown={sidebarDrag} />
 
       {/* Main area */}
       <div className="flex-1 flex flex-col overflow-hidden">

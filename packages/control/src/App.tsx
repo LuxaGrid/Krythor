@@ -381,8 +381,9 @@ function TabBar({ tab, setTab, eventCount }: { tab: Tab; setTab: (t: Tab) => voi
   const handleDragEnd = () => { setDragOver(null); dragSrc.current = null; };
 
   return (
-    <div className="flex items-stretch border-b border-zinc-800 bg-zinc-950 relative select-none overflow-x-auto">
-      {/* Pinned tabs */}
+    <div className="flex items-stretch border-b border-zinc-800 bg-zinc-950 select-none">
+      {/* Scrollable pinned tabs — overflow clipped here, dropdown lives outside */}
+      <div className="flex items-stretch overflow-x-auto flex-1 min-w-0">
       {pinnedTabs.map(t => {
         const isActive      = tab === t.id;
         const isCC          = t.id === 'command-center';
@@ -426,11 +427,13 @@ function TabBar({ tab, setTab, eventCount }: { tab: Tab; setTab: (t: Tab) => voi
         );
       })}
 
+      </div>{/* end scrollable tabs */}
+
       {/* Divider */}
       <div className="w-px bg-zinc-800 my-2 mx-1 flex-shrink-0" />
 
-      {/* Customize / add tabs */}
-      <div className="relative flex items-stretch">
+      {/* Customize / add tabs — outside scroll container so dropdown isn't clipped */}
+      <div className="relative flex items-stretch flex-shrink-0">
         <button
           onClick={() => setCustomOpen(o => !o)}
           title="Add or remove tabs"

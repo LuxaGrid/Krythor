@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect, useCallback, type MutableRefObject } from 'react';
+import { useSidebarResize } from '../hooks/useSidebarResize.ts';
+import { SidebarResizeHandle } from './SidebarResizeHandle.tsx';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -298,7 +300,7 @@ function Sidebar({ conversations, activeId, onSelect, onNew, onDelete, onRename,
   const groupOrder = ['Today', 'Yesterday', 'This Week', 'Older'];
 
   return (
-    <div className="w-[220px] shrink-0 border-r border-zinc-800 flex flex-col bg-zinc-950">
+    <div className="w-full shrink-0 border-r border-zinc-800 flex flex-col bg-zinc-950">
       <div className="p-2 border-b border-zinc-800 flex flex-col gap-1">
         <button
           onClick={onNew}
@@ -883,21 +885,26 @@ export function CommandPanel({ health, onTabChange, newChatRef }: Props) {
     return -1;
   })();
 
+  const { width: sidebarW, onMouseDown: sidebarDrag } = useSidebarResize('chat', 220);
+
   return (
     <div className="flex h-full overflow-hidden">
       {/* Sidebar */}
-      <Sidebar
-        conversations={conversations}
-        activeId={activeConvId}
-        onSelect={handleSelect}
-        onNew={handleNew}
-        onDelete={handleDelete}
-        onRename={handleRename}
-        onPin={handlePin}
-        onArchive={handleArchive}
-        showArchived={showArchived}
-        onToggleArchived={handleToggleArchived}
-      />
+      <div style={{ width: sidebarW, flexShrink: 0 }} className="flex flex-col overflow-hidden">
+        <Sidebar
+          conversations={conversations}
+          activeId={activeConvId}
+          onSelect={handleSelect}
+          onNew={handleNew}
+          onDelete={handleDelete}
+          onRename={handleRename}
+          onPin={handlePin}
+          onArchive={handleArchive}
+          showArchived={showArchived}
+          onToggleArchived={handleToggleArchived}
+        />
+      </div>
+      <SidebarResizeHandle onMouseDown={sidebarDrag} />
 
       {/* Chat area */}
       <div className="flex-1 flex flex-col overflow-hidden">

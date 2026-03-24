@@ -11,10 +11,65 @@ const ACTION_COLOR: Record<string, string> = {
 
 type SafetyMode = 'guarded' | 'balanced' | 'power-user';
 
-const SAFETY_MODES: { value: SafetyMode; label: string; description: string }[] = [
-  { value: 'guarded',    label: 'Guarded',    description: 'Default deny — strict safety, all rules active' },
-  { value: 'balanced',   label: 'Balanced',   description: 'Default allow — warn rules active, moderate safety' },
-  { value: 'power-user', label: 'Power User', description: 'Default allow — all rules disabled, unrestricted' },
+const SAFETY_MODES: {
+  value: SafetyMode;
+  label: string;
+  icon: string;
+  tagline: string;
+  description: string;
+  bullets: string[];
+  activeClass: string;
+  inactiveClass: string;
+  badgeClass: string;
+}[] = [
+  {
+    value: 'guarded',
+    label: 'Guarded',
+    icon: '🔒',
+    tagline: 'Maximum protection',
+    description: 'Strict mode — deny by default. Every operation must pass an active rule to be allowed. Best for production or untrusted environments.',
+    bullets: [
+      'Default action: DENY',
+      'All custom rules enabled',
+      'Blocks anything not explicitly allowed',
+      'Lowest risk, highest restriction',
+    ],
+    activeClass:   'ring-2 ring-red-500 bg-red-950/30 border-red-700/60',
+    inactiveClass: 'bg-zinc-900 border-zinc-700 hover:border-red-700/50 hover:bg-red-950/10',
+    badgeClass:    'bg-red-500/20 text-red-300 border-red-600/40',
+  },
+  {
+    value: 'balanced',
+    label: 'Balanced',
+    icon: '⚖️',
+    tagline: 'Warn on risky actions',
+    description: 'Moderate mode — allow by default, but warn rules stay active to flag risky operations. Deny rules are disabled. Best for everyday use.',
+    bullets: [
+      'Default action: ALLOW',
+      'Warn rules active, deny rules off',
+      'Flags suspicious requests without blocking',
+      'Good balance of safety and flexibility',
+    ],
+    activeClass:   'ring-2 ring-amber-500 bg-amber-950/30 border-amber-700/60',
+    inactiveClass: 'bg-zinc-900 border-zinc-700 hover:border-amber-700/50 hover:bg-amber-950/10',
+    badgeClass:    'bg-amber-500/20 text-amber-300 border-amber-600/40',
+  },
+  {
+    value: 'power-user',
+    label: 'Power User',
+    icon: '⚡',
+    tagline: 'Unrestricted access',
+    description: 'Permissive mode — allow by default, all custom rules disabled. No restrictions. Use only in trusted, local-only environments.',
+    bullets: [
+      'Default action: ALLOW',
+      'All custom rules disabled',
+      'No blocking or warnings',
+      'Full control, zero guardrails',
+    ],
+    activeClass:   'ring-2 ring-brand-500 bg-brand-950/30 border-brand-700/60',
+    inactiveClass: 'bg-zinc-900 border-zinc-700 hover:border-brand-700/50 hover:bg-brand-950/10',
+    badgeClass:    'bg-brand-500/20 text-brand-300 border-brand-600/40',
+  },
 ];
 
 interface AddRuleForm {
@@ -86,19 +141,30 @@ export function GuardPanel() {
       setDeleteError(null);
 
       // Derive current safety mode from loaded policy.
-      // Both checks use only non-builtin rules so the comparison is symmetric.
       if (s.defaultAction === 'deny') {
         setSafetyMode('guarded');
+        localStorage.setItem('krythor_safety_mode', 'guarded');
       } else if (s.defaultAction === 'allow') {
+        // Prefer the stored mode when it's consistent with the policy.
+        // This avoids the ambiguity where 0 custom rules looks like both balanced and power-user.
+        const stored = localStorage.getItem('krythor_safety_mode') as SafetyMode | null;
         const customRules = r.filter(rule => !rule.id.startsWith('builtin-'));
-        const allDisabled = customRules.length === 0 || customRules.every(rule => !rule.enabled);
-        const allEnabled = customRules.length > 0 && customRules.every(rule => rule.enabled);
-        if (allDisabled) {
-          setSafetyMode('power-user');
-        } else if (allEnabled) {
+        const hasActiveDenyRules = customRules.some(rule => rule.enabled && rule.action === 'deny');
+        if (stored === 'balanced' && !hasActiveDenyRules) {
           setSafetyMode('balanced');
+        } else if (stored === 'power-user' && !hasActiveDenyRules) {
+          setSafetyMode('power-user');
+        } else {
+          // Derive from rules when no stored hint or rules don't match stored mode
+          const allDisabled = customRules.length === 0 || customRules.every(rule => !rule.enabled);
+          const anyDenyEnabled = customRules.some(rule => rule.enabled && rule.action === 'deny');
+          if (allDisabled || !anyDenyEnabled) {
+            const derived = stored === 'balanced' ? 'balanced' : 'power-user';
+            setSafetyMode(derived);
+          } else {
+            setSafetyMode(null);
+          }
         }
-        // else leave as null (custom state)
       }
     } catch { /* ignore */ }
     finally { setLoading(false); }
@@ -186,6 +252,7 @@ export function GuardPanel() {
         );
       }
       setSafetyMode(mode);
+      localStorage.setItem('krythor_safety_mode', mode);
       await load();
     } catch { /* ignore */ }
     finally { setModeLoading(false); setSavingMode(null); setSavingDefault(false); }
@@ -210,23 +277,42 @@ export function GuardPanel() {
       />
 
       {/* Safety Mode Selector */}
-      <div className="px-4 py-2 border-b border-zinc-800 flex items-center gap-2">
-        <span className="text-xs text-zinc-500 shrink-0">Safety mode:</span>
-        {SAFETY_MODES.map(m => (
-          <button
-            key={m.value}
-            onClick={() => handleSafetyMode(m.value)}
-            disabled={modeLoading || savingDefault}
-            title={m.description}
-            className={`text-xs px-2 py-0.5 rounded-lg transition-colors disabled:opacity-40 ${
-              safetyMode === m.value
-                ? 'bg-brand-900/60 border border-brand-600 text-brand-300'
-                : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 border border-transparent'
-            }`}
-          >
-            {savingMode === m.value ? <Spinner /> : m.label}
-          </button>
-        ))}
+      <div className="px-4 py-3 border-b border-zinc-800">
+        <div className="flex items-center gap-1.5 mb-2">
+          <span className="text-[10px] font-mono text-zinc-600 uppercase tracking-wider">Safety mode</span>
+          {safetyMode === null && <span className="text-[10px] text-zinc-700">(custom)</span>}
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          {SAFETY_MODES.map(m => {
+            const isActive = safetyMode === m.value;
+            const isSaving = savingMode === m.value;
+            return (
+              <button
+                key={m.value}
+                onClick={() => handleSafetyMode(m.value)}
+                disabled={modeLoading || savingDefault}
+                className={`text-left rounded-xl border p-3 transition-all disabled:opacity-40 ${isActive ? m.activeClass : m.inactiveClass}`}
+              >
+                <div className="flex items-center gap-1.5 mb-1">
+                  <span className="text-base leading-none">{m.icon}</span>
+                  <span className="text-xs font-semibold text-zinc-200">{m.label}</span>
+                  {isSaving && <Spinner />}
+                  {isActive && !isSaving && (
+                    <span className={`ml-auto text-[9px] font-mono px-1.5 py-0.5 rounded border ${m.badgeClass}`}>active</span>
+                  )}
+                </div>
+                <p className="text-[10px] text-zinc-500 font-medium mb-1.5">{m.tagline}</p>
+                <ul className="space-y-0.5">
+                  {m.bullets.map((b, i) => (
+                    <li key={i} className="text-[9px] text-zinc-600 flex items-start gap-1">
+                      <span className="mt-px opacity-50">·</span>{b}
+                    </li>
+                  ))}
+                </ul>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Tab bar */}

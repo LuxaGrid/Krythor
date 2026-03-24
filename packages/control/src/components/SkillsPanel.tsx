@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useSidebarResize } from '../hooks/useSidebarResize.ts';
+import { SidebarResizeHandle } from './SidebarResizeHandle.tsx';
 import {
   listSkills, listBuiltinSkills, createSkill, updateSkill, deleteSkill, listProviders, runSkill,
   type Skill, type CreateSkillInput, type Provider, type BuiltinSkill, type SkillTaskProfile,
@@ -439,6 +441,8 @@ export function SkillsPanel() {
     setSelected(null);
   };
 
+  const { width: sidebarW, onMouseDown: sidebarDrag } = useSidebarResize('skills', 224);
+
   return (
     <div className="flex flex-col h-full">
       <PanelHeader
@@ -451,7 +455,7 @@ export function SkillsPanel() {
         <RunSkillDialog skill={runningSkill} onClose={() => setRunningSkill(null)} />
       )}
       {/* Left sidebar — skill list */}
-      <div className="w-56 shrink-0 border-r border-zinc-800 flex flex-col">
+      <div style={{ width: sidebarW, flexShrink: 0 }} className="border-r border-zinc-800 flex flex-col overflow-hidden">
         {/* Toolbar */}
         <div className="p-2 border-b border-zinc-800 flex items-center gap-1">
           <input
@@ -577,6 +581,7 @@ export function SkillsPanel() {
         </div>
       </div>
 
+      <SidebarResizeHandle onMouseDown={sidebarDrag} />
       {/* Right panel — form or detail view */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {showForm ? (

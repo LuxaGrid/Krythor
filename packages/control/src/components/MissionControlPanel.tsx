@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useSidebarResize } from '../hooks/useSidebarResize.ts';
+import { SidebarResizeHandle } from './SidebarResizeHandle.tsx';
 import { listAgents, listRuns, agentStats, stopAgentRun, type Agent, type AgentRun } from '../api.ts';
 import { useGatewayContext } from '../GatewayContext.tsx';
 
@@ -339,6 +341,7 @@ export function MissionControlPanel() {
   const [stats, setStats]           = useState<{ agentCount: number; totalRuns: number } | null>(null);
   const [loading, setLoading]       = useState(true);
   const [liveStates, setLiveStates] = useState<Map<string, LiveAgentState>>(new Map());
+  const { width: sidebarW, onMouseDown: sidebarDrag } = useSidebarResize('mission-sidebar', 240, 140, 520);
 
   const loadData = useCallback(async () => {
     try {
@@ -509,9 +512,10 @@ export function MissionControlPanel() {
       </div>
 
       {/* ── Activity sidebar ──────────────────────────────────────────────── */}
+      <SidebarResizeHandle onMouseDown={sidebarDrag} />
       <div
-        className="w-60 border-l border-zinc-800/60 flex flex-col shrink-0"
-        style={{ background: 'var(--kr-bg-panel)' }}
+        style={{ width: sidebarW, flexShrink: 0, background: 'var(--kr-bg-panel)' }}
+        className="border-l border-zinc-800/60 flex flex-col overflow-hidden"
       >
         <div className="px-4 py-3 border-b border-zinc-800/60 flex items-center gap-2">
           {activeCount > 0 && (

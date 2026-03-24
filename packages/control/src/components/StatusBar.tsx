@@ -41,7 +41,7 @@ export function StatusBar({ health, connected, onTabChange, onAbout }: Props) {
   return (
     <div className="relative flex items-center gap-3 px-4 py-2 bg-zinc-900 border-b border-zinc-800 text-xs select-none">
       {/* Brand */}
-      <img src="/logo.png" alt="Krythor" className="h-7 w-7 shrink-0 object-contain" />
+      <img src="/logo.png" alt="Krythor" className="h-14 w-14 shrink-0 object-contain" />
       <span className="text-zinc-200 font-semibold tracking-widest shrink-0">KRYTHOR</span>
       <span className="text-zinc-800">|</span>
 
@@ -174,7 +174,7 @@ export function StatusBar({ health, connected, onTabChange, onAbout }: Props) {
           </button>
         )}
         {health && (
-          <span className="text-zinc-500">v{health.version}</span>
+          <span className="text-sm font-mono text-zinc-400 font-medium">v{health.version}</span>
         )}
         <kbd className="hidden sm:inline text-[10px] text-zinc-700 border border-zinc-800 rounded px-1.5 py-0.5 font-mono" title="Open command palette (Ctrl+K)">⌘K</kbd>
         <button
