@@ -263,42 +263,6 @@ function drawSprite(
   // Bottom body edge — nozzle trim line
   glow(bx + PX, flameBaseY, 6 * PX, PX * 0.5, 0.6);
 
-  // Orb — bright glowing sphere at flame tip
-  // Outer ambient halo
-  const haloGrd = ctx.createRadialGradient(cx + flicker * 0.3, flameOrbY, 0, cx + flicker * 0.3, flameOrbY, PX * 5);
-  haloGrd.addColorStop(0, pal.accent + 'cc');
-  haloGrd.addColorStop(0.5, pal.body + '44');
-  haloGrd.addColorStop(1, 'transparent');
-  ctx.fillStyle = haloGrd;
-  ctx.beginPath();
-  ctx.arc(cx + flicker * 0.3, flameOrbY, PX * 5, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Orb dark core shell
-  ctx.beginPath();
-  ctx.arc(cx + flicker * 0.3, flameOrbY, PX * 2, 0, Math.PI * 2);
-  ctx.fillStyle = '#020509';
-  ctx.fill();
-
-  // Orb ring
-  ctx.beginPath();
-  ctx.arc(cx + flicker * 0.3, flameOrbY, PX * 2, 0, Math.PI * 2);
-  ctx.strokeStyle = pal.accent;
-  ctx.lineWidth = PX * 0.6;
-  ctx.shadowColor = pal.accent;
-  ctx.shadowBlur = PX * 7;
-  ctx.stroke();
-
-  // Orb bright inner fill
-  const orbFill = ctx.createRadialGradient(cx + flicker * 0.3 - PX * 0.4, flameOrbY - PX * 0.4, 0, cx + flicker * 0.3, flameOrbY, PX * 1.5);
-  orbFill.addColorStop(0, '#ffffff');
-  orbFill.addColorStop(0.3, pal.accent);
-  orbFill.addColorStop(1, pal.body + '88');
-  ctx.beginPath();
-  ctx.arc(cx + flicker * 0.3, flameOrbY, PX * 1.4, 0, Math.PI * 2);
-  ctx.fillStyle = orbFill;
-  ctx.shadowBlur = PX * 10;
-  ctx.fill();
   ctx.shadowBlur = 0;
 
   ctx.restore();
