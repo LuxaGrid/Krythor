@@ -262,8 +262,8 @@ function AboutDialog({ health, onClose }: AboutDialogProps) {
 
 // ── Tab Bar ───────────────────────────────────────────────────────────────
 
-const TAB_PINNED_KEY  = 'krythor_tab_pinned';
-const TAB_ORDER_KEY   = 'krythor_tab_order';
+const TAB_PINNED_KEY  = 'krythor_tab_pinned_v2';
+const TAB_ORDER_KEY   = 'krythor_tab_order_v2';
 
 // Default pinned tab ids (shown in bar on first run)
 const DEFAULT_PINNED: Tab[] = ['command', 'agents', 'memory', 'models', 'command-center', 'dashboard', 'settings'];
@@ -290,12 +290,12 @@ function loadTabOrder(pinned: Tab[]): Tab[] {
     const stored = localStorage.getItem(TAB_ORDER_KEY);
     if (stored) {
       const parsed = JSON.parse(stored) as Tab[];
-      // Must match current pinned set exactly
-      if (
-        parsed.length === pinned.length &&
-        pinned.every(id => parsed.includes(id)) &&
-        parsed.every(id => pinned.includes(id))
-      ) return parsed;
+      const allIds = ALL_TABS.map(t => t.id);
+      // Only keep ids that are both in pinned AND valid tab ids
+      const filtered = parsed.filter(id => pinned.includes(id) && allIds.includes(id));
+      // Append any pinned ids not in stored order
+      const missing = pinned.filter(id => !filtered.includes(id));
+      return [...filtered, ...missing];
     }
   } catch { /* ignore */ }
   return pinned;
@@ -308,7 +308,7 @@ function saveTabOrder(order: Tab[]) {
 function TabBar({ tab, setTab, eventCount }: { tab: Tab; setTab: (t: Tab) => void; eventCount: number }) {
   const [customOpen, setCustomOpen] = useState(false);
   const [pinned, setPinned]         = useState<Tab[]>(loadPinned);
-  const [tabOrder, setTabOrder]     = useState<Tab[]>(() => loadTabOrder(loadPinned()));
+  const [tabOrder, setTabOrder]     = useState<Tab[]>(() => { const p = loadPinned(); return loadTabOrder(p); });
   const [dragOver, setDragOver]     = useState<Tab | null>(null);
   const dragSrc = useRef<Tab | null>(null);
 
@@ -348,12 +348,6 @@ function TabBar({ tab, setTab, eventCount }: { tab: Tab; setTab: (t: Tab) => voi
   const pinnedTabs = useMemo(() =>
     tabOrder.map(id => ALL_TABS.find(t => t.id === id)!).filter(Boolean),
     [tabOrder]
-  );
-
-  // Tabs available to add
-  const unpinnedTabs = useMemo(() =>
-    ALL_TABS.filter(t => !pinned.includes(t.id)),
-    [pinned]
   );
 
   // ── Drag to reorder ──────────────────────────────────────────────────────
@@ -451,36 +445,41 @@ function TabBar({ tab, setTab, eventCount }: { tab: Tab; setTab: (t: Tab) => voi
         {customOpen && (
           <>
             <div className="fixed inset-0 z-40" onClick={() => setCustomOpen(false)} />
-            <div className="absolute top-full right-0 z-50 mt-0 w-64 bg-zinc-900 border border-zinc-700 rounded-b-xl shadow-2xl overflow-hidden">
+            <div className="absolute top-full right-0 z-50 mt-0 w-72 bg-zinc-900 border border-zinc-700 rounded-b-xl shadow-2xl overflow-hidden">
               {/* Header */}
-              <div className="px-4 py-2.5 border-b border-zinc-800 flex items-center justify-between">
-                <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Available Tabs</span>
-                <span className="text-xs text-zinc-600">{unpinnedTabs.length} hidden</span>
+              <div className="px-4 py-2.5 border-b border-zinc-800">
+                <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Customize Tabs</span>
+                <p className="text-[10px] text-zinc-600 mt-0.5">Toggle which tabs appear in the bar</p>
               </div>
 
-              {unpinnedTabs.length === 0 ? (
-                <div className="px-4 py-4 text-xs text-zinc-600 text-center">All tabs are visible</div>
-              ) : (
-                <div className="max-h-80 overflow-y-auto">
-                  {unpinnedTabs.map(t => (
+              <div className="max-h-96 overflow-y-auto py-1">
+                {ALL_TABS.map(t => {
+                  const isPinned = pinned.includes(t.id);
+                  return (
                     <button
                       key={t.id}
-                      onClick={() => pinTab(t.id)}
-                      className="w-full text-left px-4 py-3 transition-colors flex items-center gap-3 hover:bg-zinc-800/60 group"
+                      onClick={() => isPinned ? (() => { if (pinned.length > 1) { const np = pinned.filter(p => p !== t.id); const no = tabOrder.filter(o => o !== t.id); setPinned(np); setTabOrder(no); savePinned(np); saveTabOrder(no); if (tab === t.id) setTab(np[0]); } })() : pinTab(t.id)}
+                      className={`w-full text-left px-4 py-2.5 transition-colors flex items-center gap-3 hover:bg-zinc-800/60 group ${isPinned ? 'opacity-100' : 'opacity-70 hover:opacity-100'}`}
                     >
-                      <span className="text-zinc-600 group-hover:text-brand-400 transition-colors text-base leading-none flex-shrink-0">＋</span>
+                      {/* Toggle indicator */}
+                      <span className={`w-4 h-4 rounded flex-shrink-0 flex items-center justify-center text-[10px] border transition-colors
+                        ${isPinned
+                          ? 'bg-brand-600 border-brand-500 text-white'
+                          : 'bg-zinc-800 border-zinc-700 text-zinc-600 group-hover:border-zinc-500'}`}>
+                        {isPinned ? '✓' : ''}
+                      </span>
                       <span className="flex flex-col gap-0.5 min-w-0">
-                        <span className="text-sm font-medium text-zinc-300 group-hover:text-zinc-100">{t.label}</span>
-                        <span className="text-xs text-zinc-600 truncate">{t.hint}</span>
+                        <span className={`text-sm font-medium ${isPinned ? 'text-zinc-100' : 'text-zinc-400 group-hover:text-zinc-200'}`}>{t.label}</span>
+                        <span className="text-[11px] text-zinc-600 truncate">{t.hint}</span>
                       </span>
                     </button>
-                  ))}
-                </div>
-              )}
+                  );
+                })}
+              </div>
 
               {/* Footer hint */}
               <div className="px-4 py-2 border-t border-zinc-800 text-[10px] text-zinc-700">
-                Click ✕ on any tab to hide it · drag to reorder
+                Checked = visible in bar · drag tabs to reorder
               </div>
             </div>
           </>
