@@ -1926,21 +1926,90 @@ if (process.argv.includes('tui')) {
     process.exit(1);
   });
 }
-// ── krythor update — print instructions (actual update is the installer) ──
+// ── krythor update — perform the actual update ─────────────────────────────
 else if (process.argv.includes('update')) {
-  console.log('\x1b[36m  KRYTHOR\x1b[0m — Update');
-  console.log('');
-  console.log('  To update Krythor, run the one-line installer again:');
-  console.log('');
-  console.log('  \x1b[33mMac / Linux:\x1b[0m');
-  console.log('    curl -fsSL https://raw.githubusercontent.com/LuxaGrid/Krythor/main/install.sh | bash');
-  console.log('');
-  console.log('  \x1b[33mWindows (PowerShell):\x1b[0m');
-  console.log('    iwr https://raw.githubusercontent.com/LuxaGrid/Krythor/main/install.ps1 | iex');
-  console.log('');
-  console.log('  Your settings, memory, and data are always preserved during updates.');
-  console.log('');
-  process.exit(0);
+  (async () => {
+    const { execSync, spawnSync } = require('child_process');
+    const isGitRepo = existsSync(join(__dirname, '.git'));
+
+    console.log('\x1b[36m╔══════════════════════════════════╗\x1b[0m');
+    console.log('\x1b[36m║      KRYTHOR — Updating…         ║\x1b[0m');
+    console.log('\x1b[36m╚══════════════════════════════════╝\x1b[0m');
+    console.log('');
+
+    if (isGitRepo) {
+      // Source-clone install: git pull + pnpm install + pnpm build
+      console.log('\x1b[33m▸ Source install detected — pulling latest code…\x1b[0m');
+      try {
+        execSync('git pull --ff-only', { cwd: __dirname, stdio: 'inherit' });
+      } catch {
+        console.error('\x1b[31m✖ git pull failed. Resolve conflicts and try again.\x1b[0m');
+        process.exit(1);
+      }
+
+      console.log('');
+      console.log('\x1b[33m▸ Installing dependencies…\x1b[0m');
+      const pnpmCmd = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
+      try {
+        execSync(`${pnpmCmd} install`, { cwd: __dirname, stdio: 'inherit' });
+      } catch {
+        console.error('\x1b[31m✖ pnpm install failed.\x1b[0m');
+        process.exit(1);
+      }
+
+      console.log('');
+      console.log('\x1b[33m▸ Building…\x1b[0m');
+      try {
+        execSync(`${pnpmCmd} build`, { cwd: __dirname, stdio: 'inherit' });
+      } catch {
+        console.error('\x1b[31m✖ Build failed.\x1b[0m');
+        process.exit(1);
+      }
+    } else {
+      // Binary install: re-run the platform installer with UPDATE=1
+      console.log('\x1b[33m▸ Binary install detected — running updater…\x1b[0m');
+      console.log('');
+
+      if (process.platform === 'win32') {
+        // Windows: run install.ps1 via PowerShell
+        const result = spawnSync(
+          'powershell.exe',
+          ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command',
+           'iwr https://raw.githubusercontent.com/LuxaGrid/Krythor/main/install.ps1 -UseBasicParsing | iex'],
+          { stdio: 'inherit', env: { ...process.env, UPDATE: '1' } }
+        );
+        if (result.status !== 0) {
+          console.error('\x1b[31m✖ Update failed.\x1b[0m');
+          process.exit(1);
+        }
+      } else {
+        // Mac / Linux: curl | bash
+        const result = spawnSync(
+          'bash',
+          ['-c', 'curl -fsSL https://raw.githubusercontent.com/LuxaGrid/Krythor/main/install.sh | bash'],
+          { stdio: 'inherit', env: { ...process.env, UPDATE: '1' } }
+        );
+        if (result.status !== 0) {
+          console.error('\x1b[31m✖ Update failed.\x1b[0m');
+          process.exit(1);
+        }
+      }
+    }
+
+    console.log('');
+    // Print new version
+    try {
+      const pkg = JSON.parse(require('fs').readFileSync(join(__dirname, 'package.json'), 'utf8'));
+      console.log(`\x1b[32m✔ Krythor updated to v${pkg.version}\x1b[0m`);
+    } catch {
+      console.log('\x1b[32m✔ Update complete.\x1b[0m');
+    }
+    console.log('');
+    console.log('  Your settings, memory, and data were preserved.');
+    console.log('  Run \x1b[36mkrythor start\x1b[0m to launch.');
+    console.log('');
+    process.exit(0);
+  })();
 }
 // ── krythor stop ───────────────────────────────────────────────────────────
 else if (process.argv.includes('stop')) {
