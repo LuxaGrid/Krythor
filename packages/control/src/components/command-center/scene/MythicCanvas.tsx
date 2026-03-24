@@ -422,11 +422,12 @@ export function MythicCanvas({
     const W = canvas.width / window.devicePixelRatio;
     const H = canvas.height / window.devicePixelRatio;
 
-    // Pixel scale — base tile is ~2px at 800px wide
-    const s = Math.max(1, Math.round(W / 400));
+    // Pixel scale — OpenClaw uses PX=5; we target ~3-4 at 1080p
+    const s = Math.max(2, Math.round(W / 280));
     sr.scale = s;
-    const tileSize = 32;
+    const tileSize = s * 10;
 
+    ctx.imageSmoothingEnabled = false; // Must reset each frame after clearRect
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     // ── Floor tiles ──────────────────────────────────────────────────────────
@@ -648,6 +649,7 @@ export function MythicCanvas({
       canvas.width = rect.width * dpr;
       canvas.height = rect.height * dpr;
       ctx.scale(dpr, dpr);
+      ctx.imageSmoothingEnabled = false; // Preserve hard pixel edges
     };
     resize();
     const ro = new ResizeObserver(resize);
