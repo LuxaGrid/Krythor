@@ -627,6 +627,226 @@ This is normal when no real agent runs are happening. The scene runs a pre-scrip
 
 ---
 
+## 🔗 Connecting Providers — Detailed Guide
+
+The **Models** tab is where you connect AI providers. Krythor supports local models (free, no internet) and cloud models (pay-per-use, require API keys).
+
+---
+
+### Understanding the Fields
+
+When adding a provider manually (via **+ custom**), you'll see these fields:
+
+| Field | What it means |
+|-------|---------------|
+| **Name** | A label you give this provider — e.g. "My OpenAI" or "Ollama Local" |
+| **Type** | The protocol: `ollama`, `openai`, `anthropic`, `openai-compat`, or `gguf` |
+| **Endpoint URL** | The base URL of the API. Pre-filled for known types; leave as-is unless you use a custom host |
+| **Authentication** | How to authenticate: **No auth** (local), **API Key**, or **OAuth** |
+| **API Key** | Your secret key from the provider's dashboard — only shown when API Key auth is selected |
+| **Set as default** | Makes this provider the first choice for all requests |
+
+---
+
+### Local Providers (Free, No API Key)
+
+#### Ollama
+
+Ollama runs open-source models (Llama, Mistral, Gemma, etc.) entirely on your machine. Nothing is sent to the internet.
+
+1. Download and install Ollama from **https://ollama.com**
+2. Pull a model — open a terminal and run:
+   ```bash
+   ollama pull llama3.2        # ~2GB, good general model
+   ollama pull mistral         # ~4GB, strong reasoning
+   ollama pull phi4            # ~2GB, fast and compact
+   ```
+3. In Krythor, go to **Models → + custom**
+4. Set **Name** to anything (e.g. `Ollama Local`)
+5. Set **Type** to `ollama`
+6. **Endpoint** auto-fills to `http://localhost:11434` — leave it unless Ollama is on a different port
+7. **Authentication** → `No auth (local)`
+8. Click **Add**
+9. Click **refresh** next to the provider to load your available models
+10. Click **ping** to verify the connection
+
+#### LM Studio
+
+LM Studio provides a local OpenAI-compatible API for GGUF models.
+
+1. Download LM Studio from **https://lmstudio.ai**
+2. Load a model in LM Studio and start the local server (Server tab → Start Server)
+3. In Krythor, go to **Models → + custom**
+4. Set **Type** to `openai-compat`
+5. Set **Endpoint** to `http://localhost:1234/v1` (LM Studio's default)
+6. **Authentication** → `No auth (local)`
+7. Click **Add**, then **refresh** to load models
+
+#### llama-server (GGUF files)
+
+For running a single GGUF model file directly via llama.cpp:
+
+1. Install llama.cpp and start llama-server:
+   ```bash
+   llama-server --model your-model.gguf --port 8080
+   ```
+2. In Krythor, go to **Models → + custom**
+3. Set **Type** to `gguf`
+4. Set **Endpoint** to `http://localhost:8080`
+5. **Authentication** → `No auth (local)`
+6. Click **Add**
+
+---
+
+### Cloud Providers (Require API Key)
+
+All cloud providers follow the same pattern: **get an API key from their dashboard → paste it into Krythor**.
+
+> **Where are keys stored?** Encrypted in your OS user profile — never in the cloud, never logged.
+
+---
+
+#### OpenAI (GPT-4o, o1, GPT-4 Turbo)
+
+1. Go to **https://platform.openai.com/api-keys**
+2. Click **Create new secret key** — copy it (you won't see it again)
+3. In Krythor: **Models → + custom**
+   - **Type:** `openai`
+   - **Endpoint:** auto-fills to `https://api.openai.com/v1`
+   - **Authentication:** `API Key`
+   - **API Key:** paste your key (starts with `sk-`)
+4. Click **Add** → then **test** to verify
+
+Or use **Quick add → OpenAI** if available in your build.
+
+---
+
+#### Anthropic (Claude Sonnet, Claude Opus, Claude Haiku)
+
+1. Go to **https://console.anthropic.com/settings/keys**
+2. Click **Create Key** — copy it
+3. In Krythor: **Models → + custom**
+   - **Type:** `anthropic`
+   - **Endpoint:** auto-fills to `https://api.anthropic.com`
+   - **Authentication:** `API Key`
+   - **API Key:** paste your key (starts with `sk-ant-`)
+4. Click **Add** → then **test** to verify
+
+---
+
+#### Groq (fastest Llama / Mixtral inference)
+
+1. Go to **https://console.groq.com/keys**
+2. Click **Create API Key** — copy it (starts with `gsk_`)
+3. In Krythor: **Models → Quick add → Groq**
+4. Click **Open Groq Console ↗** to get your key if you haven't already
+5. Paste the key → click **Connect**
+
+Available models: `llama-3.3-70b-versatile`, `llama-3.1-8b-instant`, `mixtral-8x7b-32768`, `gemma2-9b-it`
+
+Or manually: **Type** `openai-compat`, **Endpoint** `https://api.groq.com/openai/v1`, **API Key** your Groq key.
+
+---
+
+#### OpenRouter (100+ models — one key for GPT, Claude, Gemini, Llama)
+
+1. Go to **https://openrouter.ai/keys**
+2. Click **Create Key** — copy it (starts with `sk-or-`)
+3. In Krythor: **Models → Quick add → OpenRouter**
+4. Paste the key → click **Connect**
+
+Available models include: `openai/gpt-4o`, `anthropic/claude-sonnet-4-5`, `google/gemini-2.5-pro`, `meta-llama/llama-3.3-70b-instruct`, `mistralai/mixtral-8x7b-instruct`
+
+Or manually: **Type** `openai-compat`, **Endpoint** `https://openrouter.ai/api/v1`, **API Key** your OpenRouter key.
+
+---
+
+#### Google Gemini (Gemini 2.5 Pro, Flash)
+
+1. Go to **https://aistudio.google.com/app/apikey**
+2. Click **Create API key** — copy it (starts with `AIza`)
+3. In Krythor: **Models → Quick add → Google Gemini**
+4. Paste the key → click **Connect**
+
+Available models: `gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-1.5-pro`, `gemini-1.5-flash`
+
+Or manually: **Type** `openai-compat`, **Endpoint** `https://generativelanguage.googleapis.com/v1beta/openai`, **API Key** your Gemini key.
+
+---
+
+#### Venice (privacy-first, no logs)
+
+1. Go to **https://venice.ai/settings/api**
+2. Generate an API key — copy it
+3. In Krythor: **Models → Quick add → Venice**
+4. Paste the key → click **Connect**
+
+Available models: `llama-3.3-70b`, `llama-3.1-405b`, `mistral-31-24b`, `deepseek-r1-671b`
+
+Or manually: **Type** `openai-compat`, **Endpoint** `https://api.venice.ai/api/v1`, **API Key** your Venice key.
+
+---
+
+#### Kimi / Moonshot (128K context, long documents)
+
+1. Go to **https://platform.moonshot.cn/console/api-keys**
+2. Create a key — copy it
+3. In Krythor: **Models → Quick add → Kimi (Moonshot)**
+4. Paste the key → click **Connect**
+
+Available models: `moonshot-v1-128k`, `moonshot-v1-32k`, `moonshot-v1-8k`
+
+Or manually: **Type** `openai-compat`, **Endpoint** `https://api.moonshot.cn/v1`, **API Key** your Moonshot key.
+
+---
+
+#### Mistral (Mistral Large, Codestral)
+
+1. Go to **https://console.mistral.ai/api-keys**
+2. Create a key — copy it
+3. In Krythor: **Models → Quick add → Mistral**
+4. Paste the key → click **Connect**
+
+Available models: `mistral-large-latest`, `mistral-small-latest`, `codestral-latest`, `open-mistral-nemo`
+
+Or manually: **Type** `openai-compat`, **Endpoint** `https://api.mistral.ai/v1`, **API Key** your Mistral key.
+
+---
+
+#### Any OpenAI-compatible API
+
+For Together AI, Fireworks, Perplexity, Anyscale, or any other API that speaks the OpenAI chat completions format:
+
+1. In Krythor: **Models → + custom**
+2. Set **Type** to `openai-compat`
+3. Set **Endpoint** to the provider's base URL (ending in `/v1`)
+4. Set **Authentication** to `API Key` and paste your key
+5. Click **Add** → then **refresh** to list models, or **test** to run a probe
+
+---
+
+### After Adding a Provider
+
+Once a provider is added, you'll see action buttons next to it:
+
+| Button | What it does |
+|--------|-------------|
+| **ping** | Sends a connectivity check to the endpoint — shows latency or error |
+| **test** | Sends a minimal inference request to verify the model actually responds |
+| **refresh** | Fetches the live list of available models from the provider |
+| **default** | Makes this provider the first-choice for all requests |
+| **disable / enable** | Temporarily excludes this provider from routing without deleting it |
+| **⚙** | Opens advanced settings: **Priority** (lower number = tried first) and **Max retries** |
+| **✕** | Deletes the provider permanently |
+
+**Tips:**
+- Run **ping** first to check the endpoint is reachable
+- Run **test** to confirm your API key works and the model responds
+- Use **Priority** in ⚙ to control which provider Krythor prefers when multiple are available — e.g. set your local Ollama to priority `1` and cloud providers to `10` so local is always tried first
+- **Disable** a provider to take it offline temporarily (e.g. if you're out of credits) without losing its configuration
+
+---
+
 ## 🧠 Supported Providers
 
 | Provider | Type | Cost | Auth |
