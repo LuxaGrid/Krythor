@@ -396,7 +396,7 @@ export class ChatChannelRegistry {
 
   // ── Private helpers ─────────────────────────────────────────────────────────
 
-  private recordHealthCheck(channelId: string, ok: boolean, error?: string): void {
+  recordHealthCheck(channelId: string, ok: boolean, error?: string): void {
     const config = this.configs.get(channelId);
     if (!config) return;
     this.saveConfig({

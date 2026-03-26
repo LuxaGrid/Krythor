@@ -20,6 +20,7 @@ import {
   CHANNEL_PROVIDERS,
 } from '../ChatChannelRegistry.js';
 import type { ChatChannelConfig, ChannelType } from '../ChatChannelRegistry.js';
+import type { InboundChannelManager } from '../InboundChannelManager.js';
 
 // ── Credential masking ────────────────────────────────────────────────────────
 
@@ -60,6 +61,7 @@ function sanitiseConfig(config: ChatChannelConfig): Record<string, unknown> {
 export function registerChatChannelRoutes(
   app: FastifyInstance,
   registry: ChatChannelRegistry,
+  inboundMgr?: InboundChannelManager,
 ): void {
 
   // GET /api/chat-channels/providers — list all provider metadata
@@ -231,5 +233,18 @@ export function registerChatChannelRoutes(
       status: registry.getStatus(req.params.id),
       lastError: config.lastError,
     });
+  });
+
+  // POST /api/chat-channels/:id/restart — restart a running inbound channel
+  app.post<{ Params: { id: string } }>('/api/chat-channels/:id/restart', async (req, reply) => {
+    const config = registry.getConfig(req.params.id);
+    if (!config) return reply.code(404).send({ error: 'Channel not found' });
+
+    if (!inboundMgr) {
+      return reply.code(503).send({ ok: false, error: 'InboundChannelManager not available' });
+    }
+
+    const result = await inboundMgr.restartChannel(req.params.id);
+    return reply.send(result);
   });
 }

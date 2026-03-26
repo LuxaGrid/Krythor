@@ -1,5 +1,12 @@
 import { useState, useEffect } from 'react';
-import { addProvider, patchAppConfig, type Provider } from '../api.ts';
+import {
+  addProvider,
+  patchAppConfig,
+  listChatChannelProviders,
+  saveChatChannel,
+  type Provider,
+  type ChatChannelProviderMeta,
+} from '../api.ts';
 
 interface DetectedProvider {
   type: string;
@@ -48,7 +55,7 @@ interface Props {
   onComplete: () => void;
 }
 
-type Step = 'welcome' | 'provider' | 'done';
+type Step = 'welcome' | 'provider' | 'channels' | 'done';
 
 // ─── Provider metadata ────────────────────────────────────────────────────────
 //
@@ -124,6 +131,14 @@ const DEFAULT_ENDPOINTS: Record<string, string> = {
 // Smart default: prefer Anthropic (Claude) when no saved preference exists
 const DEFAULT_PROVIDER_TYPE = 'anthropic';
 
+// ─── Channel provider display config ──────────────────────────────────────────
+
+const CHANNEL_ICONS: Record<string, string> = {
+  telegram:  '📨',
+  discord:   '💬',
+  whatsapp:  '📱',
+};
+
 export function OnboardingWizard({ onComplete }: Props) {
   const [step, setStep]         = useState<Step>('welcome');
   const [type, setType]         = useState(DEFAULT_PROVIDER_TYPE);
@@ -136,6 +151,14 @@ export function OnboardingWizard({ onComplete }: Props) {
   const [detecting, setDetecting] = useState(false);
   const [detected, setDetected]   = useState<DetectedProvider[]>([]);
 
+  // ── Chat channel state ───────────────────────────────────────────────────────
+  const [channelDrafts, setChannelDrafts]       = useState<Record<string, Record<string, string>>>({});
+  const [selectedChannels, setSelectedChannels] = useState<Set<string>>(new Set());
+  const [channelProviders, setChannelProviders] = useState<ChatChannelProviderMeta[]>([]);
+  const [channelSaving, setChannelSaving]       = useState(false);
+  const [channelError, setChannelError]         = useState<string | null>(null);
+  const [channelsConfigured, setChannelsConfigured] = useState(0);
+
   useEffect(() => {
     setDetecting(true);
     detectLocalProviders().then(found => {
@@ -143,6 +166,14 @@ export function OnboardingWizard({ onComplete }: Props) {
       setDetecting(false);
     }).catch(() => setDetecting(false));
   }, []);
+
+  // Load channel providers when we enter the channels step
+  useEffect(() => {
+    if (step !== 'channels') return;
+    listChatChannelProviders()
+      .then(r => setChannelProviders(r.providers))
+      .catch(() => { /* non-fatal — cards will be empty */ });
+  }, [step]);
 
   const handleTypeChange = (t: string) => {
     setType(t);
@@ -166,7 +197,7 @@ export function OnboardingWizard({ onComplete }: Props) {
         models,
       } as Omit<Provider, 'id'>);
       await patchAppConfig({ onboardingComplete: true });
-      setStep('done');
+      setStep('channels');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add provider');
     } finally {
@@ -178,6 +209,75 @@ export function OnboardingWizard({ onComplete }: Props) {
     await patchAppConfig({ onboardingComplete: true }).catch(() => {});
     onComplete();
   };
+
+  // ── Channel step helpers ─────────────────────────────────────────────────────
+
+  const toggleChannel = (providerId: string) => {
+    setSelectedChannels(prev => {
+      const next = new Set(prev);
+      if (next.has(providerId)) {
+        next.delete(providerId);
+        // Clear any drafted credentials when collapsing
+        setChannelDrafts(d => {
+          const copy = { ...d };
+          delete copy[providerId];
+          return copy;
+        });
+      } else {
+        next.add(providerId);
+      }
+      return next;
+    });
+    setChannelError(null);
+  };
+
+  const setDraftField = (providerId: string, key: string, value: string) => {
+    setChannelDrafts(prev => ({
+      ...prev,
+      [providerId]: { ...(prev[providerId] ?? {}), [key]: value },
+    }));
+  };
+
+  // Return true if a channel card has all required fields filled
+  const isChannelFilled = (meta: ChatChannelProviderMeta): boolean => {
+    if (meta.requiresPairing) return false;
+    const draft = channelDrafts[meta.id] ?? {};
+    return meta.credentialFields
+      .filter(f => f.required)
+      .every(f => (draft[f.key] ?? '').trim().length > 0);
+  };
+
+  const handleSaveChannels = async () => {
+    setChannelError(null);
+    const toSave = channelProviders.filter(
+      p => selectedChannels.has(p.id) && isChannelFilled(p),
+    );
+    if (toSave.length === 0) {
+      setStep('done');
+      return;
+    }
+    setChannelSaving(true);
+    try {
+      for (const meta of toSave) {
+        const draft = channelDrafts[meta.id] ?? {};
+        await saveChatChannel({
+          id:          meta.id,
+          type:        meta.type,
+          displayName: meta.displayName,
+          enabled:     true,
+          credentials: draft,
+        });
+      }
+      setChannelsConfigured(toSave.length);
+      setStep('done');
+    } catch (err) {
+      setChannelError(err instanceof Error ? err.message : 'Failed to save channel');
+    } finally {
+      setChannelSaving(false);
+    }
+  };
+
+  // ── Render: welcome ──────────────────────────────────────────────────────────
 
   if (step === 'welcome') {
     return (
@@ -233,6 +333,8 @@ export function OnboardingWizard({ onComplete }: Props) {
       </div>
     );
   }
+
+  // ── Render: provider ─────────────────────────────────────────────────────────
 
   if (step === 'provider') {
     const activeMeta = PROVIDER_META[type];
@@ -335,13 +437,142 @@ export function OnboardingWizard({ onComplete }: Props) {
             </button>
           </div>
 
+          <p className="text-center">
+            <button
+              onClick={() => setStep('channels')}
+              className="text-zinc-600 hover:text-zinc-400 text-xs underline underline-offset-2 transition-colors"
+            >
+              Skip channels →
+            </button>
+          </p>
+
           <p className="text-zinc-700 text-[10px] text-center">You can add more providers later in the Models tab.</p>
         </div>
       </div>
     );
   }
 
-  // done — show inline summary of what was configured
+  // ── Render: channels ─────────────────────────────────────────────────────────
+
+  if (step === 'channels') {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/95">
+        <div className="animate-[fadeIn_0.2s_ease-in] w-full max-w-lg mx-4 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl p-8 space-y-5">
+          <div>
+            <h2 className="text-zinc-100 font-semibold text-lg">Connect Chat Channels</h2>
+            <p className="text-zinc-500 text-xs mt-1">
+              Optional — connect Telegram, Discord, or WhatsApp so your agents can receive messages.
+            </p>
+          </div>
+
+          {/* Provider cards */}
+          <div className="grid grid-cols-3 gap-3">
+            {channelProviders.length === 0
+              ? /* Loading / empty placeholders */
+                (['telegram', 'discord', 'whatsapp'] as const).map(id => (
+                  <div key={id} className="bg-zinc-800 border border-zinc-700 rounded-lg p-3 opacity-40 animate-pulse h-20" />
+                ))
+              : channelProviders.map(meta => {
+                  const isWhatsApp    = meta.type === 'whatsapp' || meta.id === 'whatsapp';
+                  const isSelected    = selectedChannels.has(meta.id);
+                  const icon          = CHANNEL_ICONS[meta.id] ?? CHANNEL_ICONS[meta.type] ?? '💬';
+                  const draft         = channelDrafts[meta.id] ?? {};
+
+                  if (isWhatsApp) {
+                    return (
+                      <div
+                        key={meta.id}
+                        className="bg-zinc-800 border border-zinc-700 rounded-lg p-3 opacity-60 cursor-not-allowed col-span-1"
+                        title="Requires manual setup"
+                      >
+                        <div className="text-lg mb-1">{icon}</div>
+                        <p className="text-zinc-300 text-xs font-medium truncate">{meta.displayName}</p>
+                        <p className="text-zinc-600 text-[10px] mt-1 leading-tight">
+                          Requires manual setup — configure in Chat Channels after setup.
+                        </p>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div
+                      key={meta.id}
+                      className={`rounded-lg border transition-colors cursor-pointer
+                        ${isSelected
+                          ? 'bg-brand-900/50 border-brand-600'
+                          : 'bg-zinc-800 border-zinc-700 hover:border-zinc-600'}`}
+                    >
+                      {/* Card header — always clickable to toggle */}
+                      <div
+                        className="p-3"
+                        onClick={() => toggleChannel(meta.id)}
+                      >
+                        <div className="text-lg mb-1">{icon}</div>
+                        <p className={`text-xs font-medium truncate ${isSelected ? 'text-brand-200' : 'text-zinc-300'}`}>
+                          {meta.displayName}
+                        </p>
+                        <p className="text-zinc-600 text-[10px] mt-0.5 leading-tight line-clamp-2">
+                          {meta.description}
+                        </p>
+                      </div>
+
+                      {/* Inline credential form when selected */}
+                      {isSelected && (
+                        <div className="px-3 pb-3 space-y-1.5 border-t border-brand-800/40 pt-2">
+                          {meta.credentialFields
+                            .filter(f => f.required || f.key === 'botToken' || f.key === 'channelId')
+                            .map(field => (
+                              <input
+                                key={field.key}
+                                type={field.secret ? 'password' : 'text'}
+                                value={draft[field.key] ?? ''}
+                                onChange={e => setDraftField(meta.id, field.key, e.target.value)}
+                                placeholder={
+                                  field.key === 'botToken'   ? (meta.type === 'telegram' ? '123456:ABC-DEF…' : 'Bot token…') :
+                                  field.key === 'channelId'  ? '123456789012345678' :
+                                  field.hint || field.label
+                                }
+                                className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-200 placeholder-zinc-600 outline-none border border-zinc-700 focus:border-zinc-500"
+                                onClick={e => e.stopPropagation()}
+                              />
+                            ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+          </div>
+
+          {channelError && (
+            <p className="text-red-400 text-xs bg-red-950/30 rounded-lg p-2">{channelError}</p>
+          )}
+
+          <div className="flex gap-3 items-center">
+            <button
+              onClick={handleSaveChannels}
+              disabled={channelSaving}
+              className="flex-1 px-4 py-2.5 bg-brand-600 hover:bg-brand-500 disabled:opacity-40 text-white text-sm rounded-lg font-medium"
+            >
+              {channelSaving ? 'Saving…' : 'Continue →'}
+            </button>
+            <button
+              onClick={() => setStep('done')}
+              className="px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 text-sm rounded-lg"
+            >
+              Skip for now
+            </button>
+          </div>
+
+          <p className="text-zinc-700 text-[10px] text-center">
+            You can configure chat channels at any time in the Channels tab.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Render: done ─────────────────────────────────────────────────────────────
+
   const chosenMeta   = PROVIDER_META[type];
   const displayName  = name || (type.charAt(0).toUpperCase() + type.slice(1));
   const setupNote    = chosenMeta?.recommendation_label
@@ -376,6 +607,12 @@ export function OnboardingWizard({ onComplete }: Props) {
               <span className="text-zinc-300 font-mono">{model.trim()}</span>
             </div>
           )}
+          <div className="flex justify-between">
+            <span className="text-zinc-500">Chat Channels</span>
+            <span className={channelsConfigured > 0 ? 'text-emerald-400' : 'text-zinc-600'}>
+              {channelsConfigured > 0 ? `${channelsConfigured} connected` : 'none configured'}
+            </span>
+          </div>
         </div>
 
         {/* System readiness */}

@@ -25,6 +25,7 @@ import { registerRecommendRoutes } from './routes/recommend.js';
 import { registerToolRoutes } from './routes/tools.js';
 import { registerCustomToolRoutes } from './routes/tools.custom.js';
 import { registerFileToolRoutes } from './routes/tools.file.js';
+import { registerShellToolRoutes } from './routes/tools.shell.js';
 import { AccessProfileStore } from './AccessProfileStore.js';
 import { registerProviderRoutes } from './routes/providers.js';
 import { registerOAuthRoutes } from './routes/oauth.js';
@@ -37,6 +38,7 @@ import { registerChatChannelRoutes } from './routes/chatChannels.js';
 import { ChannelManager } from './ChannelManager.js';
 import { ChatChannelRegistry } from './ChatChannelRegistry.js';
 import { DiscordInbound } from './DiscordInbound.js';
+import { InboundChannelManager } from './InboundChannelManager.js';
 import { PeerRegistry } from './PeerRegistry.js';
 import { registerOpenAICompatRoutes } from './routes/openai.compat.js';
 import { registerPluginRoutes } from './routes/plugins.js';
@@ -700,6 +702,7 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   registerToolRoutes(app, guard, execTool);
   registerCustomToolRoutes(app, customToolStore, guard);
   registerFileToolRoutes(app, guard, accessProfileStore);
+  registerShellToolRoutes(app, guard, accessProfileStore);
   registerProviderRoutes(app, models);
   registerOAuthRoutes(app, models);
   registerLocalModelsRoute(app);
@@ -844,10 +847,18 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   // Channel routes (outbound webhooks) — #16
   registerChannelRoutes(app, channelMgr);
 
-  // Chat channel routes (inbound bot channels)
-  registerChatChannelRoutes(app, chatChannelRegistry);
+  // Inbound channel manager — manages Telegram, Discord, WhatsApp from registry
+  const inboundMgr = new InboundChannelManager(chatChannelRegistry, orchestrator, dataDir, logger);
+  if (process.env['NODE_ENV'] !== 'test') {
+    inboundMgr.startAll().catch(err => logger.error({ err }, '[inbound] startAll error'));
+  }
+  app.addHook('onClose', async () => { inboundMgr.stopAll(); });
 
-  // Discord inbound channel — optional, started only if configured
+  // Chat channel routes (inbound bot channels)
+  registerChatChannelRoutes(app, chatChannelRegistry, inboundMgr);
+
+  // Discord inbound channel — legacy standalone wiring kept for /api/discord routes
+  // and env-var-based configuration (env vars take precedence over registry).
   const discordInbound = new DiscordInbound(orchestrator);
 
   // Bootstrap from env vars if present

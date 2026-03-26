@@ -789,3 +789,65 @@ export const listConfigFiles  = () => req<{ files: ConfigFileEntry[] }>('GET', '
 export const readConfigFile   = (key: string) => req<{ content: string }>('GET', `/config/files/${key}`);
 export const writeConfigFile  = (key: string, content: string) =>
   req<{ ok: boolean }>('PUT', `/config/files/${key}`, { content });
+
+// ── Shell tools ───────────────────────────────────────────────────────────────
+
+export interface ShellExecResult {
+  stdout:     string;
+  stderr:     string;
+  exitCode:   number | null;
+  durationMs: number;
+  command:    string;
+  profile:    string;
+  confirmationRequired?: boolean;
+  timedOut?: boolean;
+}
+
+export interface ProcessInfo {
+  pid:  number;
+  name: string;
+  cmd?: string;
+  cpu?: number;
+  mem?: number;
+}
+
+export async function shellExec(payload: {
+  command: string;
+  args?: string[];
+  cwd?: string;
+  timeoutMs?: number;
+  agentId?: string;
+}): Promise<ShellExecResult> {
+  const r = await fetch(`${BASE}/tools/shell/exec`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...((_gatewayToken) ? { Authorization: `Bearer ${_gatewayToken}` } : {}),
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json() as Promise<ShellExecResult>;
+}
+
+export async function listProcesses(agentId?: string): Promise<{ processes: ProcessInfo[] }> {
+  const qs = agentId ? `?agentId=${encodeURIComponent(agentId)}` : '';
+  const r = await fetch(`${BASE}/tools/shell/processes${qs}`, {
+    headers: _gatewayToken ? { Authorization: `Bearer ${_gatewayToken}` } : {},
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json() as Promise<{ processes: ProcessInfo[] }>;
+}
+
+export async function killProcess(pid: number, signal?: string, agentId?: string): Promise<{ ok: boolean; pid: number; signal: string }> {
+  const r = await fetch(`${BASE}/tools/shell/kill`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...((_gatewayToken) ? { Authorization: `Bearer ${_gatewayToken}` } : {}),
+    },
+    body: JSON.stringify({ pid, signal, agentId }),
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json() as Promise<{ ok: boolean; pid: number; signal: string }>;
+}
