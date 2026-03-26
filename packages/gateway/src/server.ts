@@ -44,7 +44,9 @@ import { PeerRegistry } from './PeerRegistry.js';
 import { registerOpenAICompatRoutes } from './routes/openai.compat.js';
 import { registerPluginRoutes } from './routes/plugins.js';
 import { registerApprovalRoutes } from './routes/approvals.js';
+import { registerAuditRoutes } from './routes/audit.js';
 import { ApprovalManager } from './ApprovalManager.js';
+import { AuditLogger } from './AuditLogger.js';
 import { HeartbeatEngine, type HeartbeatRunRecord, type HeartbeatInsight } from './heartbeat/HeartbeatEngine.js';
 import { logger } from './logger.js';
 import { loadOrCreateToken, verifyToken } from './auth.js';
@@ -422,6 +424,9 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   // Approval manager — handles require-approval guard decisions
   const approvalManager = new ApprovalManager();
 
+  // Structured audit logger — separate from guard-audit.ndjson, higher-level events
+  const auditLogger = new AuditLogger(join(dataDir, 'logs'));
+
   // Guard decision audit store — shares the same SQLite connection as memory
   const guardDecisionStore = new GuardDecisionStore(memory.db);
 
@@ -602,12 +607,30 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
       runStartTimes.set(event.runId, Date.now());
       const agentName = orchestrator.registry.getById(event.agentId)?.name ?? '';
       logger.agentRunStarted(event.runId, event.agentId, agentName, requestId);
+      auditLogger.log({
+        actionType: 'agent:run',
+        agentId: event.agentId,
+        agentName,
+        requestId,
+        executionOutcome: undefined, // still running
+        reason: 'Agent run started',
+      });
     } else if (event.type === 'run:completed') {
-      const p = event.payload as { output?: string; modelUsed?: string } | undefined;
+      const p = event.payload as { output?: string; modelUsed?: string; fallbackOccurred?: boolean } | undefined;
       const durationMs = runStartTimes.get(event.runId) ? Date.now() - runStartTimes.get(event.runId)! : 0;
       runStartTimes.delete(event.runId);
       runRequestIds.delete(event.runId);
       logger.agentRunCompleted(event.runId, event.agentId, durationMs, p?.modelUsed, requestId);
+      auditLogger.log({
+        actionType: 'agent:run',
+        agentId: event.agentId,
+        agentName: orchestrator.registry.getById(event.agentId)?.name,
+        requestId,
+        modelUsed: p?.modelUsed,
+        fallbackOccurred: p?.fallbackOccurred,
+        executionOutcome: 'success',
+        durationMs,
+      });
       // Fire channel event
       channelMgr.emit('agent_run_complete', { runId: event.runId, agentId: event.agentId, durationMs, modelUsed: p?.modelUsed });
     } else if (event.type === 'run:stopped') {
@@ -618,6 +641,14 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
       runRequestIds.delete(event.runId);
       const p = event.payload as { error?: string } | undefined;
       logger.agentRunFailed(event.runId, event.agentId, redactErrorMessage(p?.error ?? 'unknown'), requestId);
+      auditLogger.log({
+        actionType: 'agent:run',
+        agentId: event.agentId,
+        agentName: orchestrator.registry.getById(event.agentId)?.name,
+        requestId,
+        executionOutcome: 'error',
+        reason: redactErrorMessage(p?.error ?? 'unknown'),
+      });
       // Fire channel event
       channelMgr.emit('agent_run_failed', { runId: event.runId, agentId: event.agentId, error: p?.error });
     }
@@ -638,9 +669,19 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
       );
     } catch (err) { logger.warn('GuardDecisionStore failed to record decision', { error: err instanceof Error ? err.message : String(err) }); }
     // Also log to disk for off-process audit trail
-    const v = payload.verdict as { allowed: boolean; action: string; ruleId?: string };
-    const c = payload.context as { operation: string };
+    const v = payload.verdict as { allowed: boolean; action: string; ruleId?: string; reason?: string };
+    const c = payload.context as { operation: string; source?: string; sourceId?: string };
     logger.guardDecisionLogged(c.operation, v.allowed, v.action, v.ruleId);
+    // Structured audit log — record non-trivial guard decisions
+    if (!v.allowed || v.action === 'warn') {
+      auditLogger.log({
+        actionType: c.operation,
+        agentId: c.sourceId,
+        policyDecision: v.action as 'allow' | 'deny' | 'warn' | 'require-approval',
+        executionOutcome: v.allowed ? undefined : 'blocked',
+        reason: v.reason,
+      });
+    }
   });
 
   // SkillRunner — constructed here so it can close over `broadcast` for event forwarding.
@@ -730,6 +771,7 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   registerConfigPortabilityRoutes(app, models);
   registerPluginRoutes(app, pluginLoader);
   registerApprovalRoutes(app, approvalManager);
+  registerAuditRoutes(app, auditLogger);
   registerStreamWs(app, core, () => authCfg.token, guard);
 
   // Templates endpoint — lists workspace template files available in the user's data dir.
