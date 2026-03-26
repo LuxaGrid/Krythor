@@ -56,7 +56,7 @@ function p(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: nu
   if (a !== 1) ctx.globalAlpha = 1;
 }
 
-// ─── Sprite drawing — Tron robot ──────────────────────────────────────────────
+// ─── Sprite drawing — robot sprite ────────────────────────────────────────────
 function drawSprite(
   ctx: CanvasRenderingContext2D,
   cx: number, cy: number,
@@ -386,7 +386,7 @@ function drawBridge(ctx: CanvasRenderingContext2D, W: number, H: number, PX: num
   ctx.fillStyle = grad;
   ctx.fillRect(vsX, vsY, vsW, vsH);
 
-  // ── Tron brain-planet — animated ──────────────────────────────────────────
+  // ── Brain planet — animated ───────────────────────────────────────────────
   const nebX = vsX + vsW * 0.5, nebY = vsY + vsH * 0.5;
   const PR = vsW * 0.115; // planet radius
 
