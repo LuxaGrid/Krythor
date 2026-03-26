@@ -36,7 +36,7 @@ function makeInput(): RunAgentInput {
 }
 
 function makeInferResponse(content: string): InferenceResponse {
-  return { content, model: 'test', providerId: 'test', inputTokens: 1, outputTokens: 1 };
+  return { content, model: 'test', providerId: 'test', promptTokens: 1, completionTokens: 1, durationMs: 10 };
 }
 
 function makeModelEngine(response = 'Done.'): ModelEngine {

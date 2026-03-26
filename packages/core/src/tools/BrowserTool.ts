@@ -62,8 +62,9 @@ function validateUrl(raw: string): { ok: boolean; reason?: string } {
 async function renderWithPuppeteer(url: string): Promise<string | null> {
   try {
     // Dynamic require so missing puppeteer doesn't crash the module
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const puppeteer = require('puppeteer') as typeof import('puppeteer');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-assignment
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const puppeteer = require('puppeteer') as any;
     const browser = await puppeteer.launch({
       headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
@@ -73,7 +74,8 @@ async function renderWithPuppeteer(url: string): Promise<string | null> {
       const page = await browser.newPage();
       await page.setDefaultNavigationTimeout(BROWSER_TIMEOUT_MS);
       await page.goto(url, { waitUntil: 'networkidle2' });
-      const text = await page.evaluate(() => document.body.innerText);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const text = await (page as any).evaluate(() => (globalThis as any).document.body.innerText);
       return text?.slice(0, BROWSER_MAX_CHARS) ?? '';
     } finally {
       await browser.close();

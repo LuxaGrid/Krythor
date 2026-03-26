@@ -12,7 +12,6 @@ describe('OllamaEmbeddingProvider.probe()', () => {
   it('returns true and sets _available when server responds ok', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
     const provider = new OllamaEmbeddingProvider('http://localhost:11434', 'nomic-embed-text');
-    // @ts-expect-error set private
     provider['_available'] = false;
 
     const result = await provider.probe();
@@ -51,6 +50,6 @@ describe('OllamaEmbeddingProvider.probe()', () => {
   it('StubEmbeddingProvider does not have probe (returns undefined)', async () => {
     const { StubEmbeddingProvider } = await import('./EmbeddingProvider.js');
     const stub = new StubEmbeddingProvider();
-    expect(stub.probe).toBeUndefined();
+    expect((stub as unknown as { probe?: unknown }).probe).toBeUndefined();
   });
 });

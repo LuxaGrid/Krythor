@@ -87,7 +87,7 @@ export class TelegramInbound {
       if (!me.ok) {
         return { ok: false, error: 'Telegram getMe returned ok=false — check bot token' };
       }
-      logger.info({ botUsername: me.result?.username }, '[telegram] Bot authenticated');
+      logger.info('[telegram] Bot authenticated', { botUsername: me.result?.username });
     } catch (err) {
       return {
         ok: false,
@@ -132,7 +132,7 @@ export class TelegramInbound {
 
         const res = await fetch(url, { signal: this.abortController.signal });
         if (!res.ok) {
-          logger.warn({ status: res.status }, '[telegram] getUpdates HTTP error — retrying');
+          logger.warn('[telegram] getUpdates HTTP error — retrying', { status: res.status });
           await this.sleep(2_000);
           continue;
         }
@@ -154,7 +154,7 @@ export class TelegramInbound {
         if (!this.running) break; // stopped intentionally
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.includes('abort') || msg.includes('AbortError')) break;
-        logger.warn({ err }, '[telegram] Poll error — retrying');
+        logger.warn('[telegram] Poll error — retrying', { err: err instanceof Error ? err.message : String(err) });
         await this.sleep(3_000);
       }
     }
@@ -166,7 +166,7 @@ export class TelegramInbound {
     if (!this.config) return;
     const chatId = message.chat.id;
     const fromId = message.from?.id ?? 0;
-    logger.info({ chatId, fromId }, '[telegram] Received message');
+    logger.info('[telegram] Received message', { chatId, fromId });
 
     // Send typing indicator (fire and forget)
     void this.sendChatAction(chatId, 'typing').catch(() => {});
@@ -181,7 +181,7 @@ export class TelegramInbound {
         .slice(0, MAX_REPLY_LEN);
       await this.sendMessage(chatId, reply);
     } catch (err) {
-      logger.error({ err, chatId }, '[telegram] Agent run failed');
+      logger.error('[telegram] Agent run failed', { err: err instanceof Error ? err.message : String(err), chatId });
       await this.sendMessage(chatId, '⚠️ Agent error — could not process your message.').catch(() => {});
     }
   }

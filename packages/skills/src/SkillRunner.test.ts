@@ -27,7 +27,8 @@ function makeSkill(overrides: Partial<Skill> = {}): Skill {
 type InferResult = { content: string; model: string; providerId: string; durationMs: number };
 
 function makeInfer(result: Partial<InferResult> = {}, delayMs = 0): (...args: unknown[]) => Promise<InferResult> {
-  return async (_req, _ctx, signal?: AbortSignal) => {
+  return async (_req, _ctx, rawSignal?: unknown) => {
+    const signal = rawSignal as AbortSignal | undefined;
     if (delayMs > 0) {
       await new Promise<void>((resolve, reject) => {
         const timer = setTimeout(resolve, delayMs);

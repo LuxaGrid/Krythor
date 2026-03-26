@@ -10,7 +10,7 @@ import {
   stat,
 } from 'fs/promises';
 import type { FastifyInstance } from 'fastify';
-import type { GuardEngine } from '@krythor/guard';
+import type { GuardEngine, OperationType } from '@krythor/guard';
 import { sendError } from '../errors.js';
 import { logger } from '../logger.js';
 import { AccessProfileStore, makeAuditEntry } from '../AccessProfileStore.js';
@@ -113,7 +113,7 @@ type GateResult = GateOk | GateFail;
 async function gate(
   guard: GuardEngine,
   accessProfileStore: AccessProfileStore,
-  operation: string,
+  operation: OperationType,
   rawPath: string,
   agentId: string,
 ): Promise<GateResult> {

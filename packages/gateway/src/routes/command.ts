@@ -403,7 +403,7 @@ export function registerCommandRoute(
       }
       return reply.send({
         input,
-        output: `${structured.error}. ${structured.hint}`,
+        output: `${structured.code}: ${structured.hint}`,
         timestamp: new Date().toISOString(),
         processingTimeMs: 0,
         error: structured,

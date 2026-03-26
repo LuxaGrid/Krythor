@@ -132,7 +132,7 @@ export class WhatsAppInbound {
       // Handle credential updates (persist auth state)
       sock.ev.on('creds.update', () => {
         saveCreds().catch((err: unknown) =>
-          logger.warn({ err }, '[whatsapp] Failed to save credentials'),
+          logger.warn('[whatsapp] Failed to save credentials', { err: err instanceof Error ? err.message : String(err) }),
         );
       });
 
@@ -147,7 +147,7 @@ export class WhatsAppInbound {
         if (u.qr) {
           this.pairingQR = u.qr;
           logger.info('[whatsapp] QR code received — scan with WhatsApp mobile app');
-          logger.info({ qr: u.qr }, '[whatsapp] QR');
+          logger.info('[whatsapp] QR', { qr: u.qr });
         }
 
         if (u.connection === 'open') {
@@ -166,10 +166,7 @@ export class WhatsAppInbound {
           if (!loggedOut && this.reconnectCount < this.MAX_RECONNECTS) {
             this.reconnectCount++;
             const delay = Math.pow(2, this.reconnectCount) * 1_000; // 2s, 4s, 8s
-            logger.warn(
-              { reconnectCount: this.reconnectCount, delay },
-              '[whatsapp] Disconnected — reconnecting',
-            );
+            logger.warn('[whatsapp] Disconnected — reconnecting', { reconnectCount: this.reconnectCount, delay });
             setTimeout(() => {
               if (this.config?.enabled) {
                 void this.start();
@@ -179,7 +176,7 @@ export class WhatsAppInbound {
             if (loggedOut) {
               logger.warn('[whatsapp] Logged out — pairing required again');
             } else {
-              logger.error({ reconnectCount: this.reconnectCount }, '[whatsapp] Max reconnects reached');
+              logger.error('[whatsapp] Max reconnects reached', { reconnectCount: this.reconnectCount });
             }
           }
         }
@@ -220,7 +217,7 @@ export class WhatsAppInbound {
       return { ok: true };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      logger.error({ err }, '[whatsapp] Failed to start');
+      logger.error('[whatsapp] Failed to start', { err: err instanceof Error ? err.message : String(err) });
       return { ok: false, error: `WhatsApp start failed: ${msg}` };
     }
   }
@@ -238,7 +235,7 @@ export class WhatsAppInbound {
 
   private async handleMessage(jid: string, text: string): Promise<void> {
     if (!this.config || !this.socket) return;
-    logger.info({ jid }, '[whatsapp] Received message');
+    logger.info('[whatsapp] Received message', { jid });
 
     try {
       const run = await this.orchestrator.runAgent(this.config.agentId, {
@@ -249,7 +246,7 @@ export class WhatsAppInbound {
       const reply = (run.output ?? 'Sorry, I could not process your message.').slice(0, 4096);
       await this.socket.sendMessage(jid, { text: reply });
     } catch (err) {
-      logger.error({ err, jid }, '[whatsapp] Agent run failed');
+      logger.error('[whatsapp] Agent run failed', { err: err instanceof Error ? err.message : String(err), jid });
       await this.socket
         .sendMessage(jid, { text: '⚠️ Agent error — could not process your message.' })
         .catch(() => {});

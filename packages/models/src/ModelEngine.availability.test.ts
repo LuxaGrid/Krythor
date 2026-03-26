@@ -34,7 +34,6 @@ function makeEngineWithProvider(opts: {
     lastUnavailableReason: opts.available ? undefined : (opts.lastUnavailableReason ?? 'Connection refused'),
   };
 
-  // @ts-expect-error accessing private registry internals for test
   (engine.registry as unknown as { providers: Map<string, unknown> }).providers =
     new Map([[opts.providerId, fakeProvider]]);
 

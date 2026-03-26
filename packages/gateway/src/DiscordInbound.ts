@@ -77,7 +77,7 @@ export class DiscordInbound {
     try {
       const me = await this.discordGet('/users/@me') as { id: string; username: string };
       this.botUserId = me.id;
-      logger.info({ botUser: me.username }, '[discord] Bot authenticated');
+      logger.info('[discord] Bot authenticated', { botUser: me.username });
     } catch (err) {
       return { ok: false, error: `Discord auth failed: ${err instanceof Error ? err.message : String(err)}` };
     }
@@ -90,7 +90,7 @@ export class DiscordInbound {
 
     this.timer = setInterval(() => { void this.poll(); }, POLL_INTERVAL_MS);
     if (this.timer.unref) this.timer.unref();
-    logger.info({ channelId: this.config.channelId }, '[discord] Polling started');
+    logger.info('[discord] Polling started', { channelId: this.config.channelId });
     return { ok: true };
   }
 
@@ -120,7 +120,7 @@ export class DiscordInbound {
         await this.handleMessage(msg);
       }
     } catch (err) {
-      logger.warn({ err }, '[discord] Poll error');
+      logger.warn('[discord] Poll error', { err: err instanceof Error ? err.message : String(err) });
     } finally {
       this.processing = false;
     }
@@ -128,7 +128,7 @@ export class DiscordInbound {
 
   private async handleMessage(msg: DiscordMessage): Promise<void> {
     if (!this.config) return;
-    logger.info({ msgId: msg.id, author: msg.author.id }, '[discord] Received message');
+    logger.info('[discord] Received message', { msgId: msg.id, author: msg.author.id });
 
     const typingPromise = this.sendTyping().catch(() => {});
 
@@ -142,7 +142,7 @@ export class DiscordInbound {
       await typingPromise;
       await this.sendMessage(reply, msg.id);
     } catch (err) {
-      logger.error({ err, msgId: msg.id }, '[discord] Agent run failed');
+      logger.error('[discord] Agent run failed', { err: err instanceof Error ? err.message : String(err), msgId: msg.id });
       await this.sendMessage('⚠️ Agent error — could not process your message.', msg.id).catch(() => {});
     }
   }

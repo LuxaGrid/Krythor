@@ -61,8 +61,8 @@ export const GATEWAY_HOST = '127.0.0.1';
 // Read version from package.json at module load time — single source of truth.
 function readPackageVersion(): string {
   try {
-    const pkgPath = new URL('../../package.json', import.meta.url).pathname;
-    const raw = readFileSync(pkgPath.startsWith('/') ? pkgPath : '/' + pkgPath, 'utf-8');
+    const pkgPath = join(__dirname, '..', '..', 'package.json');
+    const raw = readFileSync(pkgPath, 'utf-8');
     return (JSON.parse(raw) as { version?: string }).version ?? '0.1.0';
   } catch {
     return '0.1.0';
@@ -258,7 +258,7 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
   ];
   const resolvedUiDist = uiDistCandidates.find(d => existsSync(join(d, 'index.html')));
   if (!resolvedUiDist) {
-    logger.warn({ candidates: uiDistCandidates }, 'Control UI dist not found — UI will not be served. Run `pnpm build` in packages/control.');
+    logger.warn('Control UI dist not found — UI will not be served. Run `pnpm build` in packages/control.');
   }
   const uiDist = resolvedUiDist ?? uiDistCandidates[0];
   if (resolvedUiDist) {
@@ -275,7 +275,8 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
         ? '<script>window.__KRYTHOR_TOKEN__=null;</script>'
         : `<script>window.__KRYTHOR_TOKEN__=${JSON.stringify(authCfg.token)};</script>`;
       const injected = html.replace('</head>', `${tokenScript}</head>`);
-      (reply as unknown as { type: (t: string) => void; send: (b: unknown) => void }).type('text/html').send(injected);
+      type ChainableReply = { type: (t: string) => ChainableReply; send: (b: unknown) => void };
+      (reply as unknown as ChainableReply).type('text/html').send(injected);
     };
 
     // Explicit root route
@@ -377,7 +378,7 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
 </script>
 </body>
 </html>`;
-      (reply as unknown as { type: (t: string) => void; send: (b: unknown) => void }).type('text/html').send(chatHtml);
+      (reply as unknown as { type: (t: string) => { send: (b: unknown) => void } }).type('text/html').send(chatHtml);
     });
 
     // SPA fallback — serves index.html with token injected for all non-asset routes
@@ -693,7 +694,7 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
     (event) => broadcast({ type: 'skill:event', payload: event }),
     (skill, permission) => {
       const verdict = guard.check({
-        operation: `skill:permission:${permission}`,
+        operation: `skill:permission:${permission}` as import('@krythor/guard').OperationType,
         source: 'skill',
         sourceId: skill.id,
       });
@@ -914,7 +915,7 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   // Inbound channel manager — manages Telegram, Discord, WhatsApp from registry
   const inboundMgr = new InboundChannelManager(chatChannelRegistry, orchestrator, dataDir, logger);
   if (process.env['NODE_ENV'] !== 'test') {
-    inboundMgr.startAll().catch(err => logger.error({ err }, '[inbound] startAll error'));
+    inboundMgr.startAll().catch(err => logger.error('[inbound] startAll error', { err: err instanceof Error ? err.message : String(err) }));
   }
   app.addHook('onClose', async () => { inboundMgr.stopAll(); });
 
@@ -932,8 +933,8 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   if (discordToken && discordChannelId && discordAgentId && process.env['NODE_ENV'] !== 'test') {
     discordInbound.configure({ token: discordToken, channelId: discordChannelId, agentId: discordAgentId, enabled: true });
     discordInbound.start().then(r => {
-      if (!r.ok) logger.warn({ error: r.error }, '[discord] Failed to start inbound');
-    }).catch(err => logger.error({ err }, '[discord] Start error'));
+      if (!r.ok) logger.warn('[discord] Failed to start inbound', { error: r.error });
+    }).catch(err => logger.error('[discord] Start error', { err: err instanceof Error ? err.message : String(err) }));
   }
 
   // Discord configuration routes (auth-gated via global preHandler)

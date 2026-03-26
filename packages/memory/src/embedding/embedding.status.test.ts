@@ -49,7 +49,6 @@ describe('Embedding status detection', () => {
     mem.registerEmbeddingProvider(provider);
     mem.setActiveEmbeddingProvider(provider.name);
     // Simulate unavailability
-    // @ts-expect-error accessing private field for test
     provider['_available'] = false;
     const status = mem.embeddingStatus();
     expect(status.degraded).toBe(true);

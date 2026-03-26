@@ -253,7 +253,6 @@ describe('Phase 4 — provider flapping: circuit breaker', () => {
     expect(breaker.stats().state).toBe('open');
 
     // Manually set lastFailureAt far in the past so maybeTransitionToHalfOpen fires
-    // @ts-expect-error accessing private field for test
     breaker['lastFailureAt'] = Date.now() - 31_000;
 
     // execute() calls maybeTransitionToHalfOpen → half-open, then runs probe

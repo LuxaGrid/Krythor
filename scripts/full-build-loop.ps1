@@ -127,7 +127,9 @@ $keyArtefacts = @(
     @{ path = 'packages\core\dist\index.js';    label = 'core/dist/index.js' },
     @{ path = 'packages\memory\dist\index.js';  label = 'memory/dist/index.js' },
     @{ path = 'packages\models\dist\index.js';  label = 'models/dist/index.js' },
-    @{ path = 'packages\guard\dist\index.js';   label = 'guard/dist/index.js' }
+    @{ path = 'packages\guard\dist\index.js';   label = 'guard/dist/index.js' },
+    @{ path = 'packages\skills\dist\index.js';  label = 'skills/dist/index.js' },
+    @{ path = 'packages\setup\dist\bin\setup.js'; label = 'setup/dist/bin/setup.js' }
 )
 
 foreach ($a in $keyArtefacts) {
@@ -288,6 +290,51 @@ if ($SkipRuntime) {
             } else {
                 Add-Check 'shell-enforcement' 'WARN' "/api/tools/shell/processes returned $statusCode (expected 403)"
             }
+        }
+
+        # ── Guardrails: /api/audit ────────────────────────────────────────────
+        try {
+            $resp = Invoke-RestMethod -Uri "http://${host_}:${port}/api/audit" -Headers $headers -TimeoutSec 5 -ErrorAction Stop
+            $eventCount = if ($resp.total -ne $null) { $resp.total } else { @($resp.events).Count }
+            Add-Check 'guardrails-audit' 'PASS' "/api/audit responds — $eventCount event(s)"
+        } catch {
+            Add-Check 'guardrails-audit' 'FAIL' "/api/audit failed: $($_.Exception.Message)"
+        }
+
+        # ── Guardrails: /api/approvals ────────────────────────────────────────
+        try {
+            $resp = Invoke-RestMethod -Uri "http://${host_}:${port}/api/approvals" -Headers $headers -TimeoutSec 5 -ErrorAction Stop
+            $pendingCount = if ($resp.count -ne $null) { $resp.count } else { @($resp.approvals).Count }
+            Add-Check 'guardrails-approvals' 'PASS' "/api/approvals responds — $pendingCount pending"
+        } catch {
+            Add-Check 'guardrails-approvals' 'FAIL' "/api/approvals failed: $($_.Exception.Message)"
+        }
+
+        # ── Guardrails: unknown approval returns 404 ──────────────────────────
+        try {
+            $null = Invoke-WebRequest -Uri "http://${host_}:${port}/api/approvals/nonexistent-loop-check/respond" `
+                -Method POST -Headers $headers -ContentType 'application/json' `
+                -Body '{"response":"deny"}' -TimeoutSec 5 -ErrorAction Stop
+            Add-Check 'guardrails-approvals-404' 'WARN' "/api/approvals/:id/respond did not return error for unknown id"
+        } catch {
+            $statusCode = $_.Exception.Response.StatusCode.value__
+            if ($statusCode -eq 404) {
+                Add-Check 'guardrails-approvals-404' 'PASS' "/api/approvals/:id/respond returns 404 for unknown id"
+            } else {
+                Add-Check 'guardrails-approvals-404' 'INFO' "/api/approvals/:id/respond returned $statusCode for unknown id"
+            }
+        }
+
+        # ── Guardrails: policy file present ───────────────────────────────────
+        $dataDir2 = if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA 'Krythor' } else { Join-Path $HOME '.krythor' }
+        $policyPath = Join-Path $dataDir2 'config\policy.json'
+        $policyYamlPath = Join-Path $dataDir2 'config\guardrails\policy.yaml'
+        if (Test-Path $policyPath) {
+            Add-Check 'guardrails-policy-file' 'PASS' "policy.json present"
+        } elseif (Test-Path $policyYamlPath) {
+            Add-Check 'guardrails-policy-file' 'PASS' "policy.yaml present"
+        } else {
+            Add-Check 'guardrails-policy-file' 'WARN' "No guardrails policy file found — using default allow policy"
         }
 
     } else {

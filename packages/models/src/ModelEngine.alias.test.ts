@@ -32,12 +32,10 @@ function injectProvider(engine: ModelEngine, opts: FakeProviderOpts): void {
   };
 
   // Inject into the registry's internal providers map
-  // @ts-expect-error accessing private registry internals for test
   const providersMap = (engine.registry as unknown as { providers: Map<string, unknown> }).providers;
   providersMap.set(opts.id, fakeProvider);
 
   // Also inject into configs so listConfigs() returns it
-  // @ts-expect-error accessing private registry internals
   const existingConfigs: unknown[] = (engine.registry as unknown as { configs: unknown[] }).configs;
   existingConfigs.push({
     id: opts.id,

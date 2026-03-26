@@ -208,7 +208,8 @@ $configFiles = @(
     @{ path = 'config\providers.json'; label = 'providers.json'; critical = $true  },
     @{ path = 'config\agents.json';    label = 'agents.json';    critical = $false },
     @{ path = 'config\app-config.json';label = 'app-config.json';critical = $false },
-    @{ path = 'config\policy.json';    label = 'policy.json';    critical = $false }
+    @{ path = 'config\policy.json';    label = 'policy.json';    critical = $false },
+    @{ path = 'config\chat-channels.json'; label = 'chat-channels.json'; critical = $false }
 )
 
 foreach ($f in $configFiles) {
@@ -279,6 +280,26 @@ if (Test-Path $logsDir) {
     Add-Result 'Config' 'logs-dir' 'INFO' "Logs directory: $logCount log file(s) found at $logsDir"
 } else {
     Add-Result 'Config' 'logs-dir' 'INFO' "Logs directory not yet created (normal on first run)"
+}
+
+# Guardrails: policy file present
+$guardrailsPolicyPath = Join-Path $dataDir 'config\policy.json'
+$guardrailsYamlPath = Join-Path $dataDir 'config\guardrails\policy.yaml'
+if (Test-Path $guardrailsPolicyPath) {
+    Add-Result 'Config' 'guardrails-policy' 'PASS' "Guardrails policy.json present"
+} elseif (Test-Path $guardrailsYamlPath) {
+    Add-Result 'Config' 'guardrails-policy' 'PASS' "Guardrails policy.yaml present at $guardrailsYamlPath"
+} else {
+    Add-Result 'Config' 'guardrails-policy' 'WARN' "No guardrails policy file found — using default allow policy"
+}
+
+# Guardrails: audit.ndjson file (created after guardrails events)
+$auditNdjsonPath = Join-Path $logsDir 'audit.ndjson'
+if (Test-Path $auditNdjsonPath) {
+    $auditSize = (Get-Item $auditNdjsonPath).Length
+    Add-Result 'Config' 'guardrails-audit-file' 'PASS' "audit.ndjson present ($auditSize bytes)"
+} else {
+    Add-Result 'Config' 'guardrails-audit-file' 'INFO' "audit.ndjson not yet created (created on first guardrails block event)"
 }
 
 # Memory DB
@@ -544,6 +565,42 @@ if ($portInUse) {
             }
         } catch {
             Add-Result 'LiveAPI' 'default-agent-profile' 'INFO' "Could not check default agent profile: $($_.Exception.Message)"
+        }
+
+        # Guardrails: /api/audit endpoint
+        try {
+            $resp = Invoke-RestMethod -Uri "http://${host_}:${port}/api/audit" -Headers $headers -TimeoutSec 3 -ErrorAction Stop
+            $eventCount = if ($resp.total -ne $null) { $resp.total } else { @($resp.events).Count }
+            Add-Result 'LiveAPI' 'guardrails-audit' 'PASS' "/api/audit responds — $eventCount event(s)"
+        } catch {
+            Add-Result 'LiveAPI' 'guardrails-audit' 'FAIL' "/api/audit failed: $($_.Exception.Message)"
+        }
+
+        # Guardrails: /api/approvals endpoint
+        try {
+            $resp = Invoke-RestMethod -Uri "http://${host_}:${port}/api/approvals" -Headers $headers -TimeoutSec 3 -ErrorAction Stop
+            $pendingCount = if ($resp.count -ne $null) { $resp.count } else { @($resp.approvals).Count }
+            Add-Result 'LiveAPI' 'guardrails-approvals' 'PASS' "/api/approvals responds — $pendingCount pending"
+        } catch {
+            Add-Result 'LiveAPI' 'guardrails-approvals' 'FAIL' "/api/approvals failed: $($_.Exception.Message)"
+        }
+
+        # Guardrails: unknown approval ID returns 404
+        try {
+            $null = Invoke-WebRequest -Uri "http://${host_}:${port}/api/approvals/nonexistent-validation-id/respond" `
+                -Method POST `
+                -Headers $headers `
+                -ContentType 'application/json' `
+                -Body '{"response":"deny"}' `
+                -TimeoutSec 3 -ErrorAction Stop
+            Add-Result 'LiveAPI' 'guardrails-approvals-404' 'WARN' "/api/approvals/:id/respond did not return error for unknown id"
+        } catch {
+            $statusCode = $_.Exception.Response.StatusCode.value__
+            if ($statusCode -eq 404) {
+                Add-Result 'LiveAPI' 'guardrails-approvals-404' 'PASS' "/api/approvals/:id/respond returns 404 for unknown id"
+            } else {
+                Add-Result 'LiveAPI' 'guardrails-approvals-404' 'INFO' "/api/approvals/:id/respond returned $statusCode for unknown id"
+            }
         }
 
     } else {

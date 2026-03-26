@@ -42,8 +42,9 @@ function makeInferResponse(content: string): InferenceResponse {
     content,
     model: 'test-model',
     providerId: 'test-provider',
-    inputTokens: 10,
-    outputTokens: 5,
+    promptTokens: 10,
+    completionTokens: 5,
+    durationMs: 10,
   };
 }
 

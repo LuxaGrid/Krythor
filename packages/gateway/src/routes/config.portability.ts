@@ -103,7 +103,7 @@ export function registerConfigPortabilityRoutes(
 
     for (const incoming of parsed.providers) {
       // Providers exported with "***" for apiKey must not overwrite real keys
-      const isPlaceholderKey = (incoming as Record<string, unknown>)['apiKey'] === '***';
+      const isPlaceholderKey = (incoming as unknown as Record<string, unknown>)['apiKey'] === '***';
 
       if (existingById.has(incoming.id)) {
         // Update existing — but never overwrite credentials with placeholders

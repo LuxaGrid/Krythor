@@ -19,7 +19,24 @@ export type OperationType =
   | 'skill:delete'
   | 'network:fetch'
   | 'network:search'
-  | 'webhook:call';
+  | 'webhook:call'
+  | 'config:write'
+  | 'config:read'
+  | 'conversation:read'
+  | 'conversation:write'
+  | 'file:read'
+  | 'file:write'
+  | 'file:delete'
+  | 'file:move'
+  | 'file:copy'
+  | 'file:list'
+  | 'shell:exec'
+  | 'shell:list_processes'
+  | 'shell:kill'
+  | 'skill:permission:memory:write'
+  | 'skill:permission:memory:read'
+  | 'skill:permission:skill:invoke'
+  | 'skill:permission:internet:read';
 
 export type RiskLevel = 'low' | 'medium' | 'high' | 'critical';
 
@@ -103,6 +120,23 @@ export const OPERATION_RISK: Record<OperationType, RiskLevel> = {
   'network:fetch':    'low',
   'network:search':   'low',
   'webhook:call':     'medium',
+  'config:write':     'high',
+  'config:read':      'low',
+  'conversation:read':  'low',
+  'conversation:write': 'medium',
+  'file:read':        'low',
+  'file:write':       'medium',
+  'file:delete':      'high',
+  'file:move':        'medium',
+  'file:copy':        'low',
+  'file:list':        'low',
+  'shell:exec':       'critical',
+  'shell:list_processes': 'low',
+  'shell:kill':       'high',
+  'skill:permission:memory:write':   'medium',
+  'skill:permission:memory:read':    'low',
+  'skill:permission:skill:invoke':   'medium',
+  'skill:permission:internet:read':  'low',
 };
 
 export const RISK_ORDER: Record<RiskLevel, number> = {

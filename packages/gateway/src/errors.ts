@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyReply } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyError } from 'fastify';
 
 // ─── API Error Envelope ───────────────────────────────────────────────────────
 //
@@ -62,7 +62,7 @@ export function classifyError(err: unknown): { code: string; message: string; hi
 //
 
 export function registerErrorHandler(app: FastifyInstance): void {
-  app.setErrorHandler((err, req, reply) => {
+  app.setErrorHandler((err: FastifyError, req, reply) => {
     const statusCode = err.statusCode ?? 500;
     // Fastify validation errors (400) have a structured message already
     if (statusCode === 400 && err.validation) {

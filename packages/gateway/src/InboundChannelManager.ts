@@ -57,9 +57,9 @@ export class InboundChannelManager {
     for (const [id, instance] of this.instances) {
       try {
         instance.stop();
-        this.log.info({ channelId: id }, '[inbound] Channel stopped');
+        this.log.info('[inbound] Channel stopped', { channelId: id });
       } catch (err) {
-        this.log.warn({ err, channelId: id }, '[inbound] Error stopping channel');
+        this.log.warn('[inbound] Error stopping channel', { err: err instanceof Error ? err.message : String(err), channelId: id });
       }
     }
     this.instances.clear();
@@ -73,7 +73,7 @@ export class InboundChannelManager {
       try { existing.stop(); } catch { /* ignore */ }
       this.instances.delete(configId);
       this.errors.delete(configId);
-      this.log.info({ channelId: configId }, '[inbound] Channel stopped for restart');
+      this.log.info('[inbound] Channel stopped for restart', { channelId: configId });
     }
 
     const config = this.registry.getConfig(configId);
@@ -181,15 +181,12 @@ export class InboundChannelManager {
         this.instances.set(configId, instance);
         this.errors.delete(configId);
         this.registry.recordHealthCheck(configId, true);
-        this.log.info({ channelId: configId, type: config.type }, '[inbound] Channel started');
+        this.log.info('[inbound] Channel started', { channelId: configId, type: config.type });
       } else {
         const errMsg = result.error ?? 'Unknown start error';
         this.errors.set(configId, errMsg);
         this.registry.recordHealthCheck(configId, false, errMsg);
-        this.log.warn(
-          { channelId: configId, type: config.type, error: errMsg },
-          '[inbound] Channel failed to start',
-        );
+        this.log.warn('[inbound] Channel failed to start', { channelId: configId, type: config.type, error: errMsg });
       }
 
       return result;
@@ -197,7 +194,7 @@ export class InboundChannelManager {
       const msg = err instanceof Error ? err.message : String(err);
       this.errors.set(configId, msg);
       this.registry.recordHealthCheck(configId, false, msg);
-      this.log.error({ err, channelId: configId }, '[inbound] Exception starting channel');
+      this.log.error('[inbound] Exception starting channel', { err: msg, channelId: configId });
       return { ok: false, error: msg };
     }
   }

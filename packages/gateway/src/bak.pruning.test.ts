@@ -42,12 +42,10 @@ describe('Phase 5 — .bak file pruning', () => {
 
     // Use a simple test: spawn the engine with a very short interval, wait for one tick
     // But HeartbeatEngine has a MIN_STARTUP_DELAY. So let's hack startedAt.
-    // @ts-expect-error accessing private
     engine['startedAt'] = Date.now() - 999_999;
-    // @ts-expect-error accessing private
     engine['lastRanAt'] = new Map(); // force all checks to be due
 
-    await engine['runChecks']({ memory: mem, models: null, orchestrator: null });
+    await (engine as unknown as { runChecks: (ctx: unknown) => Promise<void> }).runChecks({ memory: mem, models: null, orchestrator: null });
 
     const remaining = readdirSync(dir).filter(f => f.endsWith('.bak'));
     // Should keep only the 5 newest (BAK_KEEP_NEWEST)
@@ -65,10 +63,9 @@ describe('Phase 5 — .bak file pruning', () => {
     }
 
     const engine = new HeartbeatEngine(mem, null, null);
-    // @ts-expect-error accessing private
     engine['startedAt'] = Date.now() - 999_999;
 
-    await engine['runChecks']({ memory: mem, models: null, orchestrator: null });
+    await (engine as unknown as { runChecks: (ctx: unknown) => Promise<void> }).runChecks({ memory: mem, models: null, orchestrator: null });
 
     const remaining = readdirSync(dir).filter(f => f.endsWith('.bak'));
     // All 7 synthetic files should still be there (young enough to survive age threshold).

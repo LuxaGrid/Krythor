@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { WebFetchTool, WEB_FETCH_MAX_CHARS, WEB_FETCH_TIMEOUT_MS } from './WebFetchTool.js'
+import { WebFetchTool, WEB_FETCH_MAX_CHARS, WEB_FETCH_TIMEOUT_MS, type WebFetchResult } from './WebFetchTool.js'
 
 // ─── WebFetchTool unit tests ──────────────────────────────────────────────────
 //
@@ -52,7 +52,7 @@ describe('WebFetchTool — HTML stripping', () => {
     })
 
     const tool = new WebFetchTool()
-    const result = await tool.fetch('https://example.com')
+    const result = await tool.fetch('https://example.com') as WebFetchResult
 
     expect(result.content).toContain('Hello')
     expect(result.content).toContain('world')
@@ -68,7 +68,7 @@ describe('WebFetchTool — HTML stripping', () => {
     })
 
     const tool = new WebFetchTool()
-    const result = await tool.fetch('https://example.com')
+    const result = await tool.fetch('https://example.com') as WebFetchResult
 
     expect(result.content).not.toContain('alert')
     expect(result.content).not.toContain('color:red')
@@ -83,7 +83,7 @@ describe('WebFetchTool — HTML stripping', () => {
     })
 
     const tool = new WebFetchTool()
-    const result = await tool.fetch('https://example.com/file.txt')
+    const result = await tool.fetch('https://example.com/file.txt') as WebFetchResult
 
     expect(result.content).toBe('Hello, plain text world.')
     expect(result.truncated).toBe(false)
@@ -110,7 +110,7 @@ describe('WebFetchTool — truncation', () => {
     })
 
     const tool = new WebFetchTool()
-    const result = await tool.fetch('https://example.com/long.txt')
+    const result = await tool.fetch('https://example.com/long.txt') as WebFetchResult
 
     expect(result.truncated).toBe(true)
     expect(result.content).toContain('[Content truncated at 10000 characters')
@@ -126,7 +126,7 @@ describe('WebFetchTool — truncation', () => {
     })
 
     const tool = new WebFetchTool()
-    const result = await tool.fetch('https://example.com/short.txt')
+    const result = await tool.fetch('https://example.com/short.txt') as WebFetchResult
 
     expect(result.truncated).toBe(false)
     expect(result.content).toBe(shortContent)

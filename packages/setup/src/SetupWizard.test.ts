@@ -132,7 +132,7 @@ describe('Wizard setup completion logic', () => {
   });
 
   it('onboardingComplete is true when provider is configured', () => {
-    const providerType = 'anthropic';
+    const providerType: string = 'anthropic';
     const onboardingComplete = providerType !== 'skip';
     expect(onboardingComplete).toBe(true);
   });
