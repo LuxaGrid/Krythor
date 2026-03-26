@@ -4,6 +4,7 @@ import { SidebarResizeHandle } from './SidebarResizeHandle.tsx';
 import {
   listAgents, createAgent, updateAgent, deleteAgent, runAgent,
   listRuns, agentStats, listProviders, importAgent, exportAgent,
+  getAgentAccessProfile, setAgentAccessProfile,
   type Agent, type AgentRun, type AgentStats, type Provider,
 } from '../api.ts';
 import { useAppConfig } from '../App.tsx';
@@ -121,6 +122,90 @@ const EMPTY_FORM: AgentForm = {
   tags: '', allowedTools: '', idleTimeoutMs: 0,
 };
 
+// ── Access profile types and badge ─────────────────────────────────────────
+
+type AccessProfile = 'safe' | 'standard' | 'full_access';
+
+const PROFILE_LABEL: Record<AccessProfile, string> = {
+  safe: 'safe',
+  standard: 'standard',
+  full_access: 'full access',
+};
+
+const PROFILE_CLS: Record<AccessProfile, string> = {
+  safe:        'bg-emerald-950/50 text-emerald-400 border-emerald-700/60',
+  standard:    'bg-amber-950/50 text-amber-400 border-amber-700/60',
+  full_access: 'bg-red-950/50 text-red-400 border-red-700/60',
+};
+
+const PROFILE_OPTIONS: AccessProfile[] = ['safe', 'standard', 'full_access'];
+
+interface AccessProfileBadgeProps {
+  agentId: string;
+  profile: AccessProfile | undefined;
+  loading: boolean;
+  onChange: (agentId: string, profile: AccessProfile) => void;
+}
+
+function AccessProfileBadge({ agentId, profile, loading, onChange }: AccessProfileBadgeProps) {
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  if (loading || profile === undefined) {
+    return <span className="w-12 h-3.5 bg-zinc-800 rounded animate-pulse inline-block" />;
+  }
+
+  const handleSelect = async (p: AccessProfile) => {
+    setOpen(false);
+    setSaving(true);
+    try {
+      await onChange(agentId, p);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="relative" onClick={e => e.stopPropagation()}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        disabled={saving}
+        className={`text-[9px] px-1.5 py-0.5 rounded border font-medium transition-colors flex items-center gap-0.5 ${PROFILE_CLS[profile]}`}
+        title="Click to change access profile"
+      >
+        {profile === 'full_access' && <span className="text-[9px]">⚠</span>}
+        {saving ? '…' : PROFILE_LABEL[profile]}
+        <span className="opacity-60">▾</span>
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute left-0 top-full mt-1 z-50 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl overflow-hidden min-w-[150px]">
+            {PROFILE_OPTIONS.map(p => (
+              <button
+                key={p}
+                onClick={() => void handleSelect(p)}
+                className={`w-full text-left px-3 py-2 text-xs transition-colors hover:bg-zinc-800 flex flex-col gap-0.5
+                  ${p === profile ? 'text-zinc-100' : 'text-zinc-400'}`}
+              >
+                <span className={`text-[10px] font-medium ${p === 'full_access' ? 'text-red-400' : p === 'standard' ? 'text-amber-400' : 'text-emerald-400'}`}>
+                  {p === 'full_access' && '⚠ '}
+                  {PROFILE_LABEL[p]}
+                </span>
+                {p === 'full_access' && (
+                  <span className="text-[9px] text-zinc-600 leading-snug">
+                    Unrestricted filesystem and shell access. Use with caution.
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function AgentsPanel() {
   const { config, setConfig } = useAppConfig();
   const [agents, setAgents]   = useState<Agent[]>([]);
@@ -128,6 +213,10 @@ export function AgentsPanel() {
   const [stats, setStats]     = useState<AgentStats | null>(null);
   const [providers, setProviders] = useState<Provider[]>([]);
   const [selected, setSelected] = useState<Agent | null>(null);
+
+  // Access profiles per agent
+  const [accessProfiles, setAccessProfiles] = useState<Record<string, AccessProfile>>({});
+  const [profilesLoading, setProfilesLoading] = useState<Record<string, boolean>>({});
   const [runInput, setRunInput] = useState('');
   const [running, setRunning]   = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
@@ -151,9 +240,35 @@ export function AgentsPanel() {
         const found = a.find(ag => ag.id === config.selectedAgentId);
         if (found) setSelected(found);
       }
+      // Fetch access profiles for all agents (best-effort)
+      setProfilesLoading(prev => {
+        const next = { ...prev };
+        a.forEach(ag => { next[ag.id] = true; });
+        return next;
+      });
+      const profileResults = await Promise.allSettled(
+        a.map(ag => getAgentAccessProfile(ag.id).then(r => ({ id: ag.id, profile: r.profile as AccessProfile })))
+      );
+      const profileMap: Record<string, AccessProfile> = {};
+      profileResults.forEach(result => {
+        if (result.status === 'fulfilled') {
+          profileMap[result.value.id] = result.value.profile;
+        }
+      });
+      setAccessProfiles(prev => ({ ...prev, ...profileMap }));
+      setProfilesLoading(prev => {
+        const next = { ...prev };
+        a.forEach(ag => { next[ag.id] = false; });
+        return next;
+      });
     } catch { /* ignore */ }
     finally { setLoading(false); }
   }, [config.selectedAgentId, selected]);
+
+  const handleProfileChange = useCallback(async (agentId: string, profile: AccessProfile) => {
+    await setAgentAccessProfile(agentId, profile);
+    setAccessProfiles(prev => ({ ...prev, [agentId]: profile }));
+  }, []);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -349,6 +464,12 @@ export function AgentsPanel() {
                   ${selected?.id === a.id ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200'}`}
               >
                 <span className="flex-1 truncate">{a.name}</span>
+                <AccessProfileBadge
+                  agentId={a.id}
+                  profile={accessProfiles[a.id]}
+                  loading={profilesLoading[a.id] ?? false}
+                  onChange={handleProfileChange}
+                />
                 {config.selectedAgentId === a.id && (
                   <span className="text-brand-500 text-xs shrink-0">●</span>
                 )}

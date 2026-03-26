@@ -11,6 +11,26 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+#### Chat Channels & File Access (2026-03-26)
+
+- **Chat channel onboarding — Telegram**: built-in Telegram bot integration; enter Bot Token (from @BotFather) in Settings → Chat Channels → + Add Channel; polling-based message delivery; no pairing step required
+- **Chat channel onboarding — Discord**: built-in Discord bot integration; requires Bot Token + Application ID from the Discord Developer Portal; Message Content Intent must be enabled; no pairing step required
+- **Chat channel onboarding — WhatsApp**: on-demand npm package install for the WhatsApp library; pairing code flow — Krythor displays a code that the user enters in WhatsApp → Settings → Linked Devices; session credentials persist after first pair
+- **Chat channel setup wizard**: step-by-step guided setup UI in the Chat Channels panel; platform-specific instruction panels; credential validation before saving
+- **Chat Channels panel**: new tab in the control UI listing all configured inbound channels with their current status badge and connect/disconnect controls
+- **Chat channel status model**: six statuses tracked per channel — `not_installed`, `installed`, `credentials_missing`, `awaiting_pairing`, `connected`, `error`
+- **Credential masking**: all `/api/chat-channels/` responses replace secret fields with `"••••••••"` — credentials never leak through the API
+- **Chat channels REST API** (9 endpoints): `GET /api/chat-channels/`, `POST /api/chat-channels/`, `GET /api/chat-channels/:id`, `PUT /api/chat-channels/:id`, `DELETE /api/chat-channels/:id`, `POST /api/chat-channels/:id/connect`, `POST /api/chat-channels/:id/disconnect`, `GET /api/chat-channels/:id/status`, `POST /api/chat-channels/:id/pairing-code`
+- **File operation tools** (9 tools): `read_file`, `write_file`, `edit_file`, `move_file`, `copy_file`, `delete_file`, `make_directory`, `list_directory`, `stat_path`; exposed via REST at `POST /api/tools/files/:tool`
+- **Agent access profiles**: three profiles per agent — `safe` (workspace only, no shell), `standard` (workspace + non-system paths, shell with confirmation hooks), `full_access` (unrestricted filesystem + shell); default is `safe` for all new agents
+- **Access profile enforcement**: path resolution and workspace boundary check for `safe`; system directory blocklist for `standard`; all checks happen in the tool layer before any filesystem call
+- **Access profile API**: `GET /api/agents/:id/access-profile` and `PUT /api/agents/:id/access-profile`
+- **Access profile badge in the Agents panel**: colored badge on each agent card showing its current profile; `full_access` displayed in red with a warning indicator; click badge to change profile
+- **File operation audit log**: every file tool call (allowed or denied) appended as newline-delimited JSON to `~/.krythor/file-audit.log`; queryable via `GET /api/tools/files/audit` with `limit`, `page`, `agentId`, `outcome`, and `since` filters
+- **docs/channels.md**: full chat channel setup guide covering Telegram, Discord, and WhatsApp (pairing code flow), status reference, API reference, and credential security notes
+- **docs/permissions.md**: full access profile reference covering safe/standard/full_access behavior, path enforcement, system directory blocklist, audit log format, API reference, and security recommendations
+- **Tests**: 108 new test cases across 4 test files covering chat channel lifecycle, credential masking, pairing code flow, file tool path enforcement, access profile API, and audit log query
+
 #### Items A–J (2026-03-21)
 
 - **Documentation consolidation (A)**: `docs/START_HERE.md` (quick-start, feature table, CLI/API reference, troubleshooting); `docs/TROUBLESHOOTING.md` (10 common issues with step-by-step fixes); `docs/ENV_VARS.md` (all environment variables with types and defaults); README.md updated with documentation links section

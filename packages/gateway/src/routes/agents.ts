@@ -3,12 +3,18 @@ import type { AgentOrchestrator, CreateAgentInput, UpdateAgentInput, RunAgentInp
 import { RunQueueFullError } from '@krythor/core';
 import type { GuardEngine } from '@krythor/guard';
 import { validateString, MAX_NAME_LEN, MAX_DESCRIPTION_LEN, MAX_SYSTEM_PROMPT_LEN } from '../validate.js';
+import type { AccessProfileStore } from '../AccessProfileStore.js';
 
 interface ParallelJob { agentId: string; input: RunAgentInput }
 interface ParallelBody { jobs: ParallelJob[] }
 interface SequentialBody { agentIds: string[]; input: string }
 
-export function registerAgentRoutes(app: FastifyInstance, orchestrator: AgentOrchestrator, guard?: GuardEngine): void {
+export function registerAgentRoutes(
+  app: FastifyInstance,
+  orchestrator: AgentOrchestrator,
+  guard?: GuardEngine,
+  accessProfileStore?: AccessProfileStore,
+): void {
 
   // GET /api/agents
   // Returns agents with a systemPromptPreview (first 100 chars) for list views.
@@ -359,4 +365,38 @@ export function registerAgentRoutes(app: FastifyInstance, orchestrator: AgentOrc
     if (!run) return reply.code(404).send({ error: 'Run not found' });
     return reply.send(run);
   });
+
+  // ── Access profile routes (require accessProfileStore) ─────────────────────
+
+  if (accessProfileStore) {
+    // GET /api/agents/:id/access-profile
+    app.get<{ Params: { id: string } }>('/api/agents/:id/access-profile', async (req, reply) => {
+      const agentId = req.params.id;
+      const agent = orchestrator.getAgent(agentId);
+      if (!agent) return reply.code(404).send({ error: 'Agent not found' });
+      const profile = accessProfileStore.getProfile(agentId);
+      return reply.send({ agentId, profile });
+    });
+
+    // PUT /api/agents/:id/access-profile
+    app.put<{ Params: { id: string } }>('/api/agents/:id/access-profile', {
+      schema: {
+        body: {
+          type: 'object',
+          required: ['profile'],
+          properties: {
+            profile: { type: 'string', enum: ['safe', 'standard', 'full_access'] },
+          },
+          additionalProperties: false,
+        },
+      },
+    }, async (req, reply) => {
+      const agentId = req.params.id;
+      const agent = orchestrator.getAgent(agentId);
+      if (!agent) return reply.code(404).send({ error: 'Agent not found' });
+      const { profile } = req.body as { profile: import('../AccessProfileStore.js').AccessProfile };
+      accessProfileStore.setProfile(agentId, profile);
+      return reply.send({ agentId, profile });
+    });
+  }
 }

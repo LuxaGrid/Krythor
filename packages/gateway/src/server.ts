@@ -24,6 +24,8 @@ import { registerSkillRoutes } from './routes/skills.js';
 import { registerRecommendRoutes } from './routes/recommend.js';
 import { registerToolRoutes } from './routes/tools.js';
 import { registerCustomToolRoutes } from './routes/tools.custom.js';
+import { registerFileToolRoutes } from './routes/tools.file.js';
+import { AccessProfileStore } from './AccessProfileStore.js';
 import { registerProviderRoutes } from './routes/providers.js';
 import { registerOAuthRoutes } from './routes/oauth.js';
 import { registerLocalModelsRoute } from './routes/local-models.js';
@@ -31,7 +33,9 @@ import { registerStreamWs } from './ws/stream.js';
 import { registerDashboardRoute } from './routes/dashboard.js';
 import { registerGatewayRoutes, loadOrCreateGatewayId } from './routes/gateway.js';
 import { registerChannelRoutes } from './routes/channels.js';
+import { registerChatChannelRoutes } from './routes/chatChannels.js';
 import { ChannelManager } from './ChannelManager.js';
+import { ChatChannelRegistry } from './ChatChannelRegistry.js';
 import { DiscordInbound } from './DiscordInbound.js';
 import { PeerRegistry } from './PeerRegistry.js';
 import { registerOpenAICompatRoutes } from './routes/openai.compat.js';
@@ -680,11 +684,14 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   const channelMgr = new ChannelManager(join(dataDir, 'config'), gatewayId);
   const channelEmit = (event: string, data: Record<string, unknown>) => channelMgr.emit(event as import('./ChannelManager.js').ChannelEvent, data);
 
+  // Access profile store — persists per-agent filesystem access levels
+  const accessProfileStore = new AccessProfileStore(join(dataDir, 'config'));
+
   // Register routes
   registerCommandRoute(app, core, orchestrator, broadcast, guard, convStore);
   registerMemoryRoutes(app, memory, models, guard, channelEmit);
   registerModelRoutes(app, models, memory, guard, channelEmit);
-  registerAgentRoutes(app, orchestrator, guard);
+  registerAgentRoutes(app, orchestrator, guard, accessProfileStore);
   registerGuardRoutes(app, guard, guardDecisionStore);
   registerConfigRoute(app, join(dataDir, 'config'), guard);
   registerConversationRoutes(app, convStore, guard, channelEmit);
@@ -692,6 +699,7 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   registerRecommendRoutes(app, models, recommender, guard);
   registerToolRoutes(app, guard, execTool);
   registerCustomToolRoutes(app, customToolStore, guard);
+  registerFileToolRoutes(app, guard, accessProfileStore);
   registerProviderRoutes(app, models);
   registerOAuthRoutes(app, models);
   registerLocalModelsRoute(app);
@@ -830,8 +838,14 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   // reference heartbeat directly (avoids a late-binding closure or re-export).
   registerDashboardRoute(app, models, memory, orchestrator, heartbeat);
 
+  // Chat channel registry (inbound bot channels — Telegram, Discord, WhatsApp)
+  const chatChannelRegistry = new ChatChannelRegistry(join(dataDir, 'config'));
+
   // Channel routes (outbound webhooks) — #16
   registerChannelRoutes(app, channelMgr);
+
+  // Chat channel routes (inbound bot channels)
+  registerChatChannelRoutes(app, chatChannelRegistry);
 
   // Discord inbound channel — optional, started only if configured
   const discordInbound = new DiscordInbound(orchestrator);

@@ -51,6 +51,8 @@ This is **AI you can operate**.
 * **Session management** — named conversations, archive/restore, pinning, idle detection, export as JSON/Markdown
 * **Conversation search** — filter conversations by title in the sidebar
 * **Token spend history** — ring buffer of last 1000 inferences; Dashboard shows per-model sparkline with token breakdown
+* **Chat channel onboarding** — connect Telegram, Discord, and WhatsApp as inbound bot channels; setup wizard with step-by-step credential entry; WhatsApp pairing code flow; credential masking in all API responses
+* **File & Computer Access (Access Profiles)** — 9 file operation tools (read, write, edit, move, copy, delete, make_directory, list_directory, stat_path); three access profiles per agent: `safe` (workspace only), `standard` (workspace + non-system paths, shell with confirmation), `full_access` (unrestricted); audit log at `~/.krythor/file-audit.log`
 * **Outbound channels** — webhook notifications on lifecycle events (agent runs, memory, providers); HMAC-SHA256 signed; compatible with Zapier, n8n, Discord/Slack incoming webhooks
 * **LAN discovery** — gateways on the same network find each other automatically via UDP multicast; manual peer registration for cross-network pairing
 * **Gateway identity** — stable UUID per installation; capability manifest at `GET /api/gateway/info`
@@ -410,6 +412,8 @@ Other key docs:
 - [docs/ENV_VARS.md](./docs/ENV_VARS.md) — every environment variable Krythor reads
 - [docs/API.md](./docs/API.md) — complete API reference
 - [docs/REMOTE_GATEWAY.md](./docs/REMOTE_GATEWAY.md) — SSH forwarding, Tailscale, Nginx
+- [docs/channels.md](./docs/channels.md) — Chat channel setup (Telegram, Discord, WhatsApp)
+- [docs/permissions.md](./docs/permissions.md) — Agent access profiles, file tools, and audit log
 
 ---
 
@@ -543,6 +547,7 @@ The dashboard has a customizable tab bar — click **+ Tabs** to pin or unpin an
 | **Events** | Real-time event stream with icons, timestamps, type coloring, and filter |
 | **Workflow** | View agent run history and stop active runs |
 | **Channels** | Configure outbound webhook notifications |
+| **Chat Channels** | Connect Telegram, Discord, or WhatsApp as inbound bot channels |
 | **Custom Tools** | Define webhook tools; test-fire each one from the UI |
 | **Config Editor** | Edit raw configuration files with JSON validation |
 | **Command Center** | Live animated scene with Tron brain planet, agent entities, and command log |
@@ -903,12 +908,81 @@ All API endpoints are served at `http://127.0.0.1:47200`. Most require a Bearer 
 | GET | `/api/channels/events` | Required | List supported channel event types |
 | POST | `/api/channels/:id/test` | Required | Send a test delivery to a channel |
 | POST | `/api/recommend/override` | Required | Report a model override for learning system feedback |
+| GET | `/api/chat-channels/` | Required | List all configured inbound chat channels |
+| POST | `/api/chat-channels/` | Required | Create a new inbound chat channel |
+| GET | `/api/chat-channels/:id` | Required | Get a channel (credentials masked) |
+| PUT | `/api/chat-channels/:id` | Required | Update a channel's configuration |
+| DELETE | `/api/chat-channels/:id` | Required | Remove a channel |
+| POST | `/api/chat-channels/:id/connect` | Required | Trigger a (re)connection attempt |
+| POST | `/api/chat-channels/:id/disconnect` | Required | Disconnect a channel without deleting it |
+| GET | `/api/chat-channels/:id/status` | Required | Get the current connection status |
+| POST | `/api/chat-channels/:id/pairing-code` | Required | Request a new WhatsApp pairing code |
+| GET | `/api/tools/files/` | Required | List available file operation tools |
+| POST | `/api/tools/files/:tool` | Required | Invoke a file tool (read_file, write_file, etc.) |
+| GET | `/api/tools/files/audit` | Required | Query the file operation audit log |
+| GET | `/api/agents/:id/access-profile` | Required | Get an agent's current access profile |
+| PUT | `/api/agents/:id/access-profile` | Required | Set an agent's access profile (safe / standard / full_access) |
 | GET | `/api/gateway/info` | Required | Gateway identity and capability manifest |
 | GET | `/api/gateway/peers` | Required | List known remote gateway peers |
 | POST | `/api/gateway/peers` | Required | Register a remote gateway peer |
 | DELETE | `/api/gateway/peers/:id` | Required | Remove a registered peer |
 | GET | `/api/gateway/probe` | Required | Probe connectivity to known peers |
 | WS | `/ws/stream` | Required | Real-time event stream (used by Command Center and Event Stream panel) |
+
+---
+
+## 💬 Chat Channels
+
+Krythor can act as an inbound bot on Telegram, Discord, and WhatsApp. Messages sent to your bot are routed to a Krythor agent, and the agent's response is delivered back to the user on the same platform.
+
+### Supported Channels
+
+| Channel | Install | Credentials Needed | Pairing |
+|---------|---------|-------------------|---------|
+| Telegram | Built-in | Bot Token (from @BotFather) | No |
+| Discord | Built-in | Bot Token + Application ID | No |
+| WhatsApp | npm install (on-demand) | Phone / account credentials | Yes (pairing code) |
+
+### How to add a channel
+
+Go to **Settings → Chat Channels** tab and click **+ Add Channel**. Select your platform and follow the guided setup steps.
+
+### Channel status meanings
+
+| Status | Meaning |
+|--------|---------|
+| `not_installed` | Required package not yet installed (WhatsApp only) |
+| `installed` | Package installed; no credentials entered yet |
+| `credentials_missing` | Configuration incomplete — required fields are empty |
+| `awaiting_pairing` | Waiting for the WhatsApp pairing code to be confirmed on the device |
+| `connected` | Active and receiving messages |
+| `error` | Runtime error — check the Logs panel for details |
+
+See [docs/channels.md](./docs/channels.md) for the full per-platform setup guide, pairing code flow, and API reference.
+
+---
+
+## 🗂️ Agent Access Profiles
+
+Each agent has an **access profile** that controls what files and system resources it can touch. The profile is enforced by the gateway before any file operation executes.
+
+| Profile | File Access | Shell Access | Default |
+|---------|-------------|--------------|---------|
+| `safe` | Workspace directory only | No | Yes |
+| `standard` | Workspace + non-system paths | With confirmation hooks | |
+| `full_access` | Unrestricted local filesystem | Yes | |
+
+- **safe** — new agents start here. Paths are resolved and checked to stay inside the workspace root.
+- **standard** — workspace plus any non-system path. System directories (e.g., `/etc`, `C:\Windows\System32`) are blocklisted. Shell execution is available with confirmation hooks.
+- **full_access** — no restrictions. Displayed as a red badge with a warning indicator in the Agents panel.
+
+**To change an agent's profile:** click the access profile badge on the agent card in the Agents panel.
+
+**Audit log:** every file operation (allowed or denied) is recorded at `~/.krythor/file-audit.log` and queryable via `GET /api/tools/files/audit`.
+
+**Available file tools:** `read_file`, `write_file`, `edit_file`, `move_file`, `copy_file`, `delete_file`, `make_directory`, `list_directory`, `stat_path`
+
+See [docs/permissions.md](./docs/permissions.md) for the full reference including path enforcement details, audit log format, and security recommendations.
 
 ---
 
@@ -1101,6 +1175,8 @@ To uninstall: remove the application folder (`~/.krythor`) and the data folder a
 * [x] LogsPanel copy to clipboard and expandable raw JSON per entry
 * [x] EventStream filter, timestamps, icons, and payload detail extraction
 * [x] Model override feedback wired into learning system (reportOverride)
+* [x] Chat channel onboarding — Telegram, Discord, WhatsApp inbound bots with guided setup wizard
+* [x] File & Computer Access — 9 file operation tools with safe/standard/full_access profiles per agent and full audit log
 * [ ] Code signing (OV certificate — eliminates SmartScreen warning)
 * [ ] Auto-updater UI (download and replace in-place)
 * [ ] macOS / Linux native installers

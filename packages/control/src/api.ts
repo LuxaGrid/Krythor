@@ -453,6 +453,26 @@ export interface AgentRun {
 }
 export interface AgentStats { agentCount: number; activeRuns: number; totalRuns: number }
 
+export async function getAgentAccessProfile(id: string): Promise<{ agentId: string; profile: string }> {
+  const r = await fetch(`${BASE}/agents/${id}/access-profile`, {
+    headers: _gatewayToken ? { Authorization: `Bearer ${_gatewayToken}` } : {},
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json() as Promise<{ agentId: string; profile: string }>;
+}
+
+export async function setAgentAccessProfile(id: string, profile: string): Promise<void> {
+  const r = await fetch(`${BASE}/agents/${id}/access-profile`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      ...((_gatewayToken) ? { Authorization: `Bearer ${_gatewayToken}` } : {}),
+    },
+    body: JSON.stringify({ profile }),
+  });
+  if (!r.ok) throw new Error(await r.text());
+}
+
 // ── Guard ─────────────────────────────────────────────────────────────────
 export interface GuardDecision {
   ts: number; operation: string; source: string; sourceId?: string; scope?: string;
@@ -688,6 +708,80 @@ export const updateChannel        = (id: string, patch: Partial<CreateChannelInp
   req<Channel>('PATCH', `/channels/${id}`, patch);
 export const deleteChannel        = (id: string) => req<void>('DELETE', `/channels/${id}`);
 export const testChannel          = (id: string) => req<{ ok: boolean; statusCode?: number; error?: string }>('POST', `/channels/${id}/test`);
+
+// ── Chat Channels (inbound bot channels) ──────────────────────────────────────
+//
+// These are INBOUND channels — Telegram, Discord, WhatsApp bots that users
+// chat through. This is separate from the outbound webhook channels above.
+
+export interface ChatChannelProviderMeta {
+  id: string;
+  type: string;
+  displayName: string;
+  description: string;
+  installStrategy: string;
+  credentialFields: Array<{
+    key: string;
+    label: string;
+    hint: string;
+    secret: boolean;
+    required: boolean;
+  }>;
+  requiresPairing: boolean;
+  docsUrl: string;
+}
+
+export interface ChatChannelConfig {
+  id: string;
+  type: string;
+  displayName?: string;
+  enabled: boolean;
+  credentials: Record<string, string>;
+  agentId?: string;
+  pairingCode?: string;
+  pairingExpiry?: number;
+  lastHealthCheck?: number;
+  lastHealthStatus?: 'ok' | 'error';
+  lastError?: string;
+  connectedAt?: number;
+}
+
+export type ChatChannelStatus =
+  | 'not_installed'
+  | 'installed'
+  | 'credentials_missing'
+  | 'awaiting_pairing'
+  | 'connected'
+  | 'error';
+
+export interface ChatChannelWithStatus extends ChatChannelConfig {
+  status: ChatChannelStatus;
+  providerMeta?: ChatChannelProviderMeta;
+}
+
+export const listChatChannelProviders = () =>
+  req<{ providers: ChatChannelProviderMeta[] }>('GET', '/chat-channels/providers');
+
+export const listChatChannels = () =>
+  req<{ channels: ChatChannelWithStatus[] }>('GET', '/chat-channels');
+
+export const saveChatChannel = (config: Partial<ChatChannelConfig> & { id: string; type: string }) =>
+  req<ChatChannelConfig>('POST', '/chat-channels', config);
+
+export const updateChatChannel = (id: string, update: Partial<ChatChannelConfig>) =>
+  req<ChatChannelConfig>('PUT', `/chat-channels/${id}`, update);
+
+export const deleteChatChannel = (id: string) =>
+  req<void>('DELETE', `/chat-channels/${id}`);
+
+export const testChatChannel = (id: string) =>
+  req<{ ok: boolean; latencyMs: number; error?: string }>('POST', `/chat-channels/${id}/test`);
+
+export const getChatChannelStatus = (id: string) =>
+  req<{ status: ChatChannelStatus; lastError?: string }>('GET', `/chat-channels/${id}/status`);
+
+export const getChatChannelPairingCode = (id: string) =>
+  req<{ code: string; expiresAt: number }>('POST', `/chat-channels/${id}/pair`);
 
 // ── Config file editor ─────────────────────────────────────────────────────────
 export interface ConfigFileEntry { key: string; filename: string; exists: boolean }
