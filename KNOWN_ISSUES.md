@@ -27,6 +27,21 @@
 - **Impact:** Gateway logs `[SystemIdentityProvider] SOUL.md not found — using built-in fallback identity.` on startup in dev/test environments.
 - **Fix:** Place a `SOUL.md` file in the repo root or `~/.krythor/` to customize the agent identity.
 
+### DockerSandboxProvider — Not Implemented
+- **Status:** Stub only
+- **Impact:** Setting `KRYTHOR_SANDBOX=docker` will throw `NotImplementedError('Docker sandbox not yet implemented')` on any sandbox operation. `LocalSandboxProvider` (default, no env var) works fully.
+- **Fix (future):** Implement `DockerSandboxProvider` with `docker run`/`docker exec`/`docker rm` calls.
+
+### Audit Log — No Rotation
+- **Status:** Known limitation
+- **Impact:** `<dataDir>/logs/audit.ndjson` grows indefinitely. No automatic log rotation is implemented.
+- **Fix (future):** Add size-based or time-based rotation. For now, rotate manually and restart the gateway.
+
+### LocalSandboxProvider — No Isolation
+- **Status:** By design (documented)
+- **Impact:** `LocalSandboxProvider` runs spawned processes directly on the host. It satisfies the `SandboxProvider` interface but provides no filesystem, network, or process isolation.
+- **Fix (future):** Use `DockerSandboxProvider` once implemented for production workloads.
+
 ## Resolved
 
 - **v0.2.1**: deploy-dist.js now copies gateway dist to `~/.krythor` on every build — previously required a manual copy after gateway code changes.

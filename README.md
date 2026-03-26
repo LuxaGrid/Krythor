@@ -140,6 +140,20 @@ The **Guard** tab provides three visually distinct safety modes, each displayed 
 
 The active mode is highlighted with a colored ring and an "active" badge. Switching modes immediately applies the correct default action and rule state to the gateway.
 
+### Guardrails Stack
+
+Beyond the Guard tab, Krythor includes a full Guardrails Stack:
+
+* **Policy files** — YAML or JSON policy files loaded at startup; supports `allow`, `deny`, `warn`, and `require-approval` actions per operation type
+* **Tool interception** — guard checks fire before every web_search, web_fetch, and webhook call in AgentRunner
+* **Approval flow** — `require-approval` actions pause execution and show a modal in the Control UI; auto-deny after 30 seconds prevents deadlock
+* **Privacy routing** — `PrivacyRouter` classifies content sensitivity (public/internal/private/restricted) and reroutes to a local model (Ollama, GGUF) when content should not leave the machine
+* **Audit log** — append-only NDJSON log at `<dataDir>/logs/audit.ndjson`; visible in the Audit Log tab; queryable via `krythor audit tail`
+* **Sandbox abstraction** — `SandboxProvider` interface for future Docker/Firecracker isolation; `LocalSandboxProvider` available today
+* **CLI tools** — `krythor policy check`, `krythor policy doctor`, `krythor audit tail`, `krythor audit explain`, `krythor config init-guardrails`
+
+See [docs/guardrails.md](./docs/guardrails.md) for full documentation.
+
 ---
 
 ## ⌨️ Keyboard Shortcuts
@@ -359,6 +373,18 @@ All commands assume Krythor is installed via the one-line installer or a release
 | `krythor doctor` | Run all diagnostics — prints pass/fail for runtime, DB, migrations, credentials |
 | `krythor repair` | Auto-fix issues found by doctor (re-compiles native modules, reruns migrations) |
 | `krythor backup` | Create a timestamped `.tar.gz` / `.zip` archive of the data directory |
+
+### Guardrails commands
+
+| Command | Description |
+|---------|-------------|
+| `krythor policy check` | Validate the active guardrails policy file |
+| `krythor policy doctor` | Deep policy health diagnostics (directory, rules, strict mode) |
+| `krythor audit tail [--limit N] [--outcome X] [--agent X] [--json]` | Print recent audit log entries |
+| `krythor audit explain <event-id>` | Print full detail for one audit event |
+| `krythor config init-guardrails [--yes]` | Scaffold a default policy YAML file |
+
+See [docs/guardrails.md](./docs/guardrails.md) for full documentation.
 
 ### Source / development commands
 

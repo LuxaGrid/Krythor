@@ -1,3 +1,135 @@
+# AI Changelog — Pass 2026-03-26 (Guardrails Stack — Phases 1–8)
+
+**Model:** Claude Sonnet 4.6
+**Pass type:** Guardrails Stack — additive safety, policy, approval, privacy, audit, sandbox, and CLI layers
+
+---
+
+## Summary (this pass)
+
+Full Guardrails Stack implementation across 8 phases, additive-only (no existing architecture replaced).
+
+### Phase 1 — Policy Enhancements
+
+**Files:**
+- `packages/guard/src/PolicyLoader.ts` (new) — YAML/JSON policy file loader with validation
+- `packages/guard/src/ActionNormalizer.ts` (new) — converts raw action inputs to `NormalizedAction` / `GuardContext`
+- `packages/guard/src/errors.ts` (new) — `BlockedActionError` with verdict and action attached
+- `packages/guard/config/default-policy.yaml` (new) — default policy with all operation types
+- `packages/gateway/config/policy-defaults.yaml` (new) — gateway-layer defaults
+- `packages/guard/src/types.ts` (modified) — added `memory:export`, `network:fetch`, `network:search`, `webhook:call` to `OperationType`
+- `packages/guard/src/index.ts` (modified) — re-exports all new types and functions
+
+**Tests:** `PolicyLoader.test.ts` (15), `ActionNormalizer.test.ts` (15)
+
+---
+
+### Phase 2 — Tool/Skill Execution Interception
+
+**Files:**
+- `packages/core/src/agents/AgentRunner.ts` (modified) — `GuardLike` duck-typed interface; guard.check() called before web_search, web_fetch, webhook tool calls
+- `packages/core/src/agents/AgentOrchestrator.ts` (modified) — `setGuard(guard)` method; passes guard to all AgentRunner instances
+- `packages/core/src/index.ts` (modified) — exports `GuardLike`
+
+---
+
+### Phase 3 — Approval Flow
+
+**Files:**
+- `packages/gateway/src/ApprovalManager.ts` (new) — pending approval lifecycle, session overrides, 30s auto-deny
+- `packages/gateway/src/routes/approvals.ts` (new) — GET /api/approvals, POST /api/approvals/:id/respond, DELETE /api/approvals/session
+- `packages/control/src/components/ApprovalModal.tsx` (new) — polls for pending approvals; deny/allow-once/allow-for-session buttons; countdown timer
+
+**Tests:** `approvals.test.ts` (9)
+
+---
+
+### Phase 4 — Privacy-Aware Model Routing
+
+**Files:**
+- `packages/models/src/PrivacyRouter.ts` (new) — wraps ModelEngine; classifies sensitivity; reroutes to local provider
+- `packages/models/src/index.ts` (modified) — exports PrivacyRouter, PrivacyBlockedError, types
+
+**Sensitivity labels:** public / internal / private / restricted
+**Local provider detection:** Ollama > GGUF > localhost OpenAI-compat
+
+**Tests:** `PrivacyRouter.test.ts` (26)
+
+---
+
+### Phase 5 — Structured Audit Logging
+
+**Files:**
+- `packages/gateway/src/AuditLogger.ts` (new) — append-only NDJSON; 10,000-entry ring buffer; SHA-256 content hashing
+- `packages/gateway/src/routes/audit.ts` (new) — GET /api/audit (filtered), GET /api/audit/tail
+- `packages/gateway/src/server.ts` (modified) — wires AuditLogger to agent run events and guard:decided events
+
+**Tests:** `auditLogger.test.ts` (11)
+
+---
+
+### Phase 6 — Policy/Audit UI Surfaces
+
+**Files:**
+- `packages/control/src/components/AuditPanel.tsx` (new) — paginated audit table, filter bar, privacy badges, auto-refresh
+- `packages/control/src/App.tsx` (modified) — Audit Log tab, global ApprovalModal
+
+---
+
+### Phase 7 — Sandbox Abstraction Interface
+
+**Files:**
+- `packages/core/src/sandbox/SandboxProvider.ts` (new) — `SandboxProvider` interface, `SandboxCapabilities`, `SandboxExecOptions`, `SandboxExecResult`, error types
+- `packages/core/src/sandbox/LocalSandboxProvider.ts` (new) — wraps child_process.spawn; active sandboxes tracked; SIGTERM/SIGKILL timeout
+- `packages/core/src/sandbox/DockerSandboxProvider.ts` (new) — stub; throws NotImplementedError; activated by `KRYTHOR_SANDBOX=docker`
+- `packages/core/src/index.ts` (modified) — exports all sandbox types
+
+---
+
+### Phase 8 — CLI Operator Commands
+
+**Files:**
+- `packages/setup/src/GuardrailsCLI.ts` (new) — five operator commands
+- `packages/setup/src/index.ts` (modified) — exports GuardrailsCLI functions
+- `start.js` (modified) — wires policy/audit/config commands; adds COMMAND_HELP entries
+
+**New commands:**
+- `krythor policy check` — validate active policy file
+- `krythor policy doctor` — deep policy health diagnostics
+- `krythor audit tail [--limit N] [--outcome X] [--agent X] [--json]`
+- `krythor audit explain <event-id>`
+- `krythor config init-guardrails [--yes]`
+
+---
+
+### Documentation
+
+**New docs:**
+- `docs/guardrails.md` — architecture overview, component summary, CLI reference
+- `docs/policy-format.md` — policy file schema, examples, validation
+- `docs/approval-flow.md` — approval lifecycle, REST API, UI
+- `docs/privacy-routing.md` — sensitivity labels, rerouting logic, audit integration
+- `docs/audit-logs.md` — log format, CLI commands, REST API, AuditPanel
+
+**Updated:**
+- `KNOWN_ISSUES.md` — DockerSandboxProvider stub, audit log rotation, LocalSandboxProvider isolation
+- `README.md` — Guardrails Stack feature entry
+
+---
+
+### Test results
+
+All packages passing (full `pnpm -r test` run):
+- guard: 40 tests
+- models: 26 tests
+- core: 142 tests
+- gateway: 443 tests (+ 3 skipped)
+- setup: 31 tests
+- skills: 10 tests
+- memory: passing
+
+---
+
 # AI Changelog — Pass 2026-03-22 (#16 Channels, #18 Discovery — v2.0.0)
 
 **Model:** Claude Sonnet 4.6
