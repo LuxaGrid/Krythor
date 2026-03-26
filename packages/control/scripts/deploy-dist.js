@@ -70,11 +70,15 @@ if (existsSync(assetsDir)) {
 cpSync(srcDist, installDist, { recursive: true, force: true });
 console.log(`\x1b[32m✔ UI deployed to ~/.krythor\x1b[0m`);
 
-// ── 3. Deploy gateway dist to ~/.krythor if binary install exists ─────────────
-const gatewayInstallDist = join(homedir(), '.krythor', 'packages', 'gateway', 'dist');
-const gatewaySrcDist = join(root, '..', 'gateway', 'dist');
-
-if (existsSync(gatewayInstallDist) && existsSync(gatewaySrcDist)) {
-  cpSync(gatewaySrcDist, gatewayInstallDist, { recursive: true, force: true });
-  console.log(`\x1b[32m✔ Gateway deployed to ~/.krythor\x1b[0m`);
+// ── 3. Deploy all workspace package dists to ~/.krythor ───────────────────────
+// Gateway loads @krythor/* packages from the install location's node_modules at
+// runtime (they are external in tsup config). All must be kept in sync.
+const workspacePkgs = ['gateway', 'core', 'memory', 'models', 'guard', 'skills', 'setup'];
+for (const pkg of workspacePkgs) {
+  const installPkgDist = join(homedir(), '.krythor', 'packages', pkg, 'dist');
+  const srcPkgDist = join(root, '..', pkg, 'dist');
+  if (existsSync(installPkgDist) && existsSync(srcPkgDist)) {
+    cpSync(srcPkgDist, installPkgDist, { recursive: true, force: true });
+    console.log(`\x1b[32m✔ ${pkg} deployed to ~/.krythor\x1b[0m`);
+  }
 }
