@@ -1,0 +1,116 @@
+# Krythor Gateway — Policy Defaults
+# ───────────────────────────────────
+# Sensible defaults for all supported operation types at the gateway layer.
+# This file is informational; the runtime policy lives in
+# <dataDir>/config/policy.json
+# Run `krythor config init-guardrails` to materialise these defaults.
+
+version: "1"
+defaultAction: allow
+
+# Operations and their default behaviours:
+#
+#   memory:read      → allow   (low risk)
+#   memory:write     → allow   (warn on user scope)
+#   memory:delete    → allow   (warn)
+#   memory:export    → allow   (warn)
+#   model:infer      → allow   (low risk)
+#   agent:run        → allow   (medium risk)
+#   agent:create     → allow   (medium risk)
+#   agent:delete     → allow   (warn)
+#   command:execute  → allow   (medium risk; consider require-approval for agents)
+#   provider:add     → allow   (warn; deny from non-user sources)
+#   provider:delete  → deny    (from agent/skill/system), allow from user
+#   skill:execute    → allow   (medium risk)
+#   skill:create     → allow   (medium risk)
+#   skill:delete     → allow   (warn)
+#   network:fetch    → allow   (low risk)
+#   network:search   → allow   (warn from agent)
+#   webhook:call     → allow   (warn)
+
+rules:
+  - id: gw-deny-provider-delete-nonuser
+    name: Block non-user provider deletion
+    enabled: true
+    priority: 10
+    condition:
+      operations: [provider:delete]
+      sources: [agent, skill, system]
+    action: deny
+    reason: Provider deletion must be user-initiated.
+    description: Prevents agents and skills from removing model providers.
+
+  - id: gw-deny-provider-add-nonuser
+    name: Block non-user provider addition
+    enabled: true
+    priority: 12
+    condition:
+      operations: [provider:add]
+      sources: [agent, skill]
+    action: deny
+    reason: Adding providers must be user-initiated.
+    description: Prevents agents from registering new model providers.
+
+  - id: gw-deny-agent-user-scope-write
+    name: Block agent writes to user scope
+    enabled: true
+    priority: 20
+    condition:
+      operations: [memory:write]
+      sources: [agent]
+      scopes: [user]
+    action: deny
+    reason: Agents cannot write to user-scope memory.
+    description: Protects persistent user-scope memory from agent modification.
+
+  - id: gw-warn-destructive-ops
+    name: Warn on destructive operations
+    enabled: true
+    priority: 30
+    condition:
+      operations: [memory:delete, agent:delete, provider:delete, skill:delete]
+    action: warn
+    reason: Destructive operation — cannot be undone.
+    description: Advisory warning for any delete-class operation.
+
+  - id: gw-warn-user-scope-write
+    name: Warn on user-scope writes
+    enabled: true
+    priority: 40
+    condition:
+      operations: [memory:write]
+      scopes: [user]
+    action: warn
+    reason: Writing to user-scope memory has persistent, cross-session effects.
+    description: Flags writes that will persist beyond the current session.
+
+  - id: gw-warn-agent-search
+    name: Warn on agent web search
+    enabled: true
+    priority: 55
+    condition:
+      operations: [network:search]
+      sources: [agent]
+    action: warn
+    reason: Agent-initiated web search — results may influence model output.
+    description: Advisory for agent-driven searches.
+
+  - id: gw-warn-webhook
+    name: Warn on outbound webhooks
+    enabled: true
+    priority: 60
+    condition:
+      operations: [webhook:call]
+    action: warn
+    reason: Outbound webhook detected — verify the endpoint is trusted.
+    description: Advisory for any outbound webhook call.
+
+  - id: gw-warn-memory-export
+    name: Warn on memory export
+    enabled: true
+    priority: 90
+    condition:
+      operations: [memory:export]
+    action: warn
+    reason: Memory export may include sensitive cross-session data.
+    description: Advisory for bulk memory export operations.

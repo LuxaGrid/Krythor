@@ -6,6 +6,7 @@ export type OperationType =
   | 'memory:write'
   | 'memory:delete'
   | 'memory:read'
+  | 'memory:export'
   | 'model:infer'
   | 'agent:run'
   | 'agent:create'
@@ -15,7 +16,10 @@ export type OperationType =
   | 'provider:delete'
   | 'skill:execute'
   | 'skill:create'
-  | 'skill:delete';
+  | 'skill:delete'
+  | 'network:fetch'
+  | 'network:search'
+  | 'webhook:call';
 
 export type RiskLevel = 'low' | 'medium' | 'high' | 'critical';
 
@@ -85,6 +89,7 @@ export const OPERATION_RISK: Record<OperationType, RiskLevel> = {
   'memory:read':      'low',
   'memory:write':     'medium',
   'memory:delete':    'high',
+  'memory:export':    'high',
   'model:infer':      'low',
   'agent:run':        'medium',
   'agent:create':     'medium',
@@ -95,6 +100,9 @@ export const OPERATION_RISK: Record<OperationType, RiskLevel> = {
   'skill:execute':    'medium',
   'skill:create':     'medium',
   'skill:delete':     'high',
+  'network:fetch':    'low',
+  'network:search':   'low',
+  'webhook:call':     'medium',
 };
 
 export const RISK_ORDER: Record<RiskLevel, number> = {

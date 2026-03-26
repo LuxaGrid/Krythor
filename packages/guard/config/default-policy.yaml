@@ -1,0 +1,166 @@
+# Krythor Default Policy Configuration
+# ─────────────────────────────────────
+# This file documents all supported operations and their sensible defaults.
+# Copy and modify as needed. The canonical runtime policy lives in
+# <dataDir>/config/policy.json — use `krythor config init-guardrails` to
+# write these defaults there as YAML, then load with PolicyLoader.
+#
+# Action values: allow | deny | warn | require-approval
+# Priority: lower number = evaluated first (10, 20, 30, ...)
+# Source values: user | agent | skill | system
+
+version: "1"
+defaultAction: allow
+
+rules:
+  # ── Provider rules ─────────────────────────────────────────────────────────
+
+  - id: builtin-deny-provider-delete
+    name: Block provider deletion from non-user sources
+    description: Only user-initiated provider deletions are allowed
+    enabled: true
+    priority: 10
+    condition:
+      operations:
+        - provider:delete
+      sources:
+        - agent
+        - skill
+        - system
+    action: deny
+    reason: Provider deletion must be initiated by a user, not an agent or skill.
+
+  - id: builtin-deny-provider-add-from-agent
+    name: Block agent-initiated provider additions
+    description: Agents should not be able to register new model providers
+    enabled: true
+    priority: 15
+    condition:
+      operations:
+        - provider:add
+      sources:
+        - agent
+        - skill
+    action: deny
+    reason: Adding providers must be user-initiated.
+
+  # ── Memory rules ───────────────────────────────────────────────────────────
+
+  - id: builtin-deny-user-scope-from-agent
+    name: Block agent writes to user scope
+    description: Agents cannot write to user-scope memory directly
+    enabled: true
+    priority: 20
+    condition:
+      operations:
+        - memory:write
+      sources:
+        - agent
+      scopes:
+        - user
+    action: deny
+    reason: Agents are not permitted to write to user-scope memory.
+
+  - id: builtin-warn-user-scope-write
+    name: Warn on user-scope memory writes
+    description: Warn whenever anything writes to user-scope memory
+    enabled: true
+    priority: 40
+    condition:
+      operations:
+        - memory:write
+      scopes:
+        - user
+    action: warn
+    reason: Writing to user-scope memory has persistent, cross-session effects.
+
+  - id: builtin-warn-high-risk-delete
+    name: Warn on high-risk delete operations
+    description: Emit a warning when any delete operation is performed
+    enabled: true
+    priority: 30
+    condition:
+      operations:
+        - memory:delete
+        - agent:delete
+        - provider:delete
+        - skill:delete
+    action: warn
+    reason: Destructive operation — this cannot be undone.
+
+  # ── Network / fetch rules ──────────────────────────────────────────────────
+
+  - id: default-allow-network-fetch
+    name: Allow network fetch by default
+    description: Web fetch operations are allowed from any source
+    enabled: false   # disabled — here as a template
+    priority: 50
+    condition:
+      operations:
+        - network:fetch
+    action: allow
+    reason: Network fetch permitted by default policy.
+
+  - id: default-warn-network-search
+    name: Warn on web search from agent
+    description: Web searches triggered by agents generate a warning
+    enabled: true
+    priority: 55
+    condition:
+      operations:
+        - network:search
+      sources:
+        - agent
+    action: warn
+    reason: Agent-initiated web search — results may influence model output.
+
+  - id: default-warn-webhook-call
+    name: Warn on outbound webhook calls
+    description: Webhook calls trigger a warning regardless of source
+    enabled: true
+    priority: 60
+    condition:
+      operations:
+        - webhook:call
+    action: warn
+    reason: Outbound webhook detected — verify the target endpoint is trusted.
+
+  # ── Agent / skill rules ────────────────────────────────────────────────────
+
+  - id: default-allow-model-infer
+    name: Allow model inference by default
+    description: Model inference is low-risk and allowed from all sources
+    enabled: false   # disabled — here as a template; default policy handles this
+    priority: 70
+    condition:
+      operations:
+        - model:infer
+    action: allow
+    reason: Model inference permitted by default policy.
+
+  - id: default-require-approval-command-from-agent
+    name: Require approval for agent-initiated shell commands
+    description: Shell execution triggered by agents requires explicit user approval
+    enabled: false   # disabled by default — enable for stricter environments
+    priority: 80
+    condition:
+      operations:
+        - command:execute
+      sources:
+        - agent
+        - skill
+    action: require-approval
+    reason: Agent-initiated shell execution requires user approval.
+
+  # ── Export rules ───────────────────────────────────────────────────────────
+
+  - id: default-warn-memory-export
+    name: Warn on memory export
+    description: Exporting memory data generates a warning
+    enabled: true
+    priority: 90
+    condition:
+      operations:
+        - memory:export
+    action: warn
+    reason: Memory export may include sensitive cross-session data.
