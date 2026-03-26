@@ -386,7 +386,7 @@ function drawBridge(ctx: CanvasRenderingContext2D, W: number, H: number, PX: num
   ctx.fillStyle = grad;
   ctx.fillRect(vsX, vsY, vsW, vsH);
 
-  // ── Brain planet — animated ───────────────────────────────────────────────
+  // ── Cybernetic Brain Planet — animated ────────────────────────────────────
   const nebX = vsX + vsW * 0.5, nebY = vsY + vsH * 0.5;
   const PR = vsW * 0.115; // planet radius
 

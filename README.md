@@ -56,7 +56,7 @@ This is **AI you can operate**.
 * **Outbound channels** — webhook notifications on lifecycle events (agent runs, memory, providers); HMAC-SHA256 signed; compatible with Zapier, n8n, Discord/Slack incoming webhooks
 * **LAN discovery** — gateways on the same network find each other automatically via UDP multicast; manual peer registration for cross-network pairing
 * **Gateway identity** — stable UUID per installation; capability manifest at `GET /api/gateway/info`
-* **Command Center** — live animated operations view with a "thinking brain" planet, mythic-tech agent entities (Atlas, Voltaris, Aethon, Thyros, Pyron), resizable panels, and real-time event-driven animation
+* **Command Center** — live animated operations view with a Cybernetic Brain Planet, mythic-tech agent entities (Atlas, Voltaris, Aethon, Thyros, Pyron), resizable panels, and real-time event-driven animation
 * **Customizable tab bar** — pin/unpin any of the 16 tabs into the top bar; persisted to localStorage; `+ Tabs` dropdown to manage all panels
 * **Resizable sidebars** — every panel with a sidebar has a draggable resize handle; widths persist across sessions
 * **Ctrl+K command palette** — global fuzzy-search command palette for instant tab navigation, new chat, and more
@@ -84,9 +84,9 @@ This is **AI you can operate**.
 
 The **Command Center** tab is a live animated scene that shows what your AI agents are doing right now.
 
-### Brain Planet
+### Cybernetic Brain Planet
 
-The centerpiece of the Command Center viewscreen is a **"thinking brain" planet** — a fully animated canvas-rendered sphere that visualizes the gateway's processing activity:
+The centerpiece of the Command Center viewscreen is a **Cybernetic Brain Planet** — a fully animated canvas-rendered sphere that visualizes the gateway's processing activity:
 
 - **Rotating latitude bands** — multiple elliptical rings rotate at different speeds, clipped to the sphere, giving the impression of a scanning or processing globe
 - **Meridian arcs** — longitude lines rotate in the opposite direction, creating a cross-hatched neural grid
@@ -550,7 +550,7 @@ The dashboard has a customizable tab bar — click **+ Tabs** to pin or unpin an
 | **Chat Channels** | Connect Telegram, Discord, or WhatsApp as inbound bot channels |
 | **Custom Tools** | Define webhook tools; test-fire each one from the UI |
 | **Config Editor** | Edit raw configuration files with JSON validation |
-| **Command Center** | Live animated scene with brain planet, agent entities, and command log |
+| **Command Center** | Live animated scene with Cybernetic Brain Planet, agent entities, and command log |
 
 ---
 
@@ -1165,7 +1165,7 @@ To uninstall: remove the application folder (`~/.krythor`) and the data folder a
 * [x] Auto-versioning from git commit count — version always reflects latest push
 * [x] Outbound webhook channels (10 event types, HMAC signing, delivery stats)
 * [x] LAN peer discovery (mDNS UDP multicast) + manual peer registry
-* [x] Command Center — live animated agent scene with brain planet, distinct agent silhouettes, state machine, zone transitions, energy paths, ambient reactor, focus mode, resizable panels, and command log
+* [x] Command Center — live animated agent scene with Cybernetic Brain Planet, distinct agent silhouettes, state machine, zone transitions, energy paths, ambient reactor, focus mode, resizable panels, and command log
 * [x] Customizable tab bar — pin/unpin any of 16 panels; persisted to localStorage
 * [x] Resizable sidebars on all panels — drag handles persist widths across sessions
 * [x] Ctrl+K global command palette with fuzzy search
