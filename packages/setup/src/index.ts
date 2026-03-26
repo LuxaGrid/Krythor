@@ -4,3 +4,11 @@ export { Installer } from './Installer.js';
 export { probe } from './SystemProbe.js';
 export type { ProbeResult } from './SystemProbe.js';
 export type { ProviderEntry, ProvidersFile } from './Installer.js';
+export {
+  runPolicyCheck,
+  runPolicyDoctor,
+  runAuditTail,
+  runAuditExplain,
+  runInitGuardrails,
+  resolveDataDir,
+} from './GuardrailsCLI.js';

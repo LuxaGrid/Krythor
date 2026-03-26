@@ -1814,6 +1814,88 @@ const COMMAND_HELP = {
       'After uninstalling, also remove the PATH entry from your shell config.',
     ],
   },
+  'policy check': {
+    summary: 'Validate the active guardrails policy file',
+    detail: [
+      'Usage: krythor policy check',
+      '',
+      'Reads the policy file from <configDir>/policy.{json,yaml} or',
+      '<configDir>/guardrails/policy.yaml and validates:',
+      '  - File is parseable',
+      '  - defaultAction is a known value (allow/deny/warn/require-approval)',
+      '  - All rules have required fields (operation, action)',
+      '  - All operation types are recognised',
+      '  - All action values are valid',
+      '',
+      'Exit 0 if valid, exit 1 on any error.',
+    ],
+  },
+  'policy doctor': {
+    summary: 'Deep guardrails policy health diagnostics',
+    detail: [
+      'Usage: krythor policy doctor',
+      '',
+      'Runs extended policy health checks beyond basic validation:',
+      '  - Config directory exists',
+      '  - Guardrails subdirectory exists',
+      '  - Policy file present and parseable',
+      '  - defaultAction is "deny" (strict mode recommendation)',
+      '  - Audit log directory exists',
+      '  - Policy has at least one rule',
+      '',
+      'Prints PASS / WARN / FAIL per check.',
+    ],
+  },
+  'audit tail': {
+    summary: 'Print recent entries from the audit log',
+    detail: [
+      'Usage: krythor audit tail [--limit N] [--outcome <outcome>] [--agent <id>] [--json]',
+      '',
+      'Reads from <dataDir>/logs/audit.ndjson and prints the last N events.',
+      '',
+      'Flags:',
+      '  --limit N          Number of events to show (default: 20)',
+      '  --outcome <value>  Filter by outcome: success, error, blocked, timeout',
+      '  --agent <id>       Filter by agentId or agentName (substring match)',
+      '  --json             Output raw JSON array instead of formatted table',
+      '',
+      'Requires the gateway to have run at least once to create the log file.',
+    ],
+  },
+  'audit explain': {
+    summary: 'Print full detail for one audit event',
+    detail: [
+      'Usage: krythor audit explain <event-id>',
+      '',
+      'Searches the audit log for an event whose ID starts with <event-id>.',
+      'Prints a human-readable summary followed by the full raw JSON.',
+      '',
+      'Useful for investigating blocked actions, policy decisions, and',
+      'privacy rerouting decisions.',
+      '',
+      'Example:',
+      '  krythor audit tail --outcome blocked',
+      '  krythor audit explain 3f2a1b',
+    ],
+  },
+  'config init-guardrails': {
+    summary: 'Scaffold default guardrails policy files',
+    detail: [
+      'Usage: krythor config init-guardrails [--yes]',
+      '',
+      'Creates:',
+      '  <configDir>/guardrails/policy.yaml — default policy with sensible rules',
+      '  <dataDir>/logs/                     — audit log directory',
+      '',
+      'Flags:',
+      '  --yes   Overwrite existing policy file without prompting',
+      '',
+      'Safe to run on a fresh install. Will not overwrite an existing policy',
+      'file unless --yes is passed.',
+      '',
+      'After running, validate with: krythor policy check',
+    ],
+  },
   'security-audit': {
     summary: 'Run a security hardening check (7 checks, scored)',
     detail: [
@@ -1899,7 +1981,9 @@ function runHelp() {
 }
 
 // ── Allow `node start.js doctor` as an alias for the doctor command ────────
-if (process.argv.includes('doctor')) {
+// Guard: only fire when argv[2] === 'doctor', not when 'doctor' is a sub-arg
+// (e.g. `krythor policy doctor` must not trigger this block)
+if (process.argv[2] === 'doctor' || (process.argv.includes('doctor') && !['policy', 'audit', 'config'].includes(process.argv[2] || ''))) {
   const doctorScript = join(__dirname, 'packages', 'setup', 'dist', 'bin', 'setup.js');
   // Pass --test-providers through if present
   const testFlag = process.argv.includes('--test-providers') ? ' --test-providers' : '';
@@ -2057,6 +2141,58 @@ else if (process.argv[2] === 'service') {
     console.log('  krythor service uninstall  Remove the auto-start registration');
     process.exit(0);
   }
+}
+// ── krythor policy check / policy doctor ──────────────────────────────────
+else if (process.argv[2] === 'policy') {
+  const setupDist = join(__dirname, 'packages', 'setup', 'dist', 'index.js');
+  if (!existsSync(setupDist)) {
+    console.error('\x1b[31mSetup package not built. Run: pnpm build\x1b[0m');
+    process.exit(1);
+  }
+  const { runPolicyCheck, runPolicyDoctor } = require(setupDist);
+  const sub = process.argv[3];
+  if (sub === 'check') {
+    runPolicyCheck();
+  } else if (sub === 'doctor') {
+    runPolicyDoctor();
+  } else {
+    console.error('\x1b[31mUsage: krythor policy <check|doctor>\x1b[0m');
+    process.exit(1);
+  }
+}
+// ── krythor audit tail / audit explain ────────────────────────────────────
+else if (process.argv[2] === 'audit') {
+  const setupDist = join(__dirname, 'packages', 'setup', 'dist', 'index.js');
+  if (!existsSync(setupDist)) {
+    console.error('\x1b[31mSetup package not built. Run: pnpm build\x1b[0m');
+    process.exit(1);
+  }
+  const { runAuditTail, runAuditExplain } = require(setupDist);
+  const sub  = process.argv[3];
+  const rest = process.argv.slice(4);
+  if (sub === 'tail') {
+    runAuditTail(rest);
+  } else if (sub === 'explain') {
+    const eventId = rest[0];
+    if (!eventId) {
+      console.error('\x1b[31mUsage: krythor audit explain <event-id>\x1b[0m');
+      process.exit(1);
+    }
+    runAuditExplain(eventId);
+  } else {
+    console.error('\x1b[31mUsage: krythor audit <tail|explain> [...options]\x1b[0m');
+    process.exit(1);
+  }
+}
+// ── krythor config init-guardrails ─────────────────────────────────────────
+else if (process.argv[2] === 'config' && process.argv[3] === 'init-guardrails') {
+  const setupDist = join(__dirname, 'packages', 'setup', 'dist', 'index.js');
+  if (!existsSync(setupDist)) {
+    console.error('\x1b[31mSetup package not built. Run: pnpm build\x1b[0m');
+    process.exit(1);
+  }
+  const { runInitGuardrails } = require(setupDist);
+  runInitGuardrails(process.argv.slice(4));
 }
 // ── krythor security-audit ─────────────────────────────────────────────────
 else if (process.argv[2] === 'security-audit') {
