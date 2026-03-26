@@ -6,7 +6,7 @@ import type { ModelEngine } from '@krythor/models';
 import type { ExecTool } from '../tools/ExecTool.js';
 import { AgentRegistry } from './AgentRegistry.js';
 import { AgentRunner } from './AgentRunner.js';
-import type { LearningRecorder, HandoffResolver, CustomToolDispatcher, SpawnAgentResolver } from './AgentRunner.js';
+import type { LearningRecorder, HandoffResolver, CustomToolDispatcher, SpawnAgentResolver, GuardLike } from './AgentRunner.js';
 import type {
   AgentDefinition,
   AgentRun,
@@ -74,6 +74,7 @@ export class AgentOrchestrator extends EventEmitter {
   private handoffResolver: HandoffResolver | null = null;
   private customToolDispatcher: CustomToolDispatcher | null = null;
   private spawnAgentResolver: SpawnAgentResolver | null = null;
+  private guardInstance: GuardLike | null = null;
 
   constructor(
     private readonly memory: MemoryEngine | null,
@@ -85,7 +86,7 @@ export class AgentOrchestrator extends EventEmitter {
     super();
     const dir = configDir ?? getConfigDir();
     this.registry = new AgentRegistry(dir);
-    this.runner = new AgentRunner(memory, models, recordLearning, execTool ?? null, null, null, null);
+    this.runner = new AgentRunner(memory, models, recordLearning, execTool ?? null, null, null, null, null);
     // Wire the handoff resolver — dispatches {"handoff":"<id>","message":"..."} to another agent
     this.handoffResolver = async (targetAgentId: string, message: string): Promise<string | null> => {
       const agent = this.registry.getById(targetAgentId);
@@ -147,6 +148,7 @@ export class AgentOrchestrator extends EventEmitter {
       this.handoffResolver,
       this.customToolDispatcher,
       this.spawnAgentResolver,
+      this.guardInstance,
     );
   }
 
@@ -164,7 +166,18 @@ export class AgentOrchestrator extends EventEmitter {
       this.handoffResolver,
       this.customToolDispatcher,
       this.spawnAgentResolver,
+      this.guardInstance,
     );
+  }
+
+  /**
+   * Wire in a GuardLike after construction.
+   * When set, agent tool calls for web_search, web_fetch, and webhook:call
+   * will be checked against the guard policy before execution.
+   */
+  setGuard(guard: GuardLike): void {
+    this.guardInstance = guard;
+    this.rebuildRunner();
   }
 
   /**

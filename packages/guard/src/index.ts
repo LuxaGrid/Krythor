@@ -6,6 +6,7 @@ export type { AuditEntry } from './GuardAuditLog.js';
 export { loadPolicyFromYaml, mergePolicyConfigs } from './PolicyLoader.js';
 export { normalizeAction, toGuardContext } from './ActionNormalizer.js';
 export type { NormalizedAction, ActionInput } from './ActionNormalizer.js';
+export { BlockedActionError } from './errors.js';
 
 export type {
   GuardAction,

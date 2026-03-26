@@ -14,6 +14,29 @@ import type {
   AgentEvent,
 } from './types.js';
 
+// ── Minimal guard interface (duck-typed to avoid circular dependency) ──────────
+// AgentRunner accepts any object that implements check() — including GuardEngine.
+
+interface GuardVerdict {
+  allowed: boolean;
+  action: string;
+  reason: string;
+  warnings: string[];
+}
+
+interface GuardContext {
+  operation: string;
+  source: string;
+  sourceId?: string;
+  content?: string;
+  metadata?: Record<string, unknown>;
+}
+
+/** Minimal guard interface — matches GuardEngine.check() signature */
+export interface GuardLike {
+  check(ctx: GuardContext): GuardVerdict;
+}
+
 type EventEmitter = (event: AgentEvent) => void;
 
 // ── Tool-call constants ───────────────────────────────────────────────────────
@@ -242,6 +265,7 @@ export class AgentRunner {
     private readonly handoffResolver?: HandoffResolver | null,
     private readonly customToolDispatcher?: CustomToolDispatcher | null,
     private readonly spawnAgentResolver?: SpawnAgentResolver | null,
+    private readonly guard?: GuardLike | null,
   ) {}
 
   // ── Private helpers ────────────────────────────────────────────────────────
@@ -362,6 +386,22 @@ export class AgentRunner {
         }
       }
     } else if (call.tool === 'web_search') {
+      // Guard check — network:search
+      if (this.guard) {
+        const verdict = this.guard.check({
+          operation: 'network:search',
+          source: 'agent',
+          sourceId: agentId,
+          content: call.query,
+        });
+        if (!verdict.allowed) {
+          toolResult = `Tool web_search blocked by policy: ${verdict.reason}`;
+          const toolMsg: AgentMessage = { role: 'user', content: toolResult, timestamp: Date.now() };
+          messages.push(toolMsg);
+          emit({ type: 'run:turn', runId, agentId, payload: { turn: -1, message: toolMsg }, timestamp: Date.now() });
+          return true;
+        }
+      }
       try {
         const result = await webSearchTool.search(call.query);
         if (result.results.length === 0) {
@@ -378,6 +418,22 @@ export class AgentRunner {
         toolResult = `Tool web_search failed: ${err instanceof Error ? err.message : String(err)}`;
       }
     } else if (call.tool === 'web_fetch') {
+      // Guard check — network:fetch
+      if (this.guard) {
+        const verdict = this.guard.check({
+          operation: 'network:fetch',
+          source: 'agent',
+          sourceId: agentId,
+          metadata: { url: call.url },
+        });
+        if (!verdict.allowed) {
+          toolResult = `Tool web_fetch blocked by policy: ${verdict.reason}`;
+          const toolMsg: AgentMessage = { role: 'user', content: toolResult, timestamp: Date.now() };
+          messages.push(toolMsg);
+          emit({ type: 'run:turn', runId, agentId, payload: { turn: -1, message: toolMsg }, timestamp: Date.now() });
+          return true;
+        }
+      }
       try {
         const result = await webFetchTool.fetch(call.url);
         if ('error' in result && result.error === 'SSRF_BLOCKED') {
@@ -465,6 +521,22 @@ export class AgentRunner {
         }
       }
     } else if (call.tool === 'custom') {
+      // Guard check — webhook:call (custom tools are typically webhook-backed)
+      if (this.guard) {
+        const verdict = this.guard.check({
+          operation: 'webhook:call',
+          source: 'agent',
+          sourceId: agentId,
+          metadata: { toolName: call.name },
+        });
+        if (!verdict.allowed) {
+          toolResult = `Tool "${call.name}" blocked by policy: ${verdict.reason}`;
+          const toolMsg: AgentMessage = { role: 'user', content: toolResult, timestamp: Date.now() };
+          messages.push(toolMsg);
+          emit({ type: 'run:turn', runId, agentId, payload: { turn: -1, message: toolMsg }, timestamp: Date.now() });
+          return true;
+        }
+      }
       if (!this.customToolDispatcher) {
         toolResult = `Tool "${call.name}" called but no custom tool dispatcher is configured.`;
       } else {

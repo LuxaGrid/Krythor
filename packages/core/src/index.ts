@@ -26,7 +26,7 @@ export type { SoulMetadata } from './SystemIdentityProvider.js';
 export { AgentOrchestrator, RunQueueFullError } from './agents/AgentOrchestrator.js';
 export { AgentRegistry } from './agents/AgentRegistry.js';
 export { AgentRunner } from './agents/AgentRunner.js';
-export type { LearningSignal, LearningRecorder, HandoffResolver, CustomToolDispatcher, SpawnAgentResolver } from './agents/AgentRunner.js';
+export type { LearningSignal, LearningRecorder, HandoffResolver, CustomToolDispatcher, SpawnAgentResolver, GuardLike } from './agents/AgentRunner.js';
 
 export type { CommandResult } from './KrythorCore.js';
 export type {

@@ -664,6 +664,10 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   // orchestrator was constructed before execTool is available).
   orchestrator.setExecTool(execTool);
 
+  // Wire the guard engine into the orchestrator so agent tool calls for
+  // web_search, web_fetch, and webhook:call are checked by policy.
+  orchestrator.setGuard(guard);
+
   // Custom tool store — persists user-defined webhook tools to custom-tools.json
   const customToolStore = new CustomToolStore(join(dataDir, 'config'));
   const webhookTool = new WebhookTool();
