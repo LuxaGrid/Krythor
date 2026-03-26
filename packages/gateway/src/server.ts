@@ -43,6 +43,8 @@ import { InboundChannelManager } from './InboundChannelManager.js';
 import { PeerRegistry } from './PeerRegistry.js';
 import { registerOpenAICompatRoutes } from './routes/openai.compat.js';
 import { registerPluginRoutes } from './routes/plugins.js';
+import { registerApprovalRoutes } from './routes/approvals.js';
+import { ApprovalManager } from './ApprovalManager.js';
 import { HeartbeatEngine, type HeartbeatRunRecord, type HeartbeatInsight } from './heartbeat/HeartbeatEngine.js';
 import { logger } from './logger.js';
 import { loadOrCreateToken, verifyToken } from './auth.js';
@@ -417,6 +419,9 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   // Initialise guard (loads/creates policy.json on first run)
   const guard = new GuardEngine(join(dataDir, 'config'), dataDir);
 
+  // Approval manager — handles require-approval guard decisions
+  const approvalManager = new ApprovalManager();
+
   // Guard decision audit store — shares the same SQLite connection as memory
   const guardDecisionStore = new GuardDecisionStore(memory.db);
 
@@ -724,6 +729,7 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   registerLocalModelsRoute(app);
   registerConfigPortabilityRoutes(app, models);
   registerPluginRoutes(app, pluginLoader);
+  registerApprovalRoutes(app, approvalManager);
   registerStreamWs(app, core, () => authCfg.token, guard);
 
   // Templates endpoint — lists workspace template files available in the user's data dir.

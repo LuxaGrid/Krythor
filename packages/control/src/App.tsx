@@ -23,6 +23,7 @@ import { CustomToolsPanel } from './components/CustomToolsPanel.tsx';
 import { ChannelsPanel } from './components/ChannelsPanel.tsx';
 import { ChatChannelsPanel } from './components/ChatChannelsPanel.tsx';
 import { FileBrowserPanel } from './components/FileBrowserPanel.tsx';
+import { ApprovalModal } from './components/ApprovalModal.tsx';
 
 // ── App Config Context ─────────────────────────────────────────────────────
 interface AppConfigCtx {
@@ -737,6 +738,8 @@ function AppInner({ onTokenReady }: { onTokenReady: (token: string) => void }) {
         {showTour && !showOnboarding && <WalkthroughTour onClose={() => setShowTour(false)} />}
         {showAbout && <AboutDialog health={healthData} onClose={() => setShowAbout(false)} />}
         {showPalette && <CommandPalette onClose={() => setShowPalette(false)} actions={paletteActions} />}
+        {/* Approval modal — rendered globally so it appears above all tab content */}
+        <ApprovalModal token={getGatewayToken()} />
 
         <StatusBar
           health={healthData}
