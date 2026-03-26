@@ -238,6 +238,48 @@ export const TOOL_REGISTRY: ToolEntry[] = [
     requiresGuard: false,
     alwaysAllowed: false,
   },
+  {
+    name: 'shell_exec',
+    description:
+      'Execute a shell command without allowlist restrictions. ' +
+      'Requires standard or full_access access profile on the invoking agent. ' +
+      'Guard engine must permit the "shell:exec" operation.',
+    parameters: {
+      command: {
+        type:        'string',
+        description: 'The command to execute (e.g. "ls", "python3").',
+        required:    true,
+        minLength:   1,
+        maxLength:   4096,
+      },
+      args: {
+        type:        'array',
+        description: 'Arguments to pass to the command. Each element must be a string.',
+      },
+      cwd: {
+        type:        'string',
+        description: 'Working directory for the process. Must be an absolute path.',
+        maxLength:   4096,
+      },
+      timeoutMs: {
+        type:        'integer',
+        description: 'Timeout in milliseconds (1000–300000). Default: 30000.',
+      },
+    },
+    requiresGuard: true,
+    alwaysAllowed: false,
+  },
+  {
+    name: 'list_processes',
+    description:
+      'List currently running system processes. ' +
+      'Requires standard or full_access access profile on the invoking agent. ' +
+      'Guard engine must permit the "shell:list_processes" operation. ' +
+      'Returns an array of { pid, name, cmd?, cpu?, mem? } objects.',
+    parameters: {},
+    requiresGuard: true,
+    alwaysAllowed: false,
+  },
 ];
 
 /** Look up a tool entry by name. Returns undefined if not registered. */

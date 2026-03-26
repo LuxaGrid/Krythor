@@ -851,3 +851,40 @@ export async function killProcess(pid: number, signal?: string, agentId?: string
   if (!r.ok) throw new Error(await r.text());
   return r.json() as Promise<{ ok: boolean; pid: number; signal: string }>;
 }
+
+// ── File tools ─────────────────────────────────────────────────────────────────
+
+export interface FileStatResult {
+  path: string; exists: boolean; isFile?: boolean; isDirectory?: boolean;
+  size?: number; mtime?: string; ctime?: string;
+}
+export interface FileDirEntry {
+  name: string; path: string; isFile: boolean; isDirectory: boolean; size?: number; mtime?: string;
+}
+export interface FileListResult { path: string; entries: FileDirEntry[]; }
+export interface FileReadResult { path: string; content: string; size: number; encoding: string; }
+export interface FileWriteResult { path: string; written: number; }
+
+export async function fileStat(path: string, agentId?: string): Promise<FileStatResult> {
+  return req<FileStatResult>('POST', '/tools/files/stat', { path, ...(agentId && { agentId }) });
+}
+
+export async function fileList(path: string, agentId?: string): Promise<FileListResult> {
+  return req<FileListResult>('POST', '/tools/files/list', { path, ...(agentId && { agentId }) });
+}
+
+export async function fileRead(path: string, agentId?: string): Promise<FileReadResult> {
+  return req<FileReadResult>('POST', '/tools/files/read', { path, ...(agentId && { agentId }) });
+}
+
+export async function fileWrite(path: string, content: string, agentId?: string): Promise<FileWriteResult> {
+  return req<FileWriteResult>('POST', '/tools/files/write', { path, content, ...(agentId && { agentId }) });
+}
+
+export async function fileMkdir(path: string, agentId?: string): Promise<{ path: string }> {
+  return req<{ path: string }>('POST', '/tools/files/mkdir', { path, ...(agentId && { agentId }) });
+}
+
+export async function fileDelete(path: string, recursive?: boolean, agentId?: string): Promise<{ path: string }> {
+  return req<{ path: string }>('POST', '/tools/files/delete', { path, ...(recursive !== undefined && { recursive }), ...(agentId && { agentId }) });
+}

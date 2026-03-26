@@ -22,6 +22,7 @@ import { ConfigEditorPanel } from './components/ConfigEditorPanel.tsx';
 import { CustomToolsPanel } from './components/CustomToolsPanel.tsx';
 import { ChannelsPanel } from './components/ChannelsPanel.tsx';
 import { ChatChannelsPanel } from './components/ChatChannelsPanel.tsx';
+import { FileBrowserPanel } from './components/FileBrowserPanel.tsx';
 
 // ── App Config Context ─────────────────────────────────────────────────────
 interface AppConfigCtx {
@@ -35,7 +36,7 @@ export const AppConfigContext = createContext<AppConfigCtx>({
 export const useAppConfig = () => useContext(AppConfigContext);
 
 // ── Tabs ──────────────────────────────────────────────────────────────────
-type Tab = 'command' | 'agents' | 'skills' | 'memory' | 'models' | 'guard' | 'events' | 'mission' | 'command-center' | 'workflow' | 'dashboard' | 'settings' | 'logs' | 'config-editor' | 'custom-tools' | 'channels' | 'chat-channels';
+type Tab = 'command' | 'agents' | 'skills' | 'memory' | 'models' | 'guard' | 'events' | 'mission' | 'command-center' | 'workflow' | 'dashboard' | 'settings' | 'logs' | 'config-editor' | 'custom-tools' | 'channels' | 'chat-channels' | 'file-browser';
 
 // Primary tabs — always visible
 const PRIMARY_TABS: { id: Tab; label: string; hint: string }[] = [
@@ -60,6 +61,7 @@ const ADVANCED_TABS: { id: Tab; label: string; hint: string }[] = [
   { id: 'custom-tools', label: 'Custom Tools',    hint: 'Register webhook-backed tools for agents' },
   { id: 'channels',      label: 'Channels',       hint: 'Outbound webhooks that fire on Krythor events' },
   { id: 'chat-channels', label: 'Chat Channels',  hint: 'Inbound Telegram, Discord, WhatsApp bot channels' },
+  { id: 'file-browser',  label: 'File Browser',   hint: 'Browse and edit files on the gateway host' },
 ];
 
 const ALL_TABS = [...PRIMARY_TABS, ...ADVANCED_TABS];
@@ -776,6 +778,7 @@ function AppInner({ onTokenReady }: { onTokenReady: (token: string) => void }) {
           <div className={`h-full ${tab === 'custom-tools' ? 'block' : 'hidden'}`}><CustomToolsPanel /></div>
           <div className={`h-full ${tab === 'channels'      ? 'block' : 'hidden'}`}><ChannelsPanel /></div>
           <div className={`h-full ${tab === 'chat-channels' ? 'block' : 'hidden'}`}><ChatChannelsPanel /></div>
+          <div className={`h-full ${tab === 'file-browser'  ? 'block' : 'hidden'}`}><FileBrowserPanel /></div>
         </div>
       </div>
     </AppConfigContext.Provider>

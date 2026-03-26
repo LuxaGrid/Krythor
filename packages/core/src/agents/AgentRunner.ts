@@ -43,11 +43,14 @@ type WriteFileCall     = { tool: 'write_file';     path: string; content: string
 type EditFileCall      = { tool: 'edit_file';      path: string; old: string; new: string };
 type ApplyPatchCall    = { tool: 'apply_patch';    path: string; patch: string };
 type GetPageTextCall   = { tool: 'get_page_text';  url: string };
+type ShellExecCall     = { tool: 'shell_exec';     command: string; args?: string[]; cwd?: string; timeoutMs?: number };
+type ListProcessesCall = { tool: 'list_processes' };
 type CustomCall        = { tool: 'custom';          name: string;   input: string };
 type SpawnAgentCall    = { tool: 'spawn_agent';     agentId: string; message: string };
 type AnyToolCall       = ExecCall | WebSearchCall | WebFetchCall
   | ReadFileCall | WriteFileCall | EditFileCall | ApplyPatchCall
   | GetPageTextCall
+  | ShellExecCall | ListProcessesCall
   | CustomCall | SpawnAgentCall;
 
 /**
@@ -126,6 +129,19 @@ function extractToolCall(response: string): AnyToolCall | null {
 
     if (tool === 'get_page_text' && typeof parsed['url'] === 'string' && parsed['url'].length > 0) {
       return { tool: 'get_page_text', url: parsed['url'] as string };
+    }
+
+    if (tool === 'shell_exec' && typeof parsed['command'] === 'string' && parsed['command'].length > 0) {
+      const args = Array.isArray(parsed['args'])
+        ? (parsed['args'] as unknown[]).filter(a => typeof a === 'string').map(String)
+        : undefined;
+      const cwd = typeof parsed['cwd'] === 'string' ? parsed['cwd'] : undefined;
+      const timeoutMs = typeof parsed['timeoutMs'] === 'number' ? parsed['timeoutMs'] : undefined;
+      return { tool: 'shell_exec', command: parsed['command'] as string, args, cwd, timeoutMs };
+    }
+
+    if (tool === 'list_processes') {
+      return { tool: 'list_processes' };
     }
 
     // Custom webhook tool — any other tool name with an "input" field
@@ -415,6 +431,37 @@ export class AgentRunner {
           }
         } catch (err) {
           toolResult = `spawn_agent "${call.agentId}" failed: ${err instanceof Error ? err.message : String(err)}`;
+        }
+      }
+    } else if (call.tool === 'shell_exec') {
+      if (!this.customToolDispatcher) {
+        toolResult = `Tool "shell_exec" called but no shell tool dispatcher is configured.`;
+      } else {
+        try {
+          const input = JSON.stringify({ command: call.command, args: call.args, cwd: call.cwd, timeoutMs: call.timeoutMs });
+          const result = await this.customToolDispatcher('shell_exec', input, agentId);
+          if (result === null) {
+            toolResult = `Tool "shell_exec" is not available.`;
+          } else {
+            toolResult = `Tool result for shell_exec:\n${result}`;
+          }
+        } catch (err) {
+          toolResult = `Tool "shell_exec" failed: ${err instanceof Error ? err.message : String(err)}`;
+        }
+      }
+    } else if (call.tool === 'list_processes') {
+      if (!this.customToolDispatcher) {
+        toolResult = `Tool "list_processes" called but no shell tool dispatcher is configured.`;
+      } else {
+        try {
+          const result = await this.customToolDispatcher('list_processes', '{}', agentId);
+          if (result === null) {
+            toolResult = `Tool "list_processes" is not available.`;
+          } else {
+            toolResult = `Tool result for list_processes:\n${result}`;
+          }
+        } catch (err) {
+          toolResult = `Tool "list_processes" failed: ${err instanceof Error ? err.message : String(err)}`;
         }
       }
     } else if (call.tool === 'custom') {

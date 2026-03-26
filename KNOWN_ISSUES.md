@@ -2,11 +2,15 @@
 
 ## Active
 
-### WhatsApp Live Session requires @whiskeysockets/baileys
-- **Status:** Not installed by default
-- **Impact:** WhatsApp inbound channels show `not_installed` status until baileys is installed
-- **Fix:** Run `npm install @whiskeysockets/baileys` in the gateway package, then restart
-- **Detection:** `POST /api/chat-channels/:id/restart` returns `{ ok: false, error: "WhatsApp requires @whiskeysockets/baileys..." }`
+### WhatsApp Live Session — QR Pairing Required
+- **Status:** Installed (baileys v7.0.0-rc.9)
+- **Impact:** WhatsApp inbound channels require a one-time QR code scan to link to a WhatsApp account
+- **Setup:**
+  1. Add a WhatsApp channel in the Chat Channels tab
+  2. Click "Get Pairing Code" — this starts the session and generates a QR code logged to the gateway console
+  3. Scan the QR with WhatsApp on your phone (Linked Devices → Link a Device)
+  4. The channel status will change to `connected` once paired
+- **Note:** Auth state persists in `~/.krythor/whatsapp-session/` — no re-scan needed after restart
 
 ### Node.js Version Mismatch (binary install)
 - **Status:** Known

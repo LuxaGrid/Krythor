@@ -27,6 +27,7 @@ import { registerCustomToolRoutes } from './routes/tools.custom.js';
 import { registerFileToolRoutes } from './routes/tools.file.js';
 import { registerShellToolRoutes } from './routes/tools.shell.js';
 import { AccessProfileStore } from './AccessProfileStore.js';
+import { ShellToolDispatcher } from './ShellToolDispatcher.js';
 import { registerProviderRoutes } from './routes/providers.js';
 import { registerOAuthRoutes } from './routes/oauth.js';
 import { registerLocalModelsRoute } from './routes/local-models.js';
@@ -667,8 +668,22 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   const customToolStore = new CustomToolStore(join(dataDir, 'config'));
   const webhookTool = new WebhookTool();
 
-  // Wire custom tool dispatcher into orchestrator so agents can call webhook tools
-  orchestrator.setCustomToolDispatcher(async (toolName: string, input: string) => {
+  // Access profile store — persists per-agent filesystem access levels.
+  // Constructed before the custom tool dispatcher so ShellToolDispatcher can
+  // reference it synchronously at dispatch time.
+  const accessProfileStore = new AccessProfileStore(join(dataDir, 'config'));
+
+  // Shell tool dispatcher — routes shell_exec and list_processes tool calls
+  // through the access profile + guard layer before executing.
+  const shellDispatcher = new ShellToolDispatcher(guard, accessProfileStore);
+
+  // Wire custom tool dispatcher into orchestrator so agents can call shell and webhook tools.
+  // Dispatch order: shell tools first, then custom webhook tools.
+  orchestrator.setCustomToolDispatcher(async (toolName: string, input: string, agentId: string) => {
+    // Shell tools — profile-checked and guard-checked by ShellToolDispatcher
+    const shellResult = await shellDispatcher.dispatch(agentId, toolName, input);
+    if (shellResult !== null) return shellResult;
+    // Webhook / custom tools
     const tool = customToolStore.get(toolName);
     if (!tool) return null;
     return webhookTool.run(tool, input);
@@ -685,9 +700,6 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   const gatewayId = loadOrCreateGatewayId(join(dataDir, 'config'));
   const channelMgr = new ChannelManager(join(dataDir, 'config'), gatewayId);
   const channelEmit = (event: string, data: Record<string, unknown>) => channelMgr.emit(event as import('./ChannelManager.js').ChannelEvent, data);
-
-  // Access profile store — persists per-agent filesystem access levels
-  const accessProfileStore = new AccessProfileStore(join(dataDir, 'config'));
 
   // Register routes
   registerCommandRoute(app, core, orchestrator, broadcast, guard, convStore);
