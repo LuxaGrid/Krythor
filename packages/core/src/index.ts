@@ -27,6 +27,10 @@ export { AgentOrchestrator, RunQueueFullError } from './agents/AgentOrchestrator
 export { AgentRegistry } from './agents/AgentRegistry.js';
 export { AgentRunner } from './agents/AgentRunner.js';
 export type { LearningSignal, LearningRecorder, HandoffResolver, CustomToolDispatcher, SpawnAgentResolver, GuardLike } from './agents/AgentRunner.js';
+export { SandboxNotFoundError, NotImplementedError } from './sandbox/SandboxProvider.js';
+export type { SandboxCapabilities, SandboxExecOptions, SandboxExecResult, SandboxProvider } from './sandbox/SandboxProvider.js';
+export { LocalSandboxProvider } from './sandbox/LocalSandboxProvider.js';
+export { DockerSandboxProvider, createSandboxProvider } from './sandbox/DockerSandboxProvider.js';
 
 export type { CommandResult } from './KrythorCore.js';
 export type {
