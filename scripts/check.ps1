@@ -61,7 +61,7 @@ $host_     = '127.0.0.1'
 Write-Host ""
 Write-Host "  ╔═══════════════════════════════════════════╗" -ForegroundColor Cyan
 Write-Host "  ║        KRYTHOR — System Health Check       ║" -ForegroundColor Cyan
-Write-Host "  ║              v0.1.0 · $(Get-Date -Format 'yyyy-MM-dd HH:mm')        ║" -ForegroundColor Cyan
+Write-Host "  ║              v0.2.1 · $(Get-Date -Format 'yyyy-MM-dd HH:mm')        ║" -ForegroundColor Cyan
 Write-Host "  ╚═══════════════════════════════════════════╝" -ForegroundColor Cyan
 Write-Host ""
 
@@ -438,6 +438,122 @@ if ($Verbose -and (Get-Command pnpm -ErrorAction SilentlyContinue)) {
 }
 
 # =============================================================================
+#  7b. CHANNEL SYSTEM VALIDATION
+# =============================================================================
+
+Write-Section "7b · Channel System"
+
+$chatChannelsFile = Join-Path $dataDir 'config\chat-channels.json'
+if (Test-Path $chatChannelsFile) {
+    try {
+        $channels = Get-Content $chatChannelsFile -Raw | ConvertFrom-Json
+        $channelCount = @($channels).Count
+        Add-Result 'Channels' 'chat-channels-file' 'PASS' "chat-channels.json: $channelCount channel config(s)"
+        foreach ($ch in $channels) {
+            $status = $ch.status ?? $ch.lastHealthStatus ?? 'unknown'
+            Add-Result 'Channels' "channel-$($ch.id)" 'INFO' "Channel: $($ch.id) ($($ch.type)) — status: $($ch.status ?? 'unknown')"
+        }
+    } catch {
+        Add-Result 'Channels' 'chat-channels-file' 'WARN' 'chat-channels.json parse error'
+    }
+} else {
+    Add-Result 'Channels' 'chat-channels-file' 'INFO' 'No chat channels configured yet (add via Chat Channels tab)'
+}
+
+# Access profiles
+$accessProfilesFile = Join-Path $dataDir 'config\access-profiles.json'
+if (Test-Path $accessProfilesFile) {
+    try {
+        $profiles = Get-Content $accessProfilesFile -Raw | ConvertFrom-Json
+        # profiles is a dict of agentId -> profile
+        $profileCount = ($profiles | Get-Member -MemberType NoteProperty).Count
+        $fullAccessCount = 0
+        foreach ($prop in ($profiles | Get-Member -MemberType NoteProperty)) {
+            if ($profiles.$($prop.Name) -eq 'full_access') { $fullAccessCount++ }
+        }
+        Add-Result 'Channels' 'access-profiles' 'PASS' "Access profiles: $profileCount agent(s) configured"
+        if ($fullAccessCount -gt 0) {
+            Add-Result 'Channels' 'access-profiles-full' 'WARN' "$fullAccessCount agent(s) have full_access profile — review if intentional"
+        }
+    } catch {
+        Add-Result 'Channels' 'access-profiles' 'INFO' 'access-profiles.json not yet created (defaults to safe)'
+    }
+} else {
+    Add-Result 'Channels' 'access-profiles' 'INFO' 'No access profiles file (all agents default to safe profile)'
+}
+
+# =============================================================================
+#  7c. LIVE API VALIDATION
+# =============================================================================
+
+Write-Section "7c · Live API Checks"
+
+# Only run if gateway is reachable (reuse $portInUse from section 5)
+if ($portInUse) {
+    # Read auth token
+    $appCfgPath = Join-Path $dataDir 'config\app-config.json'
+    $authToken = $null
+    if (Test-Path $appCfgPath) {
+        try {
+            $appCfg = Get-Content $appCfgPath -Raw | ConvertFrom-Json
+            $authToken = $appCfg.gatewayToken
+        } catch {}
+    }
+
+    if ($authToken) {
+        $headers = @{ Authorization = "Bearer $authToken" }
+
+        # Chat channels providers endpoint
+        try {
+            $resp = Invoke-RestMethod -Uri "http://${host_}:${port}/api/chat-channels/providers" -Headers $headers -TimeoutSec 3 -ErrorAction Stop
+            $count = @($resp.providers).Count
+            Add-Result 'LiveAPI' 'chat-channels-providers' 'PASS' "/api/chat-channels/providers — $count provider(s) registered"
+        } catch {
+            Add-Result 'LiveAPI' 'chat-channels-providers' 'FAIL' "/api/chat-channels/providers failed: $($_.Exception.Message)"
+        }
+
+        # File audit endpoint
+        try {
+            $resp = Invoke-RestMethod -Uri "http://${host_}:${port}/api/tools/files/audit" -Headers $headers -TimeoutSec 3 -ErrorAction Stop
+            Add-Result 'LiveAPI' 'file-audit' 'PASS' "/api/tools/files/audit — $($resp.total) audit entries"
+        } catch {
+            Add-Result 'LiveAPI' 'file-audit' 'FAIL' "/api/tools/files/audit failed: $($_.Exception.Message)"
+        }
+
+        # Shell processes — expect 403 SHELL_DENIED for default safe profile
+        try {
+            $resp = Invoke-WebRequest -Uri "http://${host_}:${port}/api/tools/shell/processes" -Headers $headers -TimeoutSec 3 -ErrorAction Stop
+            Add-Result 'LiveAPI' 'shell-enforcement' 'WARN' "/api/tools/shell/processes returned 200 — agent may have elevated profile"
+        } catch {
+            $statusCode = $_.Exception.Response.StatusCode.value__
+            if ($statusCode -eq 403) {
+                Add-Result 'LiveAPI' 'shell-enforcement' 'PASS' "/api/tools/shell/processes correctly returns 403 for safe profile"
+            } else {
+                Add-Result 'LiveAPI' 'shell-enforcement' 'WARN' "/api/tools/shell/processes returned $statusCode (expected 403)"
+            }
+        }
+
+        # Default agent access profile
+        try {
+            $resp = Invoke-RestMethod -Uri "http://${host_}:${port}/api/agents/krythor-default/access-profile" -Headers $headers -TimeoutSec 3 -ErrorAction Stop
+            $profile = $resp.profile
+            if ($profile -eq 'full_access') {
+                Add-Result 'LiveAPI' 'default-agent-profile' 'WARN' "Default agent has full_access profile — this is not the default, review if intentional"
+            } else {
+                Add-Result 'LiveAPI' 'default-agent-profile' 'PASS' "Default agent access profile: $profile"
+            }
+        } catch {
+            Add-Result 'LiveAPI' 'default-agent-profile' 'INFO' "Could not check default agent profile: $($_.Exception.Message)"
+        }
+
+    } else {
+        Add-Result 'LiveAPI' 'auth-token' 'WARN' 'Could not read auth token from app-config.json — skipping authenticated checks'
+    }
+} else {
+    Add-Result 'LiveAPI' 'gateway-offline' 'INFO' 'Gateway not running — skipping live API checks'
+}
+
+# =============================================================================
 #  8. KNOWN ISSUES CHECK
 # =============================================================================
 
@@ -445,10 +561,12 @@ Write-Section "8 · Known Issue Checks"
 
 # Check package.json engines field vs actual runtime checks
 $rootPkg = Get-Content (Join-Path $root 'package.json') -Raw | ConvertFrom-Json
-if ($rootPkg.engines.node -eq '>=20') {
-    Add-Result 'Issues' 'node-engines-mismatch' 'WARN' 'package.json engines.node is >=20 but runtime checks enforce >=18' 'Consider aligning to >=18 in package.json'
+$enginesNode = $rootPkg.engines.node
+$nodeMajorRequired = [int](($enginesNode -replace '[^0-9]','').Substring(0, [Math]::Min(2, ($enginesNode -replace '[^0-9]','').Length)))
+if ($nodeMajorRequired -ge 20) {
+    Add-Result 'Issues' 'node-engines' 'PASS' "package.json engines.node: $enginesNode (correct)"
 } else {
-    Add-Result 'Issues' 'node-engines-mismatch' 'PASS' "package.json engines.node: $($rootPkg.engines.node)"
+    Add-Result 'Issues' 'node-engines' 'WARN' "package.json engines.node is $enginesNode — consider updating to >=20"
 }
 
 # Check skills package is a stub
@@ -524,7 +642,7 @@ if ($failCount -gt 0 -and -not $Fix) {
 if ($Json) {
     $summary = @{
         timestamp  = (Get-Date -Format 'o')
-        version    = '0.1.0'
+        version    = '0.2.1'
         passed     = $passCount
         failed     = $failCount
         warnings   = $warnCount
