@@ -61,7 +61,8 @@ export const GATEWAY_HOST = '127.0.0.1';
 // Read version from package.json at module load time — single source of truth.
 function readPackageVersion(): string {
   try {
-    const pkgPath = join(__dirname, '..', '..', 'package.json');
+    // From dist/index.js: ../../.. = install root (~/.krythor) or repo root
+    const pkgPath = join(__dirname, '..', '..', '..', 'package.json');
     const raw = readFileSync(pkgPath, 'utf-8');
     return (JSON.parse(raw) as { version?: string }).version ?? '0.1.0';
   } catch {
