@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { buildServer, GATEWAY_PORT } from '../server.js'
 import { loadOrCreateToken } from '../auth.js'
 import { join } from 'path'
@@ -7,6 +7,7 @@ import { homedir } from 'os'
 let app: Awaited<ReturnType<typeof buildServer>>
 let authToken: string
 const HOST = `127.0.0.1:${GATEWAY_PORT}`
+const createdConvIds: string[] = []
 
 function getDataDir(): string {
   if (process.platform === 'win32') {
@@ -25,6 +26,16 @@ beforeAll(async () => {
   authToken = cfg.token ?? ''
 })
 
+afterAll(async () => {
+  for (const id of createdConvIds) {
+    await app.inject({
+      method: 'DELETE',
+      url: `/api/conversations/${id}`,
+      headers: { authorization: `Bearer ${authToken}`, host: HOST },
+    })
+  }
+})
+
 // ── P3-1: Session idle timeout metadata ────────────────────────────────────
 
 describe('Session idle timeout — GET /api/conversations', () => {
@@ -37,6 +48,8 @@ describe('Session idle timeout — GET /api/conversations', () => {
       body: JSON.stringify({}),
     })
     expect(createRes.statusCode).toBe(201)
+    const created = JSON.parse(createRes.body) as Record<string, unknown>
+    createdConvIds.push(created['id'] as string)
 
     const listRes = await app.inject({
       method: 'GET',
@@ -65,6 +78,7 @@ describe('Session idle timeout — GET /api/conversations', () => {
     })
     const conv = JSON.parse(createRes.body) as Record<string, unknown>
     const convId = conv['id'] as string
+    createdConvIds.push(convId)
 
     const getRes = await app.inject({
       method: 'GET',
@@ -79,13 +93,6 @@ describe('Session idle timeout — GET /api/conversations', () => {
     // Fresh conversation — age should be tiny (under 5 seconds in test)
     expect(fetched['sessionAgeMs'] as number).toBeLessThan(5000)
     expect(fetched['isIdle']).toBe(false)
-
-    // Clean up
-    await app.inject({
-      method: 'DELETE',
-      url: `/api/conversations/${convId}`,
-      headers: { authorization: `Bearer ${authToken}`, host: HOST },
-    })
   })
 
   it('GET /api/conversations/:id returns sessionAgeMs and isIdle', async () => {
@@ -97,6 +104,7 @@ describe('Session idle timeout — GET /api/conversations', () => {
     })
     const conv = JSON.parse(createRes.body) as Record<string, unknown>
     const convId = conv['id'] as string
+    createdConvIds.push(convId)
 
     const getRes = await app.inject({
       method: 'GET',
@@ -108,13 +116,6 @@ describe('Session idle timeout — GET /api/conversations', () => {
 
     expect(typeof fetched['sessionAgeMs']).toBe('number')
     expect(typeof fetched['isIdle']).toBe('boolean')
-
-    // Clean up
-    await app.inject({
-      method: 'DELETE',
-      url: `/api/conversations/${convId}`,
-      headers: { authorization: `Bearer ${authToken}`, host: HOST },
-    })
   })
 
   it('isIdle threshold is 30 minutes (1800000ms)', () => {

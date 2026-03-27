@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { buildServer, GATEWAY_PORT } from '../server.js'
 import { loadOrCreateToken } from '../auth.js'
 import { join } from 'path'
@@ -7,6 +7,7 @@ import { homedir } from 'os'
 let app: Awaited<ReturnType<typeof buildServer>>
 let authToken: string
 const HOST = `127.0.0.1:${GATEWAY_PORT}`
+const createdConvIds: string[] = []
 
 function getDataDir(): string {
   if (process.platform === 'win32') {
@@ -25,6 +26,16 @@ beforeAll(async () => {
   authToken = cfg.token ?? ''
 })
 
+afterAll(async () => {
+  for (const id of createdConvIds) {
+    await app.inject({
+      method: 'DELETE',
+      url: `/api/conversations/${id}`,
+      headers: { authorization: `Bearer ${authToken}`, host: HOST },
+    })
+  }
+})
+
 // ── ITEM B: Session idle timeout enforcement ───────────────────────────────
 
 describe('ITEM B — archived conversations', () => {
@@ -39,6 +50,7 @@ describe('ITEM B — archived conversations', () => {
     expect(createRes.statusCode).toBe(201)
     const conv = JSON.parse(createRes.body) as Record<string, unknown>
     const convId = conv['id'] as string
+    createdConvIds.push(convId)
 
     // Manually archive it by calling the store directly via internal PATCH
     // We simulate this by checking the archived field exists in a fresh conversation
@@ -54,13 +66,6 @@ describe('ITEM B — archived conversations', () => {
       expect(c).toHaveProperty('archived')
       expect(c['archived']).toBe(false)
     }
-
-    // Clean up
-    await app.inject({
-      method: 'DELETE',
-      url: `/api/conversations/${convId}`,
-      headers: { authorization: `Bearer ${authToken}`, host: HOST },
-    })
   })
 
   it('GET /api/conversations returns archived field on each conversation', async () => {
@@ -73,6 +78,7 @@ describe('ITEM B — archived conversations', () => {
     expect(createRes.statusCode).toBe(201)
     const conv = JSON.parse(createRes.body) as Record<string, unknown>
     const convId = conv['id'] as string
+    createdConvIds.push(convId)
 
     const listRes = await app.inject({
       method: 'GET',
@@ -85,13 +91,6 @@ describe('ITEM B — archived conversations', () => {
     for (const c of convs) {
       expect(typeof c['archived']).toBe('boolean')
     }
-
-    // Clean up
-    await app.inject({
-      method: 'DELETE',
-      url: `/api/conversations/${convId}`,
-      headers: { authorization: `Bearer ${authToken}`, host: HOST },
-    })
   })
 
   it('GET /api/conversations?include_archived=true responds 200', async () => {

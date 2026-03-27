@@ -6,7 +6,7 @@
  * 3. POST /api/command with /clear, /model, /agent slash commands
  */
 
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { buildServer, GATEWAY_PORT } from '../server.js';
 import { loadOrCreateToken } from '../auth.js';
 import { join } from 'path';
@@ -15,6 +15,7 @@ import { homedir } from 'os';
 let app: Awaited<ReturnType<typeof buildServer>>;
 let authToken: string;
 const HOST = `127.0.0.1:${GATEWAY_PORT}`;
+const createdConvIds: string[] = [];
 
 function getDataDir(): string {
   if (process.platform === 'win32') {
@@ -33,6 +34,16 @@ beforeAll(async () => {
   authToken = cfg.token ?? '';
 });
 
+afterAll(async () => {
+  for (const id of createdConvIds) {
+    await app.inject({
+      method: 'DELETE',
+      url: `/api/conversations/${id}`,
+      headers: { authorization: `Bearer ${authToken}`, host: HOST },
+    });
+  }
+});
+
 async function createConv(): Promise<{ id: string }> {
   const res = await app.inject({
     method: 'POST',
@@ -41,7 +52,9 @@ async function createConv(): Promise<{ id: string }> {
     payload: JSON.stringify({}),
   });
   expect(res.statusCode).toBe(201);
-  return JSON.parse(res.body) as { id: string };
+  const conv = JSON.parse(res.body) as { id: string };
+  createdConvIds.push(conv.id);
+  return conv;
 }
 
 async function addMessage(convId: string, role: string, content: string): Promise<void> {
