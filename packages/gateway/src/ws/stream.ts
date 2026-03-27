@@ -1,143 +1,319 @@
+// ─── Gateway WebSocket stream ─────────────────────────────────────────────────
+//
+// Implements the typed Gateway WS protocol:
+//
+//   1. First frame MUST be req:connect (mandatory handshake)
+//   2. Auth is validated inside the connect frame (not URL params)
+//   3. Device pairing: loopback auto-approved; remote requires approval
+//   4. After handshake: typed req/res + server-push events
+//
+// Supported request methods (post-connect):
+//   health        — GET /api/health equivalent
+//   agent.run     — run an agent by id
+//   command       — run a text command via KrythorCore
+//
+// Events pushed by the server:
+//   agent:event   — lifecycle + stream chunks from agent runs
+//   heartbeat     — periodic health snapshot
+//
+
 import type { FastifyInstance } from 'fastify';
 import type { KrythorCore } from '@krythor/core';
 import type { GuardEngine } from '@krythor/guard';
 import { verifyToken } from '../auth.js';
+import { logger } from '../logger.js';
+import {
+  parseFrame,
+  makeRes,
+  makeEvent,
+  type ConnectParams,
+  type ConnectPayload,
+} from './protocol.js';
+import { DevicePairingStore } from './DevicePairingStore.js';
 
-// Heartbeat interval — ping every 30s, close if no pong within 10s.
+// ── Tunables ─────────────────────────────────────────────────────────────────
+
 const PING_INTERVAL_MS     = 30_000;
 const PONG_TIMEOUT_MS      = 10_000;
-// Max simultaneous WS connections — prevents resource exhaustion.
 const MAX_WS_CONNECTIONS   = 10;
-// Max connection lifetime — forces reconnect, re-validating the token.
 const MAX_CONNECTION_AGE_MS = 4 * 60 * 60 * 1000; // 4 hours
+const MAX_FRAME_BYTES      = 65_536; // 64 KB
 
 // Module-level connection counter
 let activeConnections = 0;
 
+// ── Loopback detection ────────────────────────────────────────────────────────
+
+function isLoopback(ip: string): boolean {
+  return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1' || ip === 'localhost';
+}
+
+// ── registerStreamWs ─────────────────────────────────────────────────────────
+
 export function registerStreamWs(
   app: FastifyInstance,
   core: KrythorCore,
-  // getToken is a function so token rotation is reflected without restart
   getToken: () => string,
   guard: GuardEngine,
+  deviceStore?: DevicePairingStore,
+  gatewayId = 'local',
+  gatewayVersion = '0.0.0',
 ): void {
+  let eventSeq = 0;
+
   app.get('/ws/stream', { websocket: true }, (socket, request) => {
-    // ── Connection cap ─────────────────────────────────────────────────────────
+    // ── Connection cap ─────────────────────────────────────────────────────
     if (activeConnections >= MAX_WS_CONNECTIONS) {
-      socket.send(JSON.stringify({ type: 'error', error: 'Too many connections' }));
+      socket.send(JSON.stringify(makeEvent('error', { error: 'Too many connections' })));
       socket.close(4029, 'Too many connections');
       return;
     }
 
-    // ── Auth check — token is passed as ?token= because browser WS APIs
-    // cannot set arbitrary headers.
-    const supplied = (request.query as Record<string, string>)['token'];
-    if (!verifyToken(supplied, getToken())) {
-      socket.send(JSON.stringify({ type: 'error', error: 'Unauthorized' }));
-      socket.close(4001, 'Unauthorized');
-      return;
-    }
+    const remoteIp = request.ip;
+    let handshakeDone = false;
+    let connectedDeviceId: string | null = null;
+    let connectedToken: string | undefined; // token used in the connect handshake
 
     activeConnections++;
 
-    // ── Max connection lifetime ────────────────────────────────────────────────
-    // Force a reconnect after MAX_CONNECTION_AGE_MS. This ensures any token
-    // rotation is picked up without waiting for the client to disconnect.
+    // ── Max connection lifetime ─────────────────────────────────────────────
     const maxAgeTimer = setTimeout(() => {
-      socket.send(JSON.stringify({ type: 'reconnect', reason: 'max_connection_age' }));
-      socket.close(4000, 'Max connection age reached — please reconnect');
+      socket.send(JSON.stringify(makeEvent('reconnect', { reason: 'max_connection_age' })));
+      socket.close(4000, 'Max connection age — please reconnect');
     }, MAX_CONNECTION_AGE_MS);
 
-    // ── Keepalive heartbeat ────────────────────────────────────────────────────
-    // Send a ping frame every PING_INTERVAL_MS. If the client does not respond
-    // with a pong within PONG_TIMEOUT_MS the connection is assumed dead and
-    // terminated. This prevents silent half-open connections from accumulating.
-    let pongReceived = true; // treat as alive on first tick
+    // ── Keepalive heartbeat ─────────────────────────────────────────────────
+    let pongReceived = true;
     let pongTimer: ReturnType<typeof setTimeout> | null = null;
 
     const pingInterval = setInterval(() => {
-      if (!pongReceived) {
-        // Previous ping went unanswered — close the stale connection
-        socket.terminate();
-        return;
-      }
+      if (!pongReceived) { socket.terminate(); return; }
       pongReceived = false;
-      try {
-        socket.ping();
-      } catch {
-        socket.terminate();
-        return;
-      }
-      // Start a deadline timer — if pong does not arrive, terminate
-      pongTimer = setTimeout(() => {
-        if (!pongReceived) socket.terminate();
-      }, PONG_TIMEOUT_MS);
+      try { socket.ping(); } catch { socket.terminate(); return; }
+      pongTimer = setTimeout(() => { if (!pongReceived) socket.terminate(); }, PONG_TIMEOUT_MS);
     }, PING_INTERVAL_MS);
 
     socket.on('pong', () => {
       pongReceived = true;
-      if (pongTimer) {
-        clearTimeout(pongTimer);
-        pongTimer = null;
-      }
+      if (pongTimer) { clearTimeout(pongTimer); pongTimer = null; }
     });
 
-    // ── Per-message token recheck ──────────────────────────────────────────────
-    // Re-validate the token on every message. If the token was rotated after
-    // connection was established, the next message will be rejected.
+    // ── Message handler ─────────────────────────────────────────────────────
     socket.on('message', async (rawMessage: Buffer) => {
-      if (!verifyToken(supplied, getToken())) {
-        socket.send(JSON.stringify({ type: 'error', error: 'Token invalidated — please reconnect' }));
+      if (rawMessage.length > MAX_FRAME_BYTES) {
+        socket.send(JSON.stringify(makeRes('', false, undefined, 'Frame too large (max 64 KB)')));
+        return;
+      }
+
+      const frame = parseFrame(rawMessage.toString());
+      if (!frame) {
+        socket.send(JSON.stringify(makeRes('', false, undefined, 'Invalid frame — must be JSON {type:"req", id, method}')));
+        return;
+      }
+
+      // ── req:connect — mandatory first frame ───────────────────────────────
+      if (frame.method === 'connect') {
+        if (handshakeDone) {
+          socket.send(JSON.stringify(makeRes(frame.id, false, undefined, 'Already connected')));
+          return;
+        }
+
+        const params = (frame.params ?? {}) as ConnectParams;
+
+        // Auth validation
+        const tokenOk = verifyToken(params.auth?.token, getToken());
+        if (!tokenOk) {
+          socket.send(JSON.stringify(makeRes(frame.id, false, undefined, 'Unauthorized')));
+          socket.close(4001, 'Unauthorized');
+          activeConnections = Math.max(0, activeConnections - 1);
+          return;
+        }
+
+        // Device pairing
+        let deviceStatus: ConnectPayload['deviceStatus'] = 'no_device';
+        let issuedDeviceToken: string | undefined;
+
+        if (deviceStore && params.device) {
+          const deviceId = params.device.deviceId;
+
+          const { device, tokenValid } = deviceStore.checkDevice(
+            deviceId,
+            {
+              platform:     params.device.platform,
+              deviceFamily: params.device.deviceFamily,
+              role:         params.device.role ?? 'client',
+              caps:         params.device.caps,
+            },
+            params.deviceToken,
+          );
+
+          connectedDeviceId = deviceId;
+
+          if (device.status === 'denied') {
+            socket.send(JSON.stringify(makeRes(frame.id, false, undefined, 'Device denied')));
+            socket.close(4003, 'Device denied');
+            activeConnections = Math.max(0, activeConnections - 1);
+            return;
+          }
+
+          if (device.status === 'approved' && tokenValid) {
+            deviceStatus = 'approved';
+          } else if (device.status === 'approved' && !tokenValid) {
+            // Token missing or stale — re-issue
+            const updated = deviceStore.approve(deviceId);
+            issuedDeviceToken = updated.deviceToken;
+            deviceStatus = 'approved';
+          } else if (device.status === 'pending' && isLoopback(remoteIp)) {
+            // Auto-approve loopback connects
+            const updated = deviceStore.autoApprove(deviceId);
+            issuedDeviceToken = updated.deviceToken;
+            deviceStatus = 'auto_approved';
+            logger.info('ws:device_auto_approved', { deviceId, ip: remoteIp });
+          } else {
+            // Remote + pending → hold as pending (owner must approve)
+            deviceStatus = 'pending';
+            logger.info('ws:device_pending', { deviceId, ip: remoteIp });
+            // Do NOT close — allow the client to stay connected for approval polling
+          }
+        }
+
+        handshakeDone = true;
+        connectedToken = params.auth?.token ?? (request.query as Record<string, string>)['token'];
+
+        const payload: ConnectPayload = {
+          hello: 'ok',
+          gatewayId,
+          version: gatewayVersion,
+          deviceStatus,
+          ...(issuedDeviceToken ? { deviceToken: issuedDeviceToken } : {}),
+        };
+
+        socket.send(JSON.stringify(makeRes(frame.id, true, payload)));
+
+        // Emit snapshot events
+        socket.send(JSON.stringify(makeEvent('gateway:ready', {
+          gatewayId,
+          version: gatewayVersion,
+          connectedAt: Date.now(),
+        }, ++eventSeq)));
+
+        return;
+      }
+
+      // ── All other methods require a completed handshake ────────────────────
+      if (!handshakeDone) {
+        socket.send(JSON.stringify(makeRes(frame.id, false, undefined, 'Connect handshake required — send {type:"req",method:"connect"} first')));
+        return;
+      }
+
+      // Per-frame token recheck: only enforce if the gateway token appears to have
+      // changed since the connect handshake. We track the token seen at connect time
+      // and check if it still matches the current gateway token.
+      // This avoids false rejections when clients send frames without re-supplying
+      // the token (which is the normal case post-handshake).
+      if (!verifyToken(connectedToken, getToken())) {
+        socket.send(JSON.stringify(makeRes(frame.id, false, undefined, 'Token invalidated — reconnect required')));
         socket.close(4001, 'Token invalidated');
         return;
       }
-      if (rawMessage.length > 65_536) {
-        socket.send(JSON.stringify({ error: 'Message too large (max 64 KB)' }));
-        return;
-      }
 
-      let input: string;
+      // ── Method dispatch ────────────────────────────────────────────────────
 
       try {
-        const parsed = JSON.parse(rawMessage.toString()) as unknown;
-        if (
-          typeof parsed !== 'object' ||
-          parsed === null ||
-          !('input' in parsed) ||
-          typeof (parsed as Record<string, unknown>).input !== 'string'
-        ) {
-          socket.send(JSON.stringify({ error: 'Message must be JSON with an "input" string field' }));
-          return;
+        switch (frame.method) {
+
+          case 'health': {
+            const models = core.getModels();
+            const stats = models?.stats() ?? { providerCount: 0, modelCount: 0 };
+            socket.send(JSON.stringify(makeRes(frame.id, true, {
+              status: 'ok',
+              providerCount: stats.providerCount,
+              modelCount: stats.modelCount,
+              activeConnections,
+            })));
+            break;
+          }
+
+          case 'command': {
+            const params = (frame.params ?? {}) as Record<string, unknown>;
+            const input = typeof params['input'] === 'string' ? params['input'] : '';
+            if (!input.trim()) {
+              socket.send(JSON.stringify(makeRes(frame.id, false, undefined, 'input required')));
+              break;
+            }
+
+            const verdict = guard.check({ operation: 'command:execute', source: 'user', content: input });
+            if (!verdict.allowed) {
+              socket.send(JSON.stringify(makeRes(frame.id, false, undefined, `Blocked: ${verdict.reason}`)));
+              break;
+            }
+
+            const result = await core.handleCommand(input);
+            socket.send(JSON.stringify(makeRes(frame.id, true, result)));
+            break;
+          }
+
+          case 'agent.run': {
+            const params = (frame.params ?? {}) as Record<string, unknown>;
+            const agentId   = typeof params['agentId'] === 'string' ? params['agentId'] : '';
+            const input     = typeof params['input'] === 'string' ? params['input'] : '';
+            const runId     = typeof params['runId'] === 'string' ? params['runId'] : undefined;
+
+            if (!agentId || !input.trim()) {
+              socket.send(JSON.stringify(makeRes(frame.id, false, undefined, 'agentId and input required')));
+              break;
+            }
+
+            const orch = core.getOrchestrator();
+            if (!orch) {
+              socket.send(JSON.stringify(makeRes(frame.id, false, undefined, 'Orchestrator not available')));
+              break;
+            }
+
+            // Immediately acknowledge with runId
+            const effectiveRunId = runId ?? `ws-${Date.now()}`;
+            socket.send(JSON.stringify(makeRes(frame.id, true, { runId: effectiveRunId, status: 'accepted' })));
+
+            // Run agent and forward events to this socket
+            void orch.runAgent(agentId, { input, runId: effectiveRunId }).then(run => {
+              socket.send(JSON.stringify(makeEvent('agent:completed', {
+                runId: run.id,
+                status: run.status,
+                output: run.output,
+                modelUsed: run.modelUsed,
+              }, ++eventSeq)));
+            }).catch(err => {
+              socket.send(JSON.stringify(makeEvent('agent:error', {
+                runId: effectiveRunId,
+                error: err instanceof Error ? err.message : String(err),
+              }, ++eventSeq)));
+            });
+            break;
+          }
+
+          default: {
+            socket.send(JSON.stringify(makeRes(frame.id, false, undefined, `Unknown method: ${frame.method}`)));
+          }
         }
-        input = (parsed as { input: string }).input;
-      } catch {
-        socket.send(JSON.stringify({ error: 'Invalid JSON' }));
-        return;
-      }
-
-      // Guard check — same policy enforcement as the HTTP /api/command route
-      const verdict = guard.check({ operation: 'command:execute', source: 'user', content: input });
-      if (!verdict.allowed) {
-        socket.send(JSON.stringify({ type: 'error', error: 'GUARD_DENIED', reason: verdict.reason }));
-        return;
-      }
-
-      try {
-        const result = await core.handleCommand(input);
-        socket.send(JSON.stringify({ type: 'result', data: result }));
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'Unknown error';
-        socket.send(JSON.stringify({ type: 'error', error: message }));
+        const message = err instanceof Error ? err.message : String(err);
+        socket.send(JSON.stringify(makeRes(frame.id, false, undefined, message)));
       }
     });
 
+    // ── Cleanup ─────────────────────────────────────────────────────────────
     socket.on('close', () => {
       activeConnections = Math.max(0, activeConnections - 1);
       clearInterval(pingInterval);
       clearTimeout(maxAgeTimer);
       if (pongTimer) clearTimeout(pongTimer);
+      if (connectedDeviceId) {
+        logger.info('ws:device_disconnected', { deviceId: connectedDeviceId, ip: remoteIp });
+      }
     });
-
-    socket.send(JSON.stringify({ type: 'connected', message: 'Krythor Gateway WebSocket ready' }));
   });
+
+  // ── Legacy /ws/stream URL still works (token in query param for old clients)
+  // The legacy path is the same handler — it accepts token in ?token= for
+  // backwards compat and still requires the connect handshake.
 }

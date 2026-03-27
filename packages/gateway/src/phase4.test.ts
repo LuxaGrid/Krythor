@@ -437,35 +437,48 @@ describe('Phase 4 — WebSocket reconnect storm', () => {
     return [app, port];
   }
 
+  /** Helper: open a WS, send connect handshake, wait for ok response, return socket. */
+  async function connectClient(port: number): Promise<WebSocket> {
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws/stream`);
+    await new Promise<void>((resolve, reject) => {
+      ws.once('open', () => {
+        ws.send(JSON.stringify({ type: 'req', id: 'c1', method: 'connect', params: { auth: { token: VALID_TOKEN } } }));
+      });
+      const timer = setTimeout(() => reject(new Error('connect timeout')), 3000);
+      const onMsg = (data: Buffer) => {
+        const parsed = JSON.parse(data.toString()) as Record<string, unknown>;
+        if (parsed['type'] === 'res' && parsed['id'] === 'c1' && parsed['ok'] === true) {
+          clearTimeout(timer);
+          ws.off('message', onMsg);
+          resolve();
+        }
+      };
+      ws.on('message', onMsg);
+      ws.once('error', (err) => { clearTimeout(timer); ws.off('message', onMsg); reject(err); });
+    });
+    return ws;
+  }
+
   it('server survives rapid open/close cycles without crashing', async () => {
     const [app, port] = await startWsServer();
 
     try {
+      // Rapid open/close without handshake — simulates stale connections
       const CYCLES = 20;
       for (let i = 0; i < CYCLES; i++) {
-        const ws = new WebSocket(`ws://127.0.0.1:${port}/ws/stream?token=${VALID_TOKEN}`);
+        const ws = new WebSocket(`ws://127.0.0.1:${port}/ws/stream`);
         await new Promise<void>(resolve => {
           ws.on('open', () => { ws.close(); });
           ws.on('close', resolve);
-          ws.on('error', resolve); // treat errors as "done" for this test
+          ws.on('error', resolve);
         });
       }
 
-      // Server should still respond after the storm
-      const check = new WebSocket(`ws://127.0.0.1:${port}/ws/stream?token=${VALID_TOKEN}`);
-      const finalMessages: string[] = [];
-      await new Promise<void>(resolve => {
-        const timer = setTimeout(resolve, 1000);
-        check.on('message', (data) => finalMessages.push(data.toString()));
-        check.on('close', () => { clearTimeout(timer); resolve(); });
-        check.on('error', () => { clearTimeout(timer); resolve(); });
-      });
-
+      // Server should still accept a valid connect handshake after the storm
+      const check = await connectClient(port);
       check.close();
-      const hasConnected = finalMessages.some(m => {
-        try { return (JSON.parse(m) as { type?: string }).type === 'connected'; } catch { return false; }
-      });
-      expect(hasConnected).toBe(true);
+      // If we got here, the server survived
+      expect(true).toBe(true);
     } finally {
       await app.close();
     }
@@ -505,33 +518,19 @@ describe('Phase 4 — WebSocket reconnect storm', () => {
     }
   }, 15_000);
 
-  it('reconnected client receives connected message after previous disconnect', async () => {
+  it('reconnected client receives connect ok after previous disconnect', async () => {
     const [app, port] = await startWsServer();
 
     try {
-      // First connection
-      const first = new WebSocket(`ws://127.0.0.1:${port}/ws/stream?token=${VALID_TOKEN}`);
-      await new Promise<void>(resolve => {
-        first.on('message', (data) => {
-          const msg = JSON.parse(data.toString()) as { type?: string };
-          if (msg.type === 'connected') { first.close(); resolve(); }
-        });
-        first.on('error', resolve);
-      });
+      // First connection — connect handshake then close
+      const first = await connectClient(port);
+      await new Promise<void>(resolve => { first.once('close', resolve); first.close(); });
 
-      // Reconnect immediately after disconnect
-      const second = new WebSocket(`ws://127.0.0.1:${port}/ws/stream?token=${VALID_TOKEN}`);
-      let reconnectConnected = false;
-      await new Promise<void>(resolve => {
-        const timer = setTimeout(resolve, 1500);
-        second.on('message', (data) => {
-          const msg = JSON.parse(data.toString()) as { type?: string };
-          if (msg.type === 'connected') { reconnectConnected = true; second.close(); clearTimeout(timer); resolve(); }
-        });
-        second.on('error', () => { clearTimeout(timer); resolve(); });
-      });
-
-      expect(reconnectConnected).toBe(true);
+      // Reconnect immediately — should get another ok response
+      const second = await connectClient(port);
+      second.close();
+      // If connectClient resolved without error, reconnect succeeded
+      expect(true).toBe(true);
     } finally {
       await app.close();
     }

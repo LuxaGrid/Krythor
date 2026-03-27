@@ -1787,6 +1787,9 @@ async function runUninstall() {
   const path = require('path');
   const readline = require('readline');
 
+  const skipPrompt = process.argv.includes('--yes') || process.argv.includes('--non-interactive');
+  const removeData = process.argv.includes('--all');
+
   // Determine install dir (where start.js lives) vs data dir (where data lives)
   const installDir = __dirname;
   const dataDir = getDataDirForUpdates();
@@ -1798,20 +1801,28 @@ async function runUninstall() {
   console.log(`  This will remove the Krythor installation at:`);
   console.log(`    ${installDir}`);
   console.log('');
-  console.log(`  Your data at:`);
-  console.log(`    ${dataDir}`);
-  console.log(`  is \x1b[32mpreserved\x1b[0m — it will not be touched.`);
+  if (removeData) {
+    console.log(`  \x1b[33m--all flag set:\x1b[0m your data at:`);
+    console.log(`    ${dataDir}`);
+    console.log(`  will \x1b[31malso be deleted\x1b[0m (settings, memory, agent state).`);
+  } else {
+    console.log(`  Your data at:`);
+    console.log(`    ${dataDir}`);
+    console.log(`  is \x1b[32mpreserved\x1b[0m — it will not be touched.`);
+    console.log(`  To also remove data, pass \x1b[2m--all\x1b[0m.`);
+  }
   console.log('');
 
-  // Prompt
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  const answer = await new Promise(resolve => {
-    rl.question('  Continue? [y/N] ', ans => { rl.close(); resolve(ans.trim().toLowerCase()); });
-  });
-
-  if (answer !== 'y') {
-    console.log('  Uninstall cancelled.');
-    process.exit(0);
+  // Prompt (unless --yes or --non-interactive)
+  if (!skipPrompt) {
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    const answer = await new Promise(resolve => {
+      rl.question('  Continue? [y/N] ', ans => { rl.close(); resolve(ans.trim().toLowerCase()); });
+    });
+    if (answer !== 'y') {
+      console.log('  Uninstall cancelled.');
+      process.exit(0);
+    }
   }
 
   // Stop daemon if running
@@ -1835,13 +1846,23 @@ async function runUninstall() {
     console.log('  You may need to remove it manually.');
   }
 
+  // Optionally remove data directory (--all)
+  if (removeData && fs.existsSync(dataDir)) {
+    try {
+      fs.rmSync(dataDir, { recursive: true, force: true });
+      console.log(`  Removed data: ${dataDir}`);
+    } catch (e) {
+      console.error(`\x1b[31m  Failed to remove data dir ${dataDir}:\x1b[0m ${e.message}`);
+    }
+  }
+
   console.log('');
   console.log('\x1b[32m  Krythor has been uninstalled.\x1b[0m');
   console.log('');
   if (process.platform === 'win32') {
     console.log('  To complete removal, also remove the PATH entry in:');
     console.log('    Settings > System > About > Advanced system settings > Environment Variables');
-    console.log('  Remove the entry pointing to the Krythor bin/ folder.');
+    console.log('  Remove the entry pointing to the Krythor install folder.');
   } else {
     console.log('  To complete removal, remove any PATH entry in your shell config:');
     console.log('    ~/.bashrc, ~/.zshrc, or ~/.profile');
@@ -1915,14 +1936,23 @@ const COMMAND_HELP = {
     ],
   },
   update: {
-    summary: 'Print one-line update instructions',
+    summary: 'Update Krythor to the latest release',
     detail: [
-      'Usage: krythor update',
+      'Usage: krythor update [--dry-run] [--json]',
+      '       krythor update status [--json]',
       '',
-      'Prints the platform-specific one-line installer command to update Krythor.',
-      'Run that command to download and install the latest release.',
+      'Sub-commands:',
+      '  (none)   Download and install the latest Krythor release.',
+      '  status   Show current and latest version without installing.',
+      '',
+      'Flags:',
+      '  --dry-run   Show what would be done without making any changes.',
+      '  --json      Emit status/dry-run output as JSON (useful for scripting).',
       '',
       'Your data, settings, and memory are always preserved during updates.',
+      '',
+      'After updating, run `krythor doctor` to verify the installation,',
+      'then restart with `krythor restart` (or start a new terminal session).',
     ],
   },
   repair: {
@@ -2094,15 +2124,20 @@ const COMMAND_HELP = {
   uninstall: {
     summary: 'Remove the Krythor installation',
     detail: [
-      'Usage: krythor uninstall',
+      'Usage: krythor uninstall [--yes] [--non-interactive] [--all]',
       '',
       'Stops the daemon (if running), then removes the Krythor install directory.',
+      '',
+      'Flags:',
+      '  --yes / --non-interactive   Skip the confirmation prompt (CI / scripted use).',
+      '  --all                       Also delete the data directory (settings, memory,',
+      '                              agent state). Cannot be undone.',
       '',
       'Your data at:',
       `  Windows: %LOCALAPPDATA%\\Krythor`,
       `  macOS:   ~/Library/Application Support/Krythor`,
       `  Linux:   ~/.local/share/krythor`,
-      'is PRESERVED — it is never deleted by uninstall.',
+      'is PRESERVED by default — pass --all to remove it as well.',
       '',
       'After uninstalling, also remove the PATH entry from your shell config.',
     ],
@@ -2409,7 +2444,90 @@ else if (process.argv.includes('update')) {
   (async () => {
     const { execSync, spawnSync } = require('child_process');
     const isGitRepo = existsSync(join(__dirname, '.git'));
+    const isDryRun  = process.argv.includes('--dry-run');
+    const isJsonOut = process.argv.includes('--json');
+    const isSub     = process.argv[3] === 'status';
 
+    // ── krythor update status ─────────────────────────────────────────────
+    if (isSub) {
+      const installKind = isGitRepo ? 'git' : 'binary';
+      let currentVersion = KRYTHOR_VERSION || '?';
+      try {
+        const pkg = JSON.parse(require('fs').readFileSync(join(__dirname, 'package.json'), 'utf8'));
+        currentVersion = pkg.version || currentVersion;
+      } catch {}
+      const upd = await checkForUpdate().catch(() => null);
+      const result = {
+        installKind,
+        currentVersion,
+        latestVersion:    upd?.latestVersion ?? null,
+        updateAvailable:  upd?.updateAvailable ?? false,
+        channel:          'stable',
+        checkCacheFile:   join(getDataDirForUpdates(), 'update-check.json'),
+      };
+      if (isJsonOut) {
+        console.log(JSON.stringify(result, null, 2));
+      } else {
+        const g = '\x1b[32m', y = '\x1b[33m', d = '\x1b[2m', rs = '\x1b[0m';
+        console.log('');
+        console.log(`  ${d}Install kind${rs}      ${result.installKind}`);
+        console.log(`  ${d}Current version${rs}   ${g}${result.currentVersion}${rs}`);
+        console.log(`  ${d}Latest version${rs}    ${result.latestVersion ?? '(unknown)'}`);
+        console.log(`  ${d}Update available${rs}  ${result.updateAvailable ? `${y}yes — run: krythor update${rs}` : `${g}no${rs}`}`);
+        console.log(`  ${d}Channel${rs}           ${result.channel}`);
+        console.log('');
+      }
+      process.exit(0);
+    }
+
+    // ── krythor update --dry-run ──────────────────────────────────────────
+    if (isDryRun) {
+      let currentVersion = KRYTHOR_VERSION || '?';
+      try {
+        const pkg = JSON.parse(require('fs').readFileSync(join(__dirname, 'package.json'), 'utf8'));
+        currentVersion = pkg.version || currentVersion;
+      } catch {}
+      const upd = await checkForUpdate().catch(() => null);
+      const actions = isGitRepo
+        ? ['git pull --ff-only', 'pnpm install', 'pnpm build']
+        : (process.platform === 'win32'
+            ? ['Download and run install.ps1 with UPDATE=1 (PowerShell)']
+            : ['Download and run install.sh with UPDATE=1 (curl | bash)']);
+      const result = {
+        dryRun:          true,
+        installKind:     isGitRepo ? 'git' : 'binary',
+        currentVersion,
+        latestVersion:   upd?.latestVersion ?? null,
+        updateAvailable: upd?.updateAvailable ?? false,
+        plannedActions:  actions,
+        channel:         'stable',
+      };
+      if (isJsonOut) {
+        console.log(JSON.stringify(result, null, 2));
+      } else {
+        const g = '\x1b[32m', y = '\x1b[33m', d = '\x1b[2m', rs = '\x1b[0m';
+        console.log('');
+        console.log(`  ${d}Dry run — no changes will be made${rs}`);
+        console.log('');
+        console.log(`  ${d}Install kind${rs}      ${result.installKind}`);
+        console.log(`  ${d}Current version${rs}   ${result.currentVersion}`);
+        console.log(`  ${d}Latest version${rs}    ${result.latestVersion ?? '(unknown)'}`);
+        console.log(`  ${d}Update available${rs}  ${result.updateAvailable ? `${y}yes${rs}` : `${g}no${rs}`}`);
+        console.log('');
+        console.log(`  ${d}Planned actions:${rs}`);
+        for (const a of actions) console.log(`    • ${a}`);
+        console.log('');
+        if (result.updateAvailable) {
+          console.log(`  Run ${y}krythor update${rs} to apply.`);
+        } else {
+          console.log(`  ${g}Already up to date.${rs}`);
+        }
+        console.log('');
+      }
+      process.exit(0);
+    }
+
+    // ── krythor update (apply) ────────────────────────────────────────────
     console.log('\x1b[36m╔══════════════════════════════════╗\x1b[0m');
     console.log('\x1b[36m║      KRYTHOR — Updating…         ║\x1b[0m');
     console.log('\x1b[36m╚══════════════════════════════════╝\x1b[0m');
@@ -2453,7 +2571,7 @@ else if (process.argv.includes('update')) {
         const result = spawnSync(
           'powershell.exe',
           ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command',
-           'iwr https://raw.githubusercontent.com/LuxaGrid/Krythor/main/install.ps1 -UseBasicParsing | iex'],
+           'iwr https://raw.githubusercontent.com/LuxaGrid/Krythor/main/install.ps1 -UseBasicParsing -NoOnboard | iex'],
           { stdio: 'inherit', env: { ...process.env, UPDATE: '1' } }
         );
         if (result.status !== 0) {
@@ -2461,10 +2579,10 @@ else if (process.argv.includes('update')) {
           process.exit(1);
         }
       } else {
-        // Mac / Linux: curl | bash
+        // Mac / Linux: curl | bash with TLS hardening
         const result = spawnSync(
           'bash',
-          ['-c', 'curl -fsSL https://raw.githubusercontent.com/LuxaGrid/Krythor/main/install.sh | bash'],
+          ['-c', "curl -fsSL --proto '=https' --tlsv1.2 https://raw.githubusercontent.com/LuxaGrid/Krythor/main/install.sh | bash -s -- --no-onboard"],
           { stdio: 'inherit', env: { ...process.env, UPDATE: '1' } }
         );
         if (result.status !== 0) {
@@ -2484,7 +2602,10 @@ else if (process.argv.includes('update')) {
     }
     console.log('');
     console.log('  Your settings, memory, and data were preserved.');
-    console.log('  Run \x1b[36mkrythor start\x1b[0m to launch.');
+    console.log('');
+    console.log('  Next steps:');
+    console.log('    1. Run \x1b[36mkrythor doctor\x1b[0m to verify everything is healthy');
+    console.log('    2. Run \x1b[36mkrythor restart\x1b[0m to restart the gateway with the new version');
     console.log('');
     process.exit(0);
   })();

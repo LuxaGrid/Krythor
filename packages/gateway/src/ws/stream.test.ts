@@ -1,14 +1,11 @@
 /**
  * WebSocket stream endpoint tests.
  *
- * These tests start a real Fastify/WebSocket server on a random port so that
- * actual WS connections can be made with the ws client. This exercises the full
- * auth, message handling, keepalive, and reconnect paths.
- *
  * Tests are isolated: each describe block creates and tears down its own server.
+ * Uses the new typed frame protocol: connect handshake → req/res/event.
  */
 
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import Fastify from 'fastify';
 import fastifyWebsocket from '@fastify/websocket';
 import WebSocket from 'ws';
@@ -20,28 +17,25 @@ import type { GuardEngine } from '@krythor/guard';
 
 const VALID_TOKEN = 'test-token-abc123';
 
-/** Minimal KrythorCore stub that echoes the input back as output. */
+/** Minimal KrythorCore stub. */
 function makeCoreStub(): KrythorCore {
   return {
     handleCommand: async (input: string) => ({ output: `echo: ${input}`, agentId: 'stub' }),
+    getModels: () => null,
+    getOrchestrator: () => null,
   } as unknown as KrythorCore;
 }
 
-/** Minimal GuardEngine stub that allows all commands. */
+/** Allow-all guard stub. */
 function makeGuardAllow(): GuardEngine {
-  return {
-    check: () => ({ allowed: true, reason: '' }),
-  } as unknown as GuardEngine;
+  return { check: () => ({ allowed: true, reason: '', action: 'allow', warnings: [] }) } as unknown as GuardEngine;
 }
 
-/** Minimal GuardEngine stub that denies all commands. */
+/** Deny-all guard stub. */
 function makeGuardDeny(): GuardEngine {
-  return {
-    check: () => ({ allowed: false, reason: 'BLOCKED' }),
-  } as unknown as GuardEngine;
+  return { check: () => ({ allowed: false, reason: 'BLOCKED', action: 'deny', warnings: [] }) } as unknown as GuardEngine;
 }
 
-/** Start a Fastify server with the WS stream endpoint; returns [app, port]. */
 async function startServer(
   getToken: () => string,
   core: KrythorCore,
@@ -56,14 +50,51 @@ async function startServer(
   return [app, port];
 }
 
-/** Connect a WS client and collect all messages until the socket closes or timeout. */
-function collectMessages(ws: WebSocket, timeoutMs = 2000): Promise<string[]> {
-  const messages: string[] = [];
-  return new Promise(resolve => {
-    const timer = setTimeout(() => resolve(messages), timeoutMs);
-    ws.on('message', (data) => messages.push(data.toString()));
-    ws.on('close', () => { clearTimeout(timer); resolve(messages); });
-    ws.on('error', () => { clearTimeout(timer); resolve(messages); });
+/** Wait for a specific message type on a WS connection. */
+function waitForMessage(
+  ws: WebSocket,
+  predicate: (msg: Record<string, unknown>) => boolean,
+  timeoutMs = 3000,
+): Promise<Record<string, unknown>> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('timeout waiting for message')), timeoutMs);
+    ws.on('message', (data) => {
+      try {
+        const parsed = JSON.parse(data.toString()) as Record<string, unknown>;
+        if (predicate(parsed)) {
+          clearTimeout(timer);
+          resolve(parsed);
+        }
+      } catch { /* ignore */ }
+    });
+    ws.on('error', (err) => { clearTimeout(timer); reject(err); });
+  });
+}
+
+/** Send a connect frame and wait for the res:connect response. Cleans up its listener after. */
+async function doConnect(ws: WebSocket, token: string): Promise<Record<string, unknown>> {
+  // Wait for open first
+  await new Promise<void>((resolve, reject) => {
+    if (ws.readyState === WebSocket.OPEN) { resolve(); return; }
+    ws.once('open', resolve);
+    ws.once('error', reject);
+  });
+  ws.send(JSON.stringify({ type: 'req', id: 'conn-1', method: 'connect', params: { auth: { token } } }));
+
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('connect timeout')), 3000);
+    const onMsg = (data: Buffer) => {
+      try {
+        const parsed = JSON.parse(data.toString()) as Record<string, unknown>;
+        if (parsed['type'] === 'res' && parsed['id'] === 'conn-1') {
+          clearTimeout(timer);
+          ws.off('message', onMsg);
+          resolve(parsed);
+        }
+      } catch { /* ignore */ }
+    };
+    ws.on('message', onMsg);
+    ws.once('error', (err) => { clearTimeout(timer); ws.off('message', onMsg); reject(err); });
   });
 }
 
@@ -78,38 +109,51 @@ describe('WS /ws/stream — auth', () => {
   });
   afterAll(async () => { await app.close(); });
 
-  it('sends connected message on valid token', async () => {
-    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws/stream?token=${VALID_TOKEN}`);
-    const messages = await collectMessages(ws, 1000);
-    const connected = messages.find(m => {
-      try { return (JSON.parse(m) as { type?: string }).type === 'connected'; } catch { return false; }
-    });
-    expect(connected).toBeDefined();
+  it('returns ok:true on valid token in connect frame', async () => {
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws/stream`);
+    const res = await doConnect(ws, VALID_TOKEN);
+    expect(res['ok']).toBe(true);
+    const payload = res['payload'] as Record<string, unknown>;
+    expect(payload['hello']).toBe('ok');
     ws.close();
   });
 
-  it('closes with 4001 on invalid token', async () => {
-    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws/stream?token=wrong-token`);
-    const closeCode = await new Promise<number>(resolve => {
+  it('closes with 4001 on invalid token in connect frame', async () => {
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws/stream`);
+    const closeCode = await new Promise<number>((resolve) => {
+      ws.once('open', () => {
+        ws.send(JSON.stringify({ type: 'req', id: 'c1', method: 'connect', params: { auth: { token: 'wrong' } } }));
+      });
       ws.on('close', (code) => resolve(code));
       ws.on('error', () => resolve(0));
+      setTimeout(() => resolve(-1), 3000);
     });
     expect(closeCode).toBe(4001);
   });
 
-  it('closes with 4001 when no token provided', async () => {
+  it('returns error when first frame is not connect', async () => {
     const ws = new WebSocket(`ws://127.0.0.1:${port}/ws/stream`);
-    const closeCode = await new Promise<number>(resolve => {
-      ws.on('close', (code) => resolve(code));
-      ws.on('error', () => resolve(0));
+    await new Promise<void>((resolve, reject) => {
+      ws.once('open', () => {
+        ws.send(JSON.stringify({ type: 'req', id: 'r1', method: 'health' }));
+      });
+      ws.on('message', (data) => {
+        const parsed = JSON.parse(data.toString()) as Record<string, unknown>;
+        if (parsed['type'] === 'res' && parsed['id'] === 'r1') {
+          expect(parsed['ok']).toBe(false);
+          ws.close();
+          resolve();
+        }
+      });
+      ws.on('error', reject);
+      setTimeout(() => reject(new Error('timeout')), 3000);
     });
-    expect(closeCode).toBe(4001);
   });
 });
 
-// ── Message handling ──────────────────────────────────────────────────────────
+// ── Command handling ──────────────────────────────────────────────────────────
 
-describe('WS /ws/stream — message handling', () => {
+describe('WS /ws/stream — command handling', () => {
   let app: ReturnType<typeof Fastify>;
   let port: number;
 
@@ -118,17 +162,17 @@ describe('WS /ws/stream — message handling', () => {
   });
   afterAll(async () => { await app.close(); });
 
-  it('echoes a command back as a result message', async () => {
+  it('handles a command after connect handshake', async () => {
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws/stream`);
+    await doConnect(ws, VALID_TOKEN);
+
     await new Promise<void>((resolve, reject) => {
-      const ws = new WebSocket(`ws://127.0.0.1:${port}/ws/stream?token=${VALID_TOKEN}`);
-      const received: string[] = [];
-      ws.on('open', () => ws.send(JSON.stringify({ input: 'hello' })));
+      ws.send(JSON.stringify({ type: 'req', id: 'r2', method: 'command', params: { input: 'hello' } }));
       ws.on('message', (data) => {
-        received.push(data.toString());
-        const parsed = JSON.parse(data.toString()) as { type?: string };
-        if (parsed.type === 'result') {
+        const parsed = JSON.parse(data.toString()) as Record<string, unknown>;
+        if (parsed['type'] === 'res' && parsed['id'] === 'r2') {
+          expect(parsed['ok']).toBe(true);
           ws.close();
-          expect(received.some(m => m.includes('result'))).toBe(true);
           resolve();
         }
       });
@@ -137,15 +181,17 @@ describe('WS /ws/stream — message handling', () => {
     });
   });
 
-  it('returns error on invalid JSON', async () => {
+  it('returns error on invalid JSON frame', async () => {
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws/stream`);
+    await doConnect(ws, VALID_TOKEN);
+
     await new Promise<void>((resolve, reject) => {
-      const ws = new WebSocket(`ws://127.0.0.1:${port}/ws/stream?token=${VALID_TOKEN}`);
-      ws.on('open', () => ws.send('not json at all'));
+      ws.send('not json at all');
       ws.on('message', (data) => {
-        const parsed = JSON.parse(data.toString()) as { error?: string; type?: string };
-        if (parsed.error && parsed.type !== 'connected') {
+        const parsed = JSON.parse(data.toString()) as Record<string, unknown>;
+        if (parsed['type'] === 'res' && parsed['ok'] === false) {
+          expect(String(parsed['error'])).toMatch(/invalid frame/i);
           ws.close();
-          expect(parsed.error).toMatch(/invalid json/i);
           resolve();
         }
       });
@@ -154,15 +200,17 @@ describe('WS /ws/stream — message handling', () => {
     });
   });
 
-  it('returns error on missing input field', async () => {
+  it('returns error on unknown method', async () => {
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws/stream`);
+    await doConnect(ws, VALID_TOKEN);
+
     await new Promise<void>((resolve, reject) => {
-      const ws = new WebSocket(`ws://127.0.0.1:${port}/ws/stream?token=${VALID_TOKEN}`);
-      ws.on('open', () => ws.send(JSON.stringify({ notInput: 'hi' })));
+      ws.send(JSON.stringify({ type: 'req', id: 'r3', method: 'unknown_method' }));
       ws.on('message', (data) => {
-        const parsed = JSON.parse(data.toString()) as { error?: string; type?: string };
-        if (parsed.error && parsed.type !== 'connected') {
+        const parsed = JSON.parse(data.toString()) as Record<string, unknown>;
+        if (parsed['type'] === 'res' && parsed['id'] === 'r3') {
+          expect(parsed['ok']).toBe(false);
           ws.close();
-          expect(parsed.error).toMatch(/input/i);
           resolve();
         }
       });
@@ -183,15 +231,18 @@ describe('WS /ws/stream — guard enforcement', () => {
   });
   afterAll(async () => { await app.close(); });
 
-  it('returns GUARD_DENIED error when guard blocks the command', async () => {
+  it('returns error when guard blocks a command', async () => {
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws/stream`);
+    await doConnect(ws, VALID_TOKEN);
+
     await new Promise<void>((resolve, reject) => {
-      const ws = new WebSocket(`ws://127.0.0.1:${port}/ws/stream?token=${VALID_TOKEN}`);
-      ws.on('open', () => ws.send(JSON.stringify({ input: 'do something' })));
+      ws.send(JSON.stringify({ type: 'req', id: 'r4', method: 'command', params: { input: 'do something' } }));
       ws.on('message', (data) => {
-        const parsed = JSON.parse(data.toString()) as { type?: string; error?: string };
-        if (parsed.type === 'error') {
+        const parsed = JSON.parse(data.toString()) as Record<string, unknown>;
+        if (parsed['type'] === 'res' && parsed['id'] === 'r4') {
+          expect(parsed['ok']).toBe(false);
+          expect(String(parsed['error'])).toMatch(/BLOCKED/i);
           ws.close();
-          expect(parsed.error).toBe('GUARD_DENIED');
           resolve();
         }
       });
@@ -201,7 +252,7 @@ describe('WS /ws/stream — guard enforcement', () => {
   });
 });
 
-// ── Reconnect / connection cap ────────────────────────────────────────────────
+// ── Connection cap ─────────────────────────────────────────────────────────────
 
 describe('WS /ws/stream — connection cap', () => {
   it('rejects connections beyond MAX_WS_CONNECTIONS (10) with close code 4029', async () => {
@@ -212,7 +263,7 @@ describe('WS /ws/stream — connection cap', () => {
       // Open 10 connections (the cap)
       const opens = Array.from({ length: 10 }, () =>
         new Promise<WebSocket>(resolve => {
-          const ws = new WebSocket(`ws://127.0.0.1:${port}/ws/stream?token=${VALID_TOKEN}`);
+          const ws = new WebSocket(`ws://127.0.0.1:${port}/ws/stream`);
           ws.on('open', () => resolve(ws));
           ws.on('error', () => resolve(ws));
         }),
@@ -222,7 +273,7 @@ describe('WS /ws/stream — connection cap', () => {
 
       // The 11th connection should be rejected with 4029
       const closeCode = await new Promise<number>(resolve => {
-        const ws = new WebSocket(`ws://127.0.0.1:${port}/ws/stream?token=${VALID_TOKEN}`);
+        const ws = new WebSocket(`ws://127.0.0.1:${port}/ws/stream`);
         ws.on('close', code => resolve(code));
         ws.on('error', () => resolve(0));
         setTimeout(() => resolve(-1), 2000);

@@ -715,6 +715,40 @@ This is normal when no real agent runs are happening. The scene runs a pre-scrip
 
 ---
 
+### Moving Krythor to a New Machine
+
+1. **Back up your data** on the old machine:
+   ```bash
+   krythor backup
+   ```
+   This creates a timestamped `.tar.gz` (Mac/Linux) or `.zip` (Windows) in your current directory. Copy the archive to the new machine.
+
+2. **Install Krythor** on the new machine using the one-line installer:
+   ```bash
+   # Mac / Linux
+   curl -fsSL https://raw.githubusercontent.com/LuxaGrid/Krythor/main/install.sh | bash --no-onboard
+
+   # Windows PowerShell
+   iwr https://raw.githubusercontent.com/LuxaGrid/Krythor/main/install.ps1 | iex -NoOnboard
+   ```
+
+3. **Restore your backup** — extract the archive to your data directory:
+   - **Mac:** `~/Library/Application Support/Krythor/`
+   - **Linux:** `~/.local/share/krythor/`
+   - **Windows:** `%LOCALAPPDATA%\Krythor\`
+
+4. **Run repair** to make sure all migrations and native modules are correct for the new machine:
+   ```bash
+   krythor repair --fix
+   ```
+
+5. **Start Krythor** as usual:
+   ```bash
+   krythor
+   ```
+
+---
+
 ## 🔗 Connecting Providers — Detailed Guide
 
 The **Models** tab is where you connect AI providers. Krythor supports local models (free, no internet) and cloud models (pay-per-use, require API keys).

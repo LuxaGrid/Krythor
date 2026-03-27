@@ -11,6 +11,18 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+#### Maintenance & update improvements (2026-03-27)
+
+- **`krythor update status`**: new sub-command that shows `installKind` (git/binary), `currentVersion`, `latestVersion`, and `updateAvailable` without performing an update; supports `--json` for scripted use
+- **`krythor update --dry-run`**: previews the planned update (download URL, current → new version) without applying it; supports `--json`; useful in CI pipelines before scheduling a maintenance window
+- **Post-update hints**: after a successful binary update, Krythor now prints a reminder to run `krythor doctor` and `krythor restart`
+- **TLS-hardened binary self-update**: the inline update curl commands now use `--proto '=https' --tlsv1.2` to prevent protocol downgrade attacks during the update download
+- **`krythor uninstall --yes` / `--non-interactive`**: skip the confirmation prompt for unattended / scripted uninstalls
+- **`krythor uninstall --all`**: also delete the data directory (settings, memory, agent state); shows an explicit warning before proceeding; requires `--yes` or interactive confirmation
+- **`krythor doctor --non-interactive`**: passes through to the underlying setup.js doctor call so automated post-update checks never block on a prompt
+- **COMMAND_HELP: update & uninstall**: both entries now document all flags and sub-commands shown by `krythor help update` / `krythor help uninstall`
+- **README: Migrating to a New Machine**: new troubleshooting section with 5-step guide (backup → fresh install with `--no-onboard` → restore archive → `krythor repair --fix` → start)
+
 #### Install, Docker & Health hardening (2026-03-27)
 
 - **`/healthz` and `/liveness` endpoints**: lightweight liveness probes (always 200 while the process is alive, no auth required); intended for Docker `HEALTHCHECK`, k8s liveness probes, and load balancers that need a fast signal without the full `/health` payload
