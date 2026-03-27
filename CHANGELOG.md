@@ -11,6 +11,13 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+#### Plugin system improvements (2026-03-27)
+
+- **Plugin load status tracking**: `PluginLoader` now records a `PluginLoadRecord` (`{ file, status, name?, description?, reason? }`) for every file scanned — including failures and skipped entries. `listRecords()` returns the full record set from the last `load()` pass
+- **`GET /api/plugins` now returns full record list**: response includes `status: 'loaded' | 'error' | 'skipped'` and a `reason` string for non-loaded entries, enabling the UI to surface plugin load failures without restarting the gateway
+- **`POST /api/plugins/reload`**: new endpoint that hot-reloads all plugins from disk and returns the updated record list — no gateway restart required. Plugin cache is cleared before reload so changed files are picked up
+- **`PluginLoadRecord` exported from `@krythor/core`**: available for typed use in custom gateway extensions and tests
+
 #### Message delivery improvements (2026-03-27)
 
 - **Message deduplication** in TelegramInbound and DiscordInbound: short-lived in-memory caches (`seenUpdateIds` / `seenMessageIds`, bounded at 500 entries, FIFO eviction) prevent the same message from triggering a second agent run on reconnect or poll overlap

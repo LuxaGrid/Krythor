@@ -152,7 +152,41 @@ describe('PluginLoader', () => {
     const loaded = loader.load();
 
     expect(loaded).toHaveLength(0);
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Failed to require plugin'));
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Failed to load'));
     warnSpy.mockRestore();
+  });
+
+  it('listRecords() returns status for all scanned files', () => {
+    const pluginsDir = join(tmpBase, 'plugins');
+    mkdirSync(pluginsDir);
+    writePlugin(pluginsDir, 'good.js', `
+      module.exports = { name: 'good_plugin_r', description: 'Good', async run(i) { return i; } };
+    `);
+    writePlugin(pluginsDir, 'bad.js', `
+      module.exports = { description: 'No name', async run(i) { return i; } };
+    `);
+    writePlugin(pluginsDir, 'throws.js', `throw new Error('boom');`);
+
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const loader = new PluginLoader(tmpBase);
+    loader.load();
+
+    const records = loader.listRecords();
+    expect(records).toHaveLength(3);
+
+    const good = records.find(r => r.file === 'good.js');
+    expect(good?.status).toBe('loaded');
+    expect(good?.name).toBe('good_plugin_r');
+
+    const bad = records.find(r => r.file === 'bad.js');
+    expect(bad?.status).toBe('skipped');
+    expect(bad?.reason).toMatch(/Invalid export/);
+
+    const threw = records.find(r => r.file === 'throws.js');
+    expect(threw?.status).toBe('error');
+    expect(threw?.reason).toMatch(/Failed to load/);
+
+    vi.restoreAllMocks();
   });
 });

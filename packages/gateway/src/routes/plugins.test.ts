@@ -1,19 +1,18 @@
 /**
- * Tests for GET /api/plugins (ITEM C)
+ * Tests for GET /api/plugins and POST /api/plugins/reload
  */
 
 import { describe, it, expect } from 'vitest';
 import Fastify from 'fastify';
 import { registerPluginRoutes } from './plugins.js';
-import type { PluginLoader } from '@krythor/core';
+import type { PluginLoader, PluginLoadRecord } from '@krythor/core';
 
-function makeApp(loadedPlugins: Array<{ name: string; description: string; file: string; run: (input: string) => Promise<string> }>) {
+function makeApp(records: PluginLoadRecord[]) {
   const app = Fastify({ logger: false });
 
   const fakeLoader = {
-    list: () => loadedPlugins,
-    get: (name: string) => loadedPlugins.find(p => p.name === name) ?? null,
-    load: () => loadedPlugins,
+    listRecords: () => records,
+    load: () => [],
   } as unknown as PluginLoader;
 
   registerPluginRoutes(app, fakeLoader);
@@ -30,27 +29,39 @@ describe('GET /api/plugins', () => {
     expect(body).toHaveLength(0);
   });
 
-  it('returns loaded plugins with name, description, file', async () => {
+  it('returns loaded plugin records with status', async () => {
     const app = makeApp([
-      { name: 'greet', description: 'A greeting plugin', file: 'greet.js', run: async (i) => i },
+      { file: 'greet.js', status: 'loaded', name: 'greet', description: 'A greeting plugin' },
     ]);
     const res = await app.inject({ method: 'GET', url: '/api/plugins' });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(body).toHaveLength(1);
-    expect(body[0]).toMatchObject({ name: 'greet', description: 'A greeting plugin', file: 'greet.js' });
-    // run function should NOT be serialized
-    expect(body[0].run).toBeUndefined();
+    expect(body[0]).toMatchObject({ file: 'greet.js', status: 'loaded', name: 'greet', description: 'A greeting plugin' });
   });
 
-  it('returns all loaded plugins', async () => {
+  it('includes error and skipped records', async () => {
     const app = makeApp([
-      { name: 'a', description: 'Plugin A', file: 'a.js', run: async () => '' },
-      { name: 'b', description: 'Plugin B', file: 'b.js', run: async () => '' },
+      { file: 'ok.js', status: 'loaded', name: 'ok', description: 'Fine' },
+      { file: 'bad.js', status: 'error', reason: 'Failed to load: SyntaxError' },
+      { file: 'dup.js', status: 'skipped', name: 'ok', reason: 'Tool name "ok" is already registered' },
     ]);
     const res = await app.inject({ method: 'GET', url: '/api/plugins' });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
-    expect(body).toHaveLength(2);
+    expect(body).toHaveLength(3);
+    expect(body[1]).toMatchObject({ file: 'bad.js', status: 'error' });
+    expect(body[2]).toMatchObject({ file: 'dup.js', status: 'skipped' });
+  });
+});
+
+describe('POST /api/plugins/reload', () => {
+  it('returns 200 with updated records after reload', async () => {
+    const app = makeApp([{ file: 'greet.js', status: 'loaded', name: 'greet', description: 'Hi' }]);
+    const res = await app.inject({ method: 'POST', url: '/api/plugins/reload' });
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    // After reload, fakeLoader.load() returns [] so listRecords() still returns original records
+    expect(Array.isArray(body)).toBe(true);
   });
 });

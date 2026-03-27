@@ -11,7 +11,7 @@ export { WebhookTool } from './tools/WebhookTool.js';
 export type { CustomToolDefinition, HttpMethod } from './tools/WebhookTool.js';
 export { CustomToolStore } from './tools/CustomToolStore.js';
 export { PluginLoader } from './tools/PluginLoader.js';
-export type { PluginExport, LoadedPlugin } from './tools/PluginLoader.js';
+export type { PluginExport, LoadedPlugin, PluginLoadRecord } from './tools/PluginLoader.js';
 export { atomicWrite, atomicWriteJSON } from './config/atomicWrite.js';
 export {
   parseAgentList,

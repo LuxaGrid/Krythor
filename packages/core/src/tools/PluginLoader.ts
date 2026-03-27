@@ -29,6 +29,16 @@ export interface LoadedPlugin {
   run: (input: string) => Promise<string>;
 }
 
+/** Status of each plugin file scanned during a load() pass. */
+export interface PluginLoadRecord {
+  file: string;
+  status: 'loaded' | 'error' | 'skipped';
+  name?: string;
+  description?: string;
+  /** Human-readable reason for 'error' or 'skipped' status. */
+  reason?: string;
+}
+
 /**
  * Validate that the exported value matches the required plugin shape.
  * Returns a string describing why it's invalid, or null if valid.
@@ -53,6 +63,7 @@ function validatePluginExport(value: unknown, file: string): string | null {
 export class PluginLoader {
   private readonly pluginsDir: string;
   private loaded: LoadedPlugin[] = [];
+  private records: PluginLoadRecord[] = [];
 
   constructor(dataDir: string) {
     this.pluginsDir = join(dataDir, 'plugins');
@@ -70,6 +81,7 @@ export class PluginLoader {
    */
   load(): LoadedPlugin[] {
     this.loaded = [];
+    this.records = [];
 
     if (!existsSync(this.pluginsDir)) {
       // No plugins directory — that's fine, plugins are optional
@@ -96,13 +108,17 @@ export class PluginLoader {
         delete require.cache[require.resolve(filePath)];
         exported = require(filePath);
       } catch (err) {
-        console.warn(`[PluginLoader] Failed to require plugin ${file}: ${err instanceof Error ? err.message : String(err)}`);
+        const reason = `Failed to load: ${err instanceof Error ? err.message : String(err)}`;
+        console.warn(`[PluginLoader] ${reason} (${file})`);
+        this.records.push({ file, status: 'error', reason });
         continue;
       }
 
       const validationError = validatePluginExport(exported, file);
       if (validationError) {
-        console.warn(`[PluginLoader] Skipping invalid plugin — ${validationError}`);
+        const reason = `Invalid export: ${validationError}`;
+        console.warn(`[PluginLoader] Skipping invalid plugin — ${reason}`);
+        this.records.push({ file, status: 'skipped', reason });
         continue;
       }
 
@@ -110,7 +126,9 @@ export class PluginLoader {
       const name = plugin.name.trim();
 
       if (registeredNames.has(name)) {
-        console.warn(`[PluginLoader] Skipping plugin ${file} — tool name "${name}" is already registered`);
+        const reason = `Tool name "${name}" is already registered`;
+        console.warn(`[PluginLoader] Skipping plugin ${file} — ${reason}`);
+        this.records.push({ file, status: 'skipped', name, reason });
         continue;
       }
 
@@ -131,12 +149,14 @@ export class PluginLoader {
       TOOL_REGISTRY.push(entry);
       registeredNames.add(name);
 
-      this.loaded.push({
+      const loadedPlugin: LoadedPlugin = {
         name,
         description: plugin.description.trim(),
         file,
         run: plugin.run.bind(plugin),
-      });
+      };
+      this.loaded.push(loadedPlugin);
+      this.records.push({ file, status: 'loaded', name, description: loadedPlugin.description });
 
       console.info(`[PluginLoader] Loaded plugin "${name}" from ${file}`);
     }
@@ -147,6 +167,14 @@ export class PluginLoader {
   /** Returns all currently loaded plugins (without reloading). */
   list(): LoadedPlugin[] {
     return this.loaded;
+  }
+
+  /**
+   * Returns the full load record for every plugin file scanned in the last load() pass.
+   * Includes successfully loaded plugins, errors, and skipped entries.
+   */
+  listRecords(): PluginLoadRecord[] {
+    return this.records;
   }
 
   /** Look up a loaded plugin by name. Returns null if not found. */
