@@ -11,6 +11,14 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+#### Agent runtime improvements (2026-03-27)
+
+- **Bootstrap truncation warning**: when any workspace bootstrap file (AGENTS.md, SOUL.md, TOOLS.md, etc.) is truncated to fit the context window, a warning block is appended to Project Context telling the agent which files were truncated and to use `read_file` for full content. Controlled by `bootstrapTruncationWarning` in `app-config.json` (`'off'` | `'once'` | `'always'`; default `'once'`). Configurable at runtime via `PATCH /api/config`
+- **User timezone in system prompt**: the Date/Time section of the agent system prompt can now show local time when `userTimezone` is set (IANA timezone string, e.g. `America/New_York`). `timeFormat` controls `'auto'` | `'12'` | `'24'` hour display. Configurable via `PATCH /api/config` and applied live without restart
+- **`NO_REPLY` silent token**: when a model response consists solely of the string `NO_REPLY`, the output is suppressed from the final run result and the `run:completed` event payload — the run still completes successfully but with no outbound payload. Useful for agents that handle events silently. The constant is exported from `@krythor/core`
+- **`AgentOrchestrator.setUserTimezone()`**: new setter that updates timezone/time-format at runtime and rebuilds the runner
+- **`AgentOrchestrator.setBootstrapTruncationWarning()`**: new setter that updates truncation warning mode at runtime and rebuilds the runner
+
 #### Chat channel configuration API improvements (2026-03-27)
 
 - **`groupAllowFrom` config field**: new channel-wide group sender allowlist. Used when `groupPolicy: 'allowlist'` and a group does not have its own per-group `allowFrom`. Simplifies configuration when the same sender set applies to all groups. Available in `ChatChannelConfig`, `TelegramInboundConfig`, and `DiscordInboundConfig`
