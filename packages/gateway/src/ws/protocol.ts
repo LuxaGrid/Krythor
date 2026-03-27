@@ -96,12 +96,12 @@ export interface ConnectPayload {
 
 // ── Frame parsing helpers ─────────────────────────────────────────────────────
 
-export function parseFrame(raw: string): WsFrame | null {
+export function parseFrame(raw: string): ReqFrame | null {
   try {
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     if (typeof parsed !== 'object' || parsed === null) return null;
     if (parsed['type'] === 'req' && typeof parsed['id'] === 'string' && typeof parsed['method'] === 'string') {
-      return { type: 'req', id: parsed['id'], method: parsed['method'], params: parsed['params'] } as ReqFrame;
+      return { type: 'req', id: parsed['id'], method: parsed['method'], params: parsed['params'] };
     }
     // Client should not send res/event frames — but parse them anyway for logging
     return null;

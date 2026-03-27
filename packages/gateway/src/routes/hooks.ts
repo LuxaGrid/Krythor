@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { AgentOrchestrator } from '@krythor/core';
 import { RunQueueFullError } from '@krythor/core';
 import { sendError } from '../errors.js';
@@ -61,7 +61,7 @@ export function registerHookRoutes(
 ): void {
 
   // Shared auth + body-size check used by both endpoints
-  function checkAuth(req: { headers: Record<string, string | string[] | undefined>; ip: string; body: unknown }, reply: Parameters<Parameters<FastifyInstance['post']>[1]>[1]): boolean {
+  function checkAuth(req: FastifyRequest, reply: FastifyReply): boolean {
     const token = getWebhookToken();
     if (!token) {
       void sendError(reply, 503, 'HOOKS_NOT_CONFIGURED', 'Webhook token not configured', 'Set webhookToken in app-config.json to enable inbound hooks');
@@ -116,7 +116,7 @@ export function registerHookRoutes(
       },
     },
   }, async (req, reply) => {
-    if (!checkAuth(req as never, reply)) return;
+    if (!checkAuth(req, reply)) return;
 
     const { text, mode = 'now' } = req.body as { text: string; mode?: 'now' | 'next-heartbeat' };
 
@@ -155,7 +155,7 @@ export function registerHookRoutes(
       },
     },
   }, async (req, reply) => {
-    if (!checkAuth(req as never, reply)) return;
+    if (!checkAuth(req, reply)) return;
 
     const { message, agentId, name, timeoutMs } = req.body as {
       message: string;
@@ -194,7 +194,7 @@ export function registerHookRoutes(
         status:     run.status,
         output:     run.output ?? '',
         modelUsed:  run.modelUsed,
-        durationMs: run.durationMs,
+        durationMs: run.completedAt != null ? run.completedAt - run.startedAt : undefined,
       });
     } catch (err) {
       if (err instanceof RunQueueFullError) {
