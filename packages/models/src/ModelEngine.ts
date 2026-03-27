@@ -233,10 +233,17 @@ export class ModelEngine {
     // We still record the request attempt for the stats counter.
     let providerId = '';
     let model = '';
+    let promptTokens: number | undefined;
+    let completionTokens: number | undefined;
     let hasError = false;
     try {
       for await (const chunk of this.router.inferStream(request, context, signal)) {
         if (chunk.model) model = chunk.model;
+        if (chunk.providerId) providerId = chunk.providerId;
+        if (chunk.done) {
+          if (chunk.promptTokens !== undefined) promptTokens = chunk.promptTokens;
+          if (chunk.completionTokens !== undefined) completionTokens = chunk.completionTokens;
+        }
         yield chunk;
       }
     } catch (err) {
@@ -247,7 +254,7 @@ export class ModelEngine {
         if (hasError) {
           this.tokenTracker.recordError(providerId || 'unknown', model || 'unknown');
         } else {
-          this.tokenTracker.record({ providerId: providerId || 'unknown', model: model || 'unknown' });
+          this.tokenTracker.record({ providerId: providerId || 'unknown', model: model || 'unknown', inputTokens: promptTokens, outputTokens: completionTokens });
         }
       }
     }

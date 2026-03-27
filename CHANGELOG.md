@@ -11,6 +11,11 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+#### Model engine improvements (2026-03-27)
+
+- **`providerId` on `StreamChunk`**: the router now populates `providerId` on the final streaming chunk (`done === true`), matching what non-streaming inference already returns. `ModelEngine.inferStream` captures this value and passes it — along with token counts — to `TokenTracker.record()`. Previously, all streaming token records used `'unknown'` as the provider ID, making per-provider token stats meaningless for streaming workloads
+- **`priority` and `maxRetries` in provider CRUD API**: `POST /api/models/providers` and `PATCH /api/models/providers/:id` now accept `priority` (integer 0–100) and `maxRetries` (integer 0–10). Both fields already existed in `ProviderConfig` and were honoured by the router; they were just not settable via the REST API. The values are forwarded directly to `addProvider` / `updateProvider`
+
 #### Agent coordination improvements (2026-03-27)
 
 - **Token tracking on `AgentRun`**: two new optional fields — `promptTokens` and `completionTokens` — accumulate token counts across all inference turns (initial turn + tool-call follow-up turns) within a single run. All three model providers (Anthropic, OpenAI, Ollama) already return these values in `InferenceResponse`; they are now captured and stored. Streaming providers (`AnthropicProvider`, `OpenAIProvider`) updated to emit token counts on the final `StreamChunk`; `OpenAIProvider` sets `stream_options: { include_usage: true }` to receive the usage chunk; `AnthropicProvider` reads `message_start.message.usage.input_tokens` and `message_delta.usage.output_tokens` from the SSE stream

@@ -119,6 +119,8 @@ export function registerModelRoutes(
           isDefault:  { type: 'boolean' },
           isEnabled:  { type: 'boolean' },
           models:     { type: 'array', items: { type: 'string' } },
+          priority:   { type: 'integer', minimum: 0, maximum: 100 },
+          maxRetries: { type: 'integer', minimum: 0, maximum: 10 },
         },
         additionalProperties: false,
       },
@@ -158,6 +160,8 @@ export function registerModelRoutes(
       isDefault:  body.isDefault ?? false,
       isEnabled:  body.isEnabled ?? true,
       models:     body.models ?? [],
+      ...(body.priority !== undefined && { priority: body.priority }),
+      ...(body.maxRetries !== undefined && { maxRetries: body.maxRetries }),
     });
 
     // If the new provider is Ollama, wire it as the embedding provider
@@ -184,6 +188,8 @@ export function registerModelRoutes(
           isEnabled:  { type: 'boolean' },
           models:     { type: 'array', items: { type: 'string' } },
           setupHint:  { type: 'string' },
+          priority:   { type: 'integer', minimum: 0, maximum: 100 },
+          maxRetries: { type: 'integer', minimum: 0, maximum: 10 },
         },
         additionalProperties: false,
       },

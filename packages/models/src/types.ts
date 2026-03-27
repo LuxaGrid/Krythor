@@ -120,6 +120,7 @@ export interface StreamChunk {
   selectionReason?: string;
   fallbackOccurred?: boolean;
   retryCount?: number;
+  providerId?: string;
   // Token counts — populated on the final chunk when the provider reports them
   promptTokens?: number;
   completionTokens?: number;

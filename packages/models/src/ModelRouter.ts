@@ -122,7 +122,7 @@ export class ModelRouter {
     try {
       for await (const chunk of resolvedProvider.inferStream({ ...request, model: resolvedModel }, signal)) {
         if (chunk.done) {
-          yield { ...chunk, selectionReason: resolvedSelectionReason, fallbackOccurred, retryCount: 0 };
+          yield { ...chunk, providerId: resolvedProvider.id, selectionReason: resolvedSelectionReason, fallbackOccurred, retryCount: 0 };
         } else {
           yield chunk;
         }
