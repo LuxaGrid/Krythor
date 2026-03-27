@@ -255,6 +255,9 @@ function withTimeout(parent: AbortSignal, ms: number): { signal: AbortSignal; cl
 //   4. Emits events for streaming
 //
 
+/** NO_REPLY sentinel — when a model response consists solely of this token, suppress the outbound reply. */
+export const NO_REPLY = 'NO_REPLY';
+
 export class AgentRunner {
   private activeRuns = new Map<string, { run: AgentRun; stop: () => void; controller: AbortController }>();
   private spawnCount = 0; // per-run counter, reset in run()
@@ -272,6 +275,26 @@ export class AgentRunner {
     private readonly globalWorkspaceDir?: string | null,
     /** Optional context engine for controlling context window assembly. */
     private readonly contextEngine?: ContextEngine | null,
+    /**
+     * IANA timezone string for the Current Date & Time section in the system prompt.
+     * When set, local time is shown alongside UTC. Example: 'America/New_York'.
+     */
+    private readonly userTimezone?: string | null,
+    /**
+     * Preferred time format: 'auto' detects 12/24 from locale, '12' forces AM/PM,
+     * '24' forces 24-hour. Defaults to 'auto'.
+     */
+    private readonly timeFormat?: 'auto' | '12' | '24' | null,
+    /**
+     * Controls whether a truncation warning block is appended to Project Context
+     * when any bootstrap file was truncated.
+     * 'off'    — no warning.
+     * 'once'   — warn on the first run of each session (treated as 'always' here
+     *            since runner has no cross-run session state).
+     * 'always' — always append the warning when truncation occurs.
+     * Default: 'once'.
+     */
+    private readonly bootstrapTruncationWarning?: 'off' | 'once' | 'always' | null,
   ) {}
 
   // ── Private helpers ────────────────────────────────────────────────────────
@@ -291,6 +314,20 @@ export class AgentRunner {
 
     const loader = new WorkspaceBootstrapLoader(workspaceDir);
     const result = loader.load(promptMode);
+
+    // Append truncation warning when any file was truncated and warning mode is enabled.
+    // 'once' is treated equivalently to 'always' since AgentRunner has no cross-run
+    // session state to track "already warned this session".
+    const warnMode = this.bootstrapTruncationWarning ?? 'once';
+    if (warnMode !== 'off') {
+      const truncated = result.files.filter(f => f.status === 'truncated');
+      if (truncated.length > 0) {
+        const names = truncated.map(f => f.name).join(', ');
+        const warning = `\n\n> **Note:** The following workspace file(s) were truncated to fit the context window: ${names}. Use the \`read_file\` tool to access their full content.`;
+        return result.projectContext + warning;
+      }
+    }
+
     return result.projectContext;
   }
 
@@ -341,10 +378,36 @@ export class AgentRunner {
   ): AgentMessage[] {
     // ── Date/Time section ──────────────────────────────────────────────────
     const now = new Date();
-    const dateTimeSection = [
-      '\n\n## Date / Time',
-      `Today is ${now.toISOString().slice(0, 10)}, ${now.toUTCString().slice(17, 22)} UTC.`,
-    ].join('\n');
+    const dateTimeLines = ['\n\n## Date / Time'];
+    if (this.userTimezone) {
+      try {
+        // Determine hour-cycle from timeFormat setting
+        const hourCycle =
+          this.timeFormat === '12' ? 'h12' :
+          this.timeFormat === '24' ? 'h23' :
+          undefined; // 'auto' — let Intl decide from locale
+        const localDateStr = now.toLocaleDateString('en-US', {
+          timeZone: this.userTimezone,
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+          weekday: 'long',
+        });
+        const localTimeStr = now.toLocaleTimeString('en-US', {
+          timeZone: this.userTimezone,
+          hour: '2-digit',
+          minute: '2-digit',
+          hourCycle,
+        });
+        dateTimeLines.push(`${localDateStr}, ${localTimeStr} (${this.userTimezone})`);
+      } catch {
+        // Invalid timezone — fall back to UTC only
+        dateTimeLines.push(`Today is ${now.toISOString().slice(0, 10)}, ${now.toUTCString().slice(17, 22)} UTC.`);
+      }
+    } else {
+      dateTimeLines.push(`Today is ${now.toISOString().slice(0, 10)}, ${now.toUTCString().slice(17, 22)} UTC.`);
+    }
+    const dateTimeSection = dateTimeLines.join('\n');
 
     // ── Runtime metadata section ───────────────────────────────────────────
     const runtimeLines = ['\n\n## Runtime', `Agent ID: ${agent.id}`];
@@ -826,6 +889,9 @@ export class AgentRunner {
         const memId = await this.writeAgentMemory(agent, input, run);
         if (memId) run.memoryIdsWritten.push(memId);
 
+        // Filter NO_REPLY sentinel — suppress output when the model signals silence
+        if (run.output?.trim() === NO_REPLY) run.output = undefined;
+
         emit({
           type: 'run:completed',
           runId,
@@ -971,6 +1037,9 @@ export class AgentRunner {
 
         const memId = await this.writeAgentMemory(agent, input, run);
         if (memId) run.memoryIdsWritten.push(memId);
+
+        // Filter NO_REPLY sentinel — suppress output when the model signals silence
+        if (run.output?.trim() === NO_REPLY) run.output = undefined;
 
         emit({
           type: 'run:completed',

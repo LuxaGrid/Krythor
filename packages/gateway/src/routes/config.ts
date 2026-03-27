@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { GuardEngine } from '@krythor/guard';
+import type { AgentOrchestrator } from '@krythor/core';
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { atomicWriteJSON, parseAppConfig } from '@krythor/core';
@@ -18,9 +19,12 @@ export interface AppConfig {
   selectedModel?: string;
   onboardingComplete?: boolean;
   logLevel?: 'debug' | 'info' | 'warn' | 'error';
+  userTimezone?: string;
+  timeFormat?: 'auto' | '12' | '24';
+  bootstrapTruncationWarning?: 'off' | 'once' | 'always';
 }
 
-export function registerConfigRoute(app: FastifyInstance, configDir: string, guard?: GuardEngine): void {
+export function registerConfigRoute(app: FastifyInstance, configDir: string, guard?: GuardEngine, orchestrator?: AgentOrchestrator): void {
   const configPath = join(configDir, 'app-config.json');
 
   function read(): AppConfig {
@@ -42,10 +46,19 @@ export function registerConfigRoute(app: FastifyInstance, configDir: string, gua
     atomicWriteJSON(configPath, config);
   }
 
-  // Apply logLevel from config at startup
+  // Apply settings from config at startup
   const startupCfg = read();
   if (startupCfg.logLevel) {
     logger.setLevel(startupCfg.logLevel);
+  }
+  if (orchestrator && (startupCfg.userTimezone || startupCfg.timeFormat)) {
+    orchestrator.setUserTimezone(
+      startupCfg.userTimezone ?? null,
+      startupCfg.timeFormat ?? null,
+    );
+  }
+  if (orchestrator && startupCfg.bootstrapTruncationWarning) {
+    orchestrator.setBootstrapTruncationWarning(startupCfg.bootstrapTruncationWarning);
   }
 
   // GET /api/config
@@ -59,10 +72,13 @@ export function registerConfigRoute(app: FastifyInstance, configDir: string, gua
       body: {
         type: 'object',
         properties: {
-          selectedAgentId:    { type: ['string', 'null'] },
-          selectedModel:      { type: ['string', 'null'] },
-          onboardingComplete: { type: 'boolean' },
-          logLevel:           { type: 'string', enum: ['debug', 'info', 'warn', 'error'] },
+          selectedAgentId:             { type: ['string', 'null'] },
+          selectedModel:               { type: ['string', 'null'] },
+          onboardingComplete:          { type: 'boolean' },
+          logLevel:                    { type: 'string', enum: ['debug', 'info', 'warn', 'error'] },
+          userTimezone:                { type: ['string', 'null'] },
+          timeFormat:                  { type: ['string', 'null'], enum: ['auto', '12', '24', null] },
+          bootstrapTruncationWarning:  { type: ['string', 'null'], enum: ['off', 'once', 'always', null] },
         },
         additionalProperties: false,
       },
@@ -81,6 +97,22 @@ export function registerConfigRoute(app: FastifyInstance, configDir: string, gua
     if ('logLevel' in patch) {
       updated.logLevel = patch['logLevel'] as AppConfig['logLevel'];
       if (updated.logLevel) logger.setLevel(updated.logLevel);
+    }
+    if ('userTimezone' in patch) {
+      updated.userTimezone = (patch['userTimezone'] as string | null) ?? undefined;
+    }
+    if ('timeFormat' in patch) {
+      updated.timeFormat = (patch['timeFormat'] as AppConfig['timeFormat'] | null) ?? undefined;
+    }
+    if ('bootstrapTruncationWarning' in patch) {
+      updated.bootstrapTruncationWarning = (patch['bootstrapTruncationWarning'] as AppConfig['bootstrapTruncationWarning'] | null) ?? undefined;
+    }
+    // Apply runtime changes to orchestrator if provided
+    if (orchestrator && ('userTimezone' in patch || 'timeFormat' in patch)) {
+      orchestrator.setUserTimezone(updated.userTimezone ?? null, updated.timeFormat ?? null);
+    }
+    if (orchestrator && 'bootstrapTruncationWarning' in patch && updated.bootstrapTruncationWarning) {
+      orchestrator.setBootstrapTruncationWarning(updated.bootstrapTruncationWarning);
     }
     write(updated);
     return reply.send(updated);

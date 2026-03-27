@@ -786,7 +786,7 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   registerModelRoutes(app, models, memory, guard, channelEmit);
   registerAgentRoutes(app, orchestrator, guard, accessProfileStore);
   registerGuardRoutes(app, guard, guardDecisionStore);
-  registerConfigRoute(app, join(dataDir, 'config'), guard);
+  registerConfigRoute(app, join(dataDir, 'config'), guard, orchestrator);
   registerConversationRoutes(app, convStore, guard, channelEmit);
   registerSkillRoutes(app, skillRegistry, guard, skillRunner);
   registerRecommendRoutes(app, models, recommender, guard);

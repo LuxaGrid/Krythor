@@ -128,6 +128,22 @@ export interface AppConfigRaw {
   selectedModel?: string;
   onboardingComplete?: boolean;
   logLevel?: 'debug' | 'info' | 'warn' | 'error';
+  /**
+   * IANA timezone string for the Date/Time section of the agent system prompt.
+   * Example: 'America/New_York'. When set, local time is shown alongside UTC.
+   */
+  userTimezone?: string;
+  /**
+   * Preferred time format for the system prompt Date/Time section.
+   * 'auto' detects from locale, '12' forces AM/PM, '24' forces 24-hour.
+   */
+  timeFormat?: 'auto' | '12' | '24';
+  /**
+   * Controls whether a truncation warning is appended to Project Context when
+   * any bootstrap file was truncated.
+   * 'off' | 'once' (default) | 'always'
+   */
+  bootstrapTruncationWarning?: 'off' | 'once' | 'always';
 }
 
 export function parseAppConfig(raw: unknown): ValidationResult<AppConfigRaw> {
@@ -174,6 +190,38 @@ export function parseAppConfig(raw: unknown): ValidationResult<AppConfigRaw> {
       value.logLevel = r['logLevel'] as AppConfigRaw['logLevel'];
     } else {
       errors.push(`logLevel: expected one of ${validLevels.join(', ')}, got ${String(r['logLevel'])}`);
+    }
+  }
+
+  if ('userTimezone' in r) {
+    if (r['userTimezone'] === null || r['userTimezone'] === undefined) {
+      // null means "cleared" — omit
+    } else if (typeof r['userTimezone'] === 'string') {
+      value.userTimezone = r['userTimezone'];
+    } else {
+      errors.push(`userTimezone: expected string, got ${typeof r['userTimezone']}`);
+    }
+  }
+
+  if ('timeFormat' in r) {
+    const validFormats = ['auto', '12', '24'];
+    if (r['timeFormat'] === null || r['timeFormat'] === undefined) {
+      // null means "cleared" — omit
+    } else if (validFormats.includes(r['timeFormat'] as string)) {
+      value.timeFormat = r['timeFormat'] as AppConfigRaw['timeFormat'];
+    } else {
+      errors.push(`timeFormat: expected one of ${validFormats.join(', ')}, got ${String(r['timeFormat'])}`);
+    }
+  }
+
+  if ('bootstrapTruncationWarning' in r) {
+    const validModes = ['off', 'once', 'always'];
+    if (r['bootstrapTruncationWarning'] === null || r['bootstrapTruncationWarning'] === undefined) {
+      // null means "cleared" — omit
+    } else if (validModes.includes(r['bootstrapTruncationWarning'] as string)) {
+      value.bootstrapTruncationWarning = r['bootstrapTruncationWarning'] as AppConfigRaw['bootstrapTruncationWarning'];
+    } else {
+      errors.push(`bootstrapTruncationWarning: expected one of ${validModes.join(', ')}, got ${String(r['bootstrapTruncationWarning'])}`);
     }
   }
 

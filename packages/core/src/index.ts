@@ -25,7 +25,7 @@ export { SystemIdentityProvider } from './SystemIdentityProvider.js';
 export type { SoulMetadata } from './SystemIdentityProvider.js';
 export { AgentOrchestrator, RunQueueFullError } from './agents/AgentOrchestrator.js';
 export { AgentRegistry } from './agents/AgentRegistry.js';
-export { AgentRunner } from './agents/AgentRunner.js';
+export { AgentRunner, NO_REPLY } from './agents/AgentRunner.js';
 export type { LearningSignal, LearningRecorder, HandoffResolver, CustomToolDispatcher, SpawnAgentResolver, GuardLike } from './agents/AgentRunner.js';
 export { SandboxNotFoundError, NotImplementedError } from './sandbox/SandboxProvider.js';
 export type { SandboxCapabilities, SandboxExecOptions, SandboxExecResult, SandboxProvider } from './sandbox/SandboxProvider.js';

@@ -83,6 +83,9 @@ export class AgentOrchestrator extends EventEmitter {
   private execToolInstance: ExecTool | null = null;
   private transcriptStore: SessionTranscriptStore | null = null;
   private contextEngineInstance: ContextEngine | null = null;
+  private userTimezone: string | null = null;
+  private timeFormat: 'auto' | '12' | '24' | null = null;
+  private bootstrapTruncationWarning: 'off' | 'once' | 'always' | null = null;
 
   constructor(
     private readonly memory: MemoryEngine | null,
@@ -178,7 +181,23 @@ export class AgentOrchestrator extends EventEmitter {
       this.guardInstance,
       this.globalWorkspaceDir,
       this.contextEngineInstance,
+      this.userTimezone,
+      this.timeFormat,
+      this.bootstrapTruncationWarning,
     );
+  }
+
+  /** Set the user's IANA timezone for the Date/Time section of the system prompt. */
+  setUserTimezone(tz: string | null, fmt?: 'auto' | '12' | '24' | null): void {
+    this.userTimezone = tz;
+    if (fmt !== undefined) this.timeFormat = fmt;
+    this.rebuildRunner();
+  }
+
+  /** Configure bootstrap truncation warning behavior. Default: 'once'. */
+  setBootstrapTruncationWarning(mode: 'off' | 'once' | 'always'): void {
+    this.bootstrapTruncationWarning = mode;
+    this.rebuildRunner();
   }
 
   /**
