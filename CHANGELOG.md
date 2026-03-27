@@ -11,6 +11,12 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+#### Message delivery improvements (2026-03-27)
+
+- **Message deduplication** in TelegramInbound and DiscordInbound: short-lived in-memory caches (`seenUpdateIds` / `seenMessageIds`, bounded at 500 entries, FIFO eviction) prevent the same message from triggering a second agent run on reconnect or poll overlap
+- **Retry with exponential backoff + jitter** on `sendMessage` for both channels: Telegram retries on 429 and transient network errors (up to 3 attempts, 400ms–30s, 10% jitter), respecting `retry_after` from API responses; Discord retries on 429 with `retry_after` or backoff fallback
+- **Code-fence-aware chunking** (`splitIntoChunks`): long replies containing ` ``` ` code blocks are now never split inside a fence — if a split is forced at the chunk boundary, the current chunk is closed with ` ``` ` and the next chunk reopens it, keeping Markdown valid across both Telegram and Discord
+
 #### Multi-agent control improvements (2026-03-27)
 
 - **`deniedTools` per agent**: new `AgentDefinition` field that explicitly blocks named tools regardless of `allowedTools`. Evaluated before `allowedTools` — a tool in both lists is always denied. Set via `POST /api/agents`, `PATCH /api/agents/:id`, and import. Enforced in `AgentRunner.handleToolCall()` with a clear policy denial message

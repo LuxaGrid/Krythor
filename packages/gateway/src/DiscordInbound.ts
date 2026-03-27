@@ -33,6 +33,21 @@ const DISCORD_API = 'https://discord.com/api/v10';
 const POLL_INTERVAL_MS = 3_000;
 const MAX_REPLY_LEN = 2_000; // Discord message limit is 2000 chars
 
+/** Max processed message IDs held in the dedup cache before oldest are evicted. */
+const DEDUP_CACHE_MAX = 500;
+
+/** Retry policy for outbound Discord API calls (sendMessage, etc.). */
+const RETRY_ATTEMPTS = 3;
+const RETRY_MIN_MS   = 500;
+const RETRY_MAX_MS   = 30_000;
+const RETRY_JITTER   = 0.1;
+
+/** Compute exponential backoff with jitter. */
+function backoffMs(attempt: number, minMs: number, maxMs: number, jitter: number): number {
+  const base = Math.min(minMs * Math.pow(2, attempt), maxMs);
+  return Math.floor(base * (1 + (Math.random() * 2 - 1) * jitter));
+}
+
 export interface DiscordInboundConfig {
   token: string;
   channelId: string;
@@ -64,14 +79,59 @@ interface DiscordMessage {
 /**
  * Split text into chunks no longer than maxLen characters.
  * When mode='newline', prefer splitting on paragraph boundaries before hard split.
+ *
+ * Code-fence aware: never splits inside a ``` fence. If a fence must be split
+ * at maxLen, the current chunk is closed with ``` and the next chunk reopens it
+ * so Markdown remains valid.
  */
 function splitIntoChunks(text: string, maxLen: number, mode: 'length' | 'newline'): string[] {
   if (text.length <= maxLen) return [text];
 
-  const chunks: string[] = [];
+  function fenceAwareSplit(src: string): string[] {
+    const lines = src.split('\n');
+    const result: string[] = [];
+    let current = '';
+    let inFence = false;
+    let fenceLang = '';
+
+    const flush = () => {
+      if (!current) return;
+      const out = inFence ? `${current}\n\`\`\`` : current;
+      result.push(out.trim());
+      current = '';
+    };
+
+    for (const line of lines) {
+      const fenceMatch = line.match(/^(`{3,})(.*)/);
+      if (fenceMatch) {
+        if (!inFence) {
+          inFence = true;
+          fenceLang = (fenceMatch[2] ?? '').trim();
+        } else {
+          inFence = false;
+          fenceLang = '';
+        }
+      }
+
+      const candidate = current ? `${current}\n${line}` : line;
+      if (candidate.length > maxLen && current.length > 0) {
+        flush();
+        if (inFence) {
+          current = `\`\`\`${fenceLang}\n${line}`;
+        } else {
+          current = line;
+        }
+      } else {
+        current = candidate;
+      }
+    }
+    flush();
+    return result.filter(c => c.length > 0);
+  }
 
   if (mode === 'newline') {
     const paragraphs = text.split(/\n\n+/);
+    const chunks: string[] = [];
     let current = '';
     for (const para of paragraphs) {
       const candidate = current ? `${current}\n\n${para}` : para;
@@ -80,9 +140,7 @@ function splitIntoChunks(text: string, maxLen: number, mode: 'length' | 'newline
       } else {
         if (current) chunks.push(current);
         if (para.length > maxLen) {
-          for (let i = 0; i < para.length; i += maxLen) {
-            chunks.push(para.slice(i, i + maxLen));
-          }
+          chunks.push(...fenceAwareSplit(para));
           current = '';
         } else {
           current = para;
@@ -90,13 +148,10 @@ function splitIntoChunks(text: string, maxLen: number, mode: 'length' | 'newline
       }
     }
     if (current) chunks.push(current);
-  } else {
-    for (let i = 0; i < text.length; i += maxLen) {
-      chunks.push(text.slice(i, i + maxLen));
-    }
+    return chunks;
   }
 
-  return chunks;
+  return fenceAwareSplit(text);
 }
 
 export class DiscordInbound {
@@ -111,6 +166,12 @@ export class DiscordInbound {
   private channelId: string = 'discord';
   /** Per-author conversation tracking: authorId → conversationId */
   private authorConvMap = new Map<string, string>();
+  /**
+   * Deduplication cache — tracks recently processed message IDs to prevent
+   * re-processing the same message if fetchMessages overlaps on a poll boundary.
+   * Bounded at DEDUP_CACHE_MAX entries; oldest evicted when full.
+   */
+  private readonly seenMessageIds = new Set<string>();
 
   constructor(orchestrator: AgentOrchestrator, pairingStore: DmPairingStore, convStore: ConversationStore | null = null) {
     this.orchestrator = orchestrator;
@@ -187,10 +248,17 @@ export class DiscordInbound {
       const toProcess = messages
         .filter(m => !m.author.bot && m.author.id !== this.botUserId)
         .filter(m => !this.lastMessageId || BigInt(m.id) > BigInt(this.lastMessageId))
+        .filter(m => !this.seenMessageIds.has(m.id))
         .reverse();
 
       for (const msg of toProcess) {
         this.lastMessageId = msg.id;
+        // Track in dedup cache
+        if (this.seenMessageIds.size >= DEDUP_CACHE_MAX) {
+          const oldest = this.seenMessageIds.values().next().value;
+          if (oldest !== undefined) this.seenMessageIds.delete(oldest);
+        }
+        this.seenMessageIds.add(msg.id);
         await this.handleMessage(msg);
       }
     } catch (err) {
@@ -385,15 +453,40 @@ export class DiscordInbound {
     return res.json() as Promise<DiscordMessage[]>;
   }
 
+  /**
+   * Send a message with retry on 429 rate-limit responses.
+   * Uses Discord's retry_after when available, otherwise exponential backoff + jitter.
+   */
   private async sendMessage(content: string, replyToId?: string): Promise<void> {
-    const body: Record<string, unknown> = { content };
-    if (replyToId) body['message_reference'] = { message_id: replyToId };
-    const res = await fetch(`${DISCORD_API}/channels/${this.config!.channelId}/messages`, {
-      method: 'POST',
-      headers: this.headers(),
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) throw new Error(`Discord send failed: ${res.status}`);
+    const requestBody: Record<string, unknown> = { content };
+    if (replyToId) requestBody['message_reference'] = { message_id: replyToId };
+    const url = `${DISCORD_API}/channels/${this.config!.channelId}/messages`;
+
+    for (let attempt = 0; attempt < RETRY_ATTEMPTS; attempt++) {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: this.headers(),
+        body: JSON.stringify(requestBody),
+      });
+
+      if (res.ok) return;
+
+      if (res.status === 429) {
+        let waitMs: number;
+        try {
+          const retryBody = await res.json() as { retry_after?: number };
+          waitMs = ((retryBody.retry_after ?? 1) * 1000);
+        } catch {
+          waitMs = backoffMs(attempt, RETRY_MIN_MS, RETRY_MAX_MS, RETRY_JITTER);
+        }
+        await new Promise(r => setTimeout(r, waitMs));
+        continue;
+      }
+
+      throw new Error(`Discord send failed: ${res.status}`);
+    }
+
+    throw new Error('Discord sendMessage failed after retries');
   }
 
   private async sendTyping(): Promise<void> {

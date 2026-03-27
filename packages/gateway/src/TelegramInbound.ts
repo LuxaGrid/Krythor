@@ -34,6 +34,21 @@ const TELEGRAM_API = 'https://api.telegram.org';
 const LONG_POLL_TIMEOUT_S = 30;
 const MAX_REPLY_LEN = 4096;
 
+/** Max processed message IDs held in the dedup cache before oldest are evicted. */
+const DEDUP_CACHE_MAX = 500;
+
+/** Retry policy for outbound Telegram API calls (sendMessage, reactions, etc.). */
+const RETRY_ATTEMPTS   = 3;
+const RETRY_MIN_MS     = 400;
+const RETRY_MAX_MS     = 30_000;
+const RETRY_JITTER     = 0.1;
+
+/** Compute exponential backoff with jitter. */
+function backoffMs(attempt: number, minMs: number, maxMs: number, jitter: number): number {
+  const base = Math.min(minMs * Math.pow(2, attempt), maxMs);
+  return Math.floor(base * (1 + (Math.random() * 2 - 1) * jitter));
+}
+
 export interface TelegramInboundConfig {
   token: string;
   agentId: string;
@@ -72,14 +87,68 @@ interface TelegramUpdate {
  * Split text into chunks no longer than maxLen characters.
  * When mode='newline', prefer splitting on paragraph boundaries (blank lines)
  * before falling back to hard length splitting.
+ *
+ * Code-fence aware: never splits inside a ``` fence. If a fence must be split
+ * at maxLen, the current chunk is closed with ``` and the next chunk reopens it
+ * so Markdown remains valid.
  */
 function splitIntoChunks(text: string, maxLen: number, mode: 'length' | 'newline'): string[] {
   if (text.length <= maxLen) return [text];
 
-  const chunks: string[] = [];
+  // ── Fence-aware hard split ─────────────────────────────────────────────────
+  // Walk through the text line by line, tracking whether we're inside a code
+  // fence. Collect lines into a current chunk; when adding the next line would
+  // exceed maxLen, flush the current chunk (closing any open fence) and start
+  // a new one (reopening the fence if needed).
+  function fenceAwareSplit(src: string): string[] {
+    const lines = src.split('\n');
+    const result: string[] = [];
+    let current = '';
+    let inFence = false;
+    let fenceLang = '';
+
+    const flush = () => {
+      if (!current) return;
+      const out = inFence ? `${current}\n\`\`\`` : current;
+      result.push(out.trim());
+      current = '';
+    };
+
+    for (const line of lines) {
+      const fenceMatch = line.match(/^(`{3,})(.*)/);
+      if (fenceMatch) {
+        if (!inFence) {
+          inFence = true;
+          fenceLang = (fenceMatch[2] ?? '').trim();
+        } else {
+          inFence = false;
+          fenceLang = '';
+        }
+      }
+
+      const candidate = current ? `${current}\n${line}` : line;
+      if (candidate.length > maxLen && current.length > 0) {
+        // Flush current chunk
+        flush();
+        // If we're inside a fence, reopen it in the new chunk
+        if (inFence) {
+          current = `\`\`\`${fenceLang}\n${line}`;
+        } else {
+          current = line;
+        }
+      } else {
+        current = candidate;
+      }
+    }
+    flush();
+    return result.filter(c => c.length > 0);
+  }
 
   if (mode === 'newline') {
+    // Try paragraph-boundary splits first; fall back to fence-aware hard split
+    // for paragraphs that still exceed maxLen.
     const paragraphs = text.split(/\n\n+/);
+    const chunks: string[] = [];
     let current = '';
     for (const para of paragraphs) {
       const candidate = current ? `${current}\n\n${para}` : para;
@@ -87,11 +156,8 @@ function splitIntoChunks(text: string, maxLen: number, mode: 'length' | 'newline
         current = candidate;
       } else {
         if (current) chunks.push(current);
-        // Para itself may exceed maxLen — hard split it
         if (para.length > maxLen) {
-          for (let i = 0; i < para.length; i += maxLen) {
-            chunks.push(para.slice(i, i + maxLen));
-          }
+          chunks.push(...fenceAwareSplit(para));
           current = '';
         } else {
           current = para;
@@ -99,13 +165,10 @@ function splitIntoChunks(text: string, maxLen: number, mode: 'length' | 'newline
       }
     }
     if (current) chunks.push(current);
-  } else {
-    for (let i = 0; i < text.length; i += maxLen) {
-      chunks.push(text.slice(i, i + maxLen));
-    }
+    return chunks;
   }
 
-  return chunks;
+  return fenceAwareSplit(text);
 }
 
 interface TelegramUpdatesResponse {
@@ -125,6 +188,12 @@ export class TelegramInbound {
   private channelId: string = 'telegram';
   /** Per-sender DM conversation tracking: senderId → conversationId */
   private senderConvMap = new Map<string, string>();
+  /**
+   * Deduplication cache — tracks recently processed update_ids to prevent
+   * re-processing the same message on reconnect or poll overlap.
+   * Bounded at DEDUP_CACHE_MAX entries; oldest are evicted when full.
+   */
+  private readonly seenUpdateIds = new Set<number>();
 
   constructor(orchestrator: AgentOrchestrator, pairingStore: DmPairingStore, convStore: ConversationStore | null = null) {
     this.orchestrator = orchestrator;
@@ -227,6 +296,14 @@ export class TelegramInbound {
 
         for (const update of body.result) {
           this.offset = update.update_id + 1;
+          // Dedup: skip if we've already processed this update_id
+          if (this.seenUpdateIds.has(update.update_id)) continue;
+          if (this.seenUpdateIds.size >= DEDUP_CACHE_MAX) {
+            // Evict the oldest entry (Set preserves insertion order)
+            const oldest = this.seenUpdateIds.values().next().value;
+            if (oldest !== undefined) this.seenUpdateIds.delete(oldest);
+          }
+          this.seenUpdateIds.add(update.update_id);
           if (update.message?.text) {
             await this.handleMessage(update.message);
           }
@@ -412,14 +489,57 @@ export class TelegramInbound {
     return res.json();
   }
 
+  /**
+   * Send a message with retry on transient errors and 429 rate-limits.
+   * Retries up to RETRY_ATTEMPTS times with exponential backoff + jitter.
+   * On Telegram Markdown parse errors (400) retries once in plain text mode.
+   */
   private async sendMessage(chatId: number, text: string): Promise<void> {
     const url = `${TELEGRAM_API}/bot${this.config!.token}/sendMessage`;
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: chatId, text }),
-    });
-    if (!res.ok) throw new Error(`Telegram sendMessage failed: ${res.status}`);
+    let lastErr: Error | null = null;
+
+    for (let attempt = 0; attempt < RETRY_ATTEMPTS; attempt++) {
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: chatId, text }),
+        });
+
+        if (res.ok) return;
+
+        if (res.status === 429) {
+          // Respect Telegram's retry_after
+          let waitMs: number;
+          try {
+            const body = await res.json() as { parameters?: { retry_after?: number } };
+            waitMs = ((body.parameters?.retry_after ?? 1) * 1000);
+          } catch {
+            waitMs = backoffMs(attempt, RETRY_MIN_MS, RETRY_MAX_MS, RETRY_JITTER);
+          }
+          await this.sleep(waitMs);
+          continue;
+        }
+
+        // Non-retryable error
+        throw new Error(`Telegram sendMessage failed: ${res.status}`);
+      } catch (err) {
+        if (err instanceof Error && (
+          err.message.includes('failed: 429') ||
+          err.message.includes('ECONNRESET') ||
+          err.message.includes('ECONNREFUSED') ||
+          err.message.includes('fetch failed') ||
+          err.message.includes('network')
+        )) {
+          lastErr = err;
+          await this.sleep(backoffMs(attempt, RETRY_MIN_MS, RETRY_MAX_MS, RETRY_JITTER));
+          continue;
+        }
+        throw err;
+      }
+    }
+
+    throw lastErr ?? new Error('Telegram sendMessage failed after retries');
   }
 
   private async sendChatAction(chatId: number, action: string): Promise<void> {
