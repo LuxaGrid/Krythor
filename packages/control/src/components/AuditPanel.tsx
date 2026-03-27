@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { getGatewayToken } from '../api.ts';
 import { PanelHeader } from './PanelHeader.tsx';
 
 // ─── AuditPanel ───────────────────────────────────────────────────────────────
@@ -106,7 +107,10 @@ async function fetchAudit(params: {
   if (params.from)             qs.set('from', params.from);
   if (params.to)               qs.set('to', params.to);
 
-  const res = await fetch(`/api/audit?${qs.toString()}`);
+  const token = getGatewayToken();
+  const headers: Record<string, string> = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const res = await fetch(`/api/audit?${qs.toString()}`, { headers });
   if (!res.ok) return { events: [], total: 0 };
   return res.json() as Promise<{ events: AuditEvent[]; total: number }>;
 }
