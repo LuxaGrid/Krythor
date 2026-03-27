@@ -10,6 +10,14 @@
 // POST   /api/chat-channels/:id/pair     — generate WhatsApp pairing code
 // GET    /api/chat-channels/:id/status   — get live status
 //
+// DM Pairing routes (via DmPairingStore):
+// GET    /api/chat-channels/:id/pairing                    — list pending pairing requests
+// POST   /api/chat-channels/:id/pairing/:code/approve      — approve a pairing code
+// POST   /api/chat-channels/:id/pairing/:code/deny         — deny a pairing code
+// GET    /api/chat-channels/:id/allowlist                  — list approved senders
+// POST   /api/chat-channels/:id/allowlist                  — add sender directly
+// DELETE /api/chat-channels/:id/allowlist/:senderId        — remove sender
+//
 // Secret credentials are masked in list / get responses — the actual value is
 // replaced with "***" for any field that has secret: true in the provider meta.
 //
@@ -63,6 +71,8 @@ export function registerChatChannelRoutes(
   registry: ChatChannelRegistry,
   inboundMgr?: InboundChannelManager,
 ): void {
+  // Convenience accessor — null-safe; routes that require it will 503 if absent
+  const pairingStore = () => inboundMgr?.getPairingStore() ?? null;
 
   // GET /api/chat-channels/providers — list all provider metadata
   // This must be registered BEFORE the /:id route to avoid the param
@@ -247,4 +257,103 @@ export function registerChatChannelRoutes(
     const result = await inboundMgr.restartChannel(req.params.id);
     return reply.send(result);
   });
+
+  // ── DM Pairing routes ─────────────────────────────────────────────────────
+
+  // GET /api/chat-channels/:id/pairing — list pending pairing requests
+  app.get<{ Params: { id: string } }>('/api/chat-channels/:id/pairing', async (req, reply) => {
+    const config = registry.getConfig(req.params.id);
+    if (!config) return reply.code(404).send({ error: 'Channel not found' });
+
+    const store = pairingStore();
+    if (!store) return reply.code(503).send({ error: 'Pairing store not available' });
+
+    const pending = store.listPending(req.params.id);
+    return reply.send({ pending });
+  });
+
+  // POST /api/chat-channels/:id/pairing/:code/approve — approve a pairing code
+  app.post<{ Params: { id: string; code: string } }>(
+    '/api/chat-channels/:id/pairing/:code/approve',
+    async (req, reply) => {
+      const config = registry.getConfig(req.params.id);
+      if (!config) return reply.code(404).send({ error: 'Channel not found' });
+
+      const store = pairingStore();
+      if (!store) return reply.code(503).send({ error: 'Pairing store not available' });
+
+      const result = store.approvePairing(req.params.id, req.params.code);
+      if (!result.ok) return reply.code(400).send(result);
+      return reply.send(result);
+    },
+  );
+
+  // POST /api/chat-channels/:id/pairing/:code/deny — deny a pairing code
+  app.post<{ Params: { id: string; code: string } }>(
+    '/api/chat-channels/:id/pairing/:code/deny',
+    async (req, reply) => {
+      const config = registry.getConfig(req.params.id);
+      if (!config) return reply.code(404).send({ error: 'Channel not found' });
+
+      const store = pairingStore();
+      if (!store) return reply.code(503).send({ error: 'Pairing store not available' });
+
+      const result = store.denyPairing(req.params.id, req.params.code);
+      if (!result.ok) return reply.code(400).send(result);
+      return reply.send(result);
+    },
+  );
+
+  // GET /api/chat-channels/:id/allowlist — list approved senders
+  app.get<{ Params: { id: string } }>('/api/chat-channels/:id/allowlist', async (req, reply) => {
+    const config = registry.getConfig(req.params.id);
+    if (!config) return reply.code(404).send({ error: 'Channel not found' });
+
+    const store = pairingStore();
+    if (!store) return reply.code(503).send({ error: 'Pairing store not available' });
+
+    const allowlist = store.listAllowlist(req.params.id);
+    return reply.send({ allowlist });
+  });
+
+  // POST /api/chat-channels/:id/allowlist — add a sender directly
+  app.post<{
+    Params: { id: string };
+    Body: { senderId: string };
+  }>('/api/chat-channels/:id/allowlist', {
+    schema: {
+      body: {
+        type: 'object',
+        required: ['senderId'],
+        properties: {
+          senderId: { type: 'string', minLength: 1, maxLength: 256 },
+        },
+        additionalProperties: false,
+      },
+    },
+  }, async (req, reply) => {
+    const config = registry.getConfig(req.params.id);
+    if (!config) return reply.code(404).send({ error: 'Channel not found' });
+
+    const store = pairingStore();
+    if (!store) return reply.code(503).send({ error: 'Pairing store not available' });
+
+    store.addToAllowlist(req.params.id, req.body.senderId);
+    return reply.code(201).send({ ok: true, senderId: req.body.senderId });
+  });
+
+  // DELETE /api/chat-channels/:id/allowlist/:senderId — remove a sender
+  app.delete<{ Params: { id: string; senderId: string } }>(
+    '/api/chat-channels/:id/allowlist/:senderId',
+    async (req, reply) => {
+      const config = registry.getConfig(req.params.id);
+      if (!config) return reply.code(404).send({ error: 'Channel not found' });
+
+      const store = pairingStore();
+      if (!store) return reply.code(503).send({ error: 'Pairing store not available' });
+
+      store.removeFromAllowlist(req.params.id, req.params.senderId);
+      return reply.send({ ok: true });
+    },
+  );
 }

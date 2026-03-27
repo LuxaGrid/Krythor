@@ -13,8 +13,10 @@
 //   mgr.stopAll();
 //
 
+import { join } from 'path';
 import type { AgentOrchestrator } from '@krythor/core';
 import { ChatChannelRegistry } from './ChatChannelRegistry.js';
+import { DmPairingStore } from './DmPairingStore.js';
 import { DiscordInbound } from './DiscordInbound.js';
 import { TelegramInbound } from './TelegramInbound.js';
 import { WhatsAppInbound } from './WhatsAppInbound.js';
@@ -29,6 +31,7 @@ export class InboundChannelManager {
   private readonly log: typeof logger;
   private readonly instances = new Map<string, AnyInbound>();
   private readonly errors = new Map<string, string>();
+  private readonly pairingStore: DmPairingStore;
 
   constructor(
     registry: ChatChannelRegistry,
@@ -40,9 +43,15 @@ export class InboundChannelManager {
     this.orchestrator = orchestrator;
     this.dataDir = dataDir;
     this.log = log;
+    this.pairingStore = new DmPairingStore(join(dataDir, 'pairing'));
   }
 
   // ── Public API ─────────────────────────────────────────────────────────────
+
+  /** Expose the pairing store so routes can access pending/allowlist state. */
+  getPairingStore(): DmPairingStore {
+    return this.pairingStore;
+  }
 
   /** Start all enabled channels from the registry. */
   async startAll(): Promise<void> {
@@ -128,8 +137,16 @@ export class InboundChannelManager {
             this.registry.recordHealthCheck(configId, false, err);
             return { ok: false, error: err };
           }
-          const discord = new DiscordInbound(this.orchestrator);
-          discord.configure({ token, channelId, agentId, enabled: true });
+          const discord = new DiscordInbound(this.orchestrator, this.pairingStore);
+          discord.configure({
+            token,
+            channelId,
+            agentId,
+            enabled: true,
+            dmPolicy:  config.dmPolicy,
+            allowFrom: config.allowFrom,
+            guildId:   config.credentials['guildId'],
+          });
           instance = discord;
           break;
         }
@@ -143,8 +160,16 @@ export class InboundChannelManager {
             this.registry.recordHealthCheck(configId, false, err);
             return { ok: false, error: err };
           }
-          const telegram = new TelegramInbound(this.orchestrator);
-          telegram.configure({ token, agentId, enabled: true });
+          const telegram = new TelegramInbound(this.orchestrator, this.pairingStore);
+          telegram.configure({
+            token,
+            agentId,
+            enabled: true,
+            dmPolicy:     config.dmPolicy,
+            groupPolicy:  config.groupPolicy,
+            allowFrom:    config.allowFrom,
+            groups:       config.groups,
+          });
           instance = telegram;
           break;
         }

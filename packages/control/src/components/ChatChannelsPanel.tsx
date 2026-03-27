@@ -12,6 +12,7 @@ import {
   type ChatChannelStatus,
 } from '../api.ts';
 import { PanelHeader } from './PanelHeader.tsx';
+import { ChannelPolicyPanel } from './ChannelPolicyPanel.tsx';
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -275,6 +276,7 @@ interface ChannelCardProps {
   onDelete: (id: string) => void;
   onTest: (id: string) => void;
   onGetPairingCode: (id: string) => void;
+  onPolicyChange: () => void;
   testResult: { ok: boolean; message: string } | null;
   testLoading: boolean;
   pairingCode: string | null;
@@ -289,6 +291,7 @@ function ChannelCard({
   onDelete,
   onTest,
   onGetPairingCode,
+  onPolicyChange,
   testResult,
   testLoading,
   pairingCode,
@@ -406,6 +409,13 @@ function ChannelCard({
           )}
         </div>
       )}
+
+      <ChannelPolicyPanel
+        channelId={channel.id}
+        channelType={channel.type}
+        dmPolicy={channel.dmPolicy}
+        onPolicyChange={onPolicyChange}
+      />
     </div>
   );
 }
@@ -633,6 +643,7 @@ export function ChatChannelsPanel() {
                 onDelete={handleDelete}
                 onTest={handleTest}
                 onGetPairingCode={handleGetPairingCode}
+                onPolicyChange={load}
                 testResult={testResults[ch.id] ?? null}
                 testLoading={testLoading[ch.id] ?? false}
                 pairingCode={pairingCodes[ch.id] ?? null}

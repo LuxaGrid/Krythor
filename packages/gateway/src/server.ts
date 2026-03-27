@@ -39,6 +39,7 @@ import { registerChatChannelRoutes } from './routes/chatChannels.js';
 import { ChannelManager } from './ChannelManager.js';
 import { ChatChannelRegistry } from './ChatChannelRegistry.js';
 import { DiscordInbound } from './DiscordInbound.js';
+import { DmPairingStore } from './DmPairingStore.js';
 import { InboundChannelManager } from './InboundChannelManager.js';
 import { PeerRegistry } from './PeerRegistry.js';
 import { registerOpenAICompatRoutes } from './routes/openai.compat.js';
@@ -925,7 +926,9 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
 
   // Discord inbound channel — legacy standalone wiring kept for /api/discord routes
   // and env-var-based configuration (env vars take precedence over registry).
-  const discordInbound = new DiscordInbound(orchestrator);
+  // Uses its own pairing store scoped to the legacy env-var channel.
+  const legacyDiscordPairingStore = new DmPairingStore(join(dataDir, 'pairing'));
+  const discordInbound = new DiscordInbound(orchestrator, legacyDiscordPairingStore);
 
   // Bootstrap from env vars if present
   const discordToken     = process.env['KRYTHOR_DISCORD_TOKEN'];

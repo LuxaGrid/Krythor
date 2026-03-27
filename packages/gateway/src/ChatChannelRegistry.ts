@@ -38,6 +38,10 @@ export interface ChatChannelConfig {
   lastHealthStatus?: 'ok' | 'error';
   lastError?: string;
   connectedAt?: number;
+  dmPolicy?: 'pairing' | 'allowlist' | 'open' | 'disabled';
+  groupPolicy?: 'open' | 'allowlist' | 'disabled';
+  allowFrom?: string[];
+  groups?: Record<string, { requireMention?: boolean; allowFrom?: string[] }>;
 }
 
 export interface ChannelProviderMeta {
@@ -383,7 +387,7 @@ export class ChatChannelRegistry {
       throw new Error(`Channel not found: ${channelId}`);
     }
     if (config.type !== 'whatsapp') {
-      throw new Error(`Pairing is only supported for WhatsApp channels`);
+      throw new Error(`Pairing codes for this channel are managed by DmPairingStore`);
     }
 
     // Generate an 8-character uppercase alphanumeric code
@@ -393,7 +397,7 @@ export class ChatChannelRegistry {
       code += chars[Math.floor(Math.random() * chars.length)];
     }
 
-    const expiresAt = Date.now() + 10 * 60 * 1_000; // 10 minutes
+    const expiresAt = Date.now() + 60 * 60 * 1_000; // 60 minutes
 
     this.saveConfig({
       ...config,

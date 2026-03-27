@@ -16,11 +16,16 @@
 //   - Posts the agent's reply back to the same channel
 //   - Tracks the last seen message ID to avoid reprocessing
 //
+// DM / guild policy:
+//   - If guildId is set, treat messages as guild channel messages
+//   - Otherwise treat as DM — dmPolicy is enforced
+//
 // Rate limits: Discord allows 50 GET /messages requests per second per channel.
 // At a 3-second poll interval we are well within limits.
 //
 
 import type { AgentOrchestrator } from '@krythor/core';
+import type { DmPairingStore } from './DmPairingStore.js';
 import { logger } from './logger.js';
 
 const DISCORD_API = 'https://discord.com/api/v10';
@@ -32,6 +37,9 @@ export interface DiscordInboundConfig {
   channelId: string;
   agentId: string;
   enabled: boolean;
+  dmPolicy?: 'pairing' | 'allowlist' | 'open' | 'disabled';
+  allowFrom?: string[];
+  guildId?: string;
 }
 
 interface DiscordMessage {
@@ -47,16 +55,21 @@ export class DiscordInbound {
   private botUserId: string | null = null;
   private config: DiscordInboundConfig | null = null;
   private orchestrator: AgentOrchestrator;
+  private pairingStore: DmPairingStore;
   private processing = false;
+  private channelId: string = 'discord';
 
-  constructor(orchestrator: AgentOrchestrator) {
+  constructor(orchestrator: AgentOrchestrator, pairingStore: DmPairingStore) {
     this.orchestrator = orchestrator;
+    this.pairingStore = pairingStore;
   }
 
   // ── Configuration ──────────────────────────────────────────────────────────
 
   configure(cfg: DiscordInboundConfig): void {
     this.config = cfg;
+    // Use channelId as the pairing store key to keep keys unique per channel
+    this.channelId = `discord-${cfg.channelId}`;
   }
 
   getConfig(): DiscordInboundConfig | null {
@@ -82,6 +95,13 @@ export class DiscordInbound {
       return { ok: false, error: `Discord auth failed: ${err instanceof Error ? err.message : String(err)}` };
     }
 
+    // Seed allowlist from config.allowFrom (pre-configured senders)
+    if (this.config.allowFrom && this.config.allowFrom.length > 0) {
+      for (const senderId of this.config.allowFrom) {
+        this.pairingStore.addToAllowlist(this.channelId, senderId);
+      }
+    }
+
     // Seed lastMessageId to the newest message so we don't replay history
     try {
       const messages = await this.fetchMessages() as DiscordMessage[];
@@ -90,7 +110,7 @@ export class DiscordInbound {
 
     this.timer = setInterval(() => { void this.poll(); }, POLL_INTERVAL_MS);
     if (this.timer.unref) this.timer.unref();
-    logger.info('[discord] Polling started', { channelId: this.config.channelId });
+    logger.info('[discord] Polling started', { channelId: this.config.channelId, guildId: this.config.guildId });
     return { ok: true };
   }
 
@@ -128,7 +148,76 @@ export class DiscordInbound {
 
   private async handleMessage(msg: DiscordMessage): Promise<void> {
     if (!this.config) return;
-    logger.info('[discord] Received message', { msgId: msg.id, author: msg.author.id });
+
+    const isDM = !this.config.guildId;
+    const authorId = msg.author.id;
+
+    if (isDM) {
+      // ── DM policy enforcement ─────────────────────────────────────────────
+      const dmPolicy = this.config.dmPolicy ?? 'pairing';
+
+      if (dmPolicy === 'disabled') {
+        return;
+      }
+
+      if (dmPolicy === 'open') {
+        logger.info('[discord] DM received (open)', { msgId: msg.id, author: authorId });
+        await this.processMessage(msg);
+        return;
+      }
+
+      if (dmPolicy === 'allowlist') {
+        const allowed =
+          this.pairingStore.isAllowed(this.channelId, authorId) ||
+          (this.config.allowFrom?.includes(authorId) ?? false);
+
+        if (!allowed) {
+          logger.info('[discord] DM sender not on allowlist', { author: authorId });
+          await this.sendMessage('You are not authorized to message this bot.', msg.id).catch(() => {});
+          return;
+        }
+
+        logger.info('[discord] DM received (allowlist approved)', { msgId: msg.id, author: authorId });
+        await this.processMessage(msg);
+        return;
+      }
+
+      // dmPolicy === 'pairing' (default)
+      if (this.pairingStore.isAllowed(this.channelId, authorId)) {
+        logger.info('[discord] DM received (pairing approved)', { msgId: msg.id, author: authorId });
+        await this.processMessage(msg);
+        return;
+      }
+
+      // Not allowed — request pairing
+      const result = this.pairingStore.requestPairing(this.channelId, authorId);
+      if (result) {
+        await this.sendMessage(
+          `Your pairing code is: \`${result.code}\`. Send this code to the bot owner to get access. Codes expire in 1 hour.`,
+          msg.id,
+        ).catch(() => {});
+      } else {
+        await this.sendMessage(
+          'A pairing request is already pending. Please wait for the owner to respond.',
+          msg.id,
+        ).catch(() => {});
+      }
+
+    } else {
+      // ── Guild message — keep open, log guild/channel context ──────────────
+      logger.info('[discord] Guild message received', {
+        msgId: msg.id,
+        author: authorId,
+        guildId: this.config.guildId,
+        channelId: this.config.channelId,
+      });
+      await this.processMessage(msg);
+    }
+  }
+
+  private async processMessage(msg: DiscordMessage): Promise<void> {
+    if (!this.config) return;
+    logger.info('[discord] Processing message', { msgId: msg.id, author: msg.author.id });
 
     const typingPromise = this.sendTyping().catch(() => {});
 
@@ -143,7 +232,7 @@ export class DiscordInbound {
       await this.sendMessage(reply, msg.id);
     } catch (err) {
       logger.error('[discord] Agent run failed', { err: err instanceof Error ? err.message : String(err), msgId: msg.id });
-      await this.sendMessage('⚠️ Agent error — could not process your message.', msg.id).catch(() => {});
+      await this.sendMessage('Agent error — could not process your message.', msg.id).catch(() => {});
     }
   }
 

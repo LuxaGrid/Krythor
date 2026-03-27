@@ -15,12 +15,18 @@
 //   - Posts the agent reply back to the same chat
 //   - Stops by setting running=false and aborting the current fetch
 //
+// DM / group policy:
+//   - dmPolicy: 'pairing' (default) | 'allowlist' | 'open' | 'disabled'
+//   - groupPolicy: 'allowlist' (default) | 'open' | 'disabled'
+//   - Groups are identified by chat.id < 0; DMs by chat.id > 0
+//
 // Telegram limits:
 //   - Max message length: 4096 characters
 //   - Long-poll timeout: 30 seconds (configured below)
 //
 
 import type { AgentOrchestrator } from '@krythor/core';
+import type { DmPairingStore } from './DmPairingStore.js';
 import { logger } from './logger.js';
 
 const TELEGRAM_API = 'https://api.telegram.org';
@@ -31,14 +37,18 @@ export interface TelegramInboundConfig {
   token: string;
   agentId: string;
   enabled: boolean;
+  dmPolicy?: 'pairing' | 'allowlist' | 'open' | 'disabled';
+  groupPolicy?: 'open' | 'allowlist' | 'disabled';
+  allowFrom?: string[];
+  groups?: Record<string, { requireMention?: boolean; allowFrom?: string[] }>;
 }
 
 interface TelegramUpdate {
   update_id: number;
   message?: {
     message_id: number;
-    chat: { id: number };
-    from?: { id: number; first_name?: string };
+    chat: { id: number; type: string };
+    from?: { id: number; first_name?: string; username?: string };
     text?: string;
   };
 }
@@ -51,12 +61,16 @@ interface TelegramUpdatesResponse {
 export class TelegramInbound {
   private config: TelegramInboundConfig | null = null;
   private orchestrator: AgentOrchestrator;
+  private pairingStore: DmPairingStore;
   private running = false;
   private offset = 0;
   private abortController: AbortController | null = null;
+  private botUsername: string | null = null;
+  private channelId: string = 'telegram';
 
-  constructor(orchestrator: AgentOrchestrator) {
+  constructor(orchestrator: AgentOrchestrator, pairingStore: DmPairingStore) {
     this.orchestrator = orchestrator;
+    this.pairingStore = pairingStore;
   }
 
   // ── Configuration ──────────────────────────────────────────────────────────
@@ -81,18 +95,26 @@ export class TelegramInbound {
     }
     if (this.running) return { ok: true };
 
-    // Validate token by calling getMe
+    // Validate token by calling getMe; also capture botUsername for mention detection
     try {
-      const me = await this.telegramGet('getMe') as { ok: boolean; result?: { username?: string } };
+      const me = await this.telegramGet('getMe') as { ok: boolean; result?: { username?: string; id?: number } };
       if (!me.ok) {
         return { ok: false, error: 'Telegram getMe returned ok=false — check bot token' };
       }
-      logger.info('[telegram] Bot authenticated', { botUsername: me.result?.username });
+      this.botUsername = me.result?.username ?? null;
+      logger.info('[telegram] Bot authenticated', { botUsername: this.botUsername });
     } catch (err) {
       return {
         ok: false,
         error: `Telegram auth failed: ${err instanceof Error ? err.message : String(err)}`,
       };
+    }
+
+    // Seed allowlist from config.allowFrom (pre-configured senders)
+    if (this.config.allowFrom && this.config.allowFrom.length > 0) {
+      for (const senderId of this.config.allowFrom) {
+        this.pairingStore.addToAllowlist(this.channelId, senderId);
+      }
     }
 
     // Seed offset to skip any pending messages already queued
@@ -164,16 +186,101 @@ export class TelegramInbound {
     message: NonNullable<TelegramUpdate['message']>,
   ): Promise<void> {
     if (!this.config) return;
-    const chatId = message.chat.id;
-    const fromId = message.from?.id ?? 0;
-    logger.info('[telegram] Received message', { chatId, fromId });
 
-    // Send typing indicator (fire and forget)
-    void this.sendChatAction(chatId, 'typing').catch(() => {});
+    const chatId   = message.chat.id;
+    const fromId   = String(message.from?.id ?? 0);
+    const fromName = message.from?.first_name;
+    const isGroup  = chatId < 0;
 
+    logger.info('[telegram] Received message', { chatId, fromId, isGroup });
+
+    if (isGroup) {
+      // ── Group policy enforcement ────────────────────────────────────────────
+      const groupPolicy = this.config.groupPolicy ?? 'allowlist';
+
+      if (groupPolicy === 'disabled') {
+        return; // silently ignore
+      }
+
+      if (groupPolicy === 'allowlist') {
+        // Check if this group chat.id is in the configured groups map
+        const groupKey = String(chatId);
+        const groupCfg = this.config.groups?.[groupKey];
+        if (!groupCfg) {
+          // Group not in allowlist — ignore silently
+          logger.info('[telegram] Group not in allowlist — ignoring', { chatId });
+          return;
+        }
+
+        // Check requireMention
+        if (groupCfg.requireMention && this.botUsername) {
+          if (!message.text?.includes(`@${this.botUsername}`)) {
+            return; // not mentioned — ignore
+          }
+        }
+      }
+
+      // groupPolicy === 'open' or group is in allowlist: fall through to agent
+      void this.sendChatAction(chatId, 'typing').catch(() => {});
+      await this.runAgent(chatId, fromId, message.text!);
+
+    } else {
+      // ── DM policy enforcement ───────────────────────────────────────────────
+      const dmPolicy = this.config.dmPolicy ?? 'pairing';
+
+      if (dmPolicy === 'disabled') {
+        return; // silently ignore
+      }
+
+      if (dmPolicy === 'open') {
+        void this.sendChatAction(chatId, 'typing').catch(() => {});
+        await this.runAgent(chatId, fromId, message.text!);
+        return;
+      }
+
+      if (dmPolicy === 'allowlist') {
+        const allowed =
+          this.pairingStore.isAllowed(this.channelId, fromId) ||
+          (this.config.allowFrom?.includes(fromId) ?? false);
+
+        if (!allowed) {
+          await this.sendMessage(chatId, 'You are not authorized to message this bot.').catch(() => {});
+          return;
+        }
+
+        void this.sendChatAction(chatId, 'typing').catch(() => {});
+        await this.runAgent(chatId, fromId, message.text!);
+        return;
+      }
+
+      // dmPolicy === 'pairing' (default)
+      if (this.pairingStore.isAllowed(this.channelId, fromId)) {
+        void this.sendChatAction(chatId, 'typing').catch(() => {});
+        await this.runAgent(chatId, fromId, message.text!);
+        return;
+      }
+
+      // Not allowed — request pairing
+      const result = this.pairingStore.requestPairing(this.channelId, fromId, fromName);
+      if (result) {
+        await this.sendMessage(
+          chatId,
+          `Your pairing code is: \`${result.code}\`. Send this code to the bot owner to get access. Codes expire in 1 hour.`,
+        ).catch(() => {});
+      } else {
+        await this.sendMessage(
+          chatId,
+          'A pairing request is already pending. Please wait for the owner to respond.',
+        ).catch(() => {});
+      }
+    }
+  }
+
+  private async runAgent(chatId: number, fromId: string, text: string): Promise<void> {
+    if (!this.config) return;
     try {
       const run = await this.orchestrator.runAgent(this.config.agentId, {
-        input: message.text!,
+        input: text,
         contextOverride: `[Telegram from user ${fromId}]`,
       });
 
@@ -182,7 +289,7 @@ export class TelegramInbound {
       await this.sendMessage(chatId, reply);
     } catch (err) {
       logger.error('[telegram] Agent run failed', { err: err instanceof Error ? err.message : String(err), chatId });
-      await this.sendMessage(chatId, '⚠️ Agent error — could not process your message.').catch(() => {});
+      await this.sendMessage(chatId, 'Agent error — could not process your message.').catch(() => {});
     }
   }
 

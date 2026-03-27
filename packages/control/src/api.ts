@@ -744,6 +744,9 @@ export interface ChatChannelConfig {
   lastHealthStatus?: 'ok' | 'error';
   lastError?: string;
   connectedAt?: number;
+  dmPolicy?: 'pairing' | 'allowlist' | 'open' | 'disabled';
+  groupPolicy?: 'open' | 'allowlist' | 'disabled';
+  allowFrom?: string[];
 }
 
 export type ChatChannelStatus =
@@ -782,6 +785,25 @@ export const getChatChannelStatus = (id: string) =>
 
 export const getChatChannelPairingCode = (id: string) =>
   req<{ code: string; expiresAt: number }>('POST', `/chat-channels/${id}/pair`);
+
+// Pairing
+export const listPendingPairings = (id: string) =>
+  req<{ pending: Array<{ code: string; senderId: string; senderName?: string; requestedAt: number; expiresAt: number; channel: string }> }>('GET', `/chat-channels/${id}/pairing`);
+
+export const approvePairing = (id: string, code: string) =>
+  req<{ ok: boolean; senderId?: string }>('POST', `/chat-channels/${id}/pairing/${code}/approve`);
+
+export const denyPairing = (id: string, code: string) =>
+  req<{ ok: boolean }>('POST', `/chat-channels/${id}/pairing/${code}/deny`);
+
+export const listAllowlist = (id: string) =>
+  req<{ allowlist: string[] }>('GET', `/chat-channels/${id}/allowlist`);
+
+export const addToAllowlist = (id: string, senderId: string) =>
+  req<{ ok: boolean }>('POST', `/chat-channels/${id}/allowlist`, { senderId });
+
+export const removeFromAllowlist = (id: string, senderId: string) =>
+  req<{ ok: boolean }>('DELETE', `/chat-channels/${id}/allowlist/${senderId}`);
 
 // ── Config file editor ─────────────────────────────────────────────────────────
 export interface ConfigFileEntry { key: string; filename: string; exists: boolean }
