@@ -32,6 +32,7 @@ import { registerProviderRoutes } from './routes/providers.js';
 import { registerOAuthRoutes } from './routes/oauth.js';
 import { registerLocalModelsRoute } from './routes/local-models.js';
 import { registerStreamWs } from './ws/stream.js';
+import { DevicePairingStore } from './ws/DevicePairingStore.js';
 import { registerDashboardRoute } from './routes/dashboard.js';
 import { registerGatewayRoutes, loadOrCreateGatewayId } from './routes/gateway.js';
 import { registerChannelRoutes } from './routes/channels.js';
@@ -47,6 +48,7 @@ import { registerPluginRoutes } from './routes/plugins.js';
 import { registerApprovalRoutes } from './routes/approvals.js';
 import { registerAuditRoutes } from './routes/audit.js';
 import { registerWorkspaceRoutes } from './routes/workspace.js';
+import { registerDeviceRoutes } from './routes/devices.js';
 import { ApprovalManager } from './ApprovalManager.js';
 import { AuditLogger } from './AuditLogger.js';
 import { HeartbeatEngine, type HeartbeatRunRecord, type HeartbeatInsight } from './heartbeat/HeartbeatEngine.js';
@@ -785,7 +787,11 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   registerApprovalRoutes(app, approvalManager);
   registerAuditRoutes(app, auditLogger);
   registerWorkspaceRoutes(app);
-  registerStreamWs(app, core, () => authCfg.token, guard);
+
+  // Device pairing store — manages WS client device approval
+  const devicePairingStore = new DevicePairingStore(join(dataDir, 'devices'));
+  registerStreamWs(app, core, () => authCfg.token, guard, devicePairingStore, gatewayId, KRYTHOR_VERSION);
+  registerDeviceRoutes(app, devicePairingStore);
 
   // Templates endpoint — lists workspace template files available in the user's data dir.
   // Returns { name, filename, size, description } for each .md file in <dataDir>/templates/.
