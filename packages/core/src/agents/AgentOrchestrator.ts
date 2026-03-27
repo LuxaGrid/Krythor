@@ -6,6 +6,7 @@ import type { ModelEngine } from '@krythor/models';
 import type { ExecTool } from '../tools/ExecTool.js';
 import { AgentRegistry } from './AgentRegistry.js';
 import { AgentRunner } from './AgentRunner.js';
+import { SessionTranscriptStore } from './SessionTranscriptStore.js';
 import type { LearningRecorder, HandoffResolver, CustomToolDispatcher, SpawnAgentResolver, GuardLike } from './AgentRunner.js';
 import type {
   AgentDefinition,
@@ -79,6 +80,7 @@ export class AgentOrchestrator extends EventEmitter {
   private globalWorkspaceDir: string | null = null;
   private recordLearning?: LearningRecorder;
   private execToolInstance: ExecTool | null = null;
+  private transcriptStore: SessionTranscriptStore | null = null;
 
   constructor(
     private readonly memory: MemoryEngine | null,
@@ -148,6 +150,11 @@ export class AgentOrchestrator extends EventEmitter {
   setWorkspaceDir(dir: string): void {
     this.globalWorkspaceDir = dir;
     this.rebuildRunner();
+  }
+
+  /** Configure the sessions base directory for transcript storage. */
+  setSessionsDir(dir: string): void {
+    this.transcriptStore = new SessionTranscriptStore(dir);
   }
 
   /** Rebuild runner with all current wired dependencies. */
@@ -244,6 +251,7 @@ export class AgentOrchestrator extends EventEmitter {
       this.releaseSlot();
     }
     this.storeRun(run);
+    this.transcriptStore?.write(run);
     return run;
   }
 
@@ -273,6 +281,7 @@ export class AgentOrchestrator extends EventEmitter {
       this.releaseSlot();
     }
     this.storeRun(run);
+    this.transcriptStore?.write(run);
     return run;
   }
 

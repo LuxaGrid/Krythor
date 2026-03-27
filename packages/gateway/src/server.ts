@@ -582,6 +582,11 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   orchestrator.setWorkspaceDir(workspaceDir);
   logger.system('workspace_init', { dir: workspaceDir });
 
+  // Session transcript storage — one JSONL file per run at:
+  //   <dataDir>/agents/<agentId>/sessions/<runId>.jsonl
+  orchestrator.setSessionsDir(dataDir);
+  logger.info('Session transcript storage configured', { dir: dataDir });
+
   const core = new KrythorCore([join(__dirname, '..', '..', '..', '..', 'SOUL.md')]);
   core.attachMemory(memory);
   core.attachModels(models);
