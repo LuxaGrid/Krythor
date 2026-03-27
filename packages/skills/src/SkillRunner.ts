@@ -122,6 +122,7 @@ export class SkillRunner {
   async run(input: SkillRunInput): Promise<SkillRunResult> {
     const skill = this.getSkill(input.skillId);
     if (!skill) throw new Error(`Skill "${input.skillId}" not found`);
+    if (skill.enabled === false) throw new Error(`Skill "${input.skillId}" is disabled`);
 
     // ── Permission check ──────────────────────────────────────────────────────
     // Verify each declared permission before execution. This is a pre-flight

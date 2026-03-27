@@ -11,6 +11,14 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+#### Skill system improvements (2026-03-27)
+
+- **`enabled` flag per skill**: skills can now be disabled without deletion. `enabled: false` prevents execution (returns HTTP 409) and excludes the skill from `GET /api/skills` by default. Set via `POST /api/skills`, `PATCH /api/skills/:id`. Backfilled to `true` for all existing skills on load
+- **`userInvocable` flag per skill**: new boolean field indicating whether the skill should be surfaced as a user-facing slash command. Defaults to `true`. Stored and returned in full skill objects; consumers (UI/channels) can use this to filter the command palette
+- **`GET /api/skills?includeDisabled=true`**: disabled skills are excluded from list responses by default; pass `?includeDisabled=true` to include them for management UIs
+- **`GET /api/skills/status`**: new lightweight endpoint returning `{ activeRuns }` — the count of currently-executing skill runs. Useful for monitoring dashboards and rate-limit decisions
+- **Disabled-skill guard in `SkillRunner`**: attempting to run a disabled skill throws immediately (before model invocation or concurrency checks), ensuring no model tokens are consumed for disabled skills
+
 #### Plugin system improvements (2026-03-27)
 
 - **Plugin load status tracking**: `PluginLoader` now records a `PluginLoadRecord` (`{ file, status, name?, description?, reason? }`) for every file scanned — including failures and skipped entries. `listRecords()` returns the full record set from the last `load()` pass

@@ -35,6 +35,8 @@ export class SkillRegistry {
       providerId: input.providerId,
       timeoutMs: input.timeoutMs,
       taskProfile: input.taskProfile,
+      enabled: input.enabled !== false,      // default true
+      userInvocable: input.userInvocable !== false, // default true
       version: 1,
       runCount: 0,
       createdAt: now,
@@ -59,6 +61,8 @@ export class SkillRegistry {
       ...(input.providerId !== undefined && { providerId: input.providerId || undefined }),
       ...(input.taskProfile !== undefined && { taskProfile: input.taskProfile }),
       ...(input.timeoutMs !== undefined && { timeoutMs: input.timeoutMs || undefined }),
+      ...(input.enabled !== undefined && { enabled: input.enabled }),
+      ...(input.userInvocable !== undefined && { userInvocable: input.userInvocable }),
       version: (existing.version ?? 1) + 1,
       updatedAt: Date.now(),
     };
@@ -87,8 +91,9 @@ export class SkillRegistry {
     return this.skills.get(id) ?? null;
   }
 
-  list(tags?: string[]): Skill[] {
-    const all = Array.from(this.skills.values()).sort((a, b) => b.updatedAt - a.updatedAt);
+  list(tags?: string[], includeDisabled = false): Skill[] {
+    let all = Array.from(this.skills.values()).sort((a, b) => b.updatedAt - a.updatedAt);
+    if (!includeDisabled) all = all.filter(s => s.enabled !== false);
     if (!tags || tags.length === 0) return all;
     return all.filter(s => tags.every(t => s.tags.includes(t)));
   }
@@ -102,8 +107,10 @@ export class SkillRegistry {
       const parsed = JSON.parse(raw) as unknown;
       if (Array.isArray(parsed)) {
         for (const s of parsed as Skill[]) {
-          // Backfill permissions for skills created before this field existed
+          // Backfill fields for skills created before they existed
           if (!Array.isArray(s.permissions)) s.permissions = [];
+          if (s.enabled === undefined) s.enabled = true;
+          if (s.userInvocable === undefined) s.userInvocable = true;
           this.skills.set(s.id, s);
         }
       }

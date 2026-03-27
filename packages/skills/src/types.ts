@@ -43,6 +43,16 @@ export interface Skill {
   providerId?: string;    // override provider for this skill
   timeoutMs?: number;     // per-skill execution timeout; overrides runner default (120 s)
   taskProfile?: SkillTaskProfile;  // metadata for recommendation engine
+  /**
+   * When false the skill is disabled: it cannot be run and is excluded from listings
+   * (unless ?includeDisabled=true). Defaults to true (enabled).
+   */
+  enabled: boolean;
+  /**
+   * When false the skill is excluded from the model's system prompt context.
+   * It can still be invoked directly via the API. Defaults to true.
+   */
+  userInvocable: boolean;
   version: number;        // increments on every update (starts at 1)
   runCount: number;       // total number of times this skill has been executed
   lastRunAt?: number;     // Unix ms of last execution
@@ -60,6 +70,8 @@ export interface CreateSkillInput {
   providerId?: string;
   timeoutMs?: number;
   taskProfile?: SkillTaskProfile;
+  enabled?: boolean;
+  userInvocable?: boolean;
 }
 
 export interface UpdateSkillInput {
@@ -72,6 +84,8 @@ export interface UpdateSkillInput {
   providerId?: string;
   timeoutMs?: number;
   taskProfile?: SkillTaskProfile;
+  enabled?: boolean;
+  userInvocable?: boolean;
 }
 
 // ─── Skill lifecycle events ───────────────────────────────────────────────────

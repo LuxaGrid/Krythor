@@ -173,3 +173,28 @@ describe('SkillRunner — permissions', () => {
       .rejects.toBeInstanceOf(SkillPermissionError);
   });
 });
+
+// ── Enabled / disabled ────────────────────────────────────────────────────────
+
+describe('SkillRunner — enabled flag', () => {
+  it('throws when skill.enabled is false', async () => {
+    const skill = makeSkill({ enabled: false });
+    const runner = new SkillRunner(makeInfer(), () => skill);
+    await expect(runner.run({ skillId: 'skill-1', input: 'x' }))
+      .rejects.toThrow('disabled');
+  });
+
+  it('runs successfully when skill.enabled is true', async () => {
+    const skill = makeSkill({ enabled: true });
+    const runner = new SkillRunner(makeInfer(), () => skill);
+    const result = await runner.run({ skillId: 'skill-1', input: 'hello' });
+    expect(result.output).toBe('output');
+  });
+
+  it('runs successfully when skill.enabled is undefined (default)', async () => {
+    const skill = makeSkill(); // enabled not set → undefined → treated as enabled
+    const runner = new SkillRunner(makeInfer(), () => skill);
+    const result = await runner.run({ skillId: 'skill-1', input: 'hello' });
+    expect(result.output).toBe('output');
+  });
+});

@@ -13,10 +13,17 @@ export function registerSkillRoutes(app: FastifyInstance, skills: SkillRegistry,
   });
 
   // GET /api/skills — list skills, optionally filtered by tags
+  // ?includeDisabled=true includes disabled skills (excluded by default)
   app.get('/api/skills', async (req, reply) => {
     const q = req.query as Record<string, string>;
     const tags = q.tags ? q.tags.split(',').map(t => t.trim()).filter(Boolean) : undefined;
-    return reply.send(skills.list(tags));
+    const includeDisabled = q['includeDisabled'] === 'true';
+    return reply.send(skills.list(tags, includeDisabled));
+  });
+
+  // GET /api/skills/status — active skill run counts (visibility/monitoring)
+  app.get('/api/skills/status', async (_req, reply) => {
+    return reply.send({ activeRuns: runner.activeRunCount() });
   });
 
   // GET /api/skills/:id
@@ -33,15 +40,17 @@ export function registerSkillRoutes(app: FastifyInstance, skills: SkillRegistry,
         type: 'object',
         required: ['name', 'systemPrompt'],
         properties: {
-          name:         { type: 'string', minLength: 1, maxLength: 200 },
-          description:  { type: 'string', maxLength: 1000 },
-          systemPrompt: { type: 'string', minLength: 1, maxLength: 100000 },
-          tags:         { type: 'array', items: { type: 'string', minLength: 1, maxLength: 50 }, maxItems: 20 },
-          permissions:  { type: 'array', items: { type: 'string', enum: ['memory:read','memory:write','skill:invoke','internet:read'] }, maxItems: 10 },
-          modelId:      { type: 'string' },
-          providerId:   { type: 'string' },
-          timeoutMs:    { type: 'integer', minimum: 1000, maximum: 600_000 },
-          taskProfile:  {
+          name:          { type: 'string', minLength: 1, maxLength: 200 },
+          description:   { type: 'string', maxLength: 1000 },
+          systemPrompt:  { type: 'string', minLength: 1, maxLength: 100000 },
+          tags:          { type: 'array', items: { type: 'string', minLength: 1, maxLength: 50 }, maxItems: 20 },
+          permissions:   { type: 'array', items: { type: 'string', enum: ['memory:read','memory:write','skill:invoke','internet:read'] }, maxItems: 10 },
+          modelId:       { type: 'string' },
+          providerId:    { type: 'string' },
+          timeoutMs:     { type: 'integer', minimum: 1000, maximum: 600_000 },
+          enabled:       { type: 'boolean' },
+          userInvocable: { type: 'boolean' },
+          taskProfile:   {
             type: 'object',
             properties: {
               taskCategories:  { type: 'array', items: { type: 'string' }, maxItems: 10 },
@@ -73,15 +82,17 @@ export function registerSkillRoutes(app: FastifyInstance, skills: SkillRegistry,
       body: {
         type: 'object',
         properties: {
-          name:         { type: 'string', minLength: 1, maxLength: 200 },
-          description:  { type: 'string', maxLength: 1000 },
-          systemPrompt: { type: 'string', minLength: 1, maxLength: 100000 },
-          tags:         { type: 'array', items: { type: 'string', minLength: 1, maxLength: 50 }, maxItems: 20 },
-          permissions:  { type: 'array', items: { type: 'string', enum: ['memory:read','memory:write','skill:invoke','internet:read'] }, maxItems: 10 },
-          modelId:      { type: 'string' },
-          providerId:   { type: 'string' },
-          timeoutMs:    { type: 'integer', minimum: 1000, maximum: 600_000 },
-          taskProfile:  {
+          name:          { type: 'string', minLength: 1, maxLength: 200 },
+          description:   { type: 'string', maxLength: 1000 },
+          systemPrompt:  { type: 'string', minLength: 1, maxLength: 100000 },
+          tags:          { type: 'array', items: { type: 'string', minLength: 1, maxLength: 50 }, maxItems: 20 },
+          permissions:   { type: 'array', items: { type: 'string', enum: ['memory:read','memory:write','skill:invoke','internet:read'] }, maxItems: 10 },
+          modelId:       { type: 'string' },
+          providerId:    { type: 'string' },
+          timeoutMs:     { type: 'integer', minimum: 1000, maximum: 600_000 },
+          enabled:       { type: 'boolean' },
+          userInvocable: { type: 'boolean' },
+          taskProfile:   {
             type: 'object',
             properties: {
               taskCategories:  { type: 'array', items: { type: 'string' }, maxItems: 10 },
@@ -125,6 +136,9 @@ export function registerSkillRoutes(app: FastifyInstance, skills: SkillRegistry,
   }, async (req, reply) => {
     const skill = skills.getById(req.params.id);
     if (!skill) return sendError(reply, 404, 'SKILL_NOT_FOUND', 'Skill not found');
+    if (skill.enabled === false) {
+      return sendError(reply, 409, 'SKILL_DISABLED', `Skill "${skill.name}" is disabled`, 'Enable the skill before running it');
+    }
 
     const verdict = guard.check({ operation: 'skill:execute', source: 'user', sourceId: req.params.id });
     if (!verdict.allowed) {
