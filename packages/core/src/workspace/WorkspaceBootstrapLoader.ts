@@ -3,18 +3,20 @@
 // Loads workspace bootstrap files and injects them into the system prompt.
 //
 // Bootstrap files (read from the workspace directory):
-//   AGENTS.md   — operating instructions + "memory"
-//   SOUL.md     — persona, boundaries, tone
-//   TOOLS.md    — user-maintained tool notes
-//   IDENTITY.md — agent name/vibe/emoji
-//   USER.md     — user profile + preferred address
+//   AGENTS.md    — operating instructions + "memory"
+//   SOUL.md      — persona, boundaries, tone
+//   TOOLS.md     — user-maintained tool notes
+//   IDENTITY.md  — agent name/vibe/emoji
+//   USER.md      — user profile + preferred address
+//   MEMORY.md    — optional persistent notes across sessions (only injected when present)
 //   HEARTBEAT.md — optional tiny checklist for heartbeat runs
 //   BOOTSTRAP.md — one-time first-run ritual (deleted after completion)
 //
 // Injection behaviour:
 //   - Files are trimmed to BOOTSTRAP_MAX_CHARS per file (default 20 000 chars)
 //   - Total injection across all files is capped at BOOTSTRAP_TOTAL_MAX_CHARS (default 150 000)
-//   - Missing files inject a one-line "missing" marker
+//   - Missing files inject a one-line "missing" marker, EXCEPT optional files
+//   - Optional files (MEMORY.md): silently skipped when not present
 //   - Blank files are skipped silently
 //   - Truncated files end with a "[...truncated]" marker
 //   - Sub-agent runs only receive AGENTS.md and TOOLS.md (promptMode: 'minimal')
@@ -26,6 +28,9 @@ import { join } from 'path';
 export const BOOTSTRAP_MAX_CHARS       = 20_000;
 export const BOOTSTRAP_TOTAL_MAX_CHARS = 150_000;
 
+/** Files that are silently skipped when not present (no "missing" marker injected). */
+const OPTIONAL_BOOTSTRAP_FILES = new Set(['MEMORY.md', 'HEARTBEAT.md', 'BOOTSTRAP.md']);
+
 /** Files injected on a full (non-subagent) run, in order. */
 export const BOOTSTRAP_FILES_FULL = [
   'AGENTS.md',
@@ -33,6 +38,7 @@ export const BOOTSTRAP_FILES_FULL = [
   'TOOLS.md',
   'IDENTITY.md',
   'USER.md',
+  'MEMORY.md',
   'HEARTBEAT.md',
   'BOOTSTRAP.md',
 ] as const;
@@ -91,7 +97,10 @@ export class WorkspaceBootstrapLoader {
       const filePath = join(this.workspaceDir, name);
 
       if (!existsSync(filePath)) {
-        results.push({ name, status: 'missing', rawChars: 0, injectedChars: 0, content: '' });
+        // Optional files are silently skipped; required files inject a "missing" marker
+        if (!OPTIONAL_BOOTSTRAP_FILES.has(name)) {
+          results.push({ name, status: 'missing', rawChars: 0, injectedChars: 0, content: '' });
+        }
         continue;
       }
 
