@@ -6,7 +6,7 @@ import fastifyRateLimit from '@fastify/rate-limit';
 import { join } from 'path';
 import { existsSync, readFileSync, readdirSync, watch as fsWatch } from 'fs';
 import { homedir, networkInterfaces } from 'os';
-import { KrythorCore, AgentOrchestrator, ExecTool, CustomToolStore, WebhookTool, PluginLoader } from '@krythor/core';
+import { KrythorCore, AgentOrchestrator, ExecTool, CustomToolStore, WebhookTool, PluginLoader, AgentWorkspaceManager, getDefaultWorkspaceDir } from '@krythor/core';
 import { MemoryEngine, GuardDecisionStore, OllamaEmbeddingProvider } from '@krythor/memory';
 import { ModelEngine, ModelRecommender, PreferenceStore } from '@krythor/models';
 import { GuardEngine } from '@krythor/guard';
@@ -46,6 +46,7 @@ import { registerOpenAICompatRoutes } from './routes/openai.compat.js';
 import { registerPluginRoutes } from './routes/plugins.js';
 import { registerApprovalRoutes } from './routes/approvals.js';
 import { registerAuditRoutes } from './routes/audit.js';
+import { registerWorkspaceRoutes } from './routes/workspace.js';
 import { ApprovalManager } from './ApprovalManager.js';
 import { AuditLogger } from './AuditLogger.js';
 import { HeartbeatEngine, type HeartbeatRunRecord, type HeartbeatInsight } from './heartbeat/HeartbeatEngine.js';
@@ -571,6 +572,14 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
       }
     },
   );
+  // Initialise agent workspace — ensures bootstrap files exist and wires the
+  // workspace dir into the orchestrator so every agent run gets Project Context.
+  const workspaceDir = getDefaultWorkspaceDir();
+  const workspaceManager = new AgentWorkspaceManager(workspaceDir);
+  workspaceManager.ensureWorkspace();
+  orchestrator.setWorkspaceDir(workspaceDir);
+  logger.system('workspace_init', { dir: workspaceDir });
+
   const core = new KrythorCore([join(__dirname, '..', '..', '..', '..', 'SOUL.md')]);
   core.attachMemory(memory);
   core.attachModels(models);
@@ -775,6 +784,7 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   registerPluginRoutes(app, pluginLoader);
   registerApprovalRoutes(app, approvalManager);
   registerAuditRoutes(app, auditLogger);
+  registerWorkspaceRoutes(app);
   registerStreamWs(app, core, () => authCfg.token, guard);
 
   // Templates endpoint — lists workspace template files available in the user's data dir.

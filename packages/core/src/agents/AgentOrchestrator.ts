@@ -76,6 +76,10 @@ export class AgentOrchestrator extends EventEmitter {
   private spawnAgentResolver: SpawnAgentResolver | null = null;
   private guardInstance: GuardLike | null = null;
 
+  private globalWorkspaceDir: string | null = null;
+  private recordLearning?: LearningRecorder;
+  private execToolInstance: ExecTool | null = null;
+
   constructor(
     private readonly memory: MemoryEngine | null,
     private readonly models: ModelEngine | null,
@@ -84,9 +88,11 @@ export class AgentOrchestrator extends EventEmitter {
     execTool?: ExecTool | null,
   ) {
     super();
+    this.recordLearning = recordLearning;
+    this.execToolInstance = execTool ?? null;
     const dir = configDir ?? getConfigDir();
     this.registry = new AgentRegistry(dir);
-    this.runner = new AgentRunner(memory, models, recordLearning, execTool ?? null, null, null, null, null);
+    this.runner = new AgentRunner(memory, models, recordLearning, execTool ?? null, null, null, null, null, null);
     // Wire the handoff resolver — dispatches {"handoff":"<id>","message":"..."} to another agent
     this.handoffResolver = async (targetAgentId: string, message: string): Promise<string | null> => {
       const agent = this.registry.getById(targetAgentId);
@@ -101,7 +107,7 @@ export class AgentOrchestrator extends EventEmitter {
       const run = await this.runner.run(agent, { input: message }, (evt) => this.emit('agent:event', evt));
       return run.output ?? null;
     };
-    this.rebuildRunner(recordLearning, execTool ?? null);
+    this.rebuildRunner();
     this.startJanitor();
   }
 
@@ -138,17 +144,24 @@ export class AgentOrchestrator extends EventEmitter {
     }
   }
 
+  /** Set the global workspace directory. Passed to AgentRunner for bootstrap injection. */
+  setWorkspaceDir(dir: string): void {
+    this.globalWorkspaceDir = dir;
+    this.rebuildRunner();
+  }
+
   /** Rebuild runner with all current wired dependencies. */
-  private rebuildRunner(recordLearning?: LearningRecorder, execTool?: ExecTool | null): void {
+  private rebuildRunner(): void {
     this.runner = new AgentRunner(
       this.memory,
       this.models,
-      recordLearning,
-      execTool ?? null,
+      this.recordLearning,
+      this.execToolInstance,
       this.handoffResolver,
       this.customToolDispatcher,
       this.spawnAgentResolver,
       this.guardInstance,
+      this.globalWorkspaceDir,
     );
   }
 
@@ -158,16 +171,8 @@ export class AgentOrchestrator extends EventEmitter {
    * so subsequent runs have access to exec capabilities.
    */
   setExecTool(execTool: ExecTool): void {
-    this.runner = new AgentRunner(
-      this.memory,
-      this.models,
-      undefined,
-      execTool,
-      this.handoffResolver,
-      this.customToolDispatcher,
-      this.spawnAgentResolver,
-      this.guardInstance,
-    );
+    this.execToolInstance = execTool;
+    this.rebuildRunner();
   }
 
   /**

@@ -6,6 +6,7 @@ import { WebSearchTool } from '../tools/WebSearchTool.js';
 import { WebFetchTool } from '../tools/WebFetchTool.js';
 import { FilesystemTool } from '../tools/FilesystemTool.js';
 import { browserTool } from '../tools/BrowserTool.js';
+import { WorkspaceBootstrapLoader } from '../workspace/WorkspaceBootstrapLoader.js';
 import type {
   AgentDefinition,
   AgentRun,
@@ -266,9 +267,29 @@ export class AgentRunner {
     private readonly customToolDispatcher?: CustomToolDispatcher | null,
     private readonly spawnAgentResolver?: SpawnAgentResolver | null,
     private readonly guard?: GuardLike | null,
+    /** Global workspace directory — used when agent.workspaceDir is not set. */
+    private readonly globalWorkspaceDir?: string | null,
   ) {}
 
   // ── Private helpers ────────────────────────────────────────────────────────
+
+  private buildBootstrapContext(agent: AgentDefinition, input: RunAgentInput): string {
+    const promptMode = input.promptMode ?? 'full';
+    if (promptMode === 'none') return '';
+
+    // Resolve workspace directory: run override → agent → global
+    const workspaceDir =
+      input.workspaceDirOverride ??
+      agent.workspaceDir ??
+      this.globalWorkspaceDir ??
+      null;
+
+    if (!workspaceDir) return '';
+
+    const loader = new WorkspaceBootstrapLoader(workspaceDir);
+    const result = loader.load(promptMode);
+    return result.projectContext;
+  }
 
   private async buildMemoryContext(agent: AgentDefinition, input: string, runId: string): Promise<{ memoryContext: string; memoryIdsUsed: string[] }> {
     const memoryIdsUsed: string[] = [];
@@ -313,11 +334,13 @@ export class AgentRunner {
     input: RunAgentInput,
     memoryContext: string,
     contextMessages?: Array<{ role: string; content: string }>,
+    bootstrapContext?: string,
   ): AgentMessage[] {
     const systemPrompt = [
       agent.systemPrompt,
       input.contextOverride ? `\nAdditional context:\n${input.contextOverride}` : '',
       memoryContext,
+      bootstrapContext ? `\n\n${bootstrapContext}` : '',
     ].join('');
 
     const messages: AgentMessage[] = [
@@ -636,7 +659,8 @@ export class AgentRunner {
       const { memoryContext, memoryIdsUsed } = await this.buildMemoryContext(agent, input.input, runId);
       run.memoryIdsUsed = memoryIdsUsed;
 
-      const messages = this.buildMessages(agent, input, memoryContext, input.contextMessages);
+      const bootstrapContext = this.buildBootstrapContext(agent, input);
+      const messages = this.buildMessages(agent, input, memoryContext, input.contextMessages, bootstrapContext);
       run.messages = messages;
 
       // Conversation loop
@@ -845,7 +869,8 @@ export class AgentRunner {
       const { memoryContext, memoryIdsUsed } = await this.buildMemoryContext(agent, input.input, runId);
       run.memoryIdsUsed = memoryIdsUsed;
 
-      const messages = this.buildMessages(agent, input, memoryContext, input.contextMessages);
+      const bootstrapContext = this.buildBootstrapContext(agent, input);
+      const messages = this.buildMessages(agent, input, memoryContext, input.contextMessages, bootstrapContext);
       run.messages = messages;
 
       let streamTurnCount = 0;

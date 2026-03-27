@@ -44,3 +44,7 @@ export type {
   UpdateAgentInput,
   RunAgentInput,
 } from './agents/types.js';
+
+export { WorkspaceBootstrapLoader, BOOTSTRAP_MAX_CHARS, BOOTSTRAP_TOTAL_MAX_CHARS, BOOTSTRAP_FILES_FULL, BOOTSTRAP_FILES_MINIMAL } from './workspace/WorkspaceBootstrapLoader.js';
+export type { BootstrapFileResult, BootstrapResult, PromptMode } from './workspace/WorkspaceBootstrapLoader.js';
+export { AgentWorkspaceManager, getDefaultWorkspaceDir } from './workspace/AgentWorkspaceManager.js';

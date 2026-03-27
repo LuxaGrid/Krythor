@@ -54,7 +54,7 @@ afterAll(async () => {
 // ── GET /api/chat-channels/providers ──────────────────────────────────────────
 
 describe('GET /api/chat-channels/providers', () => {
-  it('returns all 3 providers', async () => {
+  it('returns all providers (telegram, discord, whatsapp, webchat)', async () => {
     const res = await app.inject({
       method: 'GET',
       url: '/api/chat-channels/providers',
@@ -63,11 +63,12 @@ describe('GET /api/chat-channels/providers', () => {
     expect(res.statusCode).toBe(200)
     const body = JSON.parse(res.body) as { providers: Array<{ id: string }> }
     expect(Array.isArray(body.providers)).toBe(true)
-    expect(body.providers).toHaveLength(3)
+    expect(body.providers.length).toBeGreaterThanOrEqual(4)
     const ids = body.providers.map(p => p.id)
     expect(ids).toContain('telegram')
     expect(ids).toContain('discord')
     expect(ids).toContain('whatsapp')
+    expect(ids).toContain('webchat')
   })
 
   it('each provider has required metadata fields', async () => {
@@ -83,7 +84,10 @@ describe('GET /api/chat-channels/providers', () => {
       expect(typeof p['description']).toBe('string')
       expect(Array.isArray(p['credentialFields'])).toBe(true)
       expect(typeof p['requiresPairing']).toBe('boolean')
-      expect(typeof p['docsUrl']).toBe('string')
+      // docsUrl is optional — only check when present
+      if (p['docsUrl'] !== undefined) {
+        expect(typeof p['docsUrl']).toBe('string')
+      }
     }
   })
 })

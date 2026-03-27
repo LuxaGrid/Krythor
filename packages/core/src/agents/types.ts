@@ -26,6 +26,16 @@ export interface AgentDefinition {
    * Default: undefined (no timeout). Example: 300000 (5 minutes).
    */
   idleTimeoutMs?: number;
+  /**
+   * Optional workspace directory for this agent.
+   * When set, bootstrap files are loaded from this directory and injected into
+   * the system prompt. When unset, the global workspace is used (if configured).
+   */
+  workspaceDir?: string;
+  /**
+   * When true, skip creating BOOTSTRAP.md for a new workspace (pre-seeded workspaces).
+   */
+  skipBootstrap?: boolean;
   createdAt: number;
   updatedAt: number;
 }
@@ -97,6 +107,18 @@ export interface RunAgentInput {
   contextMessages?: Array<{ role: string; content: string }>; // conversation history to prepend
   runId?: string;          // pre-specified run ID for SSE correlation
   requestId?: string;      // HTTP requestId for end-to-end log correlation
+  /**
+   * Controls which system prompt sections and bootstrap files are injected.
+   * 'full'    — all sections + all workspace files (default)
+   * 'minimal' — sub-agent mode: only AGENTS.md + TOOLS.md, fewer prompt sections
+   * 'none'    — bare system prompt (agent.systemPrompt only)
+   */
+  promptMode?: 'full' | 'minimal' | 'none';
+  /**
+   * Override the workspace directory for this specific run.
+   * Falls back to agent.workspaceDir, then the global workspace.
+   */
+  workspaceDirOverride?: string;
 }
 
 // ─── Events (for streaming to UI via WebSocket) ───────────────────────────────

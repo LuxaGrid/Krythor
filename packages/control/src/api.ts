@@ -910,3 +910,36 @@ export async function fileMkdir(path: string, agentId?: string): Promise<{ path:
 export async function fileDelete(path: string, recursive?: boolean, agentId?: string): Promise<{ path: string }> {
   return req<{ path: string }>('POST', '/tools/files/delete', { path, ...(recursive !== undefined && { recursive }), ...(agentId && { agentId }) });
 }
+
+// ── Workspace ──────────────────────────────────────────────────────────────
+
+export interface WorkspaceFileStatus {
+  name: string;
+  status: 'ok' | 'missing' | 'blank' | 'truncated';
+  rawChars: number;
+  injectedChars: number;
+}
+
+export interface WorkspaceStatus {
+  dir: string;
+  exists: boolean;
+  files: WorkspaceFileStatus[];
+  totalRawChars: number;
+  totalInjectedChars: number;
+}
+
+export async function getWorkspaceStatus(): Promise<WorkspaceStatus> {
+  return req<WorkspaceStatus>('GET', '/workspace');
+}
+
+export async function initWorkspace(skipBootstrap?: boolean): Promise<{ ok: boolean; dir: string; files: { name: string; status: string }[] }> {
+  return req('POST', '/workspace/init', { skipBootstrap: skipBootstrap ?? false });
+}
+
+export async function getWorkspaceFile(name: string): Promise<{ name: string; content: string; sizeBytes: number; updatedAt: number }> {
+  return req('GET', `/workspace/file/${encodeURIComponent(name)}`);
+}
+
+export async function putWorkspaceFile(name: string, content: string): Promise<{ ok: boolean; name: string; sizeBytes: number }> {
+  return req('PUT', `/workspace/file/${encodeURIComponent(name)}`, { content });
+}
