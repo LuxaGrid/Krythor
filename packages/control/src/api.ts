@@ -943,3 +943,42 @@ export async function getWorkspaceFile(name: string): Promise<{ name: string; co
 export async function putWorkspaceFile(name: string, content: string): Promise<{ ok: boolean; name: string; sizeBytes: number }> {
   return req('PUT', `/workspace/file/${encodeURIComponent(name)}`, { content });
 }
+
+// ── Devices ────────────────────────────────────────────────────────────────
+
+export interface PairedDevice {
+  deviceId: string;
+  platform: string;
+  deviceFamily: string;
+  role: 'client' | 'node';
+  caps?: string[];
+  status: 'approved' | 'pending' | 'denied';
+  label?: string;
+  requestedAt: number;
+  approvedAt?: number;
+  lastSeenAt: number;
+}
+
+export async function listDevices(): Promise<{ devices: PairedDevice[] }> {
+  return req('GET', '/devices');
+}
+
+export async function listPendingDevices(): Promise<{ devices: PairedDevice[] }> {
+  return req('GET', '/devices/pending');
+}
+
+export async function approveDevice(id: string, label?: string): Promise<{ ok: boolean; device: PairedDevice }> {
+  return req('POST', `/devices/${encodeURIComponent(id)}/approve`, { label });
+}
+
+export async function denyDevice(id: string): Promise<{ ok: boolean; device: PairedDevice }> {
+  return req('POST', `/devices/${encodeURIComponent(id)}/deny`);
+}
+
+export async function removeDevice(id: string): Promise<{ ok: boolean }> {
+  return req('DELETE', `/devices/${encodeURIComponent(id)}`);
+}
+
+export async function updateDeviceLabel(id: string, label: string): Promise<{ ok: boolean; device: PairedDevice }> {
+  return req('PATCH', `/devices/${encodeURIComponent(id)}`, { label });
+}
