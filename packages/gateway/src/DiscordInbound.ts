@@ -25,6 +25,7 @@
 //
 
 import type { AgentOrchestrator } from '@krythor/core';
+import type { ConversationStore } from '@krythor/memory';
 import type { DmPairingStore } from './DmPairingStore.js';
 import { logger } from './logger.js';
 
@@ -40,6 +41,7 @@ export interface DiscordInboundConfig {
   dmPolicy?: 'pairing' | 'allowlist' | 'open' | 'disabled';
   allowFrom?: string[];
   guildId?: string;
+  resetTriggers?: string[];
 }
 
 interface DiscordMessage {
@@ -56,12 +58,16 @@ export class DiscordInbound {
   private config: DiscordInboundConfig | null = null;
   private orchestrator: AgentOrchestrator;
   private pairingStore: DmPairingStore;
+  private convStore: ConversationStore | null;
   private processing = false;
   private channelId: string = 'discord';
+  /** Per-author conversation tracking: authorId → conversationId */
+  private authorConvMap = new Map<string, string>();
 
-  constructor(orchestrator: AgentOrchestrator, pairingStore: DmPairingStore) {
+  constructor(orchestrator: AgentOrchestrator, pairingStore: DmPairingStore, convStore: ConversationStore | null = null) {
     this.orchestrator = orchestrator;
     this.pairingStore = pairingStore;
+    this.convStore = convStore;
   }
 
   // ── Configuration ──────────────────────────────────────────────────────────
@@ -219,15 +225,48 @@ export class DiscordInbound {
     if (!this.config) return;
     logger.info('[discord] Processing message', { msgId: msg.id, author: msg.author.id });
 
+    const authorId = msg.author.id;
+
+    // Check for session reset triggers (case-insensitive exact match)
+    const triggers = this.config.resetTriggers ?? ['/new'];
+    const isReset = triggers.some(t => msg.content.trim().toLowerCase() === t.toLowerCase());
+    if (isReset) {
+      this.authorConvMap.delete(authorId);
+      await this.sendMessage('(new conversation started)', msg.id).catch(() => {});
+      return;
+    }
+
+    // Resolve or create a per-author conversation for context continuity
+    let conversationId = this.authorConvMap.get(authorId);
+    let contextMessages: Array<{ role: string; content: string }> = [];
+
+    if (this.convStore) {
+      if (!conversationId) {
+        const conv = this.convStore.createConversation(this.config.agentId);
+        conversationId = conv.id;
+        this.authorConvMap.set(authorId, conversationId);
+      }
+      const msgs = this.convStore.getMessages(conversationId);
+      contextMessages = msgs.map(m => ({ role: m.role, content: m.content }));
+    }
+
     const typingPromise = this.sendTyping().catch(() => {});
 
     try {
       const run = await this.orchestrator.runAgent(this.config.agentId, {
         input: msg.content,
-        contextOverride: `[Discord message from user ${msg.author.id}]`,
-      });
+        contextOverride: `[Discord message from user ${authorId}]`,
+      }, { contextMessages });
 
-      const reply = (run.output ?? 'Sorry, I could not process your message.').slice(0, MAX_REPLY_LEN);
+      const output = run.output ?? 'Sorry, I could not process your message.';
+
+      // Persist the exchange
+      if (this.convStore && conversationId) {
+        this.convStore.addMessage(conversationId, 'user', msg.content);
+        this.convStore.addMessage(conversationId, 'assistant', output, run.modelUsed);
+      }
+
+      const reply = output.slice(0, MAX_REPLY_LEN);
       await typingPromise;
       await this.sendMessage(reply, msg.id);
     } catch (err) {

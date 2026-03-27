@@ -26,6 +26,7 @@
 //
 
 import type { AgentOrchestrator } from '@krythor/core';
+import type { ConversationStore } from '@krythor/memory';
 import type { DmPairingStore } from './DmPairingStore.js';
 import { logger } from './logger.js';
 
@@ -41,6 +42,7 @@ export interface TelegramInboundConfig {
   groupPolicy?: 'open' | 'allowlist' | 'disabled';
   allowFrom?: string[];
   groups?: Record<string, { requireMention?: boolean; allowFrom?: string[] }>;
+  resetTriggers?: string[];
 }
 
 interface TelegramUpdate {
@@ -62,15 +64,19 @@ export class TelegramInbound {
   private config: TelegramInboundConfig | null = null;
   private orchestrator: AgentOrchestrator;
   private pairingStore: DmPairingStore;
+  private convStore: ConversationStore | null;
   private running = false;
   private offset = 0;
   private abortController: AbortController | null = null;
   private botUsername: string | null = null;
   private channelId: string = 'telegram';
+  /** Per-sender DM conversation tracking: senderId → conversationId */
+  private senderConvMap = new Map<string, string>();
 
-  constructor(orchestrator: AgentOrchestrator, pairingStore: DmPairingStore) {
+  constructor(orchestrator: AgentOrchestrator, pairingStore: DmPairingStore, convStore: ConversationStore | null = null) {
     this.orchestrator = orchestrator;
     this.pairingStore = pairingStore;
+    this.convStore = convStore;
   }
 
   // ── Configuration ──────────────────────────────────────────────────────────
@@ -279,13 +285,43 @@ export class TelegramInbound {
   private async runAgent(chatId: number, fromId: string, text: string): Promise<void> {
     if (!this.config) return;
     try {
+      // Check for session reset triggers (case-insensitive exact match)
+      const triggers = this.config.resetTriggers ?? ['/new'];
+      const isReset = triggers.some(t => text.trim().toLowerCase() === t.toLowerCase());
+      if (isReset) {
+        this.senderConvMap.delete(fromId);
+        await this.sendMessage(chatId, '(new conversation started)');
+        return;
+      }
+
+      // Resolve or create a per-sender conversation for context continuity
+      let conversationId = this.senderConvMap.get(fromId);
+      let contextMessages: Array<{ role: string; content: string }> = [];
+
+      if (this.convStore) {
+        if (!conversationId) {
+          const conv = this.convStore.createConversation(this.config.agentId);
+          conversationId = conv.id;
+          this.senderConvMap.set(fromId, conversationId);
+        }
+        const msgs = this.convStore.getMessages(conversationId);
+        contextMessages = msgs.map(m => ({ role: m.role, content: m.content }));
+      }
+
       const run = await this.orchestrator.runAgent(this.config.agentId, {
         input: text,
         contextOverride: `[Telegram from user ${fromId}]`,
-      });
+      }, { contextMessages });
 
-      const reply = (run.output ?? 'Sorry, I could not process your message.')
-        .slice(0, MAX_REPLY_LEN);
+      const output = run.output ?? 'Sorry, I could not process your message.';
+
+      // Persist the exchange to the conversation store
+      if (this.convStore && conversationId) {
+        this.convStore.addMessage(conversationId, 'user', text);
+        this.convStore.addMessage(conversationId, 'assistant', output, run.modelUsed);
+      }
+
+      const reply = output.slice(0, MAX_REPLY_LEN);
       await this.sendMessage(chatId, reply);
     } catch (err) {
       logger.error('[telegram] Agent run failed', { err: err instanceof Error ? err.message : String(err), chatId });

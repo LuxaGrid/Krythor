@@ -948,7 +948,7 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   registerChannelRoutes(app, channelMgr);
 
   // Inbound channel manager — manages Telegram, Discord, WhatsApp from registry
-  const inboundMgr = new InboundChannelManager(chatChannelRegistry, orchestrator, dataDir, logger);
+  const inboundMgr = new InboundChannelManager(chatChannelRegistry, orchestrator, dataDir, logger, convStore);
   if (process.env['NODE_ENV'] !== 'test') {
     inboundMgr.startAll().catch(err => logger.error('[inbound] startAll error', { err: err instanceof Error ? err.message : String(err) }));
   }
@@ -961,7 +961,7 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   // and env-var-based configuration (env vars take precedence over registry).
   // Uses its own pairing store scoped to the legacy env-var channel.
   const legacyDiscordPairingStore = new DmPairingStore(join(dataDir, 'pairing'));
-  const discordInbound = new DiscordInbound(orchestrator, legacyDiscordPairingStore);
+  const discordInbound = new DiscordInbound(orchestrator, legacyDiscordPairingStore, convStore);
 
   // Bootstrap from env vars if present
   const discordToken     = process.env['KRYTHOR_DISCORD_TOKEN'];

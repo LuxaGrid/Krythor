@@ -42,6 +42,11 @@ export interface ChatChannelConfig {
   groupPolicy?: 'open' | 'allowlist' | 'disabled';
   allowFrom?: string[];
   groups?: Record<string, { requireMention?: boolean; allowFrom?: string[] }>;
+  /**
+   * Keywords that trigger a new conversation for a sender (case-insensitive exact match).
+   * Useful for "start over", "reset", etc. Defaults to ['/new'].
+   */
+  resetTriggers?: string[];
 }
 
 export interface ChannelProviderMeta {
