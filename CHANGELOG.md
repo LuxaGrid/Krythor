@@ -11,6 +11,14 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+#### Tool improvements (2026-03-27)
+
+- **`maxChars` parameter on `web_fetch`**: agents can now pass `maxChars` (integer, 1–50 000) to control how many characters are returned. Defaults to 10 000. The cap is enforced both in `WebFetchTool.fetch()` and in the `POST /api/tools/web_fetch` schema. `ToolRegistry` description updated to document the parameter. `AgentRunner` extracts and forwards the field from agent tool-call JSON
+- **Result caching on `web_fetch`** (15-minute TTL): identical URL + maxChars combinations return the cached result without making a second HTTP request. Cache is keyed by `url\x00maxChars` and expired entries are lazily evicted before every lookup
+- **Result caching on `web_search`** (15-minute TTL): identical (normalized) queries return the cached DuckDuckGo response. Empty results are not cached. Cache is evicted lazily on each lookup
+- **`POST /api/tools/btw`** — ephemeral side-question endpoint: accepts `{ question, context?, agentId?, modelId? }`, runs a single no-tools one-shot model inference, and returns `{ answer, modelUsed, ephemeral: true }`. The response is never written to session history — it is intentionally transient. Useful for quick lookups or clarifications that should not pollute an agent's working context. Rate-limited to 30 req/min. Returns 503 when no model providers are configured
+- **`clearFetchCache()` / `clearSearchCache()` exports**: both cache-clearing functions are exported from their respective modules and called in `beforeEach` in the unit tests, preventing cache state from leaking between test cases
+
 #### Automation: inbound webhooks + cron scheduler (2026-03-27)
 
 - **Inbound webhook routes** (`POST /api/hooks/wake`, `POST /api/hooks/agent`): external systems can now trigger Krythor agent runs over HTTP. `/wake` logs a notification and returns an accepted confirmation; `/agent` runs an agent synchronously and returns the result. Both require a `webhookToken` configured via `PATCH /api/config`

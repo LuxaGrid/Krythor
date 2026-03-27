@@ -62,7 +62,7 @@ const HANDOFF_RE  = /\{[\s\S]*?"handoff"\s*:\s*"[^"]*"[\s\S]*?\}/;
 
 type ExecCall           = { tool: 'exec';              command: string; args: string[] };
 type WebSearchCall      = { tool: 'web_search';        query: string };
-type WebFetchCall       = { tool: 'web_fetch';         url: string };
+type WebFetchCall       = { tool: 'web_fetch';         url: string; maxChars?: number };
 type ReadFileCall       = { tool: 'read_file';         path: string };
 type WriteFileCall      = { tool: 'write_file';        path: string; content: string };
 type EditFileCall       = { tool: 'edit_file';         path: string; old: string; new: string };
@@ -127,7 +127,9 @@ function extractToolCall(response: string): AnyToolCall | null {
     }
 
     if (tool === 'web_fetch' && typeof parsed['url'] === 'string' && parsed['url'].length > 0) {
-      return { tool: 'web_fetch', url: parsed['url'] as string };
+      const maxChars = typeof parsed['maxChars'] === 'number' && parsed['maxChars'] > 0
+        ? parsed['maxChars'] : undefined;
+      return { tool: 'web_fetch', url: parsed['url'] as string, maxChars };
     }
 
     if (tool === 'spawn_agent' &&
@@ -570,7 +572,7 @@ export class AgentRunner {
         }
       }
       try {
-        const result = await webFetchTool.fetch(call.url);
+        const result = await webFetchTool.fetch(call.url, call.maxChars);
         if ('error' in result && result.error === 'SSRF_BLOCKED') {
           toolResult = `Tool web_fetch blocked (SSRF protection): ${result.reason}`;
         } else {

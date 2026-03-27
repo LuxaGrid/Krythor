@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { WebFetchTool, WEB_FETCH_MAX_CHARS, WEB_FETCH_TIMEOUT_MS, type WebFetchResult } from './WebFetchTool.js'
+import { WebFetchTool, WEB_FETCH_MAX_CHARS, WEB_FETCH_TIMEOUT_MS, clearFetchCache, type WebFetchResult } from './WebFetchTool.js'
 
 // ─── WebFetchTool unit tests ──────────────────────────────────────────────────
 //
@@ -37,6 +37,7 @@ describe('WebFetchTool — HTML stripping', () => {
   const mockFetch = vi.fn()
 
   beforeEach(() => {
+    clearFetchCache()
     vi.stubGlobal('fetch', mockFetch)
   })
 
@@ -94,6 +95,7 @@ describe('WebFetchTool — truncation', () => {
   const mockFetch = vi.fn()
 
   beforeEach(() => {
+    clearFetchCache()
     vi.stubGlobal('fetch', mockFetch)
   })
 
@@ -137,6 +139,7 @@ describe('WebFetchTool — error handling', () => {
   const mockFetch = vi.fn()
 
   beforeEach(() => {
+    clearFetchCache()
     vi.stubGlobal('fetch', mockFetch)
   })
 

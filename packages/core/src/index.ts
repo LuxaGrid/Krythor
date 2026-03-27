@@ -1,9 +1,9 @@
 export { KrythorCore } from './KrythorCore.js';
 export { ExecTool, ExecDeniedError, ExecTimeoutError, DEFAULT_EXEC_ALLOWLIST, DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS } from './tools/ExecTool.js';
 export type { ExecOptions, ExecResult } from './tools/ExecTool.js';
-export { WebSearchTool, WEB_SEARCH_TIMEOUT_MS } from './tools/WebSearchTool.js';
+export { WebSearchTool, WEB_SEARCH_TIMEOUT_MS, WEB_SEARCH_CACHE_TTL_MS } from './tools/WebSearchTool.js';
 export type { WebSearchResult, WebSearchResponse } from './tools/WebSearchTool.js';
-export { WebFetchTool, WEB_FETCH_MAX_CHARS, WEB_FETCH_TIMEOUT_MS } from './tools/WebFetchTool.js';
+export { WebFetchTool, WEB_FETCH_MAX_CHARS, WEB_FETCH_MAX_CHARS_CAP, WEB_FETCH_TIMEOUT_MS, WEB_FETCH_CACHE_TTL_MS } from './tools/WebFetchTool.js';
 export type { WebFetchResult, SsrfBlockedResult } from './tools/WebFetchTool.js';
 export { TOOL_REGISTRY, getToolEntry } from './tools/ToolRegistry.js';
 export type { ToolEntry, ToolParameter } from './tools/ToolRegistry.js';

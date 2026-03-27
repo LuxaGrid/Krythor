@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { GuardEngine } from '@krythor/guard';
-import { ExecTool, ExecDeniedError, ExecTimeoutError, WebSearchTool, WebFetchTool, TOOL_REGISTRY } from '@krythor/core';
+import { ExecTool, ExecDeniedError, ExecTimeoutError, WebSearchTool, WebFetchTool, TOOL_REGISTRY, WEB_FETCH_MAX_CHARS_CAP, KrythorCore } from '@krythor/core';
 import { sendError } from '../errors.js';
 import { logger } from '../logger.js';
 import { validateUrl } from '../validate.js';
@@ -11,6 +11,7 @@ import { validateUrl } from '../validate.js';
 // POST /api/tools/exec          — execute a command (guard-checked, allowlist-checked)
 // POST /api/tools/web_search    — search the web via DuckDuckGo
 // POST /api/tools/web_fetch     — fetch a URL and return plain text
+// POST /api/tools/btw           — ephemeral side-question (no session history)
 //
 // All routes require auth (handled by the global preHandler in server.ts).
 //
@@ -23,6 +24,7 @@ export function registerToolRoutes(
   app: FastifyInstance,
   guard: GuardEngine,
   execTool: ExecTool,
+  core?: KrythorCore,
 ): void {
 
   // GET /api/tools — full tool registry
@@ -42,7 +44,7 @@ export function registerToolRoutes(
         return { ...entry, timeoutMs: 5_000, endpoint: 'POST /api/tools/web_search' };
       }
       if (entry.name === 'web_fetch') {
-        return { ...entry, timeoutMs: 8_000, maxContentChars: 10_000, endpoint: 'POST /api/tools/web_fetch' };
+        return { ...entry, timeoutMs: 8_000, defaultMaxChars: 10_000, maxCharsCap: WEB_FETCH_MAX_CHARS_CAP, endpoint: 'POST /api/tools/web_fetch' };
       }
       return entry;
     });
@@ -158,13 +160,14 @@ export function registerToolRoutes(
         type: 'object',
         required: ['url'],
         properties: {
-          url: { type: 'string', minLength: 7, maxLength: 2048 },
+          url:      { type: 'string', minLength: 7, maxLength: 2048 },
+          maxChars: { type: 'integer', minimum: 1, maximum: WEB_FETCH_MAX_CHARS_CAP },
         },
         additionalProperties: false,
       },
     },
   }, async (req, reply) => {
-    const { url } = req.body as { url: string };
+    const { url, maxChars } = req.body as { url: string; maxChars?: number };
 
     // Validate scheme before sending any network request — rejects file://, javascript:, data:, etc.
     const urlErr = validateUrl(url, 'url');
@@ -174,7 +177,7 @@ export function registerToolRoutes(
     }
 
     try {
-      const result = await webFetchTool.fetch(url);
+      const result = await webFetchTool.fetch(url, maxChars);
 
       // SSRF protection blocked the request
       if ('error' in result && result.error === 'SSRF_BLOCKED') {
@@ -202,6 +205,105 @@ export function registerToolRoutes(
       }
       return sendError(reply, 502, 'WEB_FETCH_FAILED', message,
         'The URL could not be fetched. Check the URL or try again shortly.');
+    }
+  });
+
+  // POST /api/tools/btw — ephemeral side-question
+  //
+  // Runs a quick model inference without touching session history.
+  // Useful for quick lookups or clarifications that should not pollute
+  // the agent's working context.
+  //
+  // Body:
+  //   question  (required)  — the side question to answer
+  //   context   (optional)  — background context to include (e.g. current task description)
+  //   agentId   (optional)  — use this agent's model/provider; falls back to the first configured agent
+  //   modelId   (optional)  — explicit model override
+  //
+  // Response:
+  //   { answer, modelUsed, ephemeral: true }
+  //
+  app.post('/api/tools/btw', {
+    config: {
+      rateLimit: { max: 30, timeWindow: 60_000 },
+    },
+    schema: {
+      body: {
+        type: 'object',
+        required: ['question'],
+        properties: {
+          question: { type: 'string', minLength: 1, maxLength: 10_000 },
+          context:  { type: 'string', maxLength: 50_000 },
+          agentId:  { type: 'string', maxLength: 200 },
+          modelId:  { type: 'string', maxLength: 200 },
+        },
+        additionalProperties: false,
+      },
+    },
+  }, async (req, reply) => {
+    const { question, context, agentId, modelId } = req.body as {
+      question: string;
+      context?: string;
+      agentId?: string;
+      modelId?: string;
+    };
+
+    const models = core?.getModels();
+    if (!models || models.stats().providerCount === 0) {
+      return sendError(reply, 503, 'NO_MODEL', 'No model providers are configured.');
+    }
+
+    // Resolve agent model/provider if agentId was supplied
+    let resolvedProviderId: string | undefined;
+    let resolvedModelId: string | undefined = modelId;
+    if (agentId && !modelId) {
+      const orchestrator = core?.getOrchestrator?.();
+      if (orchestrator) {
+        const agent = orchestrator.registry.getById(agentId) ?? orchestrator.listAgents()[0];
+        if (agent) {
+          resolvedModelId   = agent.modelId;
+          resolvedProviderId = agent.providerId;
+        }
+      }
+    }
+
+    // Build a minimal prompt: optional context block + the question
+    const systemContent = [
+      'You are a helpful assistant answering a quick side question.',
+      'Answer concisely and directly. Do not use tools.',
+      context ? `\n\nBackground context:\n${context}` : '',
+    ].filter(Boolean).join('\n');
+
+    try {
+      const response = await models.infer(
+        {
+          messages: [
+            { role: 'system', content: systemContent },
+            { role: 'user',   content: question },
+          ],
+          model:      resolvedModelId,
+          providerId: resolvedProviderId,
+        },
+        {},
+        AbortSignal.timeout(30_000),
+      );
+
+      logger.info('BTW side-question answered', {
+        model: response.model,
+        provider: response.providerId,
+        requestId: req.id,
+      });
+
+      return reply.send({
+        answer:    response.content,
+        modelUsed: `${response.providerId}/${response.model}`,
+        ephemeral: true,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Inference failed';
+      logger.warn('BTW side-question failed', { error: message, requestId: req.id });
+      return sendError(reply, 502, 'BTW_FAILED', message,
+        'The model could not answer the side question. Check provider configuration.');
     }
   });
 }

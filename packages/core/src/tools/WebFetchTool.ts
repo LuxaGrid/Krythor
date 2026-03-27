@@ -6,8 +6,9 @@
 // Returns: { url, content, contentLength, truncated }
 //    -or-: { error: 'SSRF_BLOCKED', url, reason }  when SSRF check fails
 //
-// Max content: 10000 chars (truncated with note)
+// Max content: 10000 chars by default (caller can pass maxChars; capped at 50000)
 // Timeout: 8000ms
+// Cache: TTL-based (15 min default); keyed by url+maxChars
 //
 // Design:
 //   - Accepts only http:// and https:// URLs (no file://, ftp://, etc.)
@@ -36,11 +37,35 @@ export interface SsrfBlockedResult {
   reason: string;
 }
 
-/** Maximum plain-text content returned (in characters). */
+/** Default maximum plain-text content returned (in characters). */
 export const WEB_FETCH_MAX_CHARS = 10_000;
+
+/** Hard cap on the maxChars parameter — callers cannot exceed this. */
+export const WEB_FETCH_MAX_CHARS_CAP = 50_000;
 
 /** Timeout for web fetch requests in milliseconds. */
 export const WEB_FETCH_TIMEOUT_MS = 8_000;
+
+/** TTL for cached fetch results in milliseconds (15 minutes). */
+export const WEB_FETCH_CACHE_TTL_MS = 15 * 60 * 1_000;
+
+// ─── Result cache ──────────────────────────────────────────────────────────────
+
+interface CacheEntry {
+  result: WebFetchResult;
+  expiresAt: number;
+}
+
+/** Module-level cache shared across all WebFetchTool instances. */
+const fetchCache = new Map<string, CacheEntry>();
+
+/** Evict expired entries. Called before every cache lookup to bound memory use. */
+function evictExpired(): void {
+  const now = Date.now();
+  for (const [key, entry] of fetchCache) {
+    if (entry.expiresAt <= now) fetchCache.delete(key);
+  }
+}
 
 // ─── SSRF protection ──────────────────────────────────────────────────────────
 
@@ -164,11 +189,15 @@ export class WebFetchTool {
   /**
    * Fetch the URL and return its plain-text content.
    *
+   * @param url      The URL to fetch (http:// or https:// only).
+   * @param maxChars Maximum characters to return. Clamped to [1, WEB_FETCH_MAX_CHARS_CAP].
+   *                 Defaults to WEB_FETCH_MAX_CHARS (10 000).
+   *
    * Returns SsrfBlockedResult when the URL is blocked by SSRF checks.
    * @throws {Error} if the scheme is not http or https (early, before SSRF check)
    * @throws {Error} on network failure or timeout
    */
-  async fetch(url: string): Promise<WebFetchResult | SsrfBlockedResult> {
+  async fetch(url: string, maxChars?: number): Promise<WebFetchResult | SsrfBlockedResult> {
     if (!url || typeof url !== 'string') {
       throw new Error('url must be a non-empty string');
     }
@@ -178,6 +207,18 @@ export class WebFetchTool {
     if (!/^https?:\/\//i.test(normalized)) {
       throw new Error(`Unsupported URL scheme — only http:// and https:// are allowed. Got: ${normalized.slice(0, 50)}`);
     }
+
+    // Clamp maxChars
+    const limit = Math.min(
+      Math.max(1, typeof maxChars === 'number' && maxChars > 0 ? maxChars : WEB_FETCH_MAX_CHARS),
+      WEB_FETCH_MAX_CHARS_CAP,
+    );
+
+    // Cache lookup (keyed by url + limit so different limits get different entries)
+    const cacheKey = `${normalized}\x00${limit}`;
+    evictExpired();
+    const cached = fetchCache.get(cacheKey);
+    if (cached) return cached.result;
 
     // SSRF protection — check before making any network request
     const ssrfReason = await checkSsrf(normalized);
@@ -205,20 +246,30 @@ export class WebFetchTool {
     const isHtml = contentType.includes('html') || rawText.trimStart().startsWith('<');
     const plain = isHtml ? stripHtml(rawText) : rawText.trim();
 
-    const truncated = plain.length > WEB_FETCH_MAX_CHARS;
+    const truncated = plain.length > limit;
     const content   = truncated
-      ? plain.slice(0, WEB_FETCH_MAX_CHARS) +
-        `\n\n[Content truncated at ${WEB_FETCH_MAX_CHARS} characters. Original length: ${plain.length}]`
+      ? plain.slice(0, limit) +
+        `\n\n[Content truncated at ${limit} characters. Original length: ${plain.length}]`
       : plain;
 
-    return {
+    const result: WebFetchResult = {
       url:           normalized,
       content,
       contentLength: plain.length,
       truncated,
     };
+
+    // Cache the result
+    fetchCache.set(cacheKey, { result, expiresAt: Date.now() + WEB_FETCH_CACHE_TTL_MS });
+
+    return result;
   }
 }
 
 // ─── Exports for testing ──────────────────────────────────────────────────────
 export { checkSsrf, isPrivateIp, BLOCKED_HOSTNAMES };
+
+/** Clear the fetch result cache. Used in tests to avoid cross-test contamination. */
+export function clearFetchCache(): void {
+  fetchCache.clear();
+}

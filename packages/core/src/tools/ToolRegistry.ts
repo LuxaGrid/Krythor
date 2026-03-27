@@ -82,8 +82,8 @@ export const TOOL_REGISTRY: ToolEntry[] = [
     name: 'web_fetch',
     description:
       'Fetch the content of a URL and return it as plain text (HTML tags stripped). ' +
-      'Content is truncated to 10000 characters. Timeout: 8 seconds. ' +
-      'Read-only — no authentication required.',
+      'Content is truncated to maxChars (default 10000, max 50000). Timeout: 8 seconds. ' +
+      'Results are cached for 15 minutes. Read-only — no authentication required.',
     parameters: {
       url: {
         type:        'string',
@@ -91,6 +91,10 @@ export const TOOL_REGISTRY: ToolEntry[] = [
         required:    true,
         minLength:   7,
         maxLength:   2048,
+      },
+      maxChars: {
+        type:        'integer',
+        description: 'Maximum characters to return (1–50000). Defaults to 10000.',
       },
     },
     requiresGuard: false,

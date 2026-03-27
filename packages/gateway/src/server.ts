@@ -839,7 +839,7 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   registerConversationRoutes(app, convStore, guard, channelEmit, memory ?? undefined);
   registerSkillRoutes(app, skillRegistry, guard, skillRunner);
   registerRecommendRoutes(app, models, recommender, guard);
-  registerToolRoutes(app, guard, execTool);
+  registerToolRoutes(app, guard, execTool, core);
   registerCustomToolRoutes(app, customToolStore, guard);
   registerFileToolRoutes(app, guard, accessProfileStore);
   registerShellToolRoutes(app, guard, accessProfileStore);

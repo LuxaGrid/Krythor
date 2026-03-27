@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { WebSearchTool, WEB_SEARCH_TIMEOUT_MS } from './WebSearchTool.js'
+import { WebSearchTool, WEB_SEARCH_TIMEOUT_MS, clearSearchCache } from './WebSearchTool.js'
 
 // ─── WebSearchTool unit tests ─────────────────────────────────────────────────
 //
@@ -31,6 +31,7 @@ describe('WebSearchTool — successful search', () => {
   const mockFetch = vi.fn()
 
   beforeEach(() => {
+    clearSearchCache()
     vi.stubGlobal('fetch', mockFetch)
   })
 

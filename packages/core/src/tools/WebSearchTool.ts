@@ -29,6 +29,27 @@ export interface WebSearchResponse {
 /** Timeout for web search requests in milliseconds. */
 export const WEB_SEARCH_TIMEOUT_MS = 5_000;
 
+/** TTL for cached search results in milliseconds (15 minutes). */
+export const WEB_SEARCH_CACHE_TTL_MS = 15 * 60 * 1_000;
+
+// ─── Result cache ──────────────────────────────────────────────────────────────
+
+interface SearchCacheEntry {
+  result: WebSearchResponse;
+  expiresAt: number;
+}
+
+/** Module-level cache shared across all WebSearchTool instances. */
+const searchCache = new Map<string, SearchCacheEntry>();
+
+/** Evict expired entries. Called before every cache lookup to bound memory use. */
+function evictSearchExpired(): void {
+  const now = Date.now();
+  for (const [key, entry] of searchCache) {
+    if (entry.expiresAt <= now) searchCache.delete(key);
+  }
+}
+
 // ─── DuckDuckGo API response shape ────────────────────────────────────────────
 // Only the fields we consume are typed here. The full DDG response is much
 // larger, but we extract RelatedTopics[].Text and RelatedTopics[].FirstURL.
@@ -47,6 +68,11 @@ interface DdgResponse {
   RelatedTopics?:   DdgRelatedTopic[];
 }
 
+/** Clear the search result cache. Used in tests to avoid cross-test contamination. */
+export function clearSearchCache(): void {
+  searchCache.clear();
+}
+
 // ─── WebSearchTool ────────────────────────────────────────────────────────────
 
 export class WebSearchTool {
@@ -63,8 +89,15 @@ export class WebSearchTool {
       return { query, source: 'duckduckgo', results: [] };
     }
 
+    const normalizedQuery = query.trim();
+
+    // Cache lookup — keyed by normalized query
+    evictSearchExpired();
+    const cached = searchCache.get(normalizedQuery);
+    if (cached) return cached.result;
+
     const url = new URL('https://api.duckduckgo.com/');
-    url.searchParams.set('q', query.trim());
+    url.searchParams.set('q', normalizedQuery);
     url.searchParams.set('format', 'json');
     url.searchParams.set('no_html', '1');
     url.searchParams.set('skip_disambig', '1');
@@ -115,6 +148,13 @@ export class WebSearchTool {
       results.push({ title, url: url2, snippet });
     }
 
-    return { query, source: 'duckduckgo', results };
+    const response: WebSearchResponse = { query: normalizedQuery, source: 'duckduckgo', results };
+
+    // Cache the result (only non-empty results worth caching)
+    if (results.length > 0) {
+      searchCache.set(normalizedQuery, { result: response, expiresAt: Date.now() + WEB_SEARCH_CACHE_TTL_MS });
+    }
+
+    return response;
   }
 }
