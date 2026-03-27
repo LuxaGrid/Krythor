@@ -49,5 +49,7 @@ export { WorkspaceBootstrapLoader, BOOTSTRAP_MAX_CHARS, BOOTSTRAP_TOTAL_MAX_CHAR
 export type { BootstrapFileResult, BootstrapResult, PromptMode } from './workspace/WorkspaceBootstrapLoader.js';
 export { AgentWorkspaceManager, getDefaultWorkspaceDir } from './workspace/AgentWorkspaceManager.js';
 export { SessionTranscriptStore } from './agents/SessionTranscriptStore.js';
+export { AgentAuthProfileStore } from './agents/AgentAuthProfileStore.js';
+export type { AuthProfile, AgentAuthProfiles } from './agents/AgentAuthProfileStore.js';
 export { DefaultContextEngine } from './agents/ContextEngine.js';
 export type { ContextEngine } from './agents/ContextEngine.js';

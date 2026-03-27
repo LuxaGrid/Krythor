@@ -6,7 +6,7 @@ import fastifyRateLimit from '@fastify/rate-limit';
 import { join } from 'path';
 import { existsSync, readFileSync, readdirSync, watch as fsWatch } from 'fs';
 import { homedir, networkInterfaces } from 'os';
-import { KrythorCore, AgentOrchestrator, ExecTool, CustomToolStore, WebhookTool, PluginLoader, AgentWorkspaceManager, getDefaultWorkspaceDir } from '@krythor/core';
+import { KrythorCore, AgentOrchestrator, ExecTool, CustomToolStore, WebhookTool, PluginLoader, AgentWorkspaceManager, getDefaultWorkspaceDir, AgentAuthProfileStore } from '@krythor/core';
 import { MemoryEngine, GuardDecisionStore, OllamaEmbeddingProvider } from '@krythor/memory';
 import { ModelEngine, ModelRecommender, PreferenceStore } from '@krythor/models';
 import { GuardEngine } from '@krythor/guard';
@@ -49,6 +49,7 @@ import { registerApprovalRoutes } from './routes/approvals.js';
 import { registerAuditRoutes } from './routes/audit.js';
 import { registerWorkspaceRoutes } from './routes/workspace.js';
 import { registerDeviceRoutes } from './routes/devices.js';
+import { registerAgentAuthRoutes } from './routes/agentAuth.js';
 import { ApprovalManager } from './ApprovalManager.js';
 import { AuditLogger } from './AuditLogger.js';
 import { HeartbeatEngine, type HeartbeatRunRecord, type HeartbeatInsight } from './heartbeat/HeartbeatEngine.js';
@@ -587,6 +588,10 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   orchestrator.setSessionsDir(dataDir);
   logger.info('Session transcript storage configured', { dir: dataDir });
 
+  // Per-agent auth profile store — credentials for external services per agent.
+  //   <dataDir>/agents/<agentId>/auth-profiles.json
+  const agentAuthStore = new AgentAuthProfileStore(dataDir);
+
   const core = new KrythorCore([join(__dirname, '..', '..', '..', '..', 'SOUL.md')]);
   core.attachMemory(memory);
   core.attachModels(models);
@@ -792,6 +797,7 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   registerApprovalRoutes(app, approvalManager);
   registerAuditRoutes(app, auditLogger);
   registerWorkspaceRoutes(app);
+  registerAgentAuthRoutes(app, agentAuthStore);
 
   // Device pairing store — manages WS client device approval
   const devicePairingStore = new DevicePairingStore(join(dataDir, 'devices'));
