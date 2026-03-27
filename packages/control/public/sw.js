@@ -70,7 +70,9 @@ self.addEventListener('fetch', (event) => {
     fetch(event.request)
       .then(response => {
         if (response.ok) {
-          caches.open(CACHE_NAME).then(cache => cache.put(event.request, response.clone()));
+          // Clone BEFORE returning — body can only be consumed once.
+          const toCache = response.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(event.request, toCache));
         }
         return response;
       })

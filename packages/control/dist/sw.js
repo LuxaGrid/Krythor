@@ -8,7 +8,7 @@
 //   - /api/*, /ws/*               → network-only (never cache live data)
 //   - everything else             → network-first with cache fallback
 
-const CACHE_NAME = 'krythor-0.2.0-1774553641719'; // replaced by deploy-dist.js
+const CACHE_NAME = 'krythor-0.2.0-1774579521616'; // replaced by deploy-dist.js
 
 // ── Install ────────────────────────────────────────────────────────────────────
 self.addEventListener('install', (event) => {
@@ -70,7 +70,9 @@ self.addEventListener('fetch', (event) => {
     fetch(event.request)
       .then(response => {
         if (response.ok) {
-          caches.open(CACHE_NAME).then(cache => cache.put(event.request, response.clone()));
+          // Clone BEFORE returning — body can only be consumed once.
+          const toCache = response.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(event.request, toCache));
         }
         return response;
       })

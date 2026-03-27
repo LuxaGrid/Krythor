@@ -41,5 +41,8 @@
   },
   "devDependencies": {
     "node-gyp": "^12.2.0"
+  },
+  "dependencies": {
+    "@fontsource/jetbrains-mono": "^5.2.8"
   }
 }
