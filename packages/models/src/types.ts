@@ -120,6 +120,9 @@ export interface StreamChunk {
   selectionReason?: string;
   fallbackOccurred?: boolean;
   retryCount?: number;
+  // Token counts — populated on the final chunk when the provider reports them
+  promptTokens?: number;
+  completionTokens?: number;
 }
 
 // ─── Routing context ─────────────────────────────────────────────────────────

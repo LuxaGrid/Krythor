@@ -80,6 +80,9 @@ export interface AgentRun {
   selectionReason?: string;    // why this model/provider was selected
   fallbackOccurred?: boolean;  // true if a fallback provider was used
   retryCount?: number;         // number of inference retry attempts (0 = first attempt succeeded)
+  promptTokens?: number;       // total prompt/input tokens across all inference turns
+  completionTokens?: number;   // total completion/output tokens across all inference turns
+  parentRunId?: string;        // run ID of the parent that spawned or handed off to this run
 }
 
 // ─── Input types ──────────────────────────────────────────────────────────────
@@ -130,6 +133,7 @@ export interface RunAgentInput {
   contextMessages?: Array<{ role: string; content: string }>; // conversation history to prepend
   runId?: string;          // pre-specified run ID for SSE correlation
   requestId?: string;      // HTTP requestId for end-to-end log correlation
+  parentRunId?: string;    // run ID of the spawning parent (set by orchestrator on spawn/handoff)
   /**
    * Controls which system prompt sections and bootstrap files are injected.
    * 'full'    — all sections + all workspace files (default)

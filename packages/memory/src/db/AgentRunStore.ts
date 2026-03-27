@@ -27,6 +27,9 @@ export interface PersistedRun {
   selectionReason?: string;
   fallbackOccurred?: boolean;
   retryCount?: number;
+  promptTokens?: number;
+  completionTokens?: number;
+  parentRunId?: string;
 }
 
 interface RunRow {
@@ -45,6 +48,9 @@ interface RunRow {
   selection_reason: string | null;
   fallback_occurred: number;
   retry_count: number;
+  prompt_tokens: number | null;
+  completion_tokens: number | null;
+  parent_run_id: string | null;
 }
 
 export class AgentRunStore {
@@ -58,11 +64,13 @@ export class AgentRunStore {
       INSERT INTO agent_runs
         (id, agent_id, status, input, output, model_used, error_message,
          started_at, completed_at, messages_json, memory_ids_used, memory_ids_written,
-         selection_reason, fallback_occurred, retry_count)
+         selection_reason, fallback_occurred, retry_count,
+         prompt_tokens, completion_tokens, parent_run_id)
       VALUES
         (@id, @agentId, @status, @input, @output, @modelUsed, @errorMessage,
          @startedAt, @completedAt, @messagesJson, @memoryIdsUsed, @memoryIdsWritten,
-         @selectionReason, @fallbackOccurred, @retryCount)
+         @selectionReason, @fallbackOccurred, @retryCount,
+         @promptTokens, @completionTokens, @parentRunId)
       ON CONFLICT(id) DO UPDATE SET
         status             = excluded.status,
         output             = excluded.output,
@@ -74,7 +82,10 @@ export class AgentRunStore {
         memory_ids_written = excluded.memory_ids_written,
         selection_reason   = excluded.selection_reason,
         fallback_occurred  = excluded.fallback_occurred,
-        retry_count        = excluded.retry_count
+        retry_count        = excluded.retry_count,
+        prompt_tokens      = excluded.prompt_tokens,
+        completion_tokens  = excluded.completion_tokens,
+        parent_run_id      = excluded.parent_run_id
     `);
 
     this.selectById = db.prepare(
@@ -109,6 +120,9 @@ export class AgentRunStore {
       selectionReason:  run.selectionReason ?? null,
       fallbackOccurred: run.fallbackOccurred ? 1 : 0,
       retryCount:       run.retryCount ?? 0,
+      promptTokens:     run.promptTokens ?? null,
+      completionTokens: run.completionTokens ?? null,
+      parentRunId:      run.parentRunId ?? null,
     });
   }
 
@@ -141,6 +155,9 @@ export class AgentRunStore {
       selectionReason:  row.selection_reason ?? undefined,
       fallbackOccurred: row.fallback_occurred === 1 ? true : undefined,
       retryCount:       row.retry_count > 0 ? row.retry_count : undefined,
+      promptTokens:     row.prompt_tokens ?? undefined,
+      completionTokens: row.completion_tokens ?? undefined,
+      parentRunId:      row.parent_run_id ?? undefined,
     };
   }
 

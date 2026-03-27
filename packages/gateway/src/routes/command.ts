@@ -138,6 +138,63 @@ export function registerCommandRoute(
         return slashReply({ output: `Agent switched to: ${arg}. This will be used for your next message.`, command: 'agent:switch', agentId: arg });
       }
 
+      if (cmd === '/subagents') {
+        const [sub, ...subArgs] = args;
+        const subArg = subArgs.join(' ').trim();
+
+        if (!sub || sub === 'list') {
+          // List active + recent runs
+          const runs = orchestrator.listRuns().slice(0, 20);
+          if (runs.length === 0) {
+            return slashReply({ output: 'No agent runs found.', command: 'subagents:list', runs: [] });
+          }
+          const lines = runs.map(r => {
+            const age = r.completedAt ? `${Math.round((Date.now() - r.completedAt) / 1000)}s ago` : 'running';
+            const tokens = r.promptTokens !== undefined || r.completionTokens !== undefined
+              ? ` | tokens: ${r.promptTokens ?? 0}↑ ${r.completionTokens ?? 0}↓`
+              : '';
+            const parent = r.parentRunId ? ` | parent: ${r.parentRunId.slice(-8)}` : '';
+            return `[${r.status}] ${r.id.slice(-8)} — agent: ${r.agentId}${tokens}${parent} (${age})`;
+          });
+          return slashReply({ output: lines.join('\n'), command: 'subagents:list', runs });
+        }
+
+        if (sub === 'kill') {
+          if (!subArg) return slashReply({ output: 'Usage: /subagents kill <runId>', command: 'subagents:kill' });
+          const stopped = orchestrator.stopRun(subArg);
+          return slashReply({
+            output: stopped ? `Run "${subArg}" stopped.` : `Run "${subArg}" not found or already finished.`,
+            command: 'subagents:kill',
+            runId: subArg,
+            stopped,
+          });
+        }
+
+        if (sub === 'log') {
+          if (!subArg) return slashReply({ output: 'Usage: /subagents log <runId>', command: 'subagents:log' });
+          const run = orchestrator.getRun(subArg);
+          if (!run) return slashReply({ output: `Run "${subArg}" not found.`, command: 'subagents:log', runId: subArg });
+          const tokenLine = run.promptTokens !== undefined || run.completionTokens !== undefined
+            ? `Tokens: ${run.promptTokens ?? 0} in / ${run.completionTokens ?? 0} out\n` : '';
+          const parentLine = run.parentRunId ? `Parent run: ${run.parentRunId}\n` : '';
+          const output = [
+            `Run: ${run.id}`,
+            `Agent: ${run.agentId}`,
+            `Status: ${run.status}`,
+            `Model: ${run.modelUsed ?? '(unknown)'}`,
+            tokenLine.trimEnd(),
+            parentLine.trimEnd(),
+            `\n--- Output ---\n${run.output ?? '(no output)'}`,
+          ].filter(Boolean).join('\n');
+          return slashReply({ output, command: 'subagents:log', runId: subArg, run });
+        }
+
+        return slashReply({
+          output: 'Usage: /subagents [list | kill <runId> | log <runId>]',
+          command: 'subagents:help',
+        });
+      }
+
       // Unknown slash command — fall through to inference so plugins/agents can handle it
     }
 

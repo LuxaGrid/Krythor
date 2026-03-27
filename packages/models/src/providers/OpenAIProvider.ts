@@ -71,6 +71,7 @@ export class OpenAIProvider extends BaseProvider {
         model,
         messages: request.messages,
         stream: true,
+        stream_options: { include_usage: true },
         ...(request.temperature !== undefined && { temperature: request.temperature }),
         ...(request.maxTokens !== undefined && { max_tokens: request.maxTokens }),
       }),
@@ -82,6 +83,8 @@ export class OpenAIProvider extends BaseProvider {
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buf = '';
+    let promptTokens: number | undefined;
+    let completionTokens: number | undefined;
 
     while (true) {
       const { done, value } = await reader.read();
@@ -93,22 +96,33 @@ export class OpenAIProvider extends BaseProvider {
 
       for (const line of lines) {
         const trimmed = line.replace(/^data: /, '').trim();
-        if (!trimmed || trimmed === '[DONE]') {
-          if (trimmed === '[DONE]') { yield { delta: '', done: true, model }; return; }
-          continue;
+        if (!trimmed) continue;
+        if (trimmed === '[DONE]') {
+          yield { delta: '', done: true, model, promptTokens, completionTokens };
+          return;
         }
         try {
           const chunk = JSON.parse(trimmed) as {
             choices?: Array<{ delta?: { content?: string }; finish_reason?: string | null }>;
+            usage?: { prompt_tokens?: number; completion_tokens?: number };
           };
+          // usage-only chunk emitted after [DONE] when stream_options.include_usage is set
+          if (chunk.usage && (!chunk.choices || chunk.choices.length === 0)) {
+            promptTokens     = chunk.usage.prompt_tokens;
+            completionTokens = chunk.usage.completion_tokens;
+            continue;
+          }
           const delta = chunk.choices?.[0]?.delta?.content ?? '';
           const isDone = chunk.choices?.[0]?.finish_reason === 'stop';
-          yield { delta, done: isDone, model };
-          if (isDone) return;
+          if (isDone) {
+            yield { delta, done: true, model, promptTokens, completionTokens };
+            return;
+          }
+          yield { delta, done: false, model };
         } catch { /* skip malformed line */ }
       }
     }
 
-    yield { delta: '', done: true, model };
+    yield { delta: '', done: true, model, promptTokens, completionTokens };
   }
 }

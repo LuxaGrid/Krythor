@@ -99,7 +99,7 @@ describe('AgentRunner — spawn_agent tool', () => {
     const run = await runner.run(agent, makeInput(), () => {});
 
     expect(run.status).toBe('completed');
-    expect(spawnResolver).toHaveBeenCalledWith('child-1', 'hello');
+    expect(spawnResolver).toHaveBeenCalledWith('child-1', 'hello', expect.any(String));
     // Model should have been called twice (initial + after tool result)
     expect((model.infer as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThanOrEqual(2);
     expect(run.output).toBe('Final response after spawn.');
@@ -124,7 +124,7 @@ describe('AgentRunner — spawn_agent tool', () => {
     const run = await runner.run(agent, makeInput(), () => {});
 
     expect(run.status).toBe('completed');
-    expect(spawnResolver).toHaveBeenCalledWith('ghost', 'hello');
+    expect(spawnResolver).toHaveBeenCalledWith('ghost', 'hello', expect.any(String));
     // Message injected should mention agent not found
     const allCalls = (model.infer as ReturnType<typeof vi.fn>).mock.calls;
     const secondCallMessages = allCalls[1]?.[0]?.messages ?? [];

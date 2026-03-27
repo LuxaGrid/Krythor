@@ -11,6 +11,17 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+#### Agent coordination improvements (2026-03-27)
+
+- **Token tracking on `AgentRun`**: two new optional fields — `promptTokens` and `completionTokens` — accumulate token counts across all inference turns (initial turn + tool-call follow-up turns) within a single run. All three model providers (Anthropic, OpenAI, Ollama) already return these values in `InferenceResponse`; they are now captured and stored. Streaming providers (`AnthropicProvider`, `OpenAIProvider`) updated to emit token counts on the final `StreamChunk`; `OpenAIProvider` sets `stream_options: { include_usage: true }` to receive the usage chunk; `AnthropicProvider` reads `message_start.message.usage.input_tokens` and `message_delta.usage.output_tokens` from the SSE stream
+- **`parentRunId` field on `AgentRun` and `RunAgentInput`**: when a sub-agent is spawned via `spawn_agent`, the child run is tagged with the parent's run ID. The orchestrator's spawn resolver propagates the caller's `runId` as `parentRunId` into the child `RunAgentInput`. Enables full spawn/handoff chain tracing in the run history
+- **Structured `spawn_agent` result**: the spawn resolver now returns a result string that includes latency, token counts, model used, and status in a bracketed `[spawn stats: ...]` footer, giving the parent agent visibility into how the child run performed without needing a separate API call
+- **`/subagents` slash command** with three sub-commands:
+  - `/subagents list` — shows the 20 most recent agent runs with status, model, token counts, latency, and parent run linkage
+  - `/subagents kill <runId>` — stops an active run by ID via `orchestrator.stopRun()`
+  - `/subagents log <runId>` — returns the full output and metadata (model, tokens, parent) for a specific run
+- **DB migration 008** (`008_run_tokens_parent.sql`): adds `prompt_tokens INTEGER`, `completion_tokens INTEGER`, and `parent_run_id TEXT` columns to `agent_runs`. `AgentRunStore` updated to persist and hydrate the new fields. `PersistedRun` interface extended accordingly
+
 #### Tool improvements (2026-03-27)
 
 - **`maxChars` parameter on `web_fetch`**: agents can now pass `maxChars` (integer, 1–50 000) to control how many characters are returned. Defaults to 10 000. The cap is enforced both in `WebFetchTool.fetch()` and in the `POST /api/tools/web_fetch` schema. `ToolRegistry` description updated to document the parameter. `AgentRunner` extracts and forwards the field from agent tool-call JSON

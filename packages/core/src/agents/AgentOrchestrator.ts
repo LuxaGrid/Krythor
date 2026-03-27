@@ -108,11 +108,22 @@ export class AgentOrchestrator extends EventEmitter {
       return run.output ?? null;
     };
     // Wire the spawn-agent resolver — dispatches {"tool":"spawn_agent","agentId":"<id>","message":"..."}
-    this.spawnAgentResolver = async (targetAgentId: string, message: string): Promise<string | null> => {
+    // Returns a structured result string with output + metadata so the parent agent can see stats.
+    this.spawnAgentResolver = async (targetAgentId: string, message: string, parentRunId?: string): Promise<string | null> => {
       const agent = this.registry.getById(targetAgentId);
       if (!agent) return null;
-      const run = await this.runner.run(agent, { input: message }, (evt) => this.emit('agent:event', evt));
-      return run.output ?? null;
+      const spawnStart = Date.now();
+      const run = await this.runner.run(agent, { input: message, ...(parentRunId && { parentRunId }) }, (evt) => this.emit('agent:event', evt));
+      const latencyMs = Date.now() - spawnStart;
+      const stats = [
+        run.modelUsed ? `model: ${run.modelUsed}` : null,
+        run.promptTokens !== undefined || run.completionTokens !== undefined
+          ? `tokens: ${run.promptTokens ?? 0} in / ${run.completionTokens ?? 0} out`
+          : null,
+        `latency: ${latencyMs}ms`,
+        `status: ${run.status}`,
+      ].filter(Boolean).join(', ');
+      return `${run.output ?? ''}${stats ? `\n\n[spawn stats: ${stats}]` : ''}`;
     };
     this.rebuildRunner();
     this.startJanitor();
@@ -453,6 +464,12 @@ export class AgentOrchestrator extends EventEmitter {
           messages:        run.messages,
           memoryIdsUsed:   run.memoryIdsUsed,
           memoryIdsWritten: run.memoryIdsWritten,
+          selectionReason:  run.selectionReason,
+          fallbackOccurred: run.fallbackOccurred,
+          retryCount:       run.retryCount,
+          promptTokens:     run.promptTokens,
+          completionTokens: run.completionTokens,
+          parentRunId:      run.parentRunId,
         });
       } catch (err) {
         console.warn('[AgentOrchestrator] Failed to persist run to DB:', err instanceof Error ? err.message : err);

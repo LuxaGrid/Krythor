@@ -106,6 +106,8 @@ export class AnthropicProvider extends BaseProvider {
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buf = '';
+    let promptTokens: number | undefined;
+    let completionTokens: number | undefined;
 
     while (true) {
       const { done, value } = await reader.read();
@@ -123,12 +125,22 @@ export class AnthropicProvider extends BaseProvider {
             const event = JSON.parse(json) as {
               type: string;
               delta?: { type?: string; text?: string };
+              usage?: { input_tokens?: number; output_tokens?: number };
+              message?: { usage?: { input_tokens?: number; output_tokens?: number } };
             };
+            // message_start carries input token count
+            if (event.type === 'message_start' && event.message?.usage?.input_tokens !== undefined) {
+              promptTokens = event.message.usage.input_tokens;
+            }
+            // message_delta carries output token count
+            if (event.type === 'message_delta' && event.usage?.output_tokens !== undefined) {
+              completionTokens = event.usage.output_tokens;
+            }
             if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
               yield { delta: event.delta.text ?? '', done: false, model };
             }
             if (event.type === 'message_stop') {
-              yield { delta: '', done: true, model };
+              yield { delta: '', done: true, model, promptTokens, completionTokens };
               return;
             }
           } catch { /* skip */ }
@@ -136,6 +148,6 @@ export class AnthropicProvider extends BaseProvider {
       }
     }
 
-    yield { delta: '', done: true, model };
+    yield { delta: '', done: true, model, promptTokens, completionTokens };
   }
 }

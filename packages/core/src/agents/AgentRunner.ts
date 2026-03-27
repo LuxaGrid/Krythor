@@ -222,10 +222,10 @@ export type CustomToolDispatcher = (toolName: string, input: string, agentId: st
 /**
  * Optional callback for spawning a sub-agent.
  * Provided by AgentOrchestrator — looks up the agent by ID and runs it.
- * Returns the sub-agent's output string, or null if the agent does not exist.
+ * Returns the sub-agent's output string (with appended spawn stats), or null if the agent does not exist.
  * A separate callback (rather than a direct registry reference) avoids circular deps.
  */
-export type SpawnAgentResolver = (agentId: string, message: string) => Promise<string | null>;
+export type SpawnAgentResolver = (agentId: string, message: string, parentRunId?: string) => Promise<string | null>;
 
 /**
  * Optional callback invoked after each completed or failed run.
@@ -620,7 +620,7 @@ export class AgentRunner {
       } else {
         this.spawnCount++;
         try {
-          const result = await this.spawnAgentResolver(call.agentId, call.message);
+          const result = await this.spawnAgentResolver(call.agentId, call.message, runId);
           if (result === null) {
             toolResult = `spawn_agent: agent "${call.agentId}" not found.`;
           } else {
@@ -805,7 +805,8 @@ export class AgentRunner {
       startedAt: now,
       memoryIdsUsed: [],
       memoryIdsWritten: [],
-      ...(input.requestId && { requestId: input.requestId }),
+      ...(input.requestId  && { requestId:  input.requestId }),
+      ...(input.parentRunId && { parentRunId: input.parentRunId }),
     };
 
     this.activeRuns.set(runId, { run, stop: stopFn, controller });
@@ -859,6 +860,8 @@ export class AgentRunner {
         if (response.selectionReason)                    run.selectionReason  = response.selectionReason;
         if (response.fallbackOccurred)                   run.fallbackOccurred = response.fallbackOccurred;
         if (typeof response.retryCount === 'number')     run.retryCount       = response.retryCount;
+        if (typeof response.promptTokens === 'number')     run.promptTokens     = (run.promptTokens     ?? 0) + response.promptTokens;
+        if (typeof response.completionTokens === 'number') run.completionTokens = (run.completionTokens ?? 0) + response.completionTokens;
 
         emit({
           type: 'run:turn',
@@ -906,6 +909,8 @@ export class AgentRunner {
           );
           toolTurnSignal.clear();
 
+          if (typeof toolResponse.promptTokens === 'number')     run.promptTokens     = (run.promptTokens     ?? 0) + toolResponse.promptTokens;
+          if (typeof toolResponse.completionTokens === 'number') run.completionTokens = (run.completionTokens ?? 0) + toolResponse.completionTokens;
           const toolAssistantMsg: AgentMessage = {
             role: 'assistant',
             content: toolResponse.content,
@@ -1038,7 +1043,8 @@ export class AgentRunner {
       startedAt: now,
       memoryIdsUsed: [],
       memoryIdsWritten: [],
-      ...(input.requestId && { requestId: input.requestId }),
+      ...(input.requestId  && { requestId:  input.requestId }),
+      ...(input.parentRunId && { parentRunId: input.parentRunId }),
     };
 
     this.activeRuns.set(runId, { run, stop: stopFn, controller });
@@ -1090,6 +1096,8 @@ export class AgentRunner {
               if (chunk.selectionReason)               run.selectionReason  = chunk.selectionReason;
               if (chunk.fallbackOccurred)              run.fallbackOccurred = chunk.fallbackOccurred;
               if (typeof chunk.retryCount === 'number') run.retryCount      = chunk.retryCount;
+              if (typeof chunk.promptTokens === 'number')     run.promptTokens     = (run.promptTokens     ?? 0) + chunk.promptTokens;
+              if (typeof chunk.completionTokens === 'number') run.completionTokens = (run.completionTokens ?? 0) + chunk.completionTokens;
             }
           }
           streamSignal.clear();
