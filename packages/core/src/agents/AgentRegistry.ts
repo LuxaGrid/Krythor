@@ -32,7 +32,11 @@ export class AgentRegistry {
       maxTokens: input.maxTokens,
       tags: input.tags ?? [],
       ...(input.allowedTools !== undefined && { allowedTools: input.allowedTools }),
+      ...(input.deniedTools !== undefined && { deniedTools: input.deniedTools }),
+      ...(input.allowedAgentTargets !== undefined && { allowedAgentTargets: input.allowedAgentTargets }),
       ...(input.idleTimeoutMs !== undefined && { idleTimeoutMs: input.idleTimeoutMs }),
+      ...(input.workspaceDir !== undefined && { workspaceDir: input.workspaceDir }),
+      ...(input.skipBootstrap !== undefined && { skipBootstrap: input.skipBootstrap }),
       createdAt: now,
       updatedAt: now,
     };
@@ -58,7 +62,11 @@ export class AgentRegistry {
       ...(input.maxTokens !== undefined && { maxTokens: input.maxTokens }),
       ...(input.tags !== undefined && { tags: input.tags }),
       ...(input.allowedTools !== undefined && { allowedTools: input.allowedTools === null ? undefined : input.allowedTools }),
+      ...(input.deniedTools !== undefined && { deniedTools: input.deniedTools === null ? undefined : input.deniedTools }),
+      ...(input.allowedAgentTargets !== undefined && { allowedAgentTargets: input.allowedAgentTargets === null ? undefined : input.allowedAgentTargets }),
       ...(input.idleTimeoutMs !== undefined && { idleTimeoutMs: input.idleTimeoutMs === null ? undefined : input.idleTimeoutMs }),
+      ...(input.workspaceDir !== undefined && { workspaceDir: input.workspaceDir === null ? undefined : input.workspaceDir }),
+      ...(input.skipBootstrap !== undefined && { skipBootstrap: input.skipBootstrap }),
       updatedAt: Date.now(),
     };
 

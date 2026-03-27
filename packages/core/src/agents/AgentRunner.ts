@@ -475,12 +475,24 @@ export class AgentRunner {
     runId: string,
     emit: EventEmitter,
     allowedTools?: string[],
+    deniedTools?: string[],
+    allowedAgentTargets?: string[],
   ): Promise<boolean> {
     const call = extractToolCall(response);
     if (!call) return false;
 
-    // ITEM 7: Check allowedTools before executing any tool call
     const effectiveToolName = call.tool === 'custom' ? call.name : call.tool;
+
+    // Check deniedTools first — explicit deny overrides allowlist
+    if (deniedTools && deniedTools.length > 0 && deniedTools.includes(effectiveToolName)) {
+      const toolResult = `Tool "${effectiveToolName}" is not permitted for this agent (denied by policy).`;
+      const toolMsg: AgentMessage = { role: 'user', content: toolResult, timestamp: Date.now() };
+      messages.push(toolMsg);
+      emit({ type: 'run:turn', runId, agentId, payload: { turn: -1, message: toolMsg }, timestamp: Date.now() });
+      return true;
+    }
+
+    // Check allowedTools — when set, only listed tools are permitted
     if (allowedTools && allowedTools.length > 0 && !allowedTools.includes(effectiveToolName)) {
       const toolResult = `Tool "${effectiveToolName}" is not allowed for this agent. Allowed tools: ${allowedTools.join(', ')}.`;
       const toolMsg: AgentMessage = { role: 'user', content: toolResult, timestamp: Date.now() };
@@ -595,7 +607,11 @@ export class AgentRunner {
         ? `Tool ${call.tool} succeeded:\n${fsResult.output}`
         : `Tool ${call.tool} failed: ${fsResult.output}`;
     } else if (call.tool === 'spawn_agent') {
-      if (!this.spawnAgentResolver) {
+      if (allowedAgentTargets !== undefined && allowedAgentTargets.length === 0) {
+        toolResult = `spawn_agent: delegation to other agents is disabled for this agent.`;
+      } else if (allowedAgentTargets && allowedAgentTargets.length > 0 && !allowedAgentTargets.includes(call.agentId)) {
+        toolResult = `spawn_agent: agent "${call.agentId}" is not in this agent's allowed delegation targets.`;
+      } else if (!this.spawnAgentResolver) {
         toolResult = `Tool "spawn_agent" called but no spawn resolver is configured.`;
       } else if (this.spawnCount >= MAX_SPAWN_AGENT) {
         toolResult = `Tool "spawn_agent" cap reached (max ${MAX_SPAWN_AGENT} spawns per run). Cannot spawn agent "${call.agentId}".`;
@@ -868,6 +884,8 @@ export class AgentRunner {
             runId,
             emit,
             agent.allowedTools,
+            agent.deniedTools,
+            agent.allowedAgentTargets,
           );
           if (!handled) break;
 
@@ -913,6 +931,19 @@ export class AgentRunner {
         while (handoffCount < MAX_HANDOFFS && this.handoffResolver && !stopped) {
           const handoff = extractHandoff(currentOutput);
           if (!handoff) break;
+          // Enforce allowedAgentTargets for handoffs
+          if (agent.allowedAgentTargets !== undefined && agent.allowedAgentTargets.length === 0) {
+            currentOutput = `Handoff to agent "${handoff.agentId}" denied: delegation is disabled for this agent.`;
+            run.output = currentOutput;
+            handoffCount++;
+            break;
+          }
+          if (agent.allowedAgentTargets && agent.allowedAgentTargets.length > 0 && !agent.allowedAgentTargets.includes(handoff.agentId)) {
+            currentOutput = `Handoff to agent "${handoff.agentId}" denied: not in this agent's allowed delegation targets.`;
+            run.output = currentOutput;
+            handoffCount++;
+            break;
+          }
           const handoffResult = await this.handoffResolver(handoff.agentId, handoff.message);
           if (handoffResult === null) {
             // Target agent not found — treat as a normal response

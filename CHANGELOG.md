@@ -11,6 +11,12 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+#### Multi-agent control improvements (2026-03-27)
+
+- **`deniedTools` per agent**: new `AgentDefinition` field that explicitly blocks named tools regardless of `allowedTools`. Evaluated before `allowedTools` — a tool in both lists is always denied. Set via `POST /api/agents`, `PATCH /api/agents/:id`, and import. Enforced in `AgentRunner.handleToolCall()` with a clear policy denial message
+- **`allowedAgentTargets` per agent**: new field restricting which agent IDs this agent may delegate to via `handoff` or `spawn_agent`. `undefined` = unrestricted (default, fully backward compatible); `[]` = delegation disabled; `["id1","id2"]` = allowlist. Enforced in `AgentRunner` for both spawn_agent tool calls and the handoff loop
+- **`workspaceDir` and `skipBootstrap` in CRUD API**: both fields are now accepted by `POST /api/agents`, `PATCH /api/agents/:id`, and `POST /api/agents/import`. Previously these fields existed on `AgentDefinition` but could not be set or changed via the API
+
 #### Session management improvements (2026-03-27)
 
 - **Configurable session retention**: `sessionPruneAfterDays` and `sessionMaxConversations` added to `app-config.json`. When set, they override the default 90-day conversation retention and enforce a hard conversation count cap (oldest-first, pinned conversations pruned last). Both fields are configurable via `PATCH /api/config` and applied live without restart via `memory.setJanitorConfig()`

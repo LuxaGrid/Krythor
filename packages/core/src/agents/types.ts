@@ -21,6 +21,21 @@ export interface AgentDefinition {
    */
   allowedTools?: string[];
   /**
+   * Optional denylist of tool names this agent is never permitted to call,
+   * regardless of allowedTools. Evaluated after allowedTools — a tool that
+   * appears in both lists is denied. When undefined or empty, no extra tools
+   * are denied beyond the allowedTools restriction (if any).
+   * Example: ["write_file", "apply_patch"]
+   */
+  deniedTools?: string[];
+  /**
+   * Optional allowlist of agent IDs this agent may delegate to via handoff
+   * or spawn_agent. When undefined or empty, any registered agent may be
+   * targeted (default behaviour). Set to [] to disable all delegation.
+   * Example: ["summariser", "coder"]
+   */
+  allowedAgentTargets?: string[];
+  /**
    * Optional idle timeout in milliseconds. If a run is still active after this
    * duration it is automatically stopped by the orchestrator janitor.
    * Default: undefined (no timeout). Example: 300000 (5 minutes).
@@ -81,7 +96,11 @@ export interface CreateAgentInput {
   maxTokens?: number;
   tags?: string[];
   allowedTools?: string[];
+  deniedTools?: string[];
+  allowedAgentTargets?: string[];
   idleTimeoutMs?: number;
+  workspaceDir?: string;
+  skipBootstrap?: boolean;
 }
 
 export interface UpdateAgentInput {
@@ -96,7 +115,11 @@ export interface UpdateAgentInput {
   maxTokens?: number;
   tags?: string[];
   allowedTools?: string[] | null;
+  deniedTools?: string[] | null;
+  allowedAgentTargets?: string[] | null;
   idleTimeoutMs?: number | null;
+  workspaceDir?: string | null;
+  skipBootstrap?: boolean;
 }
 
 export interface RunAgentInput {
