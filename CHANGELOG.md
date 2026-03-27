@@ -11,6 +11,10 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+#### Security: external content isolation in agent tool results (2026-03-27)
+
+- **`<external-content>` wrapping for `web_fetch` and `web_search` results**: tool results from external URLs and web searches are now wrapped in XML markers (`<external-content source="web_fetch" url="...">` / `<external-content source="web_search" query="...">`) before being injected into the model's message history. A fixed advisory note follows each block reminding the model to treat the content as untrusted data. This mitigates indirect prompt injection (MITRE ATLAS T-EXEC-002): malicious instructions embedded in fetched web pages or search snippets are now clearly delimited from the agent's own reasoning context, making it significantly harder for adversarial content to hijack tool-call decisions or exfiltrate data via subsequent tool calls. No changes to `WebFetchTool` SSRF protection or caching behaviour
+
 #### Remote access and credential improvements (2026-03-27)
 
 - **`KRYTHOR_GATEWAY_TOKEN` env var**: the gateway auth token can now be supplied via environment variable without touching `app-config.json`. Resolution order: `KRYTHOR_GATEWAY_TOKEN` env var (highest) → `app-config.json gatewayToken` → first-run generated token. `authDisabled` always wins. Useful for containers, CI, and headless deployments where writing config files is inconvenient
