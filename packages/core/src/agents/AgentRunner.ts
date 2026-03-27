@@ -7,6 +7,7 @@ import { WebFetchTool } from '../tools/WebFetchTool.js';
 import { FilesystemTool } from '../tools/FilesystemTool.js';
 import { browserTool } from '../tools/BrowserTool.js';
 import { WorkspaceBootstrapLoader } from '../workspace/WorkspaceBootstrapLoader.js';
+import type { ContextEngine } from './ContextEngine.js';
 import type {
   AgentDefinition,
   AgentRun,
@@ -269,6 +270,8 @@ export class AgentRunner {
     private readonly guard?: GuardLike | null,
     /** Global workspace directory — used when agent.workspaceDir is not set. */
     private readonly globalWorkspaceDir?: string | null,
+    /** Optional context engine for controlling context window assembly. */
+    private readonly contextEngine?: ContextEngine | null,
   ) {}
 
   // ── Private helpers ────────────────────────────────────────────────────────
@@ -687,9 +690,11 @@ export class AgentRunner {
 
         const effectiveModel = input.modelOverride ?? agent.modelId;
         const turnSignal = withTimeout(controller.signal, INFERENCE_TIMEOUT_MS);
+        // Assemble context window (ContextEngine may trim or reorder messages)
+        const assembled = this.contextEngine ? this.contextEngine.assemble(messages) : messages;
         const response = await this.models.infer(
           {
-            messages: messages.map(m => ({ role: m.role, content: m.content })),
+            messages: assembled.map(m => ({ role: m.role, content: m.content })),
             model: effectiveModel,
             providerId: agent.providerId,
             temperature: agent.temperature,
@@ -708,6 +713,8 @@ export class AgentRunner {
           timestamp: Date.now(),
         };
         messages.push(assistantMsg);
+        // Post-turn hook
+        this.contextEngine?.afterTurn(messages, response.content);
         run.modelUsed = `${response.providerId}/${response.model}`;
         if (response.selectionReason)                    run.selectionReason  = response.selectionReason;
         if (response.fallbackOccurred)                   run.fallbackOccurred = response.fallbackOccurred;
@@ -897,10 +904,12 @@ export class AgentRunner {
           const effectiveModel = input.modelOverride ?? agent.modelId;
           let fullContent = '';
           const streamSignal = withTimeout(controller.signal, INFERENCE_TIMEOUT_MS);
+          // Assemble context window for this turn
+          const assembledStream = this.contextEngine ? this.contextEngine.assemble(messages) : messages;
 
           for await (const chunk of this.models.inferStream(
             {
-              messages: messages.map(m => ({ role: m.role, content: m.content })),
+              messages: assembledStream.map(m => ({ role: m.role, content: m.content })),
               model: effectiveModel,
               providerId: agent.providerId,
               temperature: agent.temperature,
@@ -929,6 +938,8 @@ export class AgentRunner {
 
           const assistantMsg: AgentMessage = { role: 'assistant', content: fullContent, timestamp: Date.now() };
           messages.push(assistantMsg);
+          // Post-turn hook
+          this.contextEngine?.afterTurn(messages, fullContent);
           run.output = fullContent;
 
           emit({ type: 'run:turn', runId, agentId: agent.id, payload: { turn, message: assistantMsg }, timestamp: Date.now() });

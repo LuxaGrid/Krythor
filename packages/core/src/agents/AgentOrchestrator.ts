@@ -8,6 +8,7 @@ import { AgentRegistry } from './AgentRegistry.js';
 import { AgentRunner } from './AgentRunner.js';
 import { SessionTranscriptStore } from './SessionTranscriptStore.js';
 import type { LearningRecorder, HandoffResolver, CustomToolDispatcher, SpawnAgentResolver, GuardLike } from './AgentRunner.js';
+import type { ContextEngine } from './ContextEngine.js';
 import type {
   AgentDefinition,
   AgentRun,
@@ -81,6 +82,7 @@ export class AgentOrchestrator extends EventEmitter {
   private recordLearning?: LearningRecorder;
   private execToolInstance: ExecTool | null = null;
   private transcriptStore: SessionTranscriptStore | null = null;
+  private contextEngineInstance: ContextEngine | null = null;
 
   constructor(
     private readonly memory: MemoryEngine | null,
@@ -157,6 +159,12 @@ export class AgentOrchestrator extends EventEmitter {
     this.transcriptStore = new SessionTranscriptStore(dir);
   }
 
+  /** Plug in a custom ContextEngine to control context window assembly. */
+  setContextEngine(engine: ContextEngine): void {
+    this.contextEngineInstance = engine;
+    this.rebuildRunner();
+  }
+
   /** Rebuild runner with all current wired dependencies. */
   private rebuildRunner(): void {
     this.runner = new AgentRunner(
@@ -169,6 +177,7 @@ export class AgentOrchestrator extends EventEmitter {
       this.spawnAgentResolver,
       this.guardInstance,
       this.globalWorkspaceDir,
+      this.contextEngineInstance,
     );
   }
 
