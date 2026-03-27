@@ -63,7 +63,11 @@ export class CircuitBreaker {
       this.onSuccess(Date.now() - start);
       return result;
     } catch (err) {
-      this.onFailure();
+      // Don't trip the breaker for client errors (4xx) — these are config
+      // issues (bad API key, invalid model, etc.), not transient outages.
+      if (!isClientError(err)) {
+        this.onFailure();
+      }
       throw err;
     }
   }
@@ -143,6 +147,13 @@ export class CircuitBreaker {
     const sum = this.latencyWindow.reduce((a, b) => a + b, 0);
     return Math.round(sum / this.latencyWindow.length);
   }
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function isClientError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  return /HTTP 4\d\d/.test(err.message);
 }
 
 // ─── CircuitOpenError ─────────────────────────────────────────────────────────
