@@ -14,7 +14,19 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { arch, platform } from 'os';
 import { KRYTHOR_VERSION } from '../server.js';
-import type { PeerRegistry } from '../PeerRegistry.js';
+import type { PeerRegistry, Peer } from '../PeerRegistry.js';
+
+/** Mask the authToken in a peer object before sending to the API consumer.
+ *  Shows only the last 4 characters — same convention as provider API keys. */
+function maskPeer(p: Peer): Record<string, unknown> {
+  const { authToken, ...rest } = p;
+  return {
+    ...rest,
+    ...(authToken
+      ? { authToken: authToken.length > 4 ? `****${authToken.slice(-4)}` : '****' }
+      : {}),
+  };
+}
 
 const GATEWAY_CAPABILITIES: string[] = [
   'exec',
@@ -79,26 +91,11 @@ export function registerGatewayRoutes(
 
   // ── Peer routes ─────────────────────────────────────────────────────────────
 
-  // GET /api/gateway/peers — list all known peers
+  // GET /api/gateway/peers — list all known peers (authToken masked)
   app.get('/api/gateway/peers', async (_req, reply) => {
     if (!peers) return reply.send({ peers: [] });
     return reply.send({
-      peers: peers.list().map(p => ({
-        id:           p.id,
-        name:         p.name,
-        url:          p.url,
-        gatewayId:    p.gatewayId,
-        version:      p.version,
-        platform:     p.platform,
-        capabilities: p.capabilities,
-        source:       p.source,
-        isEnabled:    p.isEnabled,
-        healthy:      p.healthy,
-        latencyMs:    p.latencyMs,
-        lastSeenAt:   p.lastSeenAt,
-        lastHealthAt: p.lastHealthAt,
-        createdAt:    p.createdAt,
-      })),
+      peers: peers.list().map(p => maskPeer(p)),
     });
   });
 
@@ -135,12 +132,12 @@ export function registerGatewayRoutes(
     }
   });
 
-  // GET /api/gateway/peers/:id — get a single peer
+  // GET /api/gateway/peers/:id — get a single peer (authToken masked)
   app.get<{ Params: { id: string } }>('/api/gateway/peers/:id', async (req, reply) => {
     if (!peers) return reply.code(404).send({ error: 'Peer not found' });
     const peer = peers.get(req.params.id);
     if (!peer) return reply.code(404).send({ error: 'Peer not found' });
-    return reply.send(peer);
+    return reply.send(maskPeer(peer));
   });
 
   // PATCH /api/gateway/peers/:id — update a peer

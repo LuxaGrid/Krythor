@@ -31,7 +31,7 @@ import { ShellToolDispatcher } from './ShellToolDispatcher.js';
 import { registerProviderRoutes } from './routes/providers.js';
 import { registerOAuthRoutes } from './routes/oauth.js';
 import { registerLocalModelsRoute } from './routes/local-models.js';
-import { registerStreamWs } from './ws/stream.js';
+import { registerStreamWs, getActiveWsConnections } from './ws/stream.js';
 import { DevicePairingStore } from './ws/DevicePairingStore.js';
 import { registerDashboardRoute } from './routes/dashboard.js';
 import { registerGatewayRoutes, loadOrCreateGatewayId } from './routes/gateway.js';
@@ -159,6 +159,8 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
   if (!authCfg.authDisabled) {
     if ((authCfg as unknown as Record<string, unknown>)['firstRun']) {
       logger.info('Auth token generated (first run) — stored in app-config.json');
+    } else if (process.env['KRYTHOR_GATEWAY_TOKEN']) {
+      logger.info('Auth token loaded from KRYTHOR_GATEWAY_TOKEN env var');
     }
   } else {
     logger.warn('Auth is DISABLED — all API routes are unprotected');
@@ -1010,6 +1012,7 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
       },
       firstRun: modelStats.providerCount === 0 && agentStats.agentCount === 0,
       totalTokens: models.tokenTracker.totalTokens(),
+      wsConnections: getActiveWsConnections(),
       // Location fields help users find their data — safe to expose on loopback-only endpoint.
       dataDir,
       configDir: join(dataDir, 'config'),

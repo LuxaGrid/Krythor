@@ -22,7 +22,18 @@ export interface AuthConfig {
   authDisabled?: boolean;
 }
 
-/** Load or generate the gateway auth token. */
+/** Load or generate the gateway auth token.
+ *
+ * Token resolution order (highest priority first):
+ *   1. KRYTHOR_GATEWAY_TOKEN env var — overrides everything; useful for
+ *      containers, scripts, and headless deployments where writing config
+ *      files is inconvenient.
+ *   2. app-config.json gatewayToken field — the normal persistent token.
+ *   3. Generated — a fresh 32-byte random token written to app-config.json
+ *      on first start.
+ *
+ * Note: authDisabled (from app-config.json) always wins over env-var tokens.
+ */
 export function loadOrCreateToken(configDir: string): AuthConfig {
   const path = join(configDir, 'app-config.json');
   let cfg: Record<string, unknown> = {};
@@ -37,6 +48,12 @@ export function loadOrCreateToken(configDir: string): AuthConfig {
 
   if (cfg['authDisabled'] === true) {
     return { token: '', authDisabled: true };
+  }
+
+  // KRYTHOR_GATEWAY_TOKEN env var — highest priority (does not persist to disk)
+  const envToken = process.env['KRYTHOR_GATEWAY_TOKEN'];
+  if (typeof envToken === 'string' && envToken.length >= 32) {
+    return { token: envToken };
   }
 
   if (typeof cfg['gatewayToken'] === 'string' && cfg['gatewayToken'].length >= 32) {

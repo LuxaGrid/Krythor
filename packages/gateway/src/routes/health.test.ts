@@ -46,4 +46,11 @@ describe('GET /health', () => {
     const body = JSON.parse(res.body) as Record<string, unknown>
     expect(typeof body.firstRun).toBe('boolean')
   })
+
+  it('includes wsConnections count', async () => {
+    const res = await app.inject({ method: 'GET', url: '/health' })
+    const body = JSON.parse(res.body) as Record<string, unknown>
+    expect(typeof body.wsConnections).toBe('number')
+    expect(body.wsConnections).toBeGreaterThanOrEqual(0)
+  })
 })

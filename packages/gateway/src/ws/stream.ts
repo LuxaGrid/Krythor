@@ -39,8 +39,11 @@ const MAX_WS_CONNECTIONS   = 10;
 const MAX_CONNECTION_AGE_MS = 4 * 60 * 60 * 1000; // 4 hours
 const MAX_FRAME_BYTES      = 65_536; // 64 KB
 
-// Module-level connection counter
+// Module-level connection counter — exported for observability (/health endpoint)
 let activeConnections = 0;
+
+/** Returns the current number of active WebSocket connections. */
+export function getActiveWsConnections(): number { return activeConnections; }
 
 // ── Loopback detection ────────────────────────────────────────────────────────
 

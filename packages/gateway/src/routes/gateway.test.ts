@@ -222,3 +222,64 @@ describe('POST /api/gateway/peers/:id/probe', () => {
     expect(res.statusCode).toBe(404)
   })
 })
+
+// ── authToken masking ─────────────────────────────────────────────────────────
+
+describe('Peer authToken masking', () => {
+  let maskedPeerId: string
+
+  beforeAll(async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/gateway/peers',
+      headers: { authorization: `Bearer ${authToken}`, host: HOST, 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'Token Peer', url: 'http://127.0.0.1:19996', authToken: 'mysecrettoken1234' }),
+    })
+    maskedPeerId = (JSON.parse(res.body) as { id: string }).id
+  })
+
+  it('GET /api/gateway/peers/:id masks authToken — shows only last 4 chars', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/gateway/peers/${maskedPeerId}`,
+      headers: { authorization: `Bearer ${authToken}`, host: HOST },
+    })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body) as Record<string, unknown>
+    expect(body['authToken']).toBe('****1234')
+    expect(body['authToken']).not.toBe('mysecrettoken1234')
+  })
+
+  it('GET /api/gateway/peers list also masks authToken', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/gateway/peers',
+      headers: { authorization: `Bearer ${authToken}`, host: HOST },
+    })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body) as { peers: Record<string, unknown>[] }
+    const peer = body.peers.find(p => p['id'] === maskedPeerId)
+    expect(peer).toBeDefined()
+    if (peer?.['authToken'] !== undefined) {
+      expect(peer['authToken']).not.toBe('mysecrettoken1234')
+      expect(String(peer['authToken']).startsWith('****')).toBe(true)
+    }
+  })
+
+  it('peer without authToken returns no authToken field', async () => {
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/gateway/peers',
+      headers: { authorization: `Bearer ${authToken}`, host: HOST, 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'No Token Peer', url: 'http://127.0.0.1:19995' }),
+    })
+    const noTokenId = (JSON.parse(createRes.body) as { id: string }).id
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/gateway/peers/${noTokenId}`,
+      headers: { authorization: `Bearer ${authToken}`, host: HOST },
+    })
+    const body = JSON.parse(res.body) as Record<string, unknown>
+    expect(body['authToken']).toBeUndefined()
+  })
+})

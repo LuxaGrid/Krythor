@@ -11,6 +11,13 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+#### Remote access and credential improvements (2026-03-27)
+
+- **`KRYTHOR_GATEWAY_TOKEN` env var**: the gateway auth token can now be supplied via environment variable without touching `app-config.json`. Resolution order: `KRYTHOR_GATEWAY_TOKEN` env var (highest) → `app-config.json gatewayToken` → first-run generated token. `authDisabled` always wins. Useful for containers, CI, and headless deployments where writing config files is inconvenient
+- **Peer `authToken` masked in API responses**: `GET /api/gateway/peers` and `GET /api/gateway/peers/:id` now mask peer auth tokens in the same way provider API keys are masked — only the last 4 characters are shown (`****1234`). The token is never returned in full via the API, preventing accidental exposure in logs or UIs that display raw API responses
+- **`wsConnections` in `/health`**: the `/health` endpoint now includes `wsConnections` — the current count of active WebSocket connections. Useful for monitoring dashboards and debugging connection leak issues
+- **13 new tests**: auth env var precedence (4), token masking in peer responses (3), `wsConnections` in health (1), `verifyToken` unit tests (4), plus the existing gateway CRUD suite extended with masking assertions
+
 #### Gateway configuration and security improvements (2026-03-27)
 
 - **`KRYTHOR_HOST` and `KRYTHOR_PORT` env var overrides**: the gateway bind address and port are now configurable without recompiling. Set `KRYTHOR_HOST=0.0.0.0` to listen on all interfaces (for LAN or reverse-proxy setups), or `KRYTHOR_PORT=48000` to use a non-default port. Defaults remain `127.0.0.1:47200`. The CORS origin list, Host header allowlist, and CSP `connect-src` directive are all updated automatically to include the configured host/port
