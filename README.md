@@ -369,7 +369,7 @@ All commands assume Krythor is installed via the one-line installer or a release
 | `krythor start --daemon` | Start Krythor in background (daemon mode) |
 | `krythor stop` | Stop the running daemon |
 | `krythor restart` | Stop and restart the daemon |
-| `krythor status` | Show gateway health — version, models, agents, memory, uptime |
+| `krythor status [--deep] [--json]` | Show gateway health. `--deep` also probes `/api/models`, `/api/channels`, `/api/agents`. `--json` for scripting. |
 | `krythor gateway status` | Alias for `krythor status` |
 | `krythor gateway stop` | Alias for `krythor stop` |
 | `krythor gateway restart` | Alias for `krythor restart` |

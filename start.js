@@ -339,8 +339,10 @@ async function getAuthHeader() {
 // Quick health summary — hits /health and prints key metrics.
 // Exit 0 if gateway responds, exit 1 if not reachable.
 // Pass --json for machine-readable JSON output (useful for scripting/CI).
+// Pass --deep for an extended probe: models list + channels endpoint.
 async function runStatus() {
   const jsonMode = process.argv.includes('--json');
+  const deepMode = process.argv.includes('--deep');
   const g = '\x1b[32m';
   const y = '\x1b[33m';
   const r = '\x1b[31m';
@@ -351,6 +353,9 @@ async function runStatus() {
     process.stdout.write(`${d}  Checking gateway at http://${HOST}:${PORT}…${rs} `);
   }
   try {
+    const authHeader = getAuthHeader();
+    const headers = authHeader ? { Authorization: authHeader } : {};
+
     const resp = await fetch(`http://${HOST}:${PORT}/health`, { signal: AbortSignal.timeout(2000) });
     if (!resp.ok) {
       if (jsonMode) {
@@ -362,9 +367,27 @@ async function runStatus() {
     }
     const data = await resp.json();
 
+    // --deep: probe models list and channels endpoint for connectivity
+    let deepResults = null;
+    if (deepMode) {
+      deepResults = { models: null, channels: null, agents: null };
+      try {
+        const mr = await fetch(`http://${HOST}:${PORT}/api/models`, { headers, signal: AbortSignal.timeout(3000) });
+        deepResults.models = mr.ok ? await mr.json() : { error: `HTTP ${mr.status}` };
+      } catch (e) { deepResults.models = { error: e.message }; }
+      try {
+        const cr = await fetch(`http://${HOST}:${PORT}/api/channels`, { headers, signal: AbortSignal.timeout(3000) });
+        deepResults.channels = cr.ok ? await cr.json() : { error: `HTTP ${cr.status}` };
+      } catch (e) { deepResults.channels = { error: e.message }; }
+      try {
+        const ar = await fetch(`http://${HOST}:${PORT}/api/agents`, { headers, signal: AbortSignal.timeout(3000) });
+        deepResults.agents = ar.ok ? await ar.json() : { error: `HTTP ${ar.status}` };
+      } catch (e) { deepResults.agents = { error: e.message }; }
+    }
+
     if (jsonMode) {
       // Machine-readable output: emit the full health payload with an ok flag
-      console.log(JSON.stringify({ ok: true, ...data }, null, 2));
+      console.log(JSON.stringify({ ok: true, ...data, ...(deepResults && { deep: deepResults }) }, null, 2));
       process.exit(0);
     }
 
@@ -391,6 +414,22 @@ async function runStatus() {
       console.log(`  ${d}Data dir:   ${data.dataDir}${rs}`);
       console.log(`  ${d}Config dir: ${data.configDir}${rs}`);
     }
+
+    // --deep: print extended probe results
+    if (deepMode && deepResults) {
+      console.log('');
+      console.log(`  ${d}── Deep probe ──────────────────────────────────${rs}`);
+      const modelsOk = deepResults.models && !deepResults.models.error;
+      const modelsCount = Array.isArray(deepResults.models) ? deepResults.models.length : (deepResults.models?.models?.length ?? 0);
+      console.log(`  ${d}Models API${rs}     ${modelsOk ? `${g}reachable${rs} (${modelsCount} model${modelsCount !== 1 ? 's' : ''})` : `${r}${deepResults.models?.error ?? 'error'}${rs}`}`);
+      const chansOk = deepResults.channels && !deepResults.channels.error;
+      const chansCount = Array.isArray(deepResults.channels) ? deepResults.channels.length : (deepResults.channels?.channels?.length ?? 0);
+      console.log(`  ${d}Channels API${rs}   ${chansOk ? `${g}reachable${rs} (${chansCount} channel${chansCount !== 1 ? 's' : ''})` : `${r}${deepResults.channels?.error ?? 'error'}${rs}`}`);
+      const agentsOk = deepResults.agents && !deepResults.agents.error;
+      const agentsCount = Array.isArray(deepResults.agents) ? deepResults.agents.length : (deepResults.agents?.agents?.length ?? 0);
+      console.log(`  ${d}Agents API${rs}     ${agentsOk ? `${g}reachable${rs} (${agentsCount} agent${agentsCount !== 1 ? 's' : ''})` : `${r}${deepResults.agents?.error ?? 'error'}${rs}`}`);
+    }
+
     console.log('');
     process.exit(0);
   } catch {
@@ -1851,12 +1890,14 @@ const COMMAND_HELP = {
   status: {
     summary: 'Quick health check of the running gateway',
     detail: [
-      'Usage: krythor status [--json]',
+      'Usage: krythor status [--json] [--deep]',
       '',
       'Hits GET /health and prints: version, providers, models, agents,',
       'memory entry count, embedding status, heartbeat status, data dir.',
       '',
       '  --json   Emit raw health payload as JSON (useful for scripting).',
+      '  --deep   Extended probe: also hits /api/models, /api/channels, and',
+      '           /api/agents to verify the authenticated API is reachable.',
       '',
       'Exit 0 if gateway responds, exit 1 if not reachable.',
     ],
