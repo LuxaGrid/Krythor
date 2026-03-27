@@ -64,8 +64,8 @@ export function StatusBar({ health, connected, onTabChange, onAbout }: Props) {
           <span className="text-zinc-700">▾</span>
         </button>
         {showAgentPicker && (
-          <div className="absolute top-full left-0 mt-1 z-50 bg-zinc-900 border border-zinc-700 rounded shadow-xl min-w-36">
-            <div className="px-2 py-1 text-zinc-600 border-b border-zinc-800 text-xs">Select agent</div>
+          <div className="absolute top-full left-0 mt-1 z-50 bg-zinc-900 border border-zinc-700 rounded shadow-xl min-w-36 max-h-80 overflow-y-auto">
+            <div className="sticky top-0 px-2 py-1 text-zinc-600 border-b border-zinc-800 text-xs bg-zinc-900">Select agent</div>
             {agents.length === 0 && (
               <button
                 onClick={() => { setShowAgentPicker(false); onTabChange('agents'); }}
@@ -105,8 +105,8 @@ export function StatusBar({ health, connected, onTabChange, onAbout }: Props) {
           <span className="text-zinc-700">▾</span>
         </button>
         {showModelPicker && (
-          <div className="absolute top-full left-0 mt-1 z-50 bg-zinc-900 border border-zinc-700 rounded shadow-xl min-w-48">
-            <div className="px-2 py-1 text-zinc-600 border-b border-zinc-800 text-xs">Select model</div>
+          <div className="absolute top-full left-0 mt-1 z-50 bg-zinc-900 border border-zinc-700 rounded shadow-xl min-w-48 max-h-80 overflow-y-auto">
+            <div className="sticky top-0 px-2 py-1 text-zinc-600 border-b border-zinc-800 text-xs bg-zinc-900">Select model</div>
             {noModel && (
               <button
                 onClick={() => { setShowModelPicker(false); onTabChange('models'); }}
