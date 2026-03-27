@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
-import { health, getGatewayInfo, getHeartbeatHistory, getDiscordConfig, setDiscordConfig, stopDiscord, listPlugins, exportProviderConfig, importProviderConfig } from '../api.ts';
-import type { Health, GatewayInfo, ProviderHealthEntry, DiscordConfig, Plugin } from '../api.ts';
+import { useState, useEffect, useCallback } from 'react';
+import { health, getGatewayInfo, getHeartbeatHistory, getDiscordConfig, setDiscordConfig, stopDiscord, listPlugins, exportProviderConfig, importProviderConfig, listWebChatPairings, createWebChatPairing, revokeWebChatPairing } from '../api.ts';
+import type { Health, GatewayInfo, ProviderHealthEntry, DiscordConfig, Plugin, WebChatPairingEntry, WebChatPairingCreated } from '../api.ts';
 import { PanelHeader } from './PanelHeader.tsx';
 
 // ── Theme helpers ─────────────────────────────────────────────────────────────
@@ -89,6 +89,15 @@ export function SettingsPanel() {
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [importError, setImportError]   = useState<string | null>(null);
 
+  // Web Chat Pairing state
+  const [chatPairings, setChatPairings] = useState<WebChatPairingEntry[]>([]);
+  const [chatPairNew, setChatPairNew]   = useState<WebChatPairingCreated | null>(null);
+  const [chatPairLabel, setChatPairLabel] = useState('');
+  const [chatPairTtl, setChatPairTtl]   = useState('24');
+  const [chatPairOnce, setChatPairOnce] = useState(true);
+  const [chatPairBusy, setChatPairBusy] = useState(false);
+  const [chatPairErr, setChatPairErr]   = useState<string | null>(null);
+
   // Discord state
   const [discord, setDiscord]           = useState<DiscordConfig | null>(null);
   const [discordForm, setDiscordForm]   = useState({ token: '', channelId: '', agentId: '' });
@@ -99,6 +108,13 @@ export function SettingsPanel() {
   useEffect(() => {
     applyTheme(theme);
   }, [theme]);
+
+  const loadChatPairings = useCallback(async () => {
+    try {
+      const { tokens } = await listWebChatPairings();
+      setChatPairings(tokens);
+    } catch { /* non-fatal */ }
+  }, []);
 
   useEffect(() => {
     async function load() {
@@ -122,7 +138,8 @@ export function SettingsPanel() {
       finally { setLoading(false); }
     }
     load();
-  }, []);
+    void loadChatPairings();
+  }, [loadChatPairings]);
 
   if (loading) {
     return (
@@ -203,6 +220,35 @@ export function SettingsPanel() {
     } catch (e: unknown) {
       setDiscordError(e instanceof Error ? e.message : 'Failed to stop bot.');
     }
+  }
+
+  async function handleCreateChatPairing() {
+    setChatPairErr(null);
+    setChatPairNew(null);
+    setChatPairBusy(true);
+    try {
+      const ttlHours = parseFloat(chatPairTtl);
+      const result = await createWebChatPairing({
+        label:      chatPairLabel.trim() || undefined,
+        ttlHours:   isNaN(ttlHours) ? 24 : ttlHours,
+        oneTimeUse: chatPairOnce,
+      });
+      setChatPairNew(result);
+      setChatPairLabel('');
+      await loadChatPairings();
+    } catch (e) {
+      setChatPairErr(e instanceof Error ? e.message : 'Failed to create link.');
+    } finally {
+      setChatPairBusy(false);
+    }
+  }
+
+  async function handleRevokeChatPairing(id: string) {
+    try {
+      await revokeWebChatPairing(id);
+      setChatPairNew(prev => prev?.id === id ? null : prev);
+      await loadChatPairings();
+    } catch { /* non-fatal */ }
   }
 
   // Compute uptime from startTime in gateway info
@@ -303,6 +349,103 @@ export function SettingsPanel() {
           {exportStatus && <p className="text-green-400 text-xs">{exportStatus}</p>}
           {importStatus && <p className="text-green-400 text-xs">{importStatus}</p>}
           {importError  && <p className="text-red-400  text-xs">{importError}</p>}
+        </div>
+      </Section>
+
+      {/* Web Chat Pairing */}
+      <Section title="Web Chat Pairing">
+        <div className="py-2 space-y-3">
+          <p className="text-zinc-600 text-xs">
+            Create a shareable link that grants access to the chat interface without exposing your main gateway token.
+          </p>
+
+          {/* Create form */}
+          <div className="flex flex-wrap gap-2 items-end">
+            <div className="flex-1 min-w-[140px]">
+              <label className="text-xs text-zinc-500 block mb-1">Label <span className="text-zinc-700">(optional)</span></label>
+              <input
+                value={chatPairLabel}
+                onChange={e => setChatPairLabel(e.target.value)}
+                placeholder="e.g. Alice's phone"
+                className={INPUT_CLS}
+              />
+            </div>
+            <div className="w-24">
+              <label className="text-xs text-zinc-500 block mb-1">TTL (hours)</label>
+              <input
+                type="number"
+                min="0.1"
+                max="168"
+                step="0.5"
+                value={chatPairTtl}
+                onChange={e => setChatPairTtl(e.target.value)}
+                className={INPUT_CLS}
+              />
+            </div>
+            <div className="flex items-center gap-1.5 pb-0.5">
+              <input
+                type="checkbox"
+                id="chat-pair-once"
+                checked={chatPairOnce}
+                onChange={e => setChatPairOnce(e.target.checked)}
+                className="accent-brand-500"
+              />
+              <label htmlFor="chat-pair-once" className="text-xs text-zinc-400 select-none cursor-pointer">One-time use</label>
+            </div>
+            <button
+              onClick={handleCreateChatPairing}
+              disabled={chatPairBusy}
+              className="px-3 py-1.5 bg-brand-600 hover:bg-brand-500 disabled:opacity-40 text-white text-xs rounded-lg transition-colors shrink-0"
+            >
+              {chatPairBusy ? 'Creating…' : 'Create link'}
+            </button>
+          </div>
+
+          {chatPairErr && <p className="text-red-400 text-xs">{chatPairErr}</p>}
+
+          {/* Newly created link */}
+          {chatPairNew && (
+            <div className="bg-emerald-950/20 border border-emerald-800/30 rounded-lg p-3 space-y-1.5">
+              <p className="text-emerald-400 text-xs font-semibold">Link created — copy it now, it won't be shown again.</p>
+              {chatPairNew.label && <p className="text-zinc-400 text-xs">Label: {chatPairNew.label}</p>}
+              <div className="flex items-center gap-2">
+                <code className="text-xs text-zinc-300 bg-zinc-800 rounded px-2 py-1 break-all flex-1">
+                  {window.location.origin}{chatPairNew.chatUrl}
+                </code>
+                <button
+                  onClick={() => void navigator.clipboard.writeText(`${window.location.origin}${chatPairNew.chatUrl}`)}
+                  className="text-[10px] px-2 py-1 rounded bg-zinc-700 text-zinc-300 hover:bg-zinc-600 shrink-0"
+                >Copy</button>
+              </div>
+              <p className="text-zinc-500 text-[10px]">
+                Expires: {new Date(chatPairNew.expiresAt).toLocaleString()} · {chatPairNew.oneTimeUse ? 'One-time use' : 'Reusable'}
+              </p>
+            </div>
+          )}
+
+          {/* Active tokens list */}
+          {chatPairings.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-zinc-500 text-xs font-medium">Active links ({chatPairings.length})</p>
+              {chatPairings.map(t => (
+                <div key={t.id} className="flex items-center justify-between gap-2 py-1.5 border-b border-zinc-800 last:border-0">
+                  <div className="flex flex-col gap-0.5 min-w-0">
+                    <span className="text-zinc-300 text-xs truncate">{t.label ?? <span className="text-zinc-600 italic">no label</span>}</span>
+                    <span className="text-zinc-600 text-[10px]">
+                      Expires {new Date(t.expiresAt).toLocaleString()} · {t.oneTimeUse ? 'one-time' : 'reusable'} · id: {t.id}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => void handleRevokeChatPairing(t.id)}
+                    className="text-[10px] px-2 py-0.5 rounded bg-zinc-800 text-zinc-500 hover:bg-red-900/40 hover:text-red-400 shrink-0"
+                  >revoke</button>
+                </div>
+              ))}
+            </div>
+          )}
+          {chatPairings.length === 0 && !chatPairNew && (
+            <p className="text-zinc-600 text-xs">No active pairing links.</p>
+          )}
         </div>
       </Section>
 

@@ -1013,3 +1013,33 @@ export async function invokeNode(
 ): Promise<{ ok: boolean; result: unknown }> {
   return req('POST', `/nodes/${encodeURIComponent(deviceId)}/invoke`, { command, params, timeoutMs });
 }
+
+// ── Web Chat Pairing ─────────────────────────────────────────────────────────
+
+export interface WebChatPairingEntry {
+  id: string;
+  label?: string;
+  createdAt: number;
+  expiresAt: number;
+  oneTimeUse: boolean;
+}
+
+export interface WebChatPairingCreated extends WebChatPairingEntry {
+  chatUrl: string;
+}
+
+export async function listWebChatPairings(): Promise<{ tokens: WebChatPairingEntry[] }> {
+  return req('GET', '/webchat/pair');
+}
+
+export async function createWebChatPairing(opts?: {
+  label?: string;
+  ttlHours?: number;
+  oneTimeUse?: boolean;
+}): Promise<WebChatPairingCreated> {
+  return req('POST', '/webchat/pair', opts ?? {});
+}
+
+export async function revokeWebChatPairing(id: string): Promise<{ ok: boolean }> {
+  return req('DELETE', `/webchat/pair/${encodeURIComponent(id)}`);
+}

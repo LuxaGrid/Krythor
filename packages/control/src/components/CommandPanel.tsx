@@ -26,7 +26,7 @@ import {
 import { useAppConfig } from '../App.tsx';
 import { ModelRecommendationBar, ModelSwitcher } from './ModelRecommendation.tsx';
 
-type Tab = 'command' | 'agents' | 'memory' | 'models' | 'guard' | 'events' | 'skills' | 'dashboard' | 'settings' | 'logs' | 'workflow' | 'channels' | 'custom-tools' | 'config-editor' | 'mission' | 'command-center';
+type Tab = 'command' | 'agents' | 'memory' | 'models' | 'guard' | 'events' | 'skills' | 'dashboard' | 'settings' | 'logs' | 'workflow' | 'channels' | 'custom-tools' | 'config-editor' | 'mission' | 'command-center' | 'devices';
 
 interface Props {
   health: Health | null;
@@ -556,6 +556,7 @@ const SLASH_CMDS: SlashCmd[] = [
   { cmd: '/dash',    hint: 'Open Dashboard',                     apply: ({ onTabChange }) => onTabChange('dashboard') },
   { cmd: '/logs',    hint: 'Open Logs panel',                    apply: ({ onTabChange }) => onTabChange('logs') },
   { cmd: '/settings',hint: 'Open Settings panel',               apply: ({ onTabChange }) => onTabChange('settings') },
+  { cmd: '/devices', hint: 'Open Devices panel',                apply: ({ onTabChange }) => onTabChange('devices') },
 ];
 
 export function CommandPanel({ health, onTabChange, newChatRef }: Props) {

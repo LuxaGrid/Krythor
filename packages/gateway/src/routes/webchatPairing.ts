@@ -45,11 +45,12 @@ export function registerWebChatPairingRoutes(
     // Return a shareable URL (loopback — caller knows the port)
     const chatUrl = `/chat/join?t=${entry.token}`;
     return reply.send({
-      ok:       true,
+      ok:         true,
+      id:         entry.id,
       chatUrl,
-      expiresAt: entry.expiresAt,
+      expiresAt:  entry.expiresAt,
       oneTimeUse: entry.oneTimeUse,
-      label:    entry.label,
+      label:      entry.label,
     });
   });
 
@@ -58,9 +59,9 @@ export function registerWebChatPairingRoutes(
     return reply.send({ tokens: store.list() });
   });
 
-  // DELETE /api/webchat/pair/:token — revoke a token
-  app.delete<{ Params: { token: string } }>('/api/webchat/pair/:token', async (req, reply) => {
-    store.revoke(req.params.token);
+  // DELETE /api/webchat/pair/:id — revoke by opaque list ID
+  app.delete<{ Params: { id: string } }>('/api/webchat/pair/:id', async (req, reply) => {
+    store.revokeById(req.params.id);
     return reply.send({ ok: true });
   });
 

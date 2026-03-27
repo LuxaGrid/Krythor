@@ -11,6 +11,8 @@
 import { randomBytes } from 'crypto';
 
 export interface WebChatPairingToken {
+  /** Opaque server-side ID — safe to expose in the list; used for DELETE. */
+  id: string;
   token: string;
   label?: string;
   createdAt: number;
@@ -27,8 +29,10 @@ export class WebChatPairingStore {
   /** Generate a new pairing token. */
   create(opts?: { label?: string; ttlMs?: number; oneTimeUse?: boolean }): WebChatPairingToken {
     const token = randomBytes(24).toString('hex'); // 48 hex chars
+    const id    = randomBytes(8).toString('hex');  // 16 hex chars — safe list ID
     const now = Date.now();
     const entry: WebChatPairingToken = {
+      id,
       token,
       label:     opts?.label,
       createdAt: now,
@@ -73,13 +77,21 @@ export class WebChatPairingStore {
     this.tokens.delete(token);
   }
 
-  /** List all active (non-expired) tokens (without exposing the token values). */
-  list(): Array<Omit<WebChatPairingToken, 'token'> & { id: string }> {
+  /** List all active (non-expired) tokens (without exposing the raw token values). */
+  list(): Array<Omit<WebChatPairingToken, 'token'>> {
     this._gc();
-    return Array.from(this.tokens.values()).map(({ token, ...rest }) => ({
-      id: token.slice(0, 8) + '…', // show prefix only
-      ...rest,
-    }));
+    return Array.from(this.tokens.values()).map(({ token: _token, ...rest }) => rest);
+  }
+
+  /** Revoke by the opaque list ID (not the raw token). */
+  revokeById(id: string): boolean {
+    for (const [token, entry] of this.tokens) {
+      if (entry.id === id) {
+        this.tokens.delete(token);
+        return true;
+      }
+    }
+    return false;
   }
 
   /** Remove expired tokens. */

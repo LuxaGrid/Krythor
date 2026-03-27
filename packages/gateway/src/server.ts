@@ -362,9 +362,10 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
     app.get('/', (req, reply) => serveIndex(req, reply as unknown as Parameters<typeof serveIndex>[1]));
 
     // GET /chat — minimal standalone web chat page.
-    // Serves a self-contained HTML page with inline styles and a plain fetch loop.
+    // Serves a self-contained HTML page with inline styles and SSE streaming.
     // The auth token is injected as window.__KRYTHOR_TOKEN__ so the page can
     // authenticate with /api/command without the user needing to copy the token.
+    // Uses stream:true so responses appear word-by-word as they are generated.
     app.get('/chat', (_req, reply) => {
       const tokenScript = authCfg.authDisabled
         ? 'window.__KRYTHOR_TOKEN__=null;'
@@ -379,79 +380,171 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:system-ui,sans-serif;background:#18181b;color:#e4e4e7;height:100vh;display:flex;flex-direction:column}
-#header{padding:10px 14px;border-bottom:1px solid #27272a;font-size:13px;font-weight:600;color:#a1a1aa;letter-spacing:.05em}
+#header{padding:10px 14px;border-bottom:1px solid #27272a;font-size:13px;font-weight:600;color:#a1a1aa;letter-spacing:.05em;display:flex;align-items:center;justify-content:space-between}
+#header-title{letter-spacing:.05em}
+#status-dot{width:6px;height:6px;border-radius:50%;background:#52525b}
+#status-dot.streaming{background:#22c55e;animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
 #msgs{flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:10px}
-.msg{max-width:85%;padding:8px 12px;border-radius:10px;font-size:13px;line-height:1.5;white-space:pre-wrap;word-break:break-word}
-.msg.user{align-self:flex-end;background:#2563eb;color:#fff}
-.msg.assistant{align-self:flex-start;background:#27272a;color:#f4f4f5}
-.msg.error{align-self:flex-start;background:#450a0a;color:#fca5a5}
+.wrap{display:flex;flex-direction:column;max-width:85%}
+.wrap.user{align-self:flex-end}
+.wrap.assistant{align-self:flex-start}
+.msg{padding:8px 12px;border-radius:10px;font-size:13px;line-height:1.5;white-space:pre-wrap;word-break:break-word}
+.msg.user{background:#2563eb;color:#fff}
+.msg.assistant{background:#27272a;color:#f4f4f5}
+.msg.error{background:#450a0a;color:#fca5a5}
 .meta{font-size:10px;color:#52525b;margin-top:2px}
 .meta.user{text-align:right}
 #input-row{border-top:1px solid #27272a;padding:10px 12px;display:flex;gap:8px}
-#input{flex:1;background:#27272a;border:1px solid #3f3f46;border-radius:8px;padding:7px 10px;font-size:13px;color:#f4f4f5;outline:none}
-#send{background:#2563eb;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:13px;cursor:pointer}
+#input{flex:1;background:#27272a;border:1px solid #3f3f46;border-radius:8px;padding:7px 10px;font-size:13px;color:#f4f4f5;outline:none;resize:none;height:38px;overflow:hidden}
+#send{background:#2563eb;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:13px;cursor:pointer;white-space:nowrap}
 #send:disabled{background:#3f3f46;cursor:not-allowed}
 #placeholder{color:#52525b;font-size:13px;text-align:center;margin-top:24px}
 </style>
 </head>
 <body>
-<div id="header">KRYTHOR CHAT</div>
+<div id="header">
+  <span id="header-title">KRYTHOR CHAT</span>
+  <span id="status-dot" title="Idle"></span>
+</div>
 <div id="msgs"><p id="placeholder">Send a message to get started.</p></div>
 <div id="input-row">
-<input id="input" placeholder="Type a message…" autocomplete="off"/>
+<textarea id="input" placeholder="Type a message…" autocomplete="off" rows="1"></textarea>
 <button id="send">Send</button>
 </div>
 <script>
 const msgs=document.getElementById('msgs');
 const input=document.getElementById('input');
 const send=document.getElementById('send');
+const dot=document.getElementById('status-dot');
 const placeholder=document.getElementById('placeholder');
 let sending=false;
+let abortCtrl=null;
+
+// Auto-resize textarea
+input.addEventListener('input',()=>{
+  input.style.height='auto';
+  input.style.height=Math.min(input.scrollHeight,120)+'px';
+});
+
+function removePlaceholder(){if(placeholder&&placeholder.parentNode)placeholder.remove();}
+
 function addMsg(role,text){
-  if(placeholder)placeholder.remove();
+  removePlaceholder();
   const wrap=document.createElement('div');
-  wrap.style.alignSelf=role==='user'?'flex-end':'flex-start';
-  wrap.style.maxWidth='85%';
+  wrap.className='wrap '+role;
   const div=document.createElement('div');
   div.className='msg '+role;
   div.textContent=text;
   wrap.appendChild(div);
   const meta=document.createElement('p');
   meta.className='meta'+(role==='user'?' user':'');
-  meta.textContent=role+' · '+new Date().toLocaleTimeString();
+  meta.textContent=new Date().toLocaleTimeString();
   wrap.appendChild(meta);
   msgs.appendChild(wrap);
   msgs.scrollTop=msgs.scrollHeight;
+  return div;
 }
+
 function setSending(v){
   sending=v;
   send.disabled=v;
   input.disabled=v;
-  send.textContent=v?'…':'Send';
+  send.textContent=v?'Stop':'Send';
+  dot.className=v?'streaming':'';
+  dot.title=v?'Streaming…':'Idle';
 }
+
 async function doSend(){
+  if(sending){
+    // Stop button — abort in-flight stream
+    if(abortCtrl)abortCtrl.abort();
+    return;
+  }
   const text=input.value.trim();
-  if(!text||sending)return;
+  if(!text)return;
   input.value='';
+  input.style.height='38px';
   setSending(true);
   addMsg('user',text);
-  const thinking=document.createElement('div');
-  thinking.style.alignSelf='flex-start';
-  thinking.innerHTML='<div class="msg assistant" style="color:#71717a">Thinking…</div>';
-  msgs.appendChild(thinking);
+
+  // Create streaming assistant bubble
+  removePlaceholder();
+  const wrap=document.createElement('div');
+  wrap.className='wrap assistant';
+  const bubble=document.createElement('div');
+  bubble.className='msg assistant';
+  bubble.textContent='';
+  wrap.appendChild(bubble);
+  const meta=document.createElement('p');
+  meta.className='meta';
+  wrap.appendChild(meta);
+  msgs.appendChild(wrap);
   msgs.scrollTop=msgs.scrollHeight;
+
+  abortCtrl=new AbortController();
   try{
     const token=window.__KRYTHOR_TOKEN__;
     const headers={'Content-Type':'application/json'};
     if(token)headers['Authorization']='Bearer '+token;
-    const r=await fetch('/api/command',{method:'POST',headers,body:JSON.stringify({input:text})});
-    const data=await r.json();
-    thinking.remove();
-    if(r.ok){addMsg('assistant',data.output||'');}
-    else{addMsg('error',data.error||'HTTP '+r.status);}
-  }catch(e){thinking.remove();addMsg('error',e.message||'Request failed');}
+    const r=await fetch('/api/command',{
+      method:'POST',
+      headers,
+      body:JSON.stringify({input:text,stream:true}),
+      signal:abortCtrl.signal
+    });
+    if(!r.ok||!r.body){
+      const err=await r.json().catch(()=>({output:'HTTP '+r.status}));
+      bubble.className='msg error';
+      bubble.textContent=err.output||err.error||'HTTP '+r.status;
+      meta.textContent=new Date().toLocaleTimeString();
+      setSending(false);
+      return;
+    }
+    const reader=r.body.getReader();
+    const dec=new TextDecoder();
+    let buf='';
+    let finalOutput='';
+    while(true){
+      const{done,value}=await reader.read();
+      if(done)break;
+      buf+=dec.decode(value,{stream:true});
+      const lines=buf.split('\\n');
+      buf=lines.pop()||'';
+      for(const line of lines){
+        if(!line.startsWith('data:'))continue;
+        try{
+          const d=JSON.parse(line.slice(5).trim());
+          if(d.type==='done'){finalOutput=d.output||finalOutput;break;}
+          if(d.type==='chunk'||d.output){
+            const chunk=d.chunk||d.output||'';
+            bubble.textContent+=chunk;
+            finalOutput+=chunk;
+            msgs.scrollTop=msgs.scrollHeight;
+          }
+          if(d.type==='error'){
+            bubble.className='msg error';
+            bubble.textContent=d.message||'Error';
+          }
+        }catch{}
+      }
+    }
+    if(!bubble.textContent&&finalOutput)bubble.textContent=finalOutput;
+    meta.textContent=new Date().toLocaleTimeString();
+  }catch(e){
+    if(e.name==='AbortError'){
+      meta.textContent='stopped · '+new Date().toLocaleTimeString();
+    }else{
+      bubble.className='msg error';
+      bubble.textContent=e.message||'Request failed';
+      meta.textContent=new Date().toLocaleTimeString();
+    }
+  }
+  abortCtrl=null;
   setSending(false);
+  msgs.scrollTop=msgs.scrollHeight;
 }
+
 send.onclick=doSend;
 input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();doSend();}});
 </script>
