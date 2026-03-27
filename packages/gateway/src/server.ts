@@ -757,9 +757,54 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   const shellDispatcher = new ShellToolDispatcher(guard, accessProfileStore);
 
   // Wire custom tool dispatcher into orchestrator so agents can call shell and webhook tools.
-  // Dispatch order: shell tools first, then custom webhook tools.
+  // Dispatch order: session tools → shell tools → custom webhook tools.
   orchestrator.setCustomToolDispatcher(async (toolName: string, input: string, agentId: string) => {
-    // Shell tools — profile-checked and guard-checked by ShellToolDispatcher
+    // ── Session tools (read-only, no guard check required) ─────────────────
+    if (toolName === 'sessions_list') {
+      try {
+        const params = JSON.parse(input) as { limit?: number; agentId?: string; includeArchived?: boolean };
+        const limit = Math.min(Math.max(1, params.limit ?? 20), 100);
+        const allConvs = convStore.listConversations(params.includeArchived ?? false);
+        const filtered = params.agentId
+          ? allConvs.filter(c => c.agentId === params.agentId)
+          : allConvs;
+        const now = Date.now();
+        const IDLE_MS = 30 * 60 * 1000;
+        const rows = filtered.slice(0, limit).map(c => ({
+          id:           c.id,
+          title:        c.name ?? c.title,
+          agentId:      c.agentId,
+          updatedAt:    c.updatedAt,
+          isIdle:       (now - c.updatedAt) >= IDLE_MS,
+          archived:     c.archived,
+          pinned:       c.pinned,
+        }));
+        return JSON.stringify(rows, null, 2);
+      } catch (err) {
+        return `sessions_list error: ${err instanceof Error ? err.message : String(err)}`;
+      }
+    }
+
+    if (toolName === 'sessions_history') {
+      try {
+        const params = JSON.parse(input) as { conversationId?: string; limit?: number };
+        if (!params.conversationId) return 'sessions_history: conversationId is required';
+        const conv = convStore.getConversation(params.conversationId);
+        if (!conv) return `sessions_history: conversation "${params.conversationId}" not found`;
+        const limit = Math.min(Math.max(1, params.limit ?? 20), 50);
+        const all = convStore.getMessages(params.conversationId);
+        // Filter to user/assistant only (no system messages)
+        const messages = all
+          .filter(m => m.role === 'user' || m.role === 'assistant')
+          .slice(-limit)
+          .map(m => ({ role: m.role, content: m.content, createdAt: m.createdAt }));
+        return JSON.stringify({ conversationId: conv.id, title: conv.name ?? conv.title, messages }, null, 2);
+      } catch (err) {
+        return `sessions_history error: ${err instanceof Error ? err.message : String(err)}`;
+      }
+    }
+
+    // ── Shell tools — profile-checked and guard-checked by ShellToolDispatcher ─
     const shellResult = await shellDispatcher.dispatch(agentId, toolName, input);
     if (shellResult !== null) return shellResult;
     // Webhook / custom tools
@@ -786,8 +831,8 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   registerModelRoutes(app, models, memory, guard, channelEmit);
   registerAgentRoutes(app, orchestrator, guard, accessProfileStore);
   registerGuardRoutes(app, guard, guardDecisionStore);
-  registerConfigRoute(app, join(dataDir, 'config'), guard, orchestrator);
-  registerConversationRoutes(app, convStore, guard, channelEmit);
+  registerConfigRoute(app, join(dataDir, 'config'), guard, orchestrator, memory);
+  registerConversationRoutes(app, convStore, guard, channelEmit, memory ?? undefined);
   registerSkillRoutes(app, skillRegistry, guard, skillRunner);
   registerRecommendRoutes(app, models, recommender, guard);
   registerToolRoutes(app, guard, execTool);

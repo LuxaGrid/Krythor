@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import type { ConversationStore } from '@krythor/memory';
+import type { ConversationStore, MemoryEngine } from '@krythor/memory';
 import type { GuardEngine } from '@krythor/guard';
 
 /** Conversations are considered idle after this many milliseconds without activity. */
@@ -20,7 +20,7 @@ function withIdleStatus(conv: { id: string; title: string; agentId: string | nul
   };
 }
 
-export function registerConversationRoutes(app: FastifyInstance, store: ConversationStore, guard?: GuardEngine, emit?: (event: string, data: Record<string, unknown>) => void): void {
+export function registerConversationRoutes(app: FastifyInstance, store: ConversationStore, guard?: GuardEngine, emit?: (event: string, data: Record<string, unknown>) => void, memory?: MemoryEngine): void {
 
   // GET /api/conversations — list all, with idle status metadata
   // ?include_archived=true — include archived conversations (hidden by default)
@@ -202,5 +202,50 @@ export function registerConversationRoutes(app: FastifyInstance, store: Conversa
     };
     const msg = store.addMessage(req.params.id, role, content, modelId, providerId);
     return reply.code(201).send(msg);
+  });
+
+  // ── Session maintenance routes ─────────────────────────────────────────────
+  //
+  // GET  /api/sessions/maintenance       — dry-run: how many would be pruned
+  // POST /api/sessions/maintenance/run   — trigger cleanup now
+
+  // GET /api/sessions/maintenance — dry-run estimate
+  app.get('/api/sessions/maintenance', async (_req, reply) => {
+    if (guard) {
+      const verdict = guard.check({ operation: 'conversation:read', source: 'user' });
+      if (!verdict.allowed) return reply.code(403).send({ error: 'GUARD_DENIED', reason: verdict.reason });
+    }
+    if (!memory) {
+      // Without a memory engine, return basic counts from the conversation store
+      const allConvs = store.listConversations(true);
+      return reply.send({
+        currentCount: allConvs.length,
+        wouldPruneByAge: 0,
+        wouldPruneByCount: 0,
+        note: 'Dry-run estimates unavailable — memory engine not configured.',
+      });
+    }
+    const estimate = memory.dryRunMaintenance();
+    return reply.send(estimate);
+  });
+
+  // POST /api/sessions/maintenance/run — trigger cleanup
+  app.post('/api/sessions/maintenance/run', async (_req, reply) => {
+    if (guard) {
+      const verdict = guard.check({ operation: 'conversation:write', source: 'user' });
+      if (!verdict.allowed) return reply.code(403).send({ error: 'GUARD_DENIED', reason: verdict.reason });
+    }
+    if (!memory) {
+      return reply.code(503).send({ error: 'Memory engine not configured.' });
+    }
+    const result = memory.runJanitor();
+    return reply.send({
+      ok: true,
+      conversationsPruned: result.conversationsPruned,
+      memoryEntriesPruned: result.memoryEntriesPruned,
+      learningRecordsPruned: result.learningRecordsPruned,
+      ranAt: result.ranAt,
+      tableCountsAfter: result.tableCountsAfter,
+    });
   });
 }

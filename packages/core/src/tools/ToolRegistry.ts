@@ -280,6 +280,52 @@ export const TOOL_REGISTRY: ToolEntry[] = [
     requiresGuard: true,
     alwaysAllowed: false,
   },
+  {
+    name: 'sessions_list',
+    description:
+      'List recent conversations (sessions) stored in the gateway. ' +
+      'Returns an array of session summaries: id, title, agentId, messageCount, updatedAt, isIdle. ' +
+      'Read-only. Results are capped at 100 entries, newest first.',
+    parameters: {
+      limit: {
+        type:        'integer',
+        description: 'Maximum number of sessions to return (1–100, default 20).',
+      },
+      agentId: {
+        type:        'string',
+        description: 'Filter sessions by agent ID. Omit to return sessions for all agents.',
+        maxLength:   100,
+      },
+      includeArchived: {
+        type:        'boolean',
+        description: 'When true, include archived (idle) sessions in the results. Default: false.',
+      },
+    },
+    requiresGuard: false,
+    alwaysAllowed: false,
+  },
+  {
+    name: 'sessions_history',
+    description:
+      'Fetch the message history for a specific conversation (session). ' +
+      'Returns up to 50 user/assistant messages (tool results excluded). ' +
+      'Read-only. Pass the conversation ID from sessions_list.',
+    parameters: {
+      conversationId: {
+        type:        'string',
+        description: 'The conversation ID to fetch history for (from sessions_list).',
+        required:    true,
+        minLength:   1,
+        maxLength:   100,
+      },
+      limit: {
+        type:        'integer',
+        description: 'Maximum number of messages to return (1–50, default 20).',
+      },
+    },
+    requiresGuard: false,
+    alwaysAllowed: false,
+  },
 ];
 
 /** Look up a tool entry by name. Returns undefined if not registered. */

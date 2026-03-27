@@ -60,23 +60,26 @@ const HANDOFF_RE  = /\{[\s\S]*?"handoff"\s*:\s*"[^"]*"[\s\S]*?\}/;
 
 // ── Tool-call extraction types ────────────────────────────────────────────────
 
-type ExecCall        = { tool: 'exec';         command: string; args: string[] };
-type WebSearchCall   = { tool: 'web_search';   query: string };
-type WebFetchCall    = { tool: 'web_fetch';    url: string };
-type ReadFileCall      = { tool: 'read_file';      path: string };
-type WriteFileCall     = { tool: 'write_file';     path: string; content: string };
-type EditFileCall      = { tool: 'edit_file';      path: string; old: string; new: string };
-type ApplyPatchCall    = { tool: 'apply_patch';    path: string; patch: string };
-type GetPageTextCall   = { tool: 'get_page_text';  url: string };
-type ShellExecCall     = { tool: 'shell_exec';     command: string; args?: string[]; cwd?: string; timeoutMs?: number };
-type ListProcessesCall = { tool: 'list_processes' };
-type CustomCall        = { tool: 'custom';          name: string;   input: string };
-type SpawnAgentCall    = { tool: 'spawn_agent';     agentId: string; message: string };
-type AnyToolCall       = ExecCall | WebSearchCall | WebFetchCall
+type ExecCall           = { tool: 'exec';              command: string; args: string[] };
+type WebSearchCall      = { tool: 'web_search';        query: string };
+type WebFetchCall       = { tool: 'web_fetch';         url: string };
+type ReadFileCall       = { tool: 'read_file';         path: string };
+type WriteFileCall      = { tool: 'write_file';        path: string; content: string };
+type EditFileCall       = { tool: 'edit_file';         path: string; old: string; new: string };
+type ApplyPatchCall     = { tool: 'apply_patch';       path: string; patch: string };
+type GetPageTextCall    = { tool: 'get_page_text';     url: string };
+type ShellExecCall      = { tool: 'shell_exec';        command: string; args?: string[]; cwd?: string; timeoutMs?: number };
+type ListProcessesCall  = { tool: 'list_processes' };
+type CustomCall         = { tool: 'custom';             name: string;   input: string };
+type SpawnAgentCall     = { tool: 'spawn_agent';        agentId: string; message: string };
+type SessionsListCall   = { tool: 'sessions_list';     limit?: number; agentId?: string; includeArchived?: boolean };
+type SessionsHistoryCall = { tool: 'sessions_history'; conversationId: string; limit?: number };
+type AnyToolCall        = ExecCall | WebSearchCall | WebFetchCall
   | ReadFileCall | WriteFileCall | EditFileCall | ApplyPatchCall
   | GetPageTextCall
   | ShellExecCall | ListProcessesCall
-  | CustomCall | SpawnAgentCall;
+  | CustomCall | SpawnAgentCall
+  | SessionsListCall | SessionsHistoryCall;
 
 /**
  * Attempt to extract a handoff directive from a model response.
@@ -167,6 +170,23 @@ function extractToolCall(response: string): AnyToolCall | null {
 
     if (tool === 'list_processes') {
       return { tool: 'list_processes' };
+    }
+
+    if (tool === 'sessions_list') {
+      return {
+        tool: 'sessions_list',
+        limit: typeof parsed['limit'] === 'number' ? parsed['limit'] : undefined,
+        agentId: typeof parsed['agentId'] === 'string' ? parsed['agentId'] : undefined,
+        includeArchived: typeof parsed['includeArchived'] === 'boolean' ? parsed['includeArchived'] : undefined,
+      };
+    }
+
+    if (tool === 'sessions_history' && typeof parsed['conversationId'] === 'string' && parsed['conversationId'].length > 0) {
+      return {
+        tool: 'sessions_history',
+        conversationId: parsed['conversationId'] as string,
+        limit: typeof parsed['limit'] === 'number' ? parsed['limit'] : undefined,
+      };
     }
 
     // Custom webhook tool — any other tool name with an "input" field
@@ -621,6 +641,45 @@ export class AgentRunner {
           }
         } catch (err) {
           toolResult = `Tool "list_processes" failed: ${err instanceof Error ? err.message : String(err)}`;
+        }
+      }
+    } else if (call.tool === 'sessions_list') {
+      if (!this.customToolDispatcher) {
+        toolResult = 'Tool "sessions_list" is not available in this configuration.';
+      } else {
+        try {
+          const params = JSON.stringify({
+            limit:           call.limit,
+            agentId:         call.agentId,
+            includeArchived: call.includeArchived,
+          });
+          const result = await this.customToolDispatcher('sessions_list', params, agentId);
+          if (result === null) {
+            toolResult = 'Tool "sessions_list" is not available.';
+          } else {
+            toolResult = `Tool result for sessions_list:\n${result}`;
+          }
+        } catch (err) {
+          toolResult = `Tool "sessions_list" failed: ${err instanceof Error ? err.message : String(err)}`;
+        }
+      }
+    } else if (call.tool === 'sessions_history') {
+      if (!this.customToolDispatcher) {
+        toolResult = 'Tool "sessions_history" is not available in this configuration.';
+      } else {
+        try {
+          const params = JSON.stringify({
+            conversationId: call.conversationId,
+            limit:          call.limit,
+          });
+          const result = await this.customToolDispatcher('sessions_history', params, agentId);
+          if (result === null) {
+            toolResult = 'Tool "sessions_history" is not available.';
+          } else {
+            toolResult = `Tool result for sessions_history:\n${result}`;
+          }
+        } catch (err) {
+          toolResult = `Tool "sessions_history" failed: ${err instanceof Error ? err.message : String(err)}`;
         }
       }
     } else if (call.tool === 'custom') {

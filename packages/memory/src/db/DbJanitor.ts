@@ -19,7 +19,7 @@ import type Database from 'better-sqlite3';
 
 const MEMORY_ENTRY_RETENTION_DAYS    = 90;
 const MEMORY_ENTRY_LOW_IMPORTANCE    = 0.2;   // entries below this threshold are prunable
-const CONVERSATION_RETENTION_DAYS    = 90;
+const DEFAULT_CONVERSATION_RETENTION_DAYS    = 90;
 const LEARNING_RECORD_RETENTION_DAYS = 90;
 const LEARNING_RECORD_MAX_ROWS       = 50_000;
 
@@ -35,11 +35,30 @@ export interface JanitorResult {
 
 export type LogFn = (level: 'info' | 'warn' | 'error', message: string, data?: Record<string, unknown>) => void;
 
+export interface DbJanitorConfig {
+  /**
+   * Days after which conversations are pruned (measured by updated_at).
+   * Default: 90. Set to 0 to disable age-based pruning.
+   */
+  conversationRetentionDays?: number;
+  /**
+   * Maximum number of conversations to retain. Oldest (by updated_at) are pruned first.
+   * Default: 0 (disabled — no count cap).
+   */
+  maxConversations?: number;
+}
+
 export class DbJanitor {
   constructor(
     private readonly db: Database.Database,
     private readonly logFn?: LogFn,
+    private config: DbJanitorConfig = {},
   ) {}
+
+  /** Update retention config at runtime (e.g. after PATCH /api/config). */
+  setConfig(config: DbJanitorConfig): void {
+    this.config = config;
+  }
 
   private log(level: 'info' | 'warn' | 'error', message: string, data?: Record<string, unknown>): void {
     if (this.logFn) {
@@ -130,16 +149,38 @@ export class DbJanitor {
   }
 
   /**
-   * Prune conversations (and their messages via CASCADE) older than
-   * CONVERSATION_RETENTION_DAYS, measured by updated_at.
+   * Prune conversations (and their messages via CASCADE):
+   *   1. Age-based: conversations older than retentionDays (measured by updated_at).
+   *      Skipped when retentionDays = 0.
+   *   2. Count cap: when maxConversations > 0, prune oldest conversations
+   *      that exceed the cap (oldest by updated_at, pinned ones last).
    */
   private pruneConversations(): number {
-    const cutoff = Date.now() - CONVERSATION_RETENTION_DAYS * 24 * 60 * 60 * 1000;
-    const result = this.db.prepare(`
-      DELETE FROM conversations
-      WHERE updated_at < @cutoff
-    `).run({ cutoff });
-    return result.changes;
+    let pruned = 0;
+
+    const retentionDays = this.config.conversationRetentionDays ?? DEFAULT_CONVERSATION_RETENTION_DAYS;
+    if (retentionDays > 0) {
+      const cutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
+      const result = this.db.prepare(`
+        DELETE FROM conversations WHERE updated_at < @cutoff
+      `).run({ cutoff });
+      pruned += result.changes;
+    }
+
+    const maxConversations = this.config.maxConversations ?? 0;
+    if (maxConversations > 0) {
+      // Keep pinned conversations safe: prune non-pinned oldest first, then pinned
+      const byCap = this.db.prepare(`
+        DELETE FROM conversations WHERE id IN (
+          SELECT id FROM conversations
+          ORDER BY pinned ASC, updated_at ASC
+          LIMIT -1 OFFSET @max
+        )
+      `).run({ max: maxConversations });
+      pruned += byCap.changes;
+    }
+
+    return pruned;
   }
 
   /**
@@ -175,7 +216,37 @@ export class DbJanitor {
     return byAge.changes + byCap.changes;
   }
 
-  // ── Diagnostic queries ─────────────────────────────────────────────────────
+  // ── Diagnostic / dry-run ────────────────────────────────────────────────────
+
+  /**
+   * Estimate how many conversations would be pruned without mutating the database.
+   * Returns counts for age-based and count-cap pruning separately.
+   */
+  dryRunConversations(): { wouldPruneByAge: number; wouldPruneByCount: number; currentCount: number } {
+    let wouldPruneByAge = 0;
+    let wouldPruneByCount = 0;
+
+    try {
+      const retentionDays = this.config.conversationRetentionDays ?? DEFAULT_CONVERSATION_RETENTION_DAYS;
+      if (retentionDays > 0) {
+        const cutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
+        const row = this.db.prepare(`SELECT COUNT(*) as c FROM conversations WHERE updated_at < @cutoff`).get({ cutoff }) as { c: number };
+        wouldPruneByAge = row.c;
+      }
+
+      const maxConversations = this.config.maxConversations ?? 0;
+      if (maxConversations > 0) {
+        const countRow = this.db.prepare(`SELECT COUNT(*) as c FROM conversations`).get({}) as { c: number };
+        const current = countRow.c;
+        if (current > maxConversations) {
+          wouldPruneByCount = current - maxConversations;
+        }
+      }
+    } catch { /* ignore */ }
+
+    const countRow = this.db.prepare(`SELECT COUNT(*) as c FROM conversations`).get({}) as { c: number };
+    return { wouldPruneByAge, wouldPruneByCount, currentCount: countRow.c };
+  }
 
   /** Returns row counts for all major tables — useful for heartbeat insights. */
   tableCounts(): Record<string, number> {

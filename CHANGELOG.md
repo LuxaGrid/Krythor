@@ -11,6 +11,13 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+#### Session management improvements (2026-03-27)
+
+- **Configurable session retention**: `sessionPruneAfterDays` and `sessionMaxConversations` added to `app-config.json`. When set, they override the default 90-day conversation retention and enforce a hard conversation count cap (oldest-first, pinned conversations pruned last). Both fields are configurable via `PATCH /api/config` and applied live without restart via `memory.setJanitorConfig()`
+- **Session maintenance API**: new `GET /api/sessions/maintenance` (dry-run estimate — returns `wouldPruneByAge`, `wouldPruneByCount`, `currentCount`) and `POST /api/sessions/maintenance/run` (trigger full janitor cleanup immediately). Both routes respect guard policy (`conversation:read` / `conversation:write`)
+- **Agent session tools**: agents can now inspect conversation history via two new tool calls — `sessions_list` (lists conversations with idle status, supports `limit`, `agentId`, `includeArchived`) and `sessions_history` (returns user/assistant messages for a given conversation, supports `limit`). Dispatched via `customToolDispatcher` in the gateway
+- **`DbJanitor` runtime config**: new `DbJanitorConfig` interface and `setConfig()` method on `DbJanitor` allow retention settings to be updated at runtime without restarting. `MemoryEngine` exposes `setJanitorConfig()` and `dryRunMaintenance()` as its public API
+
 #### Agent runtime improvements (2026-03-27)
 
 - **Bootstrap truncation warning**: when any workspace bootstrap file (AGENTS.md, SOUL.md, TOOLS.md, etc.) is truncated to fit the context window, a warning block is appended to Project Context telling the agent which files were truncated and to use `read_file` for full content. Controlled by `bootstrapTruncationWarning` in `app-config.json` (`'off'` | `'once'` | `'always'`; default `'once'`). Configurable at runtime via `PATCH /api/config`

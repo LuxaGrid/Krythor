@@ -144,6 +144,17 @@ export interface AppConfigRaw {
    * 'off' | 'once' (default) | 'always'
    */
   bootstrapTruncationWarning?: 'off' | 'once' | 'always';
+  /**
+   * Number of days after which inactive conversations are pruned from the database.
+   * Default: 90. Set to 0 to disable age-based pruning.
+   */
+  sessionPruneAfterDays?: number;
+  /**
+   * Maximum number of conversations to retain in the database.
+   * Oldest conversations are pruned first when this limit is exceeded.
+   * Default: 0 (disabled — no count cap).
+   */
+  sessionMaxConversations?: number;
 }
 
 export function parseAppConfig(raw: unknown): ValidationResult<AppConfigRaw> {
@@ -222,6 +233,26 @@ export function parseAppConfig(raw: unknown): ValidationResult<AppConfigRaw> {
       value.bootstrapTruncationWarning = r['bootstrapTruncationWarning'] as AppConfigRaw['bootstrapTruncationWarning'];
     } else {
       errors.push(`bootstrapTruncationWarning: expected one of ${validModes.join(', ')}, got ${String(r['bootstrapTruncationWarning'])}`);
+    }
+  }
+
+  if ('sessionPruneAfterDays' in r) {
+    if (r['sessionPruneAfterDays'] === null || r['sessionPruneAfterDays'] === undefined) {
+      // null means "cleared" — omit
+    } else if (typeof r['sessionPruneAfterDays'] === 'number' && r['sessionPruneAfterDays'] >= 0) {
+      value.sessionPruneAfterDays = r['sessionPruneAfterDays'];
+    } else {
+      errors.push(`sessionPruneAfterDays: expected non-negative number, got ${String(r['sessionPruneAfterDays'])}`);
+    }
+  }
+
+  if ('sessionMaxConversations' in r) {
+    if (r['sessionMaxConversations'] === null || r['sessionMaxConversations'] === undefined) {
+      // null means "cleared" — omit
+    } else if (typeof r['sessionMaxConversations'] === 'number' && r['sessionMaxConversations'] >= 0) {
+      value.sessionMaxConversations = r['sessionMaxConversations'];
+    } else {
+      errors.push(`sessionMaxConversations: expected non-negative number, got ${String(r['sessionMaxConversations'])}`);
     }
   }
 

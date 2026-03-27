@@ -11,7 +11,7 @@ import { MemoryWriter } from './MemoryWriter.js';
 import { MemoryRetriever } from './MemoryRetriever.js';
 import { EmbeddingRegistry } from './embedding/EmbeddingProvider.js';
 import { DbJanitor } from './db/DbJanitor.js';
-import type { JanitorResult, LogFn } from './db/DbJanitor.js';
+import type { JanitorResult, LogFn, DbJanitorConfig } from './db/DbJanitor.js';
 import { HeartbeatInsightStore } from './db/HeartbeatInsightStore.js';
 import type {
   CreateMemoryInput,
@@ -128,6 +128,21 @@ export class MemoryEngine {
   // Run the full retention janitor — safe to call from heartbeat or on demand.
   runJanitor(): JanitorResult {
     return this.janitor.run();
+  }
+
+  /**
+   * Update janitor retention config (e.g. after user changes app-config.json).
+   * Changes take effect on the next janitor run.
+   */
+  setJanitorConfig(config: DbJanitorConfig): void {
+    this.janitor.setConfig(config);
+  }
+
+  /**
+   * Dry-run maintenance estimate — returns what would be pruned without mutating.
+   */
+  dryRunMaintenance(): { wouldPruneByAge: number; wouldPruneByCount: number; currentCount: number } {
+    return this.janitor.dryRunConversations();
   }
 
   // ── Read operations ────────────────────────────────────────────────────────

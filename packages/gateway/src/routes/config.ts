@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { GuardEngine } from '@krythor/guard';
 import type { AgentOrchestrator } from '@krythor/core';
+import type { MemoryEngine } from '@krythor/memory';
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { atomicWriteJSON, parseAppConfig } from '@krythor/core';
@@ -22,9 +23,11 @@ export interface AppConfig {
   userTimezone?: string;
   timeFormat?: 'auto' | '12' | '24';
   bootstrapTruncationWarning?: 'off' | 'once' | 'always';
+  sessionPruneAfterDays?: number;
+  sessionMaxConversations?: number;
 }
 
-export function registerConfigRoute(app: FastifyInstance, configDir: string, guard?: GuardEngine, orchestrator?: AgentOrchestrator): void {
+export function registerConfigRoute(app: FastifyInstance, configDir: string, guard?: GuardEngine, orchestrator?: AgentOrchestrator, memory?: MemoryEngine): void {
   const configPath = join(configDir, 'app-config.json');
 
   function read(): AppConfig {
@@ -59,6 +62,12 @@ export function registerConfigRoute(app: FastifyInstance, configDir: string, gua
   }
   if (orchestrator && startupCfg.bootstrapTruncationWarning) {
     orchestrator.setBootstrapTruncationWarning(startupCfg.bootstrapTruncationWarning);
+  }
+  if (memory && (startupCfg.sessionPruneAfterDays !== undefined || startupCfg.sessionMaxConversations !== undefined)) {
+    memory.setJanitorConfig({
+      conversationRetentionDays: startupCfg.sessionPruneAfterDays,
+      maxConversations: startupCfg.sessionMaxConversations,
+    });
   }
 
   // GET /api/config
@@ -113,6 +122,18 @@ export function registerConfigRoute(app: FastifyInstance, configDir: string, gua
     }
     if (orchestrator && 'bootstrapTruncationWarning' in patch && updated.bootstrapTruncationWarning) {
       orchestrator.setBootstrapTruncationWarning(updated.bootstrapTruncationWarning);
+    }
+    if ('sessionPruneAfterDays' in patch) {
+      updated.sessionPruneAfterDays = (patch['sessionPruneAfterDays'] as number | null) ?? undefined;
+    }
+    if ('sessionMaxConversations' in patch) {
+      updated.sessionMaxConversations = (patch['sessionMaxConversations'] as number | null) ?? undefined;
+    }
+    if (memory && ('sessionPruneAfterDays' in patch || 'sessionMaxConversations' in patch)) {
+      memory.setJanitorConfig({
+        conversationRetentionDays: updated.sessionPruneAfterDays,
+        maxConversations: updated.sessionMaxConversations,
+      });
     }
     write(updated);
     return reply.send(updated);
