@@ -1730,7 +1730,7 @@ const COMMAND_HELP = {
   setup: {
     summary: 'Run the interactive setup wizard',
     detail: [
-      'Usage: krythor setup',
+      'Usage: krythor setup [--non-interactive] [--install-service]',
       '',
       'Guides you through:',
       '  - Provider selection (Anthropic, OpenAI, Ollama, etc.)',
@@ -1739,7 +1739,46 @@ const COMMAND_HELP = {
       '  - Default agent creation',
       '  - Gateway launch',
       '',
+      'Flags:',
+      '  --non-interactive   Skip all prompts (uses defaults / env vars).',
+      '                      Equivalent to: KRYTHOR_NON_INTERACTIVE=1',
+      '  --install-service   After setup, register Krythor to start at login.',
+      '                      Equivalent to running: krythor service install',
+      '',
       'Safe to re-run — will ask before overwriting existing config.',
+    ],
+  },
+  configure: {
+    summary: 'Reconfigure Krythor (alias for: krythor setup)',
+    detail: [
+      'Usage: krythor configure',
+      '',
+      'Re-runs the setup wizard to update provider, model, or agent settings.',
+      'Equivalent to: krythor setup',
+      '',
+      'Use this after changing API keys, switching providers, or adding channels.',
+    ],
+  },
+  dashboard: {
+    summary: 'Open the Control UI in the browser',
+    detail: [
+      'Usage: krythor dashboard',
+      '',
+      'Opens http://127.0.0.1:47200 in the default browser.',
+      'If the gateway is not running, starts a browser window anyway so you can',
+      'launch it from there.',
+      '',
+      'Equivalent to: krythor  (with no arguments)',
+    ],
+  },
+  gateway: {
+    summary: 'Gateway sub-commands: status / stop / restart',
+    detail: [
+      'Usage: krythor gateway <status|stop|restart>',
+      '',
+      '  status    Show gateway health (same as: krythor status)',
+      '  stop      Stop the background daemon (same as: krythor stop)',
+      '  restart   Restart the background daemon (same as: krythor restart)',
     ],
   },
   doctor: {
@@ -1996,14 +2035,79 @@ if (process.argv[2] === 'doctor' || (process.argv.includes('doctor') && !['polic
 // ── Allow `node start.js setup` as an alias for the setup wizard ───────────
 if (process.argv.includes('setup')) {
   const setupScript = join(__dirname, 'packages', 'setup', 'dist', 'bin', 'setup.js');
+  // --non-interactive flag is a CLI-friendly alias for KRYTHOR_NON_INTERACTIVE=1
+  const setupEnv = process.argv.includes('--non-interactive')
+    ? { ...process.env, KRYTHOR_NON_INTERACTIVE: '1' }
+    : process.env;
+  try {
+    execSync(`"${NODE_BIN}" "${setupScript}"`, { stdio: 'inherit', env: setupEnv });
+  } catch { /* exit code from setup.js propagates */ }
+  // After setup completes: if --install-service was passed, register as a service
+  if (process.argv.includes('--install-service')) {
+    runServiceInstall().catch(e => {
+      console.error('\x1b[31mService install failed:\x1b[0m', e.message);
+    }).then(() => process.exit(0));
+  } else {
+    process.exit(0);
+  }
+}
+
+// ── krythor configure — alias for setup (reconfiguration shortcut) ─────────
+if (process.argv[2] === 'configure') {
+  console.log('\x1b[2m  Re-running setup wizard…\x1b[0m');
+  console.log('');
+  const setupScript = join(__dirname, 'packages', 'setup', 'dist', 'bin', 'setup.js');
   try {
     execSync(`"${NODE_BIN}" "${setupScript}"`, { stdio: 'inherit' });
   } catch { /* exit code from setup.js propagates */ }
   process.exit(0);
 }
 
+// ── krythor dashboard — open browser to Control UI ────────────────────────
+if (process.argv[2] === 'dashboard') {
+  (async () => {
+    const url = `http://${HOST}:${PORT}`;
+    if (await isKrythorRunning()) {
+      console.log(`\x1b[32m✓ Gateway running\x1b[0m  →  ${url}`);
+      tryOpen(url);
+    } else {
+      console.log(`\x1b[33mGateway not running.\x1b[0m Start it first with: krythor`);
+      console.log(`Attempting to open anyway: ${url}`);
+      tryOpen(url);
+    }
+    process.exit(0);
+  })();
+}
+
+// ── krythor gateway <sub> — aliases for common gateway commands ─────────────
+else if (process.argv[2] === 'gateway') {
+  const sub = process.argv[3];
+  if (sub === 'status') {
+    runStatus().catch(e => {
+      console.error('\x1b[31mFatal:\x1b[0m', e.message);
+      process.exit(1);
+    });
+  } else if (sub === 'stop') {
+    runStop().catch(e => {
+      console.error('\x1b[31mFatal:\x1b[0m', e.message);
+      process.exit(1);
+    });
+  } else if (sub === 'restart') {
+    runRestart().catch(e => {
+      console.error('\x1b[31mFatal:\x1b[0m', e.message);
+      process.exit(1);
+    });
+  } else {
+    console.log('Usage:');
+    console.log('  krythor gateway status    Show gateway health');
+    console.log('  krythor gateway stop      Stop the background daemon');
+    console.log('  krythor gateway restart   Restart the background daemon');
+    process.exit(0);
+  }
+}
+
 // ── krythor tui — terminal dashboard ──────────────────────────────────────
-if (process.argv.includes('tui')) {
+else if (process.argv.includes('tui')) {
   runTui().catch(e => {
     console.error('\x1b[31mFatal:\x1b[0m', e.message);
     process.exit(1);
