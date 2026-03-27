@@ -11,6 +11,11 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+#### Gateway configuration and security improvements (2026-03-27)
+
+- **`KRYTHOR_HOST` and `KRYTHOR_PORT` env var overrides**: the gateway bind address and port are now configurable without recompiling. Set `KRYTHOR_HOST=0.0.0.0` to listen on all interfaces (for LAN or reverse-proxy setups), or `KRYTHOR_PORT=48000` to use a non-default port. Defaults remain `127.0.0.1:47200`. The CORS origin list, Host header allowlist, and CSP `connect-src` directive are all updated automatically to include the configured host/port
+- **Trusted proxy auth (`KRYTHOR_TRUSTED_PROXY`)**: when Krythor is placed behind a TLS-terminating reverse proxy (Caddy, nginx, Traefik, Pomerium), set `KRYTHOR_TRUSTED_PROXY=<proxy-ip>` (comma-separated list for multiple proxies). Requests originating from those IPs that carry an `X-Forwarded-User` or `X-Remote-User` header are authenticated without requiring a Bearer token — the proxy handles credential verification. Requests from trusted IPs without a user header still require a token, and requests from untrusted IPs are never elevated. This enables SSO/identity-aware proxy deployments while keeping the direct-token path intact
+
 #### Model engine improvements (2026-03-27)
 
 - **`providerId` on `StreamChunk`**: the router now populates `providerId` on the final streaming chunk (`done === true`), matching what non-streaming inference already returns. `ModelEngine.inferStream` captures this value and passes it — along with token counts — to `TokenTracker.record()`. Previously, all streaming token records used `'unknown'` as the provider ID, making per-provider token stats meaningless for streaming workloads

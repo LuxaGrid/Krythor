@@ -1,4 +1,4 @@
-import { buildServer, GATEWAY_HOST, GATEWAY_PORT, warnIfNetworkExposed } from './server.js';
+import { buildServer, GATEWAY_HOST, GATEWAY_PORT, TRUSTED_PROXIES, warnIfNetworkExposed } from './server.js';
 import { logger } from './logger.js';
 import type { ReadinessResult } from './readiness.js';
 
@@ -13,6 +13,15 @@ async function main(): Promise<void> {
     warnIfNetworkExposed(GATEWAY_HOST);
     app.log.info(`Krythor Gateway running at http://${GATEWAY_HOST}:${GATEWAY_PORT}`);
     app.log.info(`WebSocket stream at ws://${GATEWAY_HOST}:${GATEWAY_PORT}/ws/stream`);
+    if (process.env['KRYTHOR_HOST']) {
+      app.log.info(`Bind host overridden via KRYTHOR_HOST=${GATEWAY_HOST}`);
+    }
+    if (process.env['KRYTHOR_PORT']) {
+      app.log.info(`Port overridden via KRYTHOR_PORT=${GATEWAY_PORT}`);
+    }
+    if (TRUSTED_PROXIES.size > 0) {
+      app.log.info(`Trusted proxy auth: accepting X-Forwarded-User from ${[...TRUSTED_PROXIES].join(', ')}`);
+    }
     logger.serverStart(GATEWAY_PORT, GATEWAY_HOST);
 
     // Log readiness state immediately after startup

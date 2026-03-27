@@ -66,8 +66,29 @@ import { redactErrorMessage } from './redact.js';
 import { checkReadiness } from './readiness.js';
 import { validateProvidersConfig } from './ConfigValidator.js';
 
-export const GATEWAY_PORT = 47200;
-export const GATEWAY_HOST = '127.0.0.1';
+export const GATEWAY_PORT = process.env['KRYTHOR_PORT'] ? parseInt(process.env['KRYTHOR_PORT'], 10) : 47200;
+export const GATEWAY_HOST = process.env['KRYTHOR_HOST'] ?? '127.0.0.1';
+
+/**
+ * Parse KRYTHOR_TRUSTED_PROXY env var into a set of trusted IP addresses.
+ * Format: comma-separated list of IPv4/IPv6 addresses.
+ * Example: KRYTHOR_TRUSTED_PROXY=127.0.0.1,::1,192.168.1.1
+ *
+ * When a request arrives from a trusted proxy IP, the gateway accepts
+ * X-Forwarded-User or X-Remote-User as a bearer-equivalent auth signal
+ * instead of requiring a token. This enables reverse-proxy auth setups
+ * (Caddy, nginx, Traefik) where the proxy handles authentication.
+ *
+ * Security: only enable this when Krythor is behind a trusted reverse proxy
+ * on a secured network. Never expose this on a public interface without TLS.
+ */
+function parseTrustedProxies(): Set<string> {
+  const raw = process.env['KRYTHOR_TRUSTED_PROXY'] ?? '';
+  if (!raw.trim()) return new Set();
+  return new Set(raw.split(',').map(s => s.trim()).filter(Boolean));
+}
+
+export const TRUSTED_PROXIES: Set<string> = parseTrustedProxies();
 
 // Read version from package.json at module load time — single source of truth.
 function readPackageVersion(): string {
@@ -102,10 +123,13 @@ function getDataDir(): string {
 export { verifyToken } from './auth.js';
 
 /** Print a warning if the machine has any non-loopback network interfaces,
- *  since a misconfigured firewall could expose port 47200 to the LAN. */
+ *  since a misconfigured firewall could expose the gateway port to the LAN. */
 export function warnIfNetworkExposed(host: string): void {
   if (host !== '127.0.0.1' && host !== 'localhost' && host !== '::1') {
     logger.warn('SECURITY WARNING: Krythor is not binding to loopback only', { host, port: GATEWAY_PORT });
+    if (TRUSTED_PROXIES.size > 0) {
+      logger.info('Trusted proxy auth active', { trustedProxies: [...TRUSTED_PROXIES], note: 'ensure this host is behind a reverse proxy with TLS' });
+    }
     return;
   }
   // Even on loopback, warn if the port is likely forwarded by firewall rules
@@ -176,6 +200,10 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
     `http://127.0.0.1:${GATEWAY_PORT}`,
     `http://localhost:${GATEWAY_PORT}`,
   ];
+  // When bound to a non-loopback host, also allow that origin
+  if (GATEWAY_HOST !== '127.0.0.1' && GATEWAY_HOST !== 'localhost' && GATEWAY_HOST !== '::1') {
+    defaultOrigins.push(`http://${GATEWAY_HOST}:${GATEWAY_PORT}`);
+  }
   const extraOrigins = process.env['CORS_ORIGINS']
     ? process.env['CORS_ORIGINS'].split(',').map(o => o.trim()).filter(Boolean)
     : [];
@@ -200,7 +228,8 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
         "script-src 'self' 'unsafe-inline'",
         "style-src 'self' 'unsafe-inline'",
         "img-src 'self' data: blob:",
-        `connect-src 'self' ws://127.0.0.1:${GATEWAY_PORT} ws://localhost:${GATEWAY_PORT}`,
+        `connect-src 'self' ws://127.0.0.1:${GATEWAY_PORT} ws://localhost:${GATEWAY_PORT}` +
+          (GATEWAY_HOST !== '127.0.0.1' && GATEWAY_HOST !== 'localhost' ? ` ws://${GATEWAY_HOST}:${GATEWAY_PORT}` : ''),
         "frame-ancestors 'none'",
       ].join('; '),
     );
@@ -210,13 +239,21 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
 
   // Host header validation — secondary defence against DNS rebinding.
   // Applied only to /api/* and /ws/* so that static assets load normally.
+  // When KRYTHOR_HOST is set to a non-loopback address, that host:port pair is
+  // also allowed so reverse-proxy setups work correctly.
+  const allowedHosts = new Set([
+    `127.0.0.1:${GATEWAY_PORT}`,
+    `localhost:${GATEWAY_PORT}`,
+  ]);
+  if (GATEWAY_HOST !== '127.0.0.1' && GATEWAY_HOST !== 'localhost' && GATEWAY_HOST !== '::1') {
+    allowedHosts.add(`${GATEWAY_HOST}:${GATEWAY_PORT}`);
+  }
   app.addHook('preHandler', async (req, reply) => {
     const url = req.url ?? '';
     if (!url.startsWith('/api/') && !url.startsWith('/ws/') && !url.startsWith('/v1/')) return;
     const host = req.headers['host'] ?? '';
-    const allowed = [`127.0.0.1:${GATEWAY_PORT}`, `localhost:${GATEWAY_PORT}`];
-    if (!allowed.includes(host)) {
-      reply.code(400).send({ error: 'Invalid Host header — requests must come from localhost' });
+    if (!allowedHosts.has(host)) {
+      reply.code(400).send({ error: 'Invalid Host header — requests must come from a known host' });
     }
   });
 
@@ -231,7 +268,17 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
 
   // Auth preHandler — protects /api/* and /ws/* routes.
   // /health is public (UI polls it before token is loaded).
+  //
+  // Three auth paths (in priority order):
+  //   1. authDisabled — all routes open (dev/trusted-network mode)
+  //   2. Trusted proxy — request from a KRYTHOR_TRUSTED_PROXY IP with a non-empty
+  //      X-Forwarded-User or X-Remote-User header is accepted without a token.
+  //      Only enable this when Krythor is behind a TLS-terminating reverse proxy.
+  //   3. Bearer token — Authorization: Bearer <token> or ?token= query param.
   if (!authCfg.authDisabled) {
+    if (TRUSTED_PROXIES.size > 0) {
+      logger.info('Trusted proxy auth active', { trustedProxies: [...TRUSTED_PROXIES] });
+    }
     app.addHook('preHandler', async (req, reply) => {
       const url = req.url ?? '';
       // Public routes — no token required
@@ -241,6 +288,19 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
       if (url === '/liveness'  || url.startsWith('/liveness?'))  return;
       if (url === '/readyz'    || url.startsWith('/readyz?'))    return;
       if (!url.startsWith('/api/') && !url.startsWith('/ws/')) return;
+
+      // Trusted proxy auth — accept X-Forwarded-User / X-Remote-User from known proxy IPs.
+      // remoteAddress may be IPv4-mapped IPv6 (::ffff:127.0.0.1) — normalise it.
+      if (TRUSTED_PROXIES.size > 0) {
+        const remoteAddr = (req.socket?.remoteAddress ?? '').replace(/^::ffff:/, '');
+        if (TRUSTED_PROXIES.has(remoteAddr)) {
+          const forwardedUser = req.headers['x-forwarded-user'] ?? req.headers['x-remote-user'];
+          if (forwardedUser && String(forwardedUser).trim().length > 0) {
+            // Trusted proxy presented a user identity — allow through.
+            return;
+          }
+        }
+      }
 
       const authHeader = req.headers['authorization'] ?? '';
       const bearerToken = authHeader.startsWith('Bearer ')
