@@ -39,9 +39,17 @@ export interface DiscordInboundConfig {
   agentId: string;
   enabled: boolean;
   dmPolicy?: 'pairing' | 'allowlist' | 'open' | 'disabled';
+  /** Guild channel policy. Default: 'open' (guild channels are generally trusted). */
+  groupPolicy?: 'open' | 'allowlist' | 'disabled';
   allowFrom?: string[];
   guildId?: string;
   resetTriggers?: string[];
+  /** Max context messages injected per turn. Default: 50. 0 = disabled. */
+  historyLimit?: number;
+  /** Max chars per outbound message chunk. Default: 2000 (Discord limit). */
+  textChunkLimit?: number;
+  /** Split strategy: 'length' (default) or 'newline' (paragraph boundaries first). */
+  chunkMode?: 'length' | 'newline';
 }
 
 interface DiscordMessage {
@@ -49,6 +57,44 @@ interface DiscordMessage {
   author: { id: string; bot?: boolean };
   content: string;
   timestamp: string;
+}
+
+/**
+ * Split text into chunks no longer than maxLen characters.
+ * When mode='newline', prefer splitting on paragraph boundaries before hard split.
+ */
+function splitIntoChunks(text: string, maxLen: number, mode: 'length' | 'newline'): string[] {
+  if (text.length <= maxLen) return [text];
+
+  const chunks: string[] = [];
+
+  if (mode === 'newline') {
+    const paragraphs = text.split(/\n\n+/);
+    let current = '';
+    for (const para of paragraphs) {
+      const candidate = current ? `${current}\n\n${para}` : para;
+      if (candidate.length <= maxLen) {
+        current = candidate;
+      } else {
+        if (current) chunks.push(current);
+        if (para.length > maxLen) {
+          for (let i = 0; i < para.length; i += maxLen) {
+            chunks.push(para.slice(i, i + maxLen));
+          }
+          current = '';
+        } else {
+          current = para;
+        }
+      }
+    }
+    if (current) chunks.push(current);
+  } else {
+    for (let i = 0; i < text.length; i += maxLen) {
+      chunks.push(text.slice(i, i + maxLen));
+    }
+  }
+
+  return chunks;
 }
 
 export class DiscordInbound {
@@ -210,7 +256,24 @@ export class DiscordInbound {
       }
 
     } else {
-      // ── Guild message — keep open, log guild/channel context ──────────────
+      // ── Guild message — apply groupPolicy ─────────────────────────────────
+      const groupPolicy = this.config.groupPolicy ?? 'open';
+
+      if (groupPolicy === 'disabled') {
+        logger.info('[discord] Guild messages disabled by groupPolicy', { guildId: this.config.guildId });
+        return;
+      }
+
+      if (groupPolicy === 'allowlist') {
+        const allowed =
+          this.pairingStore.isAllowed(this.channelId, authorId) ||
+          (this.config.allowFrom?.includes(authorId) ?? false);
+        if (!allowed) {
+          logger.info('[discord] Guild sender not on allowlist', { author: authorId, guildId: this.config.guildId });
+          return; // silently ignore — no pairing flow for guild channels
+        }
+      }
+
       logger.info('[discord] Guild message received', {
         msgId: msg.id,
         author: authorId,
@@ -247,7 +310,10 @@ export class DiscordInbound {
         this.authorConvMap.set(authorId, conversationId);
       }
       const msgs = this.convStore.getMessages(conversationId);
-      contextMessages = msgs.map(m => ({ role: m.role, content: m.content }));
+      // Apply historyLimit to prevent unbounded context growth
+      const historyLimit = this.config.historyLimit ?? 50;
+      const limited = historyLimit > 0 ? msgs.slice(-historyLimit) : msgs;
+      contextMessages = limited.map(m => ({ role: m.role, content: m.content }));
     }
 
     const typingPromise = this.sendTyping().catch(() => {});
@@ -266,9 +332,16 @@ export class DiscordInbound {
         this.convStore.addMessage(conversationId, 'assistant', output, run.modelUsed);
       }
 
-      const reply = output.slice(0, MAX_REPLY_LEN);
       await typingPromise;
-      await this.sendMessage(reply, msg.id);
+
+      // Split long replies into chunks
+      const chunks = splitIntoChunks(output, this.config.textChunkLimit ?? MAX_REPLY_LEN, this.config.chunkMode ?? 'length');
+      let firstChunk = true;
+      for (const chunk of chunks) {
+        // Only reply-thread on the first chunk to avoid a chain of replies
+        await this.sendMessage(chunk, firstChunk ? msg.id : undefined);
+        firstChunk = false;
+      }
     } catch (err) {
       logger.error('[discord] Agent run failed', { err: err instanceof Error ? err.message : String(err), msgId: msg.id });
       await this.sendMessage('Agent error — could not process your message.', msg.id).catch(() => {});

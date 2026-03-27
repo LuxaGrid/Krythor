@@ -79,6 +79,27 @@ Krythor will start polling the Telegram Bot API for incoming messages. Status wi
 
 No pairing step is required for Telegram.
 
+### Access control
+
+Telegram channels support the following access control settings. These can be configured via the API (`PUT /api/chat-channels/:id`) or by editing the channel config directly.
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `dmPolicy` | `pairing` | How to handle direct messages: `pairing` (require pairing code), `allowlist` (configured senders only), `open` (anyone), `disabled` |
+| `groupPolicy` | `allowlist` | How to handle group messages: `allowlist` (groups must be listed in `groups`), `open` (any group), `disabled` |
+| `allowFrom` | `[]` | Array of Telegram user IDs allowed to DM the bot (used with `dmPolicy: allowlist`) |
+| `groups` | `{}` | Map of group chat IDs to group config: `{ requireMention, allowFrom }` |
+| `resetTriggers` | `["/new"]` | Messages that start a new conversation session for the sender |
+
+### Context and delivery settings
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `historyLimit` | `50` | Maximum number of past messages injected as context per turn. Set to `0` to disable. |
+| `textChunkLimit` | `4096` | Maximum characters per outbound message. Longer replies are split into multiple messages. |
+| `chunkMode` | `length` | How to split long replies: `length` (hard split) or `newline` (prefer paragraph boundaries). |
+| `ackReaction` | `👀` | Emoji reaction sent on the triggering message when it is accepted for processing. Set to `""` to disable. |
+
 ---
 
 ## Discord Setup
@@ -111,6 +132,22 @@ Status will change to `connected` once the bot successfully connects to the Disc
 | Application ID | The Application ID from the General Information page |
 
 No pairing step is required for Discord.
+
+### Access control
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `dmPolicy` | `pairing` | DM access policy: `pairing`, `allowlist`, `open`, `disabled` |
+| `groupPolicy` | `open` | Guild channel policy: `open` (anyone in the channel), `allowlist` (configured senders only), `disabled` |
+| `allowFrom` | `[]` | User IDs allowed when using `allowlist` policies |
+
+### Context and delivery settings
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `historyLimit` | `50` | Maximum context messages per turn. `0` = disabled. |
+| `textChunkLimit` | `2000` | Max chars per outbound message (Discord limit). Longer replies are split. |
+| `chunkMode` | `length` | Split strategy: `length` or `newline`. |
 
 ---
 

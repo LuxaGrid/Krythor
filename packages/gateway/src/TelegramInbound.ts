@@ -43,6 +43,17 @@ export interface TelegramInboundConfig {
   allowFrom?: string[];
   groups?: Record<string, { requireMention?: boolean; allowFrom?: string[] }>;
   resetTriggers?: string[];
+  /** Max context messages injected per turn. Default: 50. 0 = disabled. */
+  historyLimit?: number;
+  /** Max chars per outbound message chunk. Default: 4096 (Telegram limit). */
+  textChunkLimit?: number;
+  /** Split strategy: 'length' (default) or 'newline' (paragraph boundaries first). */
+  chunkMode?: 'length' | 'newline';
+  /**
+   * Acknowledgment reaction emoji sent as soon as a message is accepted.
+   * Default: "👀". Set to "" to disable.
+   */
+  ackReaction?: string;
 }
 
 interface TelegramUpdate {
@@ -53,6 +64,46 @@ interface TelegramUpdate {
     from?: { id: number; first_name?: string; username?: string };
     text?: string;
   };
+}
+
+/**
+ * Split text into chunks no longer than maxLen characters.
+ * When mode='newline', prefer splitting on paragraph boundaries (blank lines)
+ * before falling back to hard length splitting.
+ */
+function splitIntoChunks(text: string, maxLen: number, mode: 'length' | 'newline'): string[] {
+  if (text.length <= maxLen) return [text];
+
+  const chunks: string[] = [];
+
+  if (mode === 'newline') {
+    const paragraphs = text.split(/\n\n+/);
+    let current = '';
+    for (const para of paragraphs) {
+      const candidate = current ? `${current}\n\n${para}` : para;
+      if (candidate.length <= maxLen) {
+        current = candidate;
+      } else {
+        if (current) chunks.push(current);
+        // Para itself may exceed maxLen — hard split it
+        if (para.length > maxLen) {
+          for (let i = 0; i < para.length; i += maxLen) {
+            chunks.push(para.slice(i, i + maxLen));
+          }
+          current = '';
+        } else {
+          current = para;
+        }
+      }
+    }
+    if (current) chunks.push(current);
+  } else {
+    for (let i = 0; i < text.length; i += maxLen) {
+      chunks.push(text.slice(i, i + maxLen));
+    }
+  }
+
+  return chunks;
 }
 
 interface TelegramUpdatesResponse {
@@ -218,6 +269,14 @@ export class TelegramInbound {
           return;
         }
 
+        // Per-group sender allowlist
+        if (groupCfg.allowFrom && groupCfg.allowFrom.length > 0) {
+          if (!groupCfg.allowFrom.includes(fromId)) {
+            logger.info('[telegram] Group sender not in per-group allowFrom — ignoring', { chatId, fromId });
+            return;
+          }
+        }
+
         // Check requireMention
         if (groupCfg.requireMention && this.botUsername) {
           if (!message.text?.includes(`@${this.botUsername}`)) {
@@ -228,6 +287,7 @@ export class TelegramInbound {
 
       // groupPolicy === 'open' or group is in allowlist: fall through to agent
       void this.sendChatAction(chatId, 'typing').catch(() => {});
+      await this.sendAckReaction(chatId, message.message_id).catch(() => {});
       await this.runAgent(chatId, fromId, message.text!);
 
     } else {
@@ -240,6 +300,7 @@ export class TelegramInbound {
 
       if (dmPolicy === 'open') {
         void this.sendChatAction(chatId, 'typing').catch(() => {});
+        await this.sendAckReaction(chatId, message.message_id).catch(() => {});
         await this.runAgent(chatId, fromId, message.text!);
         return;
       }
@@ -255,6 +316,7 @@ export class TelegramInbound {
         }
 
         void this.sendChatAction(chatId, 'typing').catch(() => {});
+        await this.sendAckReaction(chatId, message.message_id).catch(() => {});
         await this.runAgent(chatId, fromId, message.text!);
         return;
       }
@@ -262,6 +324,7 @@ export class TelegramInbound {
       // dmPolicy === 'pairing' (default)
       if (this.pairingStore.isAllowed(this.channelId, fromId)) {
         void this.sendChatAction(chatId, 'typing').catch(() => {});
+        await this.sendAckReaction(chatId, message.message_id).catch(() => {});
         await this.runAgent(chatId, fromId, message.text!);
         return;
       }
@@ -305,7 +368,10 @@ export class TelegramInbound {
           this.senderConvMap.set(fromId, conversationId);
         }
         const msgs = this.convStore.getMessages(conversationId);
-        contextMessages = msgs.map(m => ({ role: m.role, content: m.content }));
+        // Apply historyLimit to prevent unbounded context growth
+        const historyLimit = this.config.historyLimit ?? 50;
+        const limited = historyLimit > 0 ? msgs.slice(-historyLimit) : msgs;
+        contextMessages = limited.map(m => ({ role: m.role, content: m.content }));
       }
 
       const run = await this.orchestrator.runAgent(this.config.agentId, {
@@ -321,8 +387,11 @@ export class TelegramInbound {
         this.convStore.addMessage(conversationId, 'assistant', output, run.modelUsed);
       }
 
-      const reply = output.slice(0, MAX_REPLY_LEN);
-      await this.sendMessage(chatId, reply);
+      // Split long replies into chunks
+      const chunks = splitIntoChunks(output, this.config.textChunkLimit ?? MAX_REPLY_LEN, this.config.chunkMode ?? 'length');
+      for (const chunk of chunks) {
+        await this.sendMessage(chatId, chunk);
+      }
     } catch (err) {
       logger.error('[telegram] Agent run failed', { err: err instanceof Error ? err.message : String(err), chatId });
       await this.sendMessage(chatId, 'Agent error — could not process your message.').catch(() => {});
@@ -356,6 +425,26 @@ export class TelegramInbound {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ chat_id: chatId, action }),
+    });
+  }
+
+  /**
+   * Send an acknowledgment reaction emoji on the triggering message.
+   * Uses config.ackReaction (default "👀"). Empty string disables.
+   * Non-fatal — errors are swallowed by the caller.
+   */
+  private async sendAckReaction(chatId: number, messageId: number): Promise<void> {
+    const emoji = this.config?.ackReaction ?? '👀';
+    if (!emoji) return; // disabled
+    const url = `${TELEGRAM_API}/bot${this.config!.token}/setMessageReaction`;
+    await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        message_id: messageId,
+        reaction: [{ type: 'emoji', emoji }],
+      }),
     });
   }
 

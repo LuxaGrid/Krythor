@@ -47,6 +47,28 @@ export interface ChatChannelConfig {
    * Useful for "start over", "reset", etc. Defaults to ['/new'].
    */
   resetTriggers?: string[];
+  /**
+   * Maximum number of past messages to inject as context for each incoming message.
+   * Prevents unbounded context growth. Default: 50. Set to 0 to disable history injection.
+   */
+  historyLimit?: number;
+  /**
+   * Maximum characters per outbound message chunk. Replies longer than this are split
+   * into multiple messages. Default: channel native limit (4096 Telegram, 2000 Discord).
+   */
+  textChunkLimit?: number;
+  /**
+   * How to split long replies:
+   *   'length' (default) — hard split at textChunkLimit
+   *   'newline' — prefer paragraph boundaries (blank lines) before length split
+   */
+  chunkMode?: 'length' | 'newline';
+  /**
+   * Acknowledgment reaction sent immediately when a message is accepted for processing.
+   * Telegram: unicode emoji e.g. "👀". Discord: unicode emoji or custom emoji name.
+   * Set to "" to disable. Default: "👀".
+   */
+  ackReaction?: string;
 }
 
 export interface ChannelProviderMeta {

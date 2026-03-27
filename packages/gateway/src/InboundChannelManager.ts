@@ -147,10 +147,14 @@ export class InboundChannelManager {
             channelId,
             agentId,
             enabled: true,
-            dmPolicy:      config.dmPolicy,
-            allowFrom:     config.allowFrom,
-            guildId:       config.credentials['guildId'],
-            resetTriggers: config.resetTriggers,
+            dmPolicy:       config.dmPolicy,
+            groupPolicy:    config.groupPolicy,
+            allowFrom:      config.allowFrom,
+            guildId:        config.credentials['guildId'],
+            resetTriggers:  config.resetTriggers,
+            historyLimit:   config.historyLimit,
+            textChunkLimit: config.textChunkLimit,
+            chunkMode:      config.chunkMode,
           });
           instance = discord;
           break;
@@ -170,11 +174,15 @@ export class InboundChannelManager {
             token,
             agentId,
             enabled: true,
-            dmPolicy:      config.dmPolicy,
-            groupPolicy:   config.groupPolicy,
-            allowFrom:     config.allowFrom,
-            groups:        config.groups,
-            resetTriggers: config.resetTriggers,
+            dmPolicy:       config.dmPolicy,
+            groupPolicy:    config.groupPolicy,
+            allowFrom:      config.allowFrom,
+            groups:         config.groups,
+            resetTriggers:  config.resetTriggers,
+            historyLimit:   config.historyLimit,
+            textChunkLimit: config.textChunkLimit,
+            chunkMode:      config.chunkMode,
+            ackReaction:    config.ackReaction,
           });
           instance = telegram;
           break;

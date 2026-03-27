@@ -11,6 +11,15 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+#### Chat channel improvements (2026-03-27)
+
+- **`historyLimit` config field**: `ChatChannelConfig`, `TelegramInboundConfig`, and `DiscordInboundConfig` now accept `historyLimit` (default 50). Context messages injected per turn are capped at the last N messages, preventing unbounded growth that would eventually exceed model context windows
+- **`textChunkLimit` + `chunkMode` config fields**: replies longer than the channel limit are now split into multiple messages instead of being silently truncated at `MAX_REPLY_LEN`. `chunkMode: 'newline'` prefers paragraph boundaries (blank lines) before hard splitting; `'length'` (default) hard-splits at the limit
+- **`ackReaction` config field for Telegram**: an acknowledgment emoji reaction (default `👀`) is sent on the triggering message as soon as it is accepted for processing, giving the user immediate visual feedback. Set to `""` to disable. Uses the Telegram Bot API `setMessageReaction` endpoint
+- **Discord `groupPolicy` enforcement**: guild channel messages now respect `groupPolicy` (`'open'` default / `'allowlist'` / `'disabled'`) just like DMs respect `dmPolicy`. Previously, guild channels were always open regardless of config
+- **Telegram per-group sender `allowFrom`**: groups configured with a `groups.<id>.allowFrom` array now filter senders within that group. Previously the per-group allowlist field was stored but never checked at message time
+- **All new fields wired through `InboundChannelManager`**: `historyLimit`, `textChunkLimit`, `chunkMode`, `ackReaction`, and `groupPolicy` are now passed from `ChatChannelRegistry` through `InboundChannelManager` to each channel instance
+
 #### Maintenance & update improvements (2026-03-27)
 
 - **`krythor update status`**: new sub-command that shows `installKind` (git/binary), `currentVersion`, `latestVersion`, and `updateAvailable` without performing an update; supports `--json` for scripted use
