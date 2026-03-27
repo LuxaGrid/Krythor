@@ -47,6 +47,10 @@ import { registerOpenAICompatRoutes } from './routes/openai.compat.js';
 import { registerPluginRoutes } from './routes/plugins.js';
 import { registerApprovalRoutes } from './routes/approvals.js';
 import { registerAuditRoutes } from './routes/audit.js';
+import { registerHookRoutes } from './routes/hooks.js';
+import { CronStore } from './CronStore.js';
+import { CronScheduler } from './CronScheduler.js';
+import { registerCronRoutes } from './routes/cron.js';
 import { registerWorkspaceRoutes } from './routes/workspace.js';
 import { registerDeviceRoutes } from './routes/devices.js';
 import { registerAgentAuthRoutes } from './routes/agentAuth.js';
@@ -847,6 +851,23 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   registerApprovalRoutes(app, approvalManager);
   registerAuditRoutes(app, auditLogger);
   registerWorkspaceRoutes(app);
+
+  // Inbound webhook routes — POST /api/hooks/wake + /api/hooks/agent
+  // Token is read from app-config.json on every request (picks up changes without restart).
+  const appConfigPath = join(dataDir, 'config', 'app-config.json');
+  const getWebhookToken = (): string | undefined => {
+    try {
+      if (!existsSync(appConfigPath)) return undefined;
+      const cfg = JSON.parse(readFileSync(appConfigPath, 'utf-8')) as Record<string, unknown>;
+      return typeof cfg['webhookToken'] === 'string' ? cfg['webhookToken'] : undefined;
+    } catch { return undefined; }
+  };
+  registerHookRoutes(app, orchestrator, getWebhookToken);
+
+  // Cron — user-defined scheduled agent jobs
+  const cronStore = new CronStore(join(dataDir, 'config'));
+  const cronScheduler = new CronScheduler(cronStore, orchestrator);
+  registerCronRoutes(app, cronStore, cronScheduler);
   registerAgentAuthRoutes(app, agentAuthStore);
 
   // Web Chat pairing — shareable one-time links for /chat
@@ -997,6 +1018,8 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   const heartbeat = new HeartbeatEngine(memory, models, orchestrator, undefined, recommender, logger);
   if (process.env['NODE_ENV'] !== 'test') {
     heartbeat.start();
+    cronScheduler.start();
+    app.addHook('onClose', async () => { cronScheduler.stop(); });
   }
 
   // Dashboard route is registered after heartbeat is instantiated so it can

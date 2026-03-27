@@ -11,6 +11,20 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+#### Automation: inbound webhooks + cron scheduler (2026-03-27)
+
+- **Inbound webhook routes** (`POST /api/hooks/wake`, `POST /api/hooks/agent`): external systems can now trigger Krythor agent runs over HTTP. `/wake` logs a notification and returns an accepted confirmation; `/agent` runs an agent synchronously and returns the result. Both require a `webhookToken` configured via `PATCH /api/config`
+- **`webhookToken` in app-config**: new `webhookToken` field in `app-config.json` and `PATCH /api/config`. The token is accepted as `Authorization: Bearer <token>` or `X-Krythor-Hook-Token: <token>`. The token is **never returned** in `GET /api/config` or `PATCH /api/config` responses (stripped before reply)
+- **Per-IP auth failure tracking**: webhook endpoints count auth failures per remote IP address. After 10 failures within 60 seconds the IP is temporarily banned (HTTP 429), preventing credential brute-forcing. Ban windows expire automatically
+- **Webhook rate limiting**: 60 requests/minute per IP on all `/api/hooks/*` routes
+- **`CronStore`** (`packages/gateway/src/CronStore.ts`): new persistent store for user-defined scheduled jobs. Supports three schedule kinds — `at` (one-shot ISO 8601 timestamp), `every` (fixed interval in ms), and `cron` (5-field cron expression). Jobs are stored at `<dataDir>/config/cron-jobs.json` via atomic write
+- **`CronScheduler`** (`packages/gateway/src/CronScheduler.ts`): polls `CronStore` every 30 s (with a 15 s startup delay to avoid firing on boot) and fires due jobs via `orchestrator.runAgent()`. At most one tick runs at a time (concurrency guard). Disabled in test environments (`KRYTHOR_TEST=1`). Bound to the gateway lifecycle (`onClose` stops the scheduler)
+- **Cron REST API** (`GET/POST/PATCH/DELETE /api/cron`, `POST /api/cron/:id/run`): full CRUD for scheduled jobs plus a manual-trigger endpoint. `POST /api/cron` validates `at` timestamps are in the future and that `cron` expressions have exactly 5 fields. Manual triggers are fire-and-forget
+- **One-shot job lifecycle**: `at`-scheduled jobs with `deleteAfterRun: true` (the default) are deleted from the store after their first successful run. Jobs with `deleteAfterRun: false` are disabled (not deleted) so they remain visible in the list
+- **Minimal cron expression parser** (`nextCronFire`): implements standard 5-field cron semantics with no external dependencies. Supports `*`, `/` (step), `,` (list), and `-` (range) in all fields. DOM/DOW semantics: if only DOM is restricted → must match DOM; if only DOW is restricted → must match DOW; if both are restricted → either matching suffices (OR semantics, per POSIX cron)
+- **`sessionPruneAfterDays` + `sessionMaxConversations` in `PATCH /api/config`**: two previously-missing config fields are now accepted by the update schema and persisted correctly
+- **`CronStore` unit tests** (15 tests): covers `nextCronFire` (invalid expr, every-minute, 7am daily, next-day advancement, Monday-only), `computeNextRun` (all three schedule kinds), and `CronStore` CRUD, due-job detection, success/failure recording with auto-delete, and disk persistence
+
 #### Skill system improvements (2026-03-27)
 
 - **`enabled` flag per skill**: skills can now be disabled without deletion. `enabled: false` prevents execution (returns HTTP 409) and excludes the skill from `GET /api/skills` by default. Set via `POST /api/skills`, `PATCH /api/skills/:id`. Backfilled to `true` for all existing skills on load

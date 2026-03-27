@@ -25,6 +25,12 @@ export interface AppConfig {
   bootstrapTruncationWarning?: 'off' | 'once' | 'always';
   sessionPruneAfterDays?: number;
   sessionMaxConversations?: number;
+  /**
+   * Shared secret for inbound webhook endpoints (POST /api/hooks/wake, /api/hooks/agent).
+   * Set this to a random string to enable inbound hooks.
+   * Use Authorization: Bearer <token> or X-Krythor-Hook-Token: <token>.
+   */
+  webhookToken?: string;
 }
 
 export function registerConfigRoute(app: FastifyInstance, configDir: string, guard?: GuardEngine, orchestrator?: AgentOrchestrator, memory?: MemoryEngine): void {
@@ -71,8 +77,10 @@ export function registerConfigRoute(app: FastifyInstance, configDir: string, gua
   }
 
   // GET /api/config
+  // webhookToken is omitted from the response — it is write-only for security.
   app.get('/api/config', async (_req, reply) => {
-    return reply.send(read());
+    const { webhookToken: _omit, ...safeConfig } = read();
+    return reply.send(safeConfig);
   });
 
   // PATCH /api/config
@@ -88,6 +96,9 @@ export function registerConfigRoute(app: FastifyInstance, configDir: string, gua
           userTimezone:                { type: ['string', 'null'] },
           timeFormat:                  { type: ['string', 'null'], enum: ['auto', '12', '24', null] },
           bootstrapTruncationWarning:  { type: ['string', 'null'], enum: ['off', 'once', 'always', null] },
+          sessionPruneAfterDays:       { type: ['integer', 'null'], minimum: 1, maximum: 3650 },
+          sessionMaxConversations:     { type: ['integer', 'null'], minimum: 1, maximum: 100000 },
+          webhookToken:                { type: ['string', 'null'], maxLength: 512 },
         },
         additionalProperties: false,
       },
@@ -135,8 +146,13 @@ export function registerConfigRoute(app: FastifyInstance, configDir: string, gua
         maxConversations: updated.sessionMaxConversations,
       });
     }
+    if ('webhookToken' in patch) {
+      updated.webhookToken = (patch['webhookToken'] as string | null) ?? undefined;
+    }
     write(updated);
-    return reply.send(updated);
+    // Never return webhookToken in the response — treat it as write-only
+    const { webhookToken: _omit, ...safeConfig } = updated;
+    return reply.send(safeConfig);
   });
 
   // ── Config file editor routes ─────────────────────────────────────────────
