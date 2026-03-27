@@ -356,4 +356,64 @@ export function registerChatChannelRoutes(
       return reply.send({ ok: true });
     },
   );
+
+  // ── Group allowlist routes ─────────────────────────────────────────────────
+  // Groups are stored in ChatChannelConfig.groups as:
+  //   { [groupId]: { requireMention?: boolean } }
+
+  // GET /api/chat-channels/:id/groups — list allowed groups
+  app.get<{ Params: { id: string } }>('/api/chat-channels/:id/groups', async (req, reply) => {
+    const config = registry.getConfig(req.params.id);
+    if (!config) return reply.code(404).send({ error: 'Channel not found' });
+    const groups = config.groups ?? {};
+    return reply.send({
+      groups: Object.entries(groups).map(([groupId, cfg]) => ({
+        groupId,
+        requireMention: cfg.requireMention ?? false,
+      })),
+    });
+  });
+
+  // POST /api/chat-channels/:id/groups — add or update a group
+  app.post<{
+    Params: { id: string };
+    Body: { groupId: string; requireMention?: boolean };
+  }>('/api/chat-channels/:id/groups', {
+    schema: {
+      body: {
+        type: 'object',
+        required: ['groupId'],
+        properties: {
+          groupId:        { type: 'string', minLength: 1, maxLength: 256 },
+          requireMention: { type: 'boolean' },
+        },
+        additionalProperties: false,
+      },
+    },
+  }, async (req, reply) => {
+    const config = registry.getConfig(req.params.id);
+    if (!config) return reply.code(404).send({ error: 'Channel not found' });
+    const { groupId, requireMention } = req.body;
+    registry.saveConfig({
+      ...config,
+      groups: {
+        ...(config.groups ?? {}),
+        [groupId]: { requireMention: requireMention ?? false },
+      },
+    });
+    return reply.code(201).send({ ok: true, groupId, requireMention: requireMention ?? false });
+  });
+
+  // DELETE /api/chat-channels/:id/groups/:groupId — remove a group
+  app.delete<{ Params: { id: string; groupId: string } }>(
+    '/api/chat-channels/:id/groups/:groupId',
+    async (req, reply) => {
+      const config = registry.getConfig(req.params.id);
+      if (!config) return reply.code(404).send({ error: 'Channel not found' });
+      const groups = { ...(config.groups ?? {}) };
+      delete groups[req.params.groupId];
+      registry.saveConfig({ ...config, groups });
+      return reply.send({ ok: true });
+    },
+  );
 }

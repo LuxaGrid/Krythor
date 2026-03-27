@@ -414,6 +414,7 @@ function ChannelCard({
         channelId={channel.id}
         channelType={channel.type}
         dmPolicy={channel.dmPolicy}
+        groupPolicy={channel.groupPolicy}
         onPolicyChange={onPolicyChange}
       />
     </div>

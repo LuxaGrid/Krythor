@@ -805,6 +805,15 @@ export const addToAllowlist = (id: string, senderId: string) =>
 export const removeFromAllowlist = (id: string, senderId: string) =>
   req<{ ok: boolean }>('DELETE', `/chat-channels/${id}/allowlist/${senderId}`);
 
+// Group allowlist
+export interface GroupEntry { groupId: string; requireMention: boolean }
+export const listGroupAllowlist = (id: string) =>
+  req<{ groups: GroupEntry[] }>('GET', `/chat-channels/${id}/groups`);
+export const addGroupToAllowlist = (id: string, groupId: string, requireMention = false) =>
+  req<{ ok: boolean; groupId: string; requireMention: boolean }>('POST', `/chat-channels/${id}/groups`, { groupId, requireMention });
+export const removeGroupFromAllowlist = (id: string, groupId: string) =>
+  req<{ ok: boolean }>('DELETE', `/chat-channels/${id}/groups/${encodeURIComponent(groupId)}`);
+
 // ── Config file editor ─────────────────────────────────────────────────────────
 export interface ConfigFileEntry { key: string; filename: string; exists: boolean }
 export const listConfigFiles  = () => req<{ files: ConfigFileEntry[] }>('GET', '/config/files');

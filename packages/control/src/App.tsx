@@ -1,5 +1,5 @@
 import { useState, useEffect, createContext, useContext, useCallback, useRef, useMemo } from 'react';
-import { health, getAppConfig, patchAppConfig, getGatewayToken, getGatewayInfo, type Health, type AppConfig, type GatewayInfo } from './api.ts';
+import { health, getAppConfig, patchAppConfig, getGatewayToken, getGatewayInfo, listChatChannels, listPendingPairings, type Health, type AppConfig, type GatewayInfo } from './api.ts';
 import { GatewayProvider, useGatewayContext } from './GatewayContext.tsx';
 import { StatusBar } from './components/StatusBar.tsx';
 import { CommandPanel } from './components/CommandPanel.tsx';
@@ -316,7 +316,7 @@ function saveTabOrder(order: Tab[]) {
   try { localStorage.setItem(TAB_ORDER_KEY, JSON.stringify(order)); } catch { /* ignore */ }
 }
 
-function TabBar({ tab, setTab, eventCount }: { tab: Tab; setTab: (t: Tab) => void; eventCount: number }) {
+function TabBar({ tab, setTab, eventCount, pairingCount }: { tab: Tab; setTab: (t: Tab) => void; eventCount: number; pairingCount: number }) {
   const [customOpen, setCustomOpen] = useState(false);
   const [pinned, setPinned]         = useState<Tab[]>(loadPinned);
   const [tabOrder, setTabOrder]     = useState<Tab[]>(() => { const p = loadPinned(); return loadTabOrder(p); });
@@ -423,6 +423,9 @@ function TabBar({ tab, setTab, eventCount }: { tab: Tab; setTab: (t: Tab) => voi
             {t.label}
             {t.id === 'events' && eventCount > 0 && (
               <span className="bg-brand-600 text-white text-[10px] rounded-full px-1.5 py-px leading-none">{eventCount}</span>
+            )}
+            {t.id === 'chat-channels' && pairingCount > 0 && (
+              <span className="bg-amber-600 text-white text-[10px] rounded-full px-1.5 py-px leading-none">{pairingCount}</span>
             )}
             {isDragTarget && <span className="absolute left-0 top-1 bottom-1 w-0.5 bg-brand-500 rounded-full" />}
             {/* Unpin ✕ — only shown on hover, not on last tab */}
@@ -601,6 +604,7 @@ function AppInner({ onTokenReady }: { onTokenReady: (token: string) => void }) {
   const [showAbout, setShowAbout]   = useState(false);
   const [showPalette, setShowPalette] = useState(false);
   const { connected, events, clearEvents } = useGatewayContext();
+  const [pairingCount, setPairingCount] = useState(0);
 
   // Ref to trigger "new chat" from CommandPanel via global shortcut
   const newChatRef = useRef<(() => void) | null>(null);
@@ -609,6 +613,26 @@ function AppInner({ onTokenReady }: { onTokenReady: (token: string) => void }) {
     health().then(data => {
       setHealthData(data);
     }).catch(() => {});
+  }, []);
+
+  // Poll for pending DM pairing requests every 15 s.
+  // Shows a badge on the Chat Channels tab when approvals are waiting.
+  useEffect(() => {
+    const poll = async () => {
+      try {
+        const { channels } = await listChatChannels();
+        const pairingChannels = channels.filter(c => c.dmPolicy === 'pairing' && c.enabled);
+        const counts = await Promise.all(
+          pairingChannels.map(c =>
+            listPendingPairings(c.id).then(r => r.pending.length).catch(() => 0),
+          ),
+        );
+        setPairingCount(counts.reduce((a, b) => a + b, 0));
+      } catch { /* ignore — badge just won't show */ }
+    };
+    void poll();
+    const t = setInterval(() => { void poll(); }, 15_000);
+    return () => clearInterval(t);
   }, []);
 
   // Notify GatewayProvider of the token once on mount so WS can connect.
@@ -760,6 +784,7 @@ function AppInner({ onTokenReady }: { onTokenReady: (token: string) => void }) {
           tab={tab}
           setTab={setTab}
           eventCount={events.length}
+          pairingCount={pairingCount}
         />
 
         {/* Panel area */}

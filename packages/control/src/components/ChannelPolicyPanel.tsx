@@ -7,6 +7,10 @@ import {
   listAllowlist,
   addToAllowlist,
   removeFromAllowlist,
+  listGroupAllowlist,
+  addGroupToAllowlist,
+  removeGroupFromAllowlist,
+  type GroupEntry,
 } from '../api.ts';
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -24,6 +28,7 @@ interface ChannelPolicyPanelProps {
   channelId: string;
   channelType: string;
   dmPolicy?: string;
+  groupPolicy?: string;
   onPolicyChange: () => void;
 }
 
@@ -289,12 +294,109 @@ function AllowlistSection({ channelId, dmPolicy }: { channelId: string; dmPolicy
   );
 }
 
+// ── Group allowlist section ────────────────────────────────────────────────
+
+function GroupAllowlistSection({ channelId, groupPolicy }: { channelId: string; groupPolicy?: string }) {
+  const [groups, setGroups]         = useState<GroupEntry[]>([]);
+  const [input, setInput]           = useState('');
+  const [requireMention, setRequireMention] = useState(false);
+  const [adding, setAdding]         = useState(false);
+  const [inputError, setInputError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const { groups: g } = await listGroupAllowlist(channelId);
+      setGroups(g);
+    } catch { /* ignore */ }
+  }, [channelId]);
+
+  useEffect(() => {
+    if (groupPolicy === 'allowlist') void load();
+  }, [groupPolicy, load]);
+
+  if (groupPolicy !== 'allowlist') return null;
+
+  const handleAdd = async () => {
+    const trimmed = input.trim();
+    if (!trimmed) { setInputError('Group ID cannot be empty.'); return; }
+    setInputError(null);
+    setAdding(true);
+    try {
+      await addGroupToAllowlist(channelId, trimmed, requireMention);
+      setGroups(prev => {
+        const exists = prev.find(g => g.groupId === trimmed);
+        if (exists) return prev.map(g => g.groupId === trimmed ? { ...g, requireMention } : g);
+        return [...prev, { groupId: trimmed, requireMention }];
+      });
+      setInput('');
+      setRequireMention(false);
+    } catch { /* ignore */ }
+    finally { setAdding(false); }
+  };
+
+  const handleRemove = async (groupId: string) => {
+    try {
+      await removeGroupFromAllowlist(channelId, groupId);
+      setGroups(prev => prev.filter(g => g.groupId !== groupId));
+    } catch { /* ignore */ }
+  };
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-medium text-zinc-300">Allowed Groups</p>
+      {groups.length === 0 ? (
+        <p className="text-xs text-zinc-600 bg-zinc-800/50 rounded-lg px-3 py-2">No groups allowed — add a group ID below</p>
+      ) : (
+        <div className="space-y-1">
+          {groups.map(g => (
+            <div key={g.groupId} className="flex items-center gap-2 bg-zinc-800/60 border border-zinc-700/60 rounded-lg px-3 py-1.5">
+              <div className="flex-1 min-w-0">
+                <span className="text-xs text-zinc-200 font-mono truncate block">{g.groupId}</span>
+                {g.requireMention && <span className="text-[10px] text-zinc-500">require @mention</span>}
+              </div>
+              <button
+                onClick={() => void handleRemove(g.groupId)}
+                className="text-[10px] px-2 py-0.5 rounded bg-zinc-700 text-zinc-500 hover:bg-red-900/40 hover:text-red-400 shrink-0"
+              >remove</button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="flex gap-2 items-start flex-wrap">
+        <input
+          className="flex-1 min-w-0 bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1.5 text-xs text-zinc-200 placeholder-zinc-600 outline-none focus:border-brand-600 transition-colors"
+          placeholder="Group / channel ID (e.g. -1001234567890)"
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') void handleAdd(); }}
+        />
+        <label className="flex items-center gap-1.5 text-xs text-zinc-400 whitespace-nowrap">
+          <input
+            type="checkbox"
+            checked={requireMention}
+            onChange={e => setRequireMention(e.target.checked)}
+            className="accent-brand-600"
+          />
+          @mention
+        </label>
+        <button
+          onClick={() => void handleAdd()}
+          disabled={adding}
+          className="px-3 py-1.5 bg-brand-600 hover:bg-brand-500 disabled:opacity-40 text-white text-xs rounded-lg transition-colors shrink-0"
+        >Add</button>
+      </div>
+      {inputError && <p className="text-[10px] text-red-400">{inputError}</p>}
+    </div>
+  );
+}
+
 // ── Main component ─────────────────────────────────────────────────────────
 
 export function ChannelPolicyPanel({
   channelId,
   channelType,
   dmPolicy,
+  groupPolicy,
   onPolicyChange,
 }: ChannelPolicyPanelProps) {
   const type = channelType.toLowerCase();
@@ -302,15 +404,14 @@ export function ChannelPolicyPanel({
   const hasGroupPolicy = SUPPORTS_GROUP_POLICY.includes(type);
 
   const [currentDmPolicy, setCurrentDmPolicy]       = useState<string | undefined>(dmPolicy);
-  const [currentGroupPolicy, setCurrentGroupPolicy] = useState<string | undefined>(undefined);
+  const [currentGroupPolicy, setCurrentGroupPolicy] = useState<string | undefined>(groupPolicy);
   const [dmSaving, setDmSaving]                     = useState(false);
   const [dmSaved, setDmSaved]                       = useState(false);
   const [groupSaving, setGroupSaving]               = useState(false);
   const [groupSaved, setGroupSaved]                 = useState(false);
 
-  useEffect(() => {
-    setCurrentDmPolicy(dmPolicy);
-  }, [dmPolicy]);
+  useEffect(() => { setCurrentDmPolicy(dmPolicy); }, [dmPolicy]);
+  useEffect(() => { setCurrentGroupPolicy(groupPolicy); }, [groupPolicy]);
 
   const handleDmPolicyChange = async (value: string) => {
     setCurrentDmPolicy(value);
@@ -376,6 +477,7 @@ export function ChannelPolicyPanel({
 
       <PendingPairingsSection channelId={channelId} dmPolicy={currentDmPolicy} />
       <AllowlistSection channelId={channelId} dmPolicy={currentDmPolicy} />
+      <GroupAllowlistSection channelId={channelId} groupPolicy={currentGroupPolicy} />
     </div>
   );
 }
