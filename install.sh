@@ -31,11 +31,26 @@ RESET="\033[0m"
 # with UPDATE=1. Skips the interactive overwrite prompt.
 UPDATE_MODE="${UPDATE:-0}"
 
+# ── Flag parsing ──────────────────────────────────────────────────────────────
+# Supports:
+#   --no-onboard    Skip the first-time setup wizard after install
+#   --no-prompt     Skip all interactive prompts (implies --no-onboard)
+# Env var alternative: KRYTHOR_NON_INTERACTIVE=1
+NO_ONBOARD=0
+NO_PROMPT=0
+for _arg in "$@"; do
+  case "$_arg" in
+    --no-onboard|--no-setup) NO_ONBOARD=1 ;;
+    --no-prompt)             NO_PROMPT=1; NO_ONBOARD=1 ;;
+  esac
+done
+
 # ── Non-interactive mode ──────────────────────────────────────────────────────
 # Set KRYTHOR_NON_INTERACTIVE=1 to skip all prompts (CI/scripted installs).
 # The setup wizard is also skipped — configure providers via providers.json or
 # the Control UI after install.
 NON_INTERACTIVE="${KRYTHOR_NON_INTERACTIVE:-0}"
+if [ "$NO_PROMPT" = "1" ]; then NON_INTERACTIVE=1; fi
 
 echo ""
 echo -e "${CYAN}${BOLD}  KRYTHOR${RESET}${CYAN} — Installer${RESET}"
@@ -184,7 +199,7 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Handle "krythor update" — re-runs the installer script
 if [ "$1" = "update" ]; then
   echo "Checking for Krythor updates..."
-  UPDATE=1 curl -fsSL https://raw.githubusercontent.com/LuxaGrid/Krythor/main/install.sh | bash
+  UPDATE=1 curl -fsSL --proto '=https' --tlsv1.2 https://raw.githubusercontent.com/LuxaGrid/Krythor/main/install.sh | bash
   exit 0
 fi
 
@@ -229,7 +244,7 @@ add_to_profile "${HOME}/.zshrc"
 
 # ── Run first-time setup wizard ───────────────────────────────────────────────
 SETUP_SCRIPT="${INSTALL_DIR}/packages/setup/dist/bin/setup.js"
-if [ -f "$SETUP_SCRIPT" ] && [ "$UPDATE_MODE" != "1" ] && [ "$NON_INTERACTIVE" != "1" ]; then
+if [ -f "$SETUP_SCRIPT" ] && [ "$UPDATE_MODE" != "1" ] && [ "$NON_INTERACTIVE" != "1" ] && [ "$NO_ONBOARD" != "1" ]; then
   echo ""
   echo -e "${CYAN}  Running first-time setup...${RESET}"
   echo ""
@@ -238,8 +253,8 @@ if [ -f "$SETUP_SCRIPT" ] && [ "$UPDATE_MODE" != "1" ] && [ "$NON_INTERACTIVE" !
   else
     node "$SETUP_SCRIPT" || true
   fi
-elif [ "$NON_INTERACTIVE" = "1" ]; then
-  echo -e "${YELLOW}  Setup wizard skipped (KRYTHOR_NON_INTERACTIVE=1).${RESET}"
+elif [ "$NON_INTERACTIVE" = "1" ] || [ "$NO_ONBOARD" = "1" ]; then
+  echo -e "${YELLOW}  Setup wizard skipped.${RESET}"
   echo "  Configure providers via: krythor setup  or the Control UI after starting."
 fi
 

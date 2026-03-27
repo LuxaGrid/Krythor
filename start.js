@@ -2050,8 +2050,10 @@ const COMMAND_HELP = {
       '  - Stale agent model references',
       '',
       'Flags:',
-      '  --test-providers  Make a live API call to each enabled provider to',
-      '                    validate credentials and reachability.',
+      '  --test-providers    Make a live API call to each enabled provider to',
+      '                      validate credentials and reachability.',
+      '  --non-interactive   Suppress all interactive prompts; useful for',
+      '                      post-upgrade checks and CI/automation.',
       '',
       'Prints PASS / WARN / FAIL per check. Exit 1 on critical issues.',
     ],
@@ -2276,10 +2278,13 @@ function runHelp() {
 // (e.g. `krythor policy doctor` must not trigger this block)
 if (process.argv[2] === 'doctor' || (process.argv.includes('doctor') && !['policy', 'audit', 'config'].includes(process.argv[2] || ''))) {
   const doctorScript = join(__dirname, 'packages', 'setup', 'dist', 'bin', 'setup.js');
-  // Pass --test-providers through if present
-  const testFlag = process.argv.includes('--test-providers') ? ' --test-providers' : '';
+  // Pass flags through to setup.js doctor
+  const doctorFlags = [];
+  if (process.argv.includes('--test-providers'))  doctorFlags.push('--test-providers');
+  if (process.argv.includes('--non-interactive')) doctorFlags.push('--non-interactive');
+  const doctorFlagStr = doctorFlags.length ? ' ' + doctorFlags.join(' ') : '';
   try {
-    execSync(`"${NODE_BIN}" "${doctorScript}" doctor${testFlag}`, { stdio: 'inherit' });
+    execSync(`"${NODE_BIN}" "${doctorScript}" doctor${doctorFlagStr}`, { stdio: 'inherit' });
   } catch { /* exit code from setup.js propagates */ }
   process.exit(0);
 }

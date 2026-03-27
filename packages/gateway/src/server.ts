@@ -231,8 +231,11 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
     app.addHook('preHandler', async (req, reply) => {
       const url = req.url ?? '';
       // Public routes — no token required
-      if (url === '/health' || url.startsWith('/health?')) return;
-      if (url === '/ready' || url.startsWith('/ready?')) return;
+      if (url === '/health'    || url.startsWith('/health?'))    return;
+      if (url === '/ready'     || url.startsWith('/ready?'))     return;
+      if (url === '/healthz'   || url.startsWith('/healthz?'))   return;
+      if (url === '/liveness'  || url.startsWith('/liveness?'))  return;
+      if (url === '/readyz'    || url.startsWith('/readyz?'))    return;
       if (!url.startsWith('/api/') && !url.startsWith('/ws/')) return;
 
       const authHeader = req.headers['authorization'] ?? '';
@@ -892,6 +895,20 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   // Readiness check — returns 200 when db + guard are ok, 503 otherwise.
   // Public (no auth required) so load balancers and health checks can poll it.
   app.get('/ready', async (_req, reply) => {
+    const result = await checkReadiness(memory, models, guard);
+    reply.code(result.ready ? 200 : 503).send(result);
+  });
+
+  // Liveness probe — minimal response for Docker/k8s HEALTHCHECK and load balancers.
+  // Always returns 200 as long as the process is alive and the event loop is running.
+  // Aliased at both /healthz and /liveness.
+  // Public (no auth required) — callers that can reach this already have network access.
+  const livenessHandler = async () => ({ ok: true, ts: Date.now() });
+  app.get('/healthz',  livenessHandler);
+  app.get('/liveness', livenessHandler);
+
+  // Readiness alias for k8s convention.
+  app.get('/readyz', async (_req, reply) => {
     const result = await checkReadiness(memory, models, guard);
     reply.code(result.ready ? 200 : 503).send(result);
   });

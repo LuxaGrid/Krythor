@@ -11,7 +11,15 @@
 #  Creates command: krythor  (added to user PATH)
 #
 #  No Node.js required — the bundled runtime is included in the zip.
+#
+#  Flags:
+#    -NoOnboard    Skip the first-time setup wizard
+#    -NoPrompt     Skip all interactive prompts (implies -NoOnboard)
 # ============================================================
+param(
+  [switch]$NoOnboard,
+  [switch]$NoPrompt
+)
 $ErrorActionPreference = 'Stop'
 
 $Repo       = 'LuxaGrid/Krythor'
@@ -21,11 +29,11 @@ $ApiUrl     = "https://api.github.com/repos/$Repo/releases/latest"
 # Update mode: set by the krythor.bat launcher when user runs "krythor update"
 $UpdateMode = $env:KRYTHOR_UPDATE -eq '1'
 
-# Non-interactive mode: set KRYTHOR_NON_INTERACTIVE=1 to skip all prompts.
-# Useful for CI pipelines and scripted/unattended installations.
+# Non-interactive mode: set KRYTHOR_NON_INTERACTIVE=1 or pass -NoPrompt to skip all prompts.
 # The setup wizard is also skipped — configure providers via providers.json or
 # the Control UI after install.
-$NonInteractive = $env:KRYTHOR_NON_INTERACTIVE -eq '1'
+$NonInteractive = ($env:KRYTHOR_NON_INTERACTIVE -eq '1') -or $NoPrompt
+if ($NoPrompt) { $NoOnboard = $true }
 
 function Write-Step { param($msg) Write-Host "  $msg" -ForegroundColor Cyan }
 function Write-Ok   { param($msg) Write-Host "  [OK] $msg" -ForegroundColor Green }
@@ -213,7 +221,7 @@ if (Test-Path $BundledNode) {
 
 # ── Run first-time setup wizard ───────────────────────────────────────────────
 $setupScript = Join-Path $InstallDir 'packages\setup\dist\bin\setup.js'
-if ((Test-Path $setupScript) -and -not $UpdateMode -and -not $NonInteractive) {
+if ((Test-Path $setupScript) -and -not $UpdateMode -and -not $NonInteractive -and -not $NoOnboard) {
   Write-Host ""
   Write-Step "Running first-time setup..."
   Write-Host ""
@@ -226,9 +234,9 @@ if ((Test-Path $setupScript) -and -not $UpdateMode -and -not $NonInteractive) {
   } catch {
     Write-Warn "Setup wizard had an issue — you can run it later with: krythor setup"
   }
-} elseif ($NonInteractive) {
+} elseif ($NonInteractive -or $NoOnboard) {
   Write-Host ""
-  Write-Warn "Setup wizard skipped (KRYTHOR_NON_INTERACTIVE=1)."
+  Write-Warn "Setup wizard skipped."
   Write-Host "  Configure providers via: krythor setup  or the Control UI after starting." -ForegroundColor White
 }
 

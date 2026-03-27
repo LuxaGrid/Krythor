@@ -2,7 +2,7 @@
 # Build: docker build -t krythor .
 # Run:   docker run -p 47200:47200 -v krythor-data:/data krythor
 
-FROM node:20-alpine
+FROM node:22-alpine
 
 WORKDIR /app
 
@@ -46,5 +46,9 @@ EXPOSE 47200
 RUN addgroup -S krythor && adduser -S krythor -G krythor
 RUN chown -R krythor:krythor /app
 USER krythor
+
+# Liveness probe — pings the lightweight /healthz endpoint
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD wget -qO- http://127.0.0.1:47200/healthz || exit 1
 
 CMD ["node", "start.js", "--no-browser"]

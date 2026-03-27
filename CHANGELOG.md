@@ -11,6 +11,18 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+#### Install, Docker & Health hardening (2026-03-27)
+
+- **`/healthz` and `/liveness` endpoints**: lightweight liveness probes (always 200 while the process is alive, no auth required); intended for Docker `HEALTHCHECK`, k8s liveness probes, and load balancers that need a fast signal without the full `/health` payload
+- **`/readyz` alias**: mirrors `/ready` for k8s readiness convention
+- **Dockerfile: Node 22-alpine**: base image updated from `node:20-alpine` to `node:22-alpine` (LTS); aligns with the `engines: ">=20"` field while using a more current runtime
+- **Dockerfile: built-in `HEALTHCHECK`**: Docker image now includes a `HEALTHCHECK` directive that pings `/healthz` every 30 s; Docker marks the container unhealthy if 3 consecutive probes fail, enabling orchestration-layer restart
+- **install.sh: `--no-onboard` / `--no-setup` flags**: skip the first-time setup wizard without needing the env var; equivalent to `KRYTHOR_NON_INTERACTIVE=1` but more discoverable for CI pipelines
+- **install.sh: `--no-prompt` flag**: skips all interactive prompts (implies `--no-onboard`)
+- **install.ps1: `-NoOnboard` / `-NoPrompt` parameters**: same flags for the Windows PowerShell installer; `param()` block added so they work whether the script is sourced or invoked directly
+- **install.sh: TLS-pinned curl in launcher update**: the embedded `krythor update` command in the generated launcher now uses `--proto '=https' --tlsv1.2` to prevent protocol downgrade attacks
+- **`krythor doctor --non-interactive`**: the flag now passes through to the setup.js doctor sub-command; useful for post-upgrade automated checks that should never block on a prompt
+
 #### Setup & CLI improvements (2026-03-27)
 
 - **QuickStart vs Advanced setup mode**: wizard opens with a mode selector — QuickStart configures a provider and starts immediately with secure defaults; Advanced gives full control over gateway port/bind/auth, chat channels, and web search

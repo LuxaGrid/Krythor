@@ -258,6 +258,19 @@ The script will:
 - Compile the native database module against the bundled runtime
 - Run first-time setup
 
+**Skip setup wizard** (CI / automation):
+
+```bash
+# Mac / Linux
+curl -fsSL https://raw.githubusercontent.com/LuxaGrid/Krythor/main/install.sh | bash -s -- --no-onboard
+
+# Windows
+iwr https://raw.githubusercontent.com/LuxaGrid/Krythor/main/install.ps1 | iex -NoOnboard
+
+# Or via env var (both platforms)
+KRYTHOR_NON_INTERACTIVE=1 curl -fsSL ... | bash
+```
+
 After install, start Krythor with:
 
 ```bash
@@ -341,6 +354,15 @@ Or build and run directly:
 docker build -t krythor .
 docker run -p 47200:47200 -v krythor-data:/data krythor
 ```
+
+The Docker image includes a built-in `HEALTHCHECK` that probes the `/healthz` liveness endpoint every 30 seconds. Three additional probe endpoints are available:
+
+| Endpoint | Auth | Purpose |
+|----------|------|---------|
+| `GET /healthz` | None | Liveness probe — fast, always 200 while process is alive |
+| `GET /liveness` | None | Alias for `/healthz` |
+| `GET /ready` or `/readyz` | None | Readiness — returns 503 until DB + guard are initialised |
+| `GET /health` | None | Full health snapshot (version, models, agents, memory, etc.) |
 
 See `docs/DEPLOYMENT.md` for environment variables, production setup, and backup strategy.
 
