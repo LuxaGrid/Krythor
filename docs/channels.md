@@ -191,17 +191,57 @@ The pairing code is required. The pairing step only needs to be completed once; 
 
 All chat channel endpoints are under `/api/chat-channels/` and require a Bearer token.
 
+### Channel management
+
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/chat-channels/` | List all configured channels |
-| POST | `/api/chat-channels/` | Create a new channel |
-| GET | `/api/chat-channels/:id` | Get a single channel (secrets masked) |
-| PUT | `/api/chat-channels/:id` | Update channel configuration |
+| GET | `/api/chat-channels/providers` | List available channel provider types |
+| GET | `/api/chat-channels` | List all configured channels |
+| POST | `/api/chat-channels` | Create a new channel |
+| GET | `/api/chat-channels/:id` | Get a single channel (secrets masked, access policy included) |
+| PUT | `/api/chat-channels/:id` | Update channel configuration (credentials, access policy, delivery settings) |
 | DELETE | `/api/chat-channels/:id` | Remove a channel |
-| POST | `/api/chat-channels/:id/connect` | Trigger a (re)connection attempt |
-| POST | `/api/chat-channels/:id/disconnect` | Disconnect a channel without deleting it |
+| POST | `/api/chat-channels/:id/test` | Test channel connection |
 | GET | `/api/chat-channels/:id/status` | Get the current status of a channel |
-| POST | `/api/chat-channels/:id/pairing-code` | Request a new WhatsApp pairing code |
+| POST | `/api/chat-channels/:id/restart` | Restart a running channel instance |
+| POST | `/api/chat-channels/:id/pair` | Generate a WhatsApp pairing code |
+
+### DM pairing
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/chat-channels/:id/pairing` | List pending pairing requests |
+| POST | `/api/chat-channels/:id/pairing/:code/approve` | Approve a pairing request |
+| POST | `/api/chat-channels/:id/pairing/:code/deny` | Deny a pairing request |
+| GET | `/api/chat-channels/:id/allowlist` | List approved senders |
+| POST | `/api/chat-channels/:id/allowlist` | Add a sender directly |
+| DELETE | `/api/chat-channels/:id/allowlist/:senderId` | Remove a sender |
+
+### Group management
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/chat-channels/:id/groups` | List configured groups (includes `requireMention` and `allowFrom`) |
+| POST | `/api/chat-channels/:id/groups` | Add or update a group (`groupId`, `requireMention`, `allowFrom`) |
+| DELETE | `/api/chat-channels/:id/groups/:groupId` | Remove a group from the allowlist |
+
+### Updatable fields via `PUT /api/chat-channels/:id`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `displayName` | string | Human-readable channel name |
+| `enabled` | boolean | Enable or disable the channel |
+| `credentials` | object | Credential key/value pairs (masked values `***` are preserved) |
+| `agentId` | string | Agent that handles messages for this channel |
+| `dmPolicy` | string | DM access policy: `pairing` \| `allowlist` \| `open` \| `disabled` |
+| `groupPolicy` | string | Group access policy: `open` \| `allowlist` \| `disabled` |
+| `allowFrom` | string[] | DM sender allowlist (used with `dmPolicy: allowlist`) |
+| `groupAllowFrom` | string[] | Channel-wide group sender allowlist (fallback for groups without their own `allowFrom`) |
+| `resetTriggers` | string[] | Messages that start a new conversation (default `["/new"]`) |
+| `historyLimit` | integer | Max context messages per turn (0 = disabled, default 50) |
+| `textChunkLimit` | integer | Max chars per outbound message (default: channel limit) |
+| `chunkMode` | string | Split strategy: `length` \| `newline` |
+| `ackReaction` | string | Emoji sent on message receipt (Telegram only, `""` disables, default `👀`) |
 
 ---
 

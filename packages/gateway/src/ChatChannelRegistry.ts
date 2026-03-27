@@ -41,6 +41,12 @@ export interface ChatChannelConfig {
   dmPolicy?: 'pairing' | 'allowlist' | 'open' | 'disabled';
   groupPolicy?: 'open' | 'allowlist' | 'disabled';
   allowFrom?: string[];
+  /**
+   * Channel-wide group sender allowlist. Applied when groupPolicy is 'allowlist'
+   * and a group does not have its own allowFrom. Provides a simpler alternative
+   * to per-group allowFrom when the same sender set applies to all groups.
+   */
+  groupAllowFrom?: string[];
   groups?: Record<string, { requireMention?: boolean; allowFrom?: string[] }>;
   /**
    * Keywords that trigger a new conversation for a sender (case-insensitive exact match).

@@ -42,6 +42,8 @@ export interface DiscordInboundConfig {
   /** Guild channel policy. Default: 'open' (guild channels are generally trusted). */
   groupPolicy?: 'open' | 'allowlist' | 'disabled';
   allowFrom?: string[];
+  /** Channel-wide guild sender allowlist — used when groupPolicy is 'allowlist'. */
+  groupAllowFrom?: string[];
   guildId?: string;
   resetTriggers?: string[];
   /** Max context messages injected per turn. Default: 50. 0 = disabled. */
@@ -265,9 +267,11 @@ export class DiscordInbound {
       }
 
       if (groupPolicy === 'allowlist') {
+        // groupAllowFrom takes priority over allowFrom for guild messages
+        const effectiveAllowFrom = this.config.groupAllowFrom ?? this.config.allowFrom;
         const allowed =
           this.pairingStore.isAllowed(this.channelId, authorId) ||
-          (this.config.allowFrom?.includes(authorId) ?? false);
+          (effectiveAllowFrom?.includes(authorId) ?? false);
         if (!allowed) {
           logger.info('[discord] Guild sender not on allowlist', { author: authorId, guildId: this.config.guildId });
           return; // silently ignore — no pairing flow for guild channels

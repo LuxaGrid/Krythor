@@ -41,6 +41,8 @@ export interface TelegramInboundConfig {
   dmPolicy?: 'pairing' | 'allowlist' | 'open' | 'disabled';
   groupPolicy?: 'open' | 'allowlist' | 'disabled';
   allowFrom?: string[];
+  /** Channel-wide group sender allowlist — fallback when per-group allowFrom is not set. */
+  groupAllowFrom?: string[];
   groups?: Record<string, { requireMention?: boolean; allowFrom?: string[] }>;
   resetTriggers?: string[];
   /** Max context messages injected per turn. Default: 50. 0 = disabled. */
@@ -269,10 +271,11 @@ export class TelegramInbound {
           return;
         }
 
-        // Per-group sender allowlist
-        if (groupCfg.allowFrom && groupCfg.allowFrom.length > 0) {
-          if (!groupCfg.allowFrom.includes(fromId)) {
-            logger.info('[telegram] Group sender not in per-group allowFrom — ignoring', { chatId, fromId });
+        // Per-group sender allowlist (falls back to channel-wide groupAllowFrom)
+        const effectiveGroupAllowFrom = groupCfg.allowFrom ?? this.config.groupAllowFrom;
+        if (effectiveGroupAllowFrom && effectiveGroupAllowFrom.length > 0) {
+          if (!effectiveGroupAllowFrom.includes(fromId)) {
+            logger.info('[telegram] Group sender not in allowFrom — ignoring', { chatId, fromId });
             return;
           }
         }

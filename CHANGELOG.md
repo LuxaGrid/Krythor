@@ -11,6 +11,14 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+#### Chat channel configuration API improvements (2026-03-27)
+
+- **`groupAllowFrom` config field**: new channel-wide group sender allowlist. Used when `groupPolicy: 'allowlist'` and a group does not have its own per-group `allowFrom`. Simplifies configuration when the same sender set applies to all groups. Available in `ChatChannelConfig`, `TelegramInboundConfig`, and `DiscordInboundConfig`
+- **`sanitiseConfig` now includes access policy fields**: `GET /api/chat-channels` and `GET /api/chat-channels/:id` now return `dmPolicy`, `groupPolicy`, `allowFrom`, `groupAllowFrom`, `groups`, `resetTriggers`, `historyLimit`, `textChunkLimit`, `chunkMode`, and `ackReaction`. Previously these were stored in config but invisible to API clients
+- **`PUT /api/chat-channels/:id` accepts access policy fields**: `dmPolicy`, `groupPolicy`, `allowFrom`, `groupAllowFrom`, `resetTriggers`, `historyLimit`, `textChunkLimit`, `chunkMode`, and `ackReaction` can now all be updated via the REST API with schema validation. Previously `additionalProperties: false` blocked these fields entirely
+- **Groups API includes `allowFrom`**: `GET /api/chat-channels/:id/groups` now returns `allowFrom` per group; `POST /api/chat-channels/:id/groups` accepts `allowFrom` and merges it into the stored group config. Existing group entries without `allowFrom` are preserved
+- **`groupAllowFrom` wired end-to-end**: flows from `ChatChannelRegistry` → `InboundChannelManager` → `TelegramInbound` / `DiscordInbound`. For Telegram, per-group `allowFrom` takes priority; `groupAllowFrom` is the fallback. For Discord, `groupAllowFrom` takes priority over `allowFrom` when enforcing guild `allowlist` policy
+
 #### Chat channel improvements (2026-03-27)
 
 - **`historyLimit` config field**: `ChatChannelConfig`, `TelegramInboundConfig`, and `DiscordInboundConfig` now accept `historyLimit` (default 50). Context messages injected per turn are capped at the last N messages, preventing unbounded growth that would eventually exceed model context windows

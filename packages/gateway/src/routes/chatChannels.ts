@@ -61,6 +61,18 @@ function sanitiseConfig(config: ChatChannelConfig): Record<string, unknown> {
     lastHealthStatus:  config.lastHealthStatus,
     lastError:         config.lastError,
     connectedAt:       config.connectedAt,
+    // Access policy fields
+    dmPolicy:          config.dmPolicy,
+    groupPolicy:       config.groupPolicy,
+    allowFrom:         config.allowFrom,
+    groupAllowFrom:    config.groupAllowFrom,
+    groups:            config.groups,
+    resetTriggers:     config.resetTriggers,
+    // Delivery tuning fields
+    historyLimit:      config.historyLimit,
+    textChunkLimit:    config.textChunkLimit,
+    chunkMode:         config.chunkMode,
+    ackReaction:       config.ackReaction,
   };
 }
 
@@ -149,7 +161,7 @@ export function registerChatChannelRoutes(
     });
   });
 
-  // PUT /api/chat-channels/:id — update credentials / agentId / enabled
+  // PUT /api/chat-channels/:id — update credentials / agentId / enabled / access policy
   app.put<{
     Params: { id: string };
     Body: {
@@ -157,16 +169,34 @@ export function registerChatChannelRoutes(
       enabled?: boolean;
       credentials?: Record<string, string>;
       agentId?: string;
+      dmPolicy?: 'pairing' | 'allowlist' | 'open' | 'disabled';
+      groupPolicy?: 'open' | 'allowlist' | 'disabled';
+      allowFrom?: string[];
+      groupAllowFrom?: string[];
+      resetTriggers?: string[];
+      historyLimit?: number;
+      textChunkLimit?: number;
+      chunkMode?: 'length' | 'newline';
+      ackReaction?: string;
     };
   }>('/api/chat-channels/:id', {
     schema: {
       body: {
         type: 'object',
         properties: {
-          displayName: { type: 'string', maxLength: 128 },
-          enabled:     { type: 'boolean' },
-          credentials: { type: 'object', additionalProperties: { type: 'string' } },
-          agentId:     { type: 'string', maxLength: 128 },
+          displayName:    { type: 'string', maxLength: 128 },
+          enabled:        { type: 'boolean' },
+          credentials:    { type: 'object', additionalProperties: { type: 'string' } },
+          agentId:        { type: 'string', maxLength: 128 },
+          dmPolicy:       { type: 'string', enum: ['pairing', 'allowlist', 'open', 'disabled'] },
+          groupPolicy:    { type: 'string', enum: ['open', 'allowlist', 'disabled'] },
+          allowFrom:      { type: 'array', items: { type: 'string' }, maxItems: 500 },
+          groupAllowFrom: { type: 'array', items: { type: 'string' }, maxItems: 500 },
+          resetTriggers:  { type: 'array', items: { type: 'string' }, maxItems: 20 },
+          historyLimit:   { type: 'integer', minimum: 0, maximum: 500 },
+          textChunkLimit: { type: 'integer', minimum: 100, maximum: 10000 },
+          chunkMode:      { type: 'string', enum: ['length', 'newline'] },
+          ackReaction:    { type: 'string', maxLength: 32 },
         },
         additionalProperties: false,
       },
@@ -175,7 +205,9 @@ export function registerChatChannelRoutes(
     const existing = registry.getConfig(req.params.id);
     if (!existing) return reply.code(404).send({ error: 'Channel not found' });
 
-    const { displayName, enabled, credentials, agentId } = req.body;
+    const { displayName, enabled, credentials, agentId,
+            dmPolicy, groupPolicy, allowFrom, groupAllowFrom,
+            resetTriggers, historyLimit, textChunkLimit, chunkMode, ackReaction } = req.body;
 
     // Merge credentials — incoming secret fields that are '***' keep the stored value
     let mergedCredentials = { ...existing.credentials };
@@ -193,6 +225,15 @@ export function registerChatChannelRoutes(
       ...(enabled !== undefined && { enabled }),
       credentials: mergedCredentials,
       ...(agentId !== undefined && { agentId }),
+      ...(dmPolicy !== undefined && { dmPolicy }),
+      ...(groupPolicy !== undefined && { groupPolicy }),
+      ...(allowFrom !== undefined && { allowFrom }),
+      ...(groupAllowFrom !== undefined && { groupAllowFrom }),
+      ...(resetTriggers !== undefined && { resetTriggers }),
+      ...(historyLimit !== undefined && { historyLimit }),
+      ...(textChunkLimit !== undefined && { textChunkLimit }),
+      ...(chunkMode !== undefined && { chunkMode }),
+      ...(ackReaction !== undefined && { ackReaction }),
     };
 
     registry.saveConfig(updated);
@@ -370,6 +411,7 @@ export function registerChatChannelRoutes(
       groups: Object.entries(groups).map(([groupId, cfg]) => ({
         groupId,
         requireMention: cfg.requireMention ?? false,
+        allowFrom:      cfg.allowFrom ?? [],
       })),
     });
   });
@@ -377,7 +419,7 @@ export function registerChatChannelRoutes(
   // POST /api/chat-channels/:id/groups — add or update a group
   app.post<{
     Params: { id: string };
-    Body: { groupId: string; requireMention?: boolean };
+    Body: { groupId: string; requireMention?: boolean; allowFrom?: string[] };
   }>('/api/chat-channels/:id/groups', {
     schema: {
       body: {
@@ -386,6 +428,7 @@ export function registerChatChannelRoutes(
         properties: {
           groupId:        { type: 'string', minLength: 1, maxLength: 256 },
           requireMention: { type: 'boolean' },
+          allowFrom:      { type: 'array', items: { type: 'string' }, maxItems: 500 },
         },
         additionalProperties: false,
       },
@@ -393,15 +436,28 @@ export function registerChatChannelRoutes(
   }, async (req, reply) => {
     const config = registry.getConfig(req.params.id);
     if (!config) return reply.code(404).send({ error: 'Channel not found' });
-    const { groupId, requireMention } = req.body;
+    const { groupId, requireMention, allowFrom } = req.body;
+    const existing = config.groups?.[groupId] ?? {};
     registry.saveConfig({
       ...config,
       groups: {
         ...(config.groups ?? {}),
-        [groupId]: { requireMention: requireMention ?? false },
+        [groupId]: {
+          requireMention: requireMention ?? existing.requireMention ?? false,
+          ...(allowFrom !== undefined
+            ? { allowFrom }
+            : existing.allowFrom !== undefined
+              ? { allowFrom: existing.allowFrom }
+              : {}),
+        },
       },
     });
-    return reply.code(201).send({ ok: true, groupId, requireMention: requireMention ?? false });
+    return reply.code(201).send({
+      ok: true,
+      groupId,
+      requireMention: requireMention ?? existing.requireMention ?? false,
+      allowFrom: allowFrom ?? existing.allowFrom ?? [],
+    });
   });
 
   // DELETE /api/chat-channels/:id/groups/:groupId — remove a group
