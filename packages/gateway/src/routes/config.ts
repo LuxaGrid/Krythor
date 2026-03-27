@@ -36,6 +36,16 @@ export interface AppConfig {
 export function registerConfigRoute(app: FastifyInstance, configDir: string, guard?: GuardEngine, orchestrator?: AgentOrchestrator, memory?: MemoryEngine): void {
   const configPath = join(configDir, 'app-config.json');
 
+  /** Read the raw file object (all fields preserved — includes gatewayToken etc.). */
+  function readRaw(): Record<string, unknown> {
+    if (!existsSync(configPath)) return {};
+    try {
+      return JSON.parse(readFileSync(configPath, 'utf8')) as Record<string, unknown>;
+    } catch {
+      return {};
+    }
+  }
+
   function read(): AppConfig {
     if (!existsSync(configPath)) return {};
     try {
@@ -51,8 +61,13 @@ export function registerConfigRoute(app: FastifyInstance, configDir: string, gua
     }
   }
 
+  /**
+   * Write AppConfig fields back, preserving all unknown fields (e.g. gatewayToken)
+   * that live in the same file but are managed by other subsystems.
+   */
   function write(config: AppConfig): void {
-    atomicWriteJSON(configPath, config);
+    const raw = readRaw();
+    atomicWriteJSON(configPath, { ...raw, ...config });
   }
 
   // Apply settings from config at startup
