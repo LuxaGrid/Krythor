@@ -15,7 +15,7 @@
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
-import { randomBytes } from 'crypto';
+import { randomBytes, timingSafeEqual } from 'crypto';
 
 export type DeviceApprovalStatus = 'approved' | 'pending' | 'denied';
 
@@ -115,7 +115,7 @@ export class DevicePairingStore {
     const tokenValid = device.status === 'approved' &&
       !!device.deviceToken &&
       !!suppliedToken &&
-      device.deviceToken === suppliedToken;
+      timingSafeEqual(Buffer.from(device.deviceToken, 'utf8'), Buffer.from(suppliedToken, 'utf8'));
 
     this.devices.set(deviceId, refreshed);
     this.persist();
@@ -187,6 +187,18 @@ export class DevicePairingStore {
   remove(deviceId: string): void {
     this.devices.delete(deviceId);
     this.persist();
+  }
+
+  /**
+   * Update the label of an existing device without rotating the device token.
+   */
+  updateLabel(deviceId: string, label: string): PairedDevice {
+    const device = this.devices.get(deviceId);
+    if (!device) throw new Error(`Device not found: ${deviceId}`);
+    const updated: PairedDevice = { ...device, label: label.trim() || undefined };
+    this.devices.set(deviceId, updated);
+    this.persist();
+    return updated;
   }
 
   listAll(): PairedDevice[] {

@@ -965,7 +965,8 @@ export interface PairedDevice {
   label?: string;
   requestedAt: number;
   approvedAt?: number;
-  lastSeenAt: number;
+  deniedAt?: number;
+  lastSeenAt?: number;
 }
 
 export async function listDevices(): Promise<{ devices: PairedDevice[] }> {
@@ -990,4 +991,25 @@ export async function removeDevice(id: string): Promise<{ ok: boolean }> {
 
 export async function updateDeviceLabel(id: string, label: string): Promise<{ ok: boolean; device: PairedDevice }> {
   return req('PATCH', `/devices/${encodeURIComponent(id)}`, { label });
+}
+
+// ── Nodes ───────────────────────────────────────────────────────────────────
+
+export interface ConnectedNode {
+  deviceId: string;
+  caps: string[];
+  connectedAt: number;
+}
+
+export async function listNodes(): Promise<{ nodes: ConnectedNode[] }> {
+  return req('GET', '/nodes');
+}
+
+export async function invokeNode(
+  deviceId: string,
+  command: string,
+  params?: unknown,
+  timeoutMs?: number,
+): Promise<{ ok: boolean; result: unknown }> {
+  return req('POST', `/nodes/${encodeURIComponent(deviceId)}/invoke`, { command, params, timeoutMs });
 }

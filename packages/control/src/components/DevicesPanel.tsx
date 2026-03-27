@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { listDevices, approveDevice, denyDevice, removeDevice, updateDeviceLabel } from '../api.ts';
-import type { PairedDevice } from '../api.ts';
+import { listDevices, approveDevice, denyDevice, removeDevice, updateDeviceLabel, listNodes } from '../api.ts';
+import type { PairedDevice, ConnectedNode } from '../api.ts';
 import { PanelHeader } from './PanelHeader.tsx';
 
 // ─── DevicesPanel ─────────────────────────────────────────────────────────────
@@ -9,7 +9,8 @@ import { PanelHeader } from './PanelHeader.tsx';
 // or rename devices. Pending devices show a prominent approval prompt.
 //
 
-function fmtTime(ts: number): string {
+function fmtTime(ts: number | undefined): string {
+  if (!ts) return '—';
   const d = new Date(ts);
   return d.toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' });
 }
@@ -89,12 +90,14 @@ function LabelEditor({
 
 function DeviceRow({
   device,
+  isLive,
   onApprove,
   onDeny,
   onRemove,
   onRename,
 }: {
   device: PairedDevice;
+  isLive: boolean;
   onApprove: () => void;
   onDeny: () => void;
   onRemove: () => void;
@@ -109,6 +112,9 @@ function DeviceRow({
           <div className="flex items-center gap-2">
             <span className="text-xs font-semibold text-zinc-200 truncate">{displayName}</span>
             {statusBadge(device.status)}
+            {isLive && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-900/40 text-blue-400 border border-blue-800/30">live</span>
+            )}
           </div>
           <span className="text-[10px] text-zinc-600 font-mono truncate">{device.deviceId}</span>
         </div>
@@ -165,6 +171,7 @@ function DeviceRow({
 
 export function DevicesPanel() {
   const [devices, setDevices] = useState<PairedDevice[]>([]);
+  const [nodes, setNodes] = useState<ConnectedNode[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   const [renaming, setRenaming] = useState<PairedDevice | null>(null);
@@ -172,8 +179,9 @@ export function DevicesPanel() {
 
   const load = useCallback(async () => {
     try {
-      const res = await listDevices();
-      setDevices(res.devices);
+      const [devRes, nodeRes] = await Promise.allSettled([listDevices(), listNodes()]);
+      if (devRes.status === 'fulfilled') setDevices(devRes.value.devices);
+      if (nodeRes.status === 'fulfilled') setNodes(nodeRes.value.nodes);
       setErr('');
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -222,6 +230,7 @@ export function DevicesPanel() {
     await load();
   };
 
+  const connectedNodeIds = new Set(nodes.map(n => n.deviceId));
   const filtered = devices.filter(d => filter === 'all' || d.status === filter);
   const pendingCount = devices.filter(d => d.status === 'pending').length;
 
@@ -267,6 +276,7 @@ export function DevicesPanel() {
           <DeviceRow
             key={d.deviceId}
             device={d}
+            isLive={connectedNodeIds.has(d.deviceId)}
             onApprove={() => void handleApprove(d.deviceId)}
             onDeny={() => void handleDeny(d.deviceId)}
             onRemove={() => void handleRemove(d.deviceId)}

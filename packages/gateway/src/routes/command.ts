@@ -3,6 +3,7 @@ import type { KrythorCore, AgentOrchestrator } from '@krythor/core';
 import type { AgentEvent } from '@krythor/core';
 import type { GuardEngine } from '@krythor/guard';
 import type { ConversationStore } from '@krythor/memory';
+import type { DevicePairingStore } from '../ws/DevicePairingStore.js';
 import { classifyError } from '../errors.js';
 
 /** Register a requestId→runId mapping on the app instance (set in server.ts). */
@@ -18,6 +19,7 @@ export function registerCommandRoute(
   broadcast: (msg: unknown) => void,
   guard?: GuardEngine,
   convStore?: ConversationStore,
+  deviceStore?: DevicePairingStore,
 ): void {
   app.post('/api/command', {
     config: {
@@ -192,6 +194,61 @@ export function registerCommandRoute(
         return slashReply({
           output: 'Usage: /subagents [list | kill <runId> | log <runId>]',
           command: 'subagents:help',
+        });
+      }
+
+      if (cmd === '/devices') {
+        if (!deviceStore) {
+          return slashReply({ output: 'Device store unavailable.', command: 'devices:error' });
+        }
+        const [sub, ...subArgs] = args;
+        const subArg = subArgs.join(' ').trim();
+
+        if (!sub || sub === 'list') {
+          const all = deviceStore.listAll();
+          if (all.length === 0) {
+            return slashReply({ output: 'No devices registered.', command: 'devices:list', devices: [] });
+          }
+          const lines = all.map(d => {
+            const label = d.label ? ` (${d.label})` : '';
+            const caps = d.caps && d.caps.length > 0 ? ` caps=[${d.caps.join(', ')}]` : '';
+            return `• ${d.deviceId}${label} — ${d.status} | role:${d.role} | ${d.platform}/${d.deviceFamily}${caps}`;
+          });
+          return slashReply({ output: lines.join('\n'), command: 'devices:list', devices: all.map(d => { const { deviceToken: _, ...safe } = d; return safe; }) });
+        }
+
+        if (sub === 'pending') {
+          const pending = deviceStore.listPending();
+          if (pending.length === 0) {
+            return slashReply({ output: 'No pending devices.', command: 'devices:pending', devices: [] });
+          }
+          const lines = pending.map(d => `• ${d.deviceId} — requested ${new Date(d.requestedAt).toISOString()} | ${d.platform}/${d.deviceFamily}`);
+          return slashReply({ output: lines.join('\n'), command: 'devices:pending', devices: pending.map(d => { const { deviceToken: _, ...safe } = d; return safe; }) });
+        }
+
+        if (sub === 'approve') {
+          if (!subArg) return slashReply({ output: 'Usage: /devices approve <deviceId>', command: 'devices:approve' });
+          try {
+            const updated = deviceStore.approve(subArg);
+            return slashReply({ output: `Device "${subArg}" approved.`, command: 'devices:approve', deviceId: updated.deviceId, status: updated.status });
+          } catch (err) {
+            return slashReply({ output: `Failed to approve device: ${err instanceof Error ? err.message : String(err)}`, command: 'devices:approve' });
+          }
+        }
+
+        if (sub === 'deny') {
+          if (!subArg) return slashReply({ output: 'Usage: /devices deny <deviceId>', command: 'devices:deny' });
+          try {
+            deviceStore.deny(subArg);
+            return slashReply({ output: `Device "${subArg}" denied.`, command: 'devices:deny', deviceId: subArg });
+          } catch (err) {
+            return slashReply({ output: `Failed to deny device: ${err instanceof Error ? err.message : String(err)}`, command: 'devices:deny' });
+          }
+        }
+
+        return slashReply({
+          output: 'Usage: /devices [list | pending | approve <deviceId> | deny <deviceId>]',
+          command: 'devices:help',
         });
       }
 

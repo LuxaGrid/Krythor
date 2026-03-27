@@ -16,6 +16,10 @@
 //   agent:event   — lifecycle + stream chunks from agent runs
 //   heartbeat     — periodic health snapshot
 //
+// Node roles:
+//   Clients that connect with device.role:'node' are registered in nodeRegistry
+//   so their capabilities can be invoked via POST /api/nodes/:deviceId/invoke.
+//
 
 import type { FastifyInstance } from 'fastify';
 import type { KrythorCore } from '@krythor/core';
@@ -30,6 +34,7 @@ import {
   type ConnectPayload,
 } from './protocol.js';
 import { DevicePairingStore } from './DevicePairingStore.js';
+import { nodeRegistry } from './NodeRegistry.js';
 
 // ── Tunables ─────────────────────────────────────────────────────────────────
 
@@ -75,6 +80,7 @@ export function registerStreamWs(
     const remoteIp = request.ip;
     let handshakeDone = false;
     let connectedDeviceId: string | null = null;
+    let connectedDeviceRole: string = 'client';
     let connectedToken: string | undefined; // token used in the connect handshake
 
     activeConnections++;
@@ -138,19 +144,21 @@ export function registerStreamWs(
 
         if (deviceStore && params.device) {
           const deviceId = params.device.deviceId;
+          const deviceRole = params.device.role ?? 'client';
 
           const { device, tokenValid } = deviceStore.checkDevice(
             deviceId,
             {
               platform:     params.device.platform,
               deviceFamily: params.device.deviceFamily,
-              role:         params.device.role ?? 'client',
+              role:         deviceRole,
               caps:         params.device.caps,
             },
             params.deviceToken,
           );
 
-          connectedDeviceId = deviceId;
+          connectedDeviceId   = deviceId;
+          connectedDeviceRole = deviceRole;
 
           if (device.status === 'denied') {
             socket.send(JSON.stringify(makeRes(frame.id, false, undefined, 'Device denied')));
@@ -177,6 +185,12 @@ export function registerStreamWs(
             deviceStatus = 'pending';
             logger.info('ws:device_pending', { deviceId, ip: remoteIp });
             // Do NOT close — allow the client to stay connected for approval polling
+          }
+
+          // Register in node registry if this is an approved node
+          if ((deviceStatus === 'approved' || deviceStatus === 'auto_approved') && deviceRole === 'node') {
+            nodeRegistry.register(deviceId, socket, params.device.caps ?? []);
+            logger.info('ws:node_registered', { deviceId, caps: params.device.caps ?? [] });
           }
         }
 
@@ -312,6 +326,10 @@ export function registerStreamWs(
       if (pongTimer) clearTimeout(pongTimer);
       if (connectedDeviceId) {
         logger.info('ws:device_disconnected', { deviceId: connectedDeviceId, ip: remoteIp });
+        if (connectedDeviceRole === 'node') {
+          nodeRegistry.unregister(connectedDeviceId);
+          logger.info('ws:node_unregistered', { deviceId: connectedDeviceId });
+        }
       }
     });
   });

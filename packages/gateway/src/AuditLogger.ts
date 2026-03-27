@@ -1,4 +1,4 @@
-import { appendFileSync, mkdirSync, readFileSync, existsSync } from 'fs';
+import { appendFileSync, mkdirSync, readFileSync, existsSync, statSync, renameSync } from 'fs';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
 import { createHash } from 'crypto';
@@ -13,7 +13,8 @@ import type { PrivacyDecision } from '@krythor/models';
 // File: <dataDir>/logs/audit.ndjson
 // Format: one JSON object per line (NDJSON)
 // Ring buffer: last 10,000 events in memory for fast tail/query
-// Retention: append-only — use logrotate externally for rotation
+// Rotation: when audit.ndjson exceeds MAX_LOG_BYTES, it is renamed to
+//   audit.ndjson.1 and a fresh file is started. Only one archive is kept.
 //
 // SECURITY: Never store raw secrets — callers must pass contentHash instead.
 //
@@ -45,16 +46,22 @@ export interface AuditEvent {
 /** Maximum number of events to keep in the in-memory ring buffer */
 const RING_BUFFER_SIZE = 10_000;
 
+/** Rotate audit.ndjson when it exceeds this size (50 MB) */
+const MAX_LOG_BYTES = 50 * 1024 * 1024;
+
 export class AuditLogger {
   private readonly logPath: string;
+  private readonly archivePath: string;
   private readonly ring: AuditEvent[] = [];
   private ready = false;
 
   constructor(private readonly logDir: string) {
-    this.logPath = join(logDir, 'audit.ndjson');
+    this.logPath    = join(logDir, 'audit.ndjson');
+    this.archivePath = join(logDir, 'audit.ndjson.1');
     try {
       mkdirSync(logDir, { recursive: true });
       this.ready = true;
+      this.rotateIfNeeded();
       this.loadExisting();
     } catch {
       process.stderr.write('[AuditLogger] Could not create logs directory — audit log disabled\n');
@@ -84,6 +91,7 @@ export class AuditLogger {
 
     try {
       appendFileSync(this.logPath, JSON.stringify(full) + '\n', 'utf-8');
+      this.rotateIfNeeded();
     } catch {
       // Best-effort — non-fatal
     }
@@ -142,6 +150,23 @@ export class AuditLogger {
   }
 
   // ── Private ────────────────────────────────────────────────────────────────
+
+  /**
+   * Rotate audit.ndjson → audit.ndjson.1 when the file exceeds MAX_LOG_BYTES.
+   * The previous audit.ndjson.1 is overwritten (only one archive kept).
+   */
+  private rotateIfNeeded(): void {
+    if (!existsSync(this.logPath)) return;
+    try {
+      const { size } = statSync(this.logPath);
+      if (size >= MAX_LOG_BYTES) {
+        renameSync(this.logPath, this.archivePath);
+        process.stderr.write(`[AuditLogger] Rotated audit log (${(size / 1024 / 1024).toFixed(1)} MB) → audit.ndjson.1\n`);
+      }
+    } catch {
+      // Non-fatal
+    }
+  }
 
   /**
    * Load existing log entries into the ring buffer on startup.

@@ -53,6 +53,8 @@ import { CronScheduler } from './CronScheduler.js';
 import { registerCronRoutes } from './routes/cron.js';
 import { registerWorkspaceRoutes } from './routes/workspace.js';
 import { registerDeviceRoutes } from './routes/devices.js';
+import { registerNodeRoutes } from './routes/nodes.js';
+import { nodeRegistry } from './ws/NodeRegistry.js';
 import { registerAgentAuthRoutes } from './routes/agentAuth.js';
 import { WebChatPairingStore } from './WebChatPairingStore.js';
 import { registerWebChatPairingRoutes } from './routes/webchatPairing.js';
@@ -891,8 +893,12 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   const channelMgr = new ChannelManager(join(dataDir, 'config'), gatewayId);
   const channelEmit = (event: string, data: Record<string, unknown>) => channelMgr.emit(event as import('./ChannelManager.js').ChannelEvent, data);
 
+  // Device pairing store — created early so it can be passed to command route (for /devices slash command)
+  // and to the WS stream handler. Storage path is <dataDir>/devices/devices.json.
+  const devicePairingStore = new DevicePairingStore(join(dataDir, 'devices'));
+
   // Register routes
-  registerCommandRoute(app, core, orchestrator, broadcast, guard, convStore);
+  registerCommandRoute(app, core, orchestrator, broadcast, guard, convStore, devicePairingStore);
   registerMemoryRoutes(app, memory, models, guard, channelEmit);
   registerModelRoutes(app, models, memory, guard, channelEmit);
   registerAgentRoutes(app, orchestrator, guard, accessProfileStore);
@@ -936,10 +942,9 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   const webChatPairingStore = new WebChatPairingStore();
   registerWebChatPairingRoutes(app, webChatPairingStore, () => authCfg.token, uiDist);
 
-  // Device pairing store — manages WS client device approval
-  const devicePairingStore = new DevicePairingStore(join(dataDir, 'devices'));
   registerStreamWs(app, core, () => authCfg.token, guard, devicePairingStore, gatewayId, KRYTHOR_VERSION);
-  registerDeviceRoutes(app, devicePairingStore);
+  registerDeviceRoutes(app, devicePairingStore, broadcast);
+  registerNodeRoutes(app);
 
   // Templates endpoint — lists workspace template files available in the user's data dir.
   // Returns { name, filename, size, description } for each .md file in <dataDir>/templates/.
@@ -1013,6 +1018,15 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
       firstRun: modelStats.providerCount === 0 && agentStats.agentCount === 0,
       totalTokens: models.tokenTracker.totalTokens(),
       wsConnections: getActiveWsConnections(),
+      nodes: nodeRegistry.list().length,
+      devices: (() => {
+        const allDevices = devicePairingStore.listAll();
+        return {
+          total:    allDevices.length,
+          approved: allDevices.filter(d => d.status === 'approved').length,
+          pending:  allDevices.filter(d => d.status === 'pending').length,
+        };
+      })(),
       // Location fields help users find their data — safe to expose on loopback-only endpoint.
       dataDir,
       configDir: join(dataDir, 'config'),
