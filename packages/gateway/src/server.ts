@@ -50,6 +50,8 @@ import { registerAuditRoutes } from './routes/audit.js';
 import { registerWorkspaceRoutes } from './routes/workspace.js';
 import { registerDeviceRoutes } from './routes/devices.js';
 import { registerAgentAuthRoutes } from './routes/agentAuth.js';
+import { WebChatPairingStore } from './WebChatPairingStore.js';
+import { registerWebChatPairingRoutes } from './routes/webchatPairing.js';
 import { ApprovalManager } from './ApprovalManager.js';
 import { AuditLogger } from './AuditLogger.js';
 import { HeartbeatEngine, type HeartbeatRunRecord, type HeartbeatInsight } from './heartbeat/HeartbeatEngine.js';
@@ -798,6 +800,10 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   registerAuditRoutes(app, auditLogger);
   registerWorkspaceRoutes(app);
   registerAgentAuthRoutes(app, agentAuthStore);
+
+  // Web Chat pairing — shareable one-time links for /chat
+  const webChatPairingStore = new WebChatPairingStore();
+  registerWebChatPairingRoutes(app, webChatPairingStore, () => authCfg.token, uiDist);
 
   // Device pairing store — manages WS client device approval
   const devicePairingStore = new DevicePairingStore(join(dataDir, 'devices'));
