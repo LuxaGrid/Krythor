@@ -73,7 +73,10 @@ This is **AI you can operate**.
 * **Config hot reload** — `providers.json` watched with `fs.watch()`; `POST /api/config/reload` for manual trigger
 * **Config export/import** — portable provider config with secrets redacted
 * **Config editor** — edit raw JSON config files directly in the UI with syntax validation and Ctrl+S to save
-* **Daemon mode** — `krythor start --daemon`, `krythor stop`, `krythor restart`
+* **Daemon mode** — `krythor start --daemon`, `krythor stop`, `krythor restart`; `krythor service install` registers auto-start at login
+* **Gateway sub-commands** — `krythor gateway status/stop/restart` as aliases for the common gateway operations
+* **Reconfigure shortcut** — `krythor configure` re-runs the setup wizard; `krythor dashboard` opens the Control UI in a browser
+* **Non-interactive setup** — `krythor setup --non-interactive` (or `KRYTHOR_NON_INTERACTIVE=1`) skips all prompts for automated installs; `--install-service` chains service registration
 * **Backup command** — `krythor backup` creates a timestamped archive of the data directory
 * **Doctor + Repair** — comprehensive diagnostics with migration integrity check and credential validation
 * **Local-first** — all data stays on your machine
@@ -362,9 +365,24 @@ All commands assume Krythor is installed via the one-line installer or a release
 | `krythor start --daemon` | Start Krythor in background (daemon mode) |
 | `krythor stop` | Stop the running daemon |
 | `krythor restart` | Stop and restart the daemon |
-| `krythor status` | Show whether the daemon is running and its PID |
+| `krythor status` | Show gateway health — version, models, agents, memory, uptime |
+| `krythor gateway status` | Alias for `krythor status` |
+| `krythor gateway stop` | Alias for `krythor stop` |
+| `krythor gateway restart` | Alias for `krythor restart` |
+| `krythor dashboard` | Open the Control UI in the browser |
 | `krythor update` | Download and install the latest release (preserves all data) |
 | `krythor tui` | Open the terminal dashboard (live status without a browser) |
+
+### Setup and configuration
+
+| Command | Description |
+|---------|-------------|
+| `krythor setup` | Run the interactive setup wizard |
+| `krythor setup --non-interactive` | Run setup non-interactively (uses defaults / env vars) |
+| `krythor setup --install-service` | Run setup, then register Krythor to start at login |
+| `krythor configure` | Reconfigure Krythor — alias for `krythor setup` |
+| `krythor service install` | Register Krythor to auto-start at login (without re-running setup) |
+| `krythor service uninstall` | Remove the auto-start registration |
 
 ### Diagnostics and maintenance
 
