@@ -1,8 +1,9 @@
-import { describe, it, expect, beforeAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { buildServer, GATEWAY_PORT } from '../server.js'
 import { loadOrCreateToken } from '../auth.js'
 import { join } from 'path'
 import { homedir } from 'os'
+import { readFileSync, writeFileSync, existsSync } from 'fs'
 
 let app: Awaited<ReturnType<typeof buildServer>>
 let authToken: string
@@ -18,11 +19,26 @@ function getDataDir(): string {
   return join(homedir(), '.local', 'share', 'krythor')
 }
 
+const TEST_PROVIDER_NAMES = ['Import Test Provider']
+
 beforeAll(async () => {
   app = await buildServer()
   await app.ready()
   const cfg = loadOrCreateToken(join(getDataDir(), 'config'))
   authToken = cfg.token ?? ''
+})
+
+afterAll(async () => {
+  await app.close()
+  // Remove any test providers written to the real config by this test suite
+  const providersFile = join(getDataDir(), 'config', 'providers.json')
+  if (existsSync(providersFile)) {
+    try {
+      const providers = JSON.parse(readFileSync(providersFile, 'utf-8')) as Array<Record<string, unknown>>
+      const cleaned = providers.filter(p => !TEST_PROVIDER_NAMES.includes(p['name'] as string))
+      writeFileSync(providersFile, JSON.stringify(cleaned, null, 2), 'utf-8')
+    } catch { /* ignore — best effort */ }
+  }
 })
 
 // ── ITEM 5: GET /api/config/export ─────────────────────────────────────────

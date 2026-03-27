@@ -16,7 +16,7 @@
  * either skipped or exercised via the discord token-format path (no HTTP needed).
  */
 
-import { describe, it, expect, beforeAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { buildServer, GATEWAY_PORT } from '../server.js'
 import { loadOrCreateToken } from '../auth.js'
 import { join } from 'path'
@@ -41,6 +41,14 @@ beforeAll(async () => {
   await app.ready()
   const cfg = loadOrCreateToken(join(getDataDir(), 'config'))
   authToken = cfg.token ?? ''
+})
+
+afterAll(async () => {
+  // Delete any chat channel configs that may have been left by this test suite
+  for (const id of ['telegram', 'whatsapp', 'discord']) {
+    await app.inject({ method: 'DELETE', url: `/api/chat-channels/${id}`, headers: { authorization: `Bearer ${authToken}`, host: HOST } })
+  }
+  await app.close()
 })
 
 // ── GET /api/chat-channels/providers ──────────────────────────────────────────

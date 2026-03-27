@@ -12,7 +12,7 @@
  * model infer function, which is replaced with a stub to avoid network calls.
  */
 
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import Database from 'better-sqlite3';
 import { mkdtempSync } from 'fs';
 import { join } from 'path';
@@ -28,6 +28,7 @@ import { logger } from './logger.js';
 let app: Awaited<ReturnType<typeof buildServer>>;
 let authToken: string;
 const HOST = `127.0.0.1:${GATEWAY_PORT}`;
+const createdSkillIds: string[] = [];
 
 function getDataDir(): string {
   if (process.platform === 'win32') {
@@ -42,6 +43,13 @@ beforeAll(async () => {
   await app.ready();
   const cfg = loadOrCreateToken(join(getDataDir(), 'config'));
   authToken = cfg.token ?? '';
+});
+
+afterAll(async () => {
+  for (const id of createdSkillIds) {
+    await app.inject({ method: 'DELETE', url: `/api/skills/${id}`, headers: { authorization: `Bearer ${authToken}`, host: HOST } });
+  }
+  await app.close();
 });
 
 // ── 1. Skill create → list ─────────────────────────────────────────────────────
@@ -68,6 +76,7 @@ describe('Integration — skill create and list', () => {
     expect(created['id']).toBeDefined();
     expect(created['version']).toBe(1);
     expect(created['name']).toBe('Integration Test Skill');
+    createdSkillIds.push(created['id'] as string);
 
     // Verify it appears in list
     const listRes = await app.inject({

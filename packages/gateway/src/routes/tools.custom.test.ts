@@ -1,7 +1,7 @@
 /**
  * ITEM 6 tests: user-defined custom webhook tools.
  */
-import { describe, it, expect, beforeAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { buildServer, GATEWAY_PORT } from '../server.js'
 import { loadOrCreateToken } from '../auth.js'
 import { join } from 'path'
@@ -26,6 +26,15 @@ beforeAll(async () => {
   await app.ready()
   const cfg = loadOrCreateToken(join(getDataDir(), 'config'))
   authToken = cfg.token ?? ''
+})
+
+afterAll(async () => {
+  // Delete all tools created by this test suite (best effort)
+  const toolNames = ['test-hook-unique-abc', 'delete-test-hook-xyz']
+  for (const name of toolNames) {
+    await app.inject({ method: 'DELETE', url: `/api/tools/custom/${name}`, headers: { authorization: `Bearer ${authToken}`, host: HOST } })
+  }
+  await app.close()
 })
 
 describe('GET /api/tools/custom (ITEM 6)', () => {

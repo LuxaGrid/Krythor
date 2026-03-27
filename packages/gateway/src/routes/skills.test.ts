@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { buildServer, GATEWAY_PORT } from '../server.js'
 import { loadOrCreateToken } from '../auth.js'
 import { join } from 'path'
@@ -7,6 +7,7 @@ import { homedir } from 'os'
 let app: Awaited<ReturnType<typeof buildServer>>
 let authToken: string
 const HOST = `127.0.0.1:${GATEWAY_PORT}`
+const createdSkillIds: string[] = []
 
 function getDataDir(): string {
   if (process.platform === 'win32') {
@@ -23,6 +24,13 @@ beforeAll(async () => {
   await app.ready()
   const cfg = loadOrCreateToken(join(getDataDir(), 'config'))
   authToken = cfg.token ?? ''
+})
+
+afterAll(async () => {
+  for (const id of createdSkillIds) {
+    await app.inject({ method: 'DELETE', url: `/api/skills/${id}`, headers: { authorization: `Bearer ${authToken}`, host: HOST } })
+  }
+  await app.close()
 })
 
 describe('POST /api/skills', () => {
@@ -64,6 +72,7 @@ describe('POST /api/skills', () => {
       const skill = JSON.parse(res.body) as Record<string, unknown>
       expect(skill).toHaveProperty('id')
       expect(skill['name']).toBe('Test Skill')
+      createdSkillIds.push(skill['id'] as string)
     }
   })
 
@@ -93,6 +102,7 @@ describe('POST /api/skills', () => {
       const profile = skill['taskProfile'] as Record<string, unknown>
       expect(profile['costTier']).toBe('quality_first')
       expect(profile['reasoningDepth']).toBe('deep')
+      createdSkillIds.push(skill['id'] as string)
     }
   })
 

@@ -8,7 +8,7 @@
  * DELETE /api/channels/:id
  * POST   /api/channels/:id/test
  */
-import { describe, it, expect, beforeAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { buildServer, GATEWAY_PORT } from '../server.js'
 import { loadOrCreateToken } from '../auth.js'
 import { join } from 'path'
@@ -17,6 +17,7 @@ import { homedir } from 'os'
 let app: Awaited<ReturnType<typeof buildServer>>
 let authToken: string
 const HOST = `127.0.0.1:${GATEWAY_PORT}`
+const createdChannelIds: string[] = []
 
 function getDataDir(): string {
   if (process.platform === 'win32') {
@@ -33,6 +34,13 @@ beforeAll(async () => {
   await app.ready()
   const cfg = loadOrCreateToken(join(getDataDir(), 'config'))
   authToken = cfg.token ?? ''
+})
+
+afterAll(async () => {
+  for (const id of createdChannelIds) {
+    await app.inject({ method: 'DELETE', url: `/api/channels/${id}`, headers: { authorization: `Bearer ${authToken}`, host: HOST } })
+  }
+  await app.close()
 })
 
 describe('GET /api/channels/events', () => {
@@ -99,6 +107,7 @@ describe('POST /api/channels', () => {
     // Secret must NOT be returned
     expect(body['secret']).toBeUndefined()
     expect(typeof body['createdAt']).toBe('string')
+    createdChannelIds.push(body['id'] as string)
   })
 
   it('rejects invalid URL scheme', async () => {
