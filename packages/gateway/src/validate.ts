@@ -4,7 +4,7 @@
  * All validators return a string (error message) when invalid, or undefined when valid.
  * This keeps validation logic reusable and testable without coupling to Fastify reply objects.
  *
- * Field length limits (matching OpenClaw parity + conservative safety margins):
+ * Field length limits (conservative safety margins):
  *   name           ≤ 100 chars
  *   description    ≤ 500 chars
  *   systemPrompt   ≤ 10,000 chars

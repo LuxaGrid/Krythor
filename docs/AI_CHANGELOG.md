@@ -1830,7 +1830,7 @@ All 8 P1 items are implemented and tested. No regressions.
 
 ## What Was Analyzed
 
-### OpenClaw documentation (50+ pages fetched)
+### Reference system documentation (50+ pages fetched)
 Extracted capabilities across: install/onboarding, platforms, channels (22 types),
 providers (30+), models, tools/skills/plugins, web UI, gateway configuration,
 gateway security, remote access, discovery/pairing, local models, getting started,
@@ -1853,9 +1853,9 @@ All packages analyzed:
 
 ## Documents Created
 
-### `docs/OPENCLAW_GAP_ANALYSIS.md`
+### `docs/GAP_ANALYSIS.md`
 Full 25-category comparison matrix with:
-- OpenClaw capability description
+- Reference system capability description
 - Krythor capability description
 - Status (MISSING/PARTIAL/PRESENT-WEAKER/PRESENT-STRONGER)
 - Why it matters
@@ -1865,7 +1865,7 @@ Key findings:
 - **Channels**: intentionally missing (correct product decision, skip)
 - **Node pairing/discovery**: intentionally missing (skip)
 - **Tools/skills**: largest functional gap — no exec/browser/web tools
-- **Model routing**: Krythor is stronger than OpenClaw (circuit breaker, learning recommender)
+- **Model routing**: Krythor is stronger (circuit breaker, learning recommender)
 - **Memory**: solid but missing hybrid BM25+vector search
 - **Security**: appropriate for local-only; guard engine is a strength
 - **Documentation**: major gap — no getting-started, config reference, or templates

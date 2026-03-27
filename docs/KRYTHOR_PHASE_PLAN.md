@@ -1,7 +1,7 @@
 # Krythor Phase Plan
 
 **Date:** 2026-03-21
-**Based on:** OpenClaw gap analysis + full codebase review
+**Based on:** Gap analysis + full codebase review
 
 ---
 
@@ -86,7 +86,7 @@
 
 ### P0-6: Environment variable for data directory override
 
-**Problem:** Krythor hard-codes data dir based on platform. Users cannot relocate data (for backup, multi-user, or test scenarios) without code changes. OpenClaw uses `OPENCLAW_STATE_DIR`.
+**Problem:** Krythor hard-codes data dir based on platform. Users cannot relocate data (for backup, multi-user, or test scenarios) without code changes.
 
 **Fix:**
 - Support `KRYTHOR_DATA_DIR` environment variable in `getDataDir()` in:
@@ -395,7 +395,7 @@ Publish `krythor-config.schema.json` for IDE autocomplete:
 
 ## What NOT to Build
 
-- **Channels (Telegram/Discord/WhatsApp/Slack):** Architecture not ready. OpenClaw does this well. Krythor's value prop is different.
+- **Channels (Telegram/Discord/WhatsApp/Slack):** Architecture not ready. Krythor's value prop is a local AI platform, not a messaging bridge.
 - **Node/device pairing:** Mobile companion apps are a separate product. Out of scope.
 - **Multi-tenant isolation:** Krythor is personal/team local-first. Not designed for adversarial multi-tenant.
-- **Clone OpenClaw features 1:1:** Only build what serves Krythor's identity — Atlas-first, local-first, observable, controllable.
+- **Feature parity for its own sake:** Only build what serves Krythor's identity — Atlas-first, local-first, observable, controllable.

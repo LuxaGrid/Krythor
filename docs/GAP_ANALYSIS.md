@@ -1,8 +1,8 @@
-# Krythor vs OpenClaw — Gap Analysis
+# Krythor — Gap Analysis
 
 **Date:** 2026-03-21
 **Analyst:** AI pass (Claude Sonnet 4.6)
-**Source:** OpenClaw public docs + full Krythor codebase read
+**Source:** Reference system public docs + full Krythor codebase read
 
 ---
 
@@ -10,9 +10,9 @@
 
 | Status | Meaning |
 |---|---|
-| **MISSING** | OpenClaw has it; Krythor has nothing equivalent |
+| **MISSING** | Reference system has it; Krythor has nothing equivalent |
 | **PARTIAL** | Krythor has the concept but with meaningful gaps |
-| **PRESENT-WEAKER** | Krythor has it, less depth than OpenClaw |
+| **PRESENT-WEAKER** | Krythor has it, less depth than the reference |
 | **PRESENT-STRONGER** | Krythor has it, better or differently positioned |
 | **N/A** | Category does not apply to Krythor's product direction |
 
@@ -22,12 +22,12 @@
 
 ## 1. Install / Onboarding
 
-**OpenClaw capability:**
+**Reference capability:**
 - One-line curl/ps1 installer auto-detects OS, installs Node if absent, launches onboarding
-- `openclaw onboard --install-daemon` — 2-minute wizard covering provider, key, workspace, channels, daemon registration
+- `krythor onboard --install-daemon` — 2-minute wizard covering provider, key, workspace, channels, daemon registration
 - Non-interactive mode with full flag coverage (`--anthropic-api-key`, `--gateway-port`, etc.)
-- `openclaw doctor` shows 5-command 60-second diagnostic sequence
-- `openclaw dashboard` auto-opens browser after onboarding
+- `krythor doctor` shows 5-command 60-second diagnostic sequence
+- `krythor dashboard` auto-opens browser after onboarding
 
 **Krythor capability:**
 - One-line curl/ps1 installer present (`install.sh` / `install.ps1`) — auto-detects OS
@@ -47,8 +47,8 @@
 
 ## 2. Runtime / Bundled Distribution
 
-**OpenClaw capability:**
-- npm global install via `openclaw@latest`; from-source build; Docker/Podman/Nix/Ansible/Bun alternatives
+**Reference capability:**
+- npm global install; from-source build; Docker/Podman/Nix/Ansible alternatives
 - Node 24 / Node 22.16+ requirement
 - macOS menu bar app; iOS/Android native companion; Windows planned
 
@@ -69,9 +69,9 @@
 
 ## 3. Gateway Core
 
-**OpenClaw capability:**
+**Reference capability:**
 - Single always-on process: routing + control plane + channel connections
-- Single multiplexed port (default 18789): WebSocket control/RPC + HTTP API (OpenAI-compatible) + response streaming
+- Single multiplexed port: WebSocket control/RPC + HTTP API (OpenAI-compatible) + response streaming
 - Hot reload modes: off / hot / restart / hybrid (default)
 - Config watching: monitors active config path, auto-reloads on change
 - Multiple instance support with isolated port/config/state/workspace
@@ -98,8 +98,8 @@
 
 ## 4. Provider System
 
-**OpenClaw capability:**
-- 30+ providers: Anthropic, OpenAI, Google Gemini, xAI, Mistral, Groq, Perplexity, Moonshot/Kimi, MiniMax, Venice, Z.AI, Amazon Bedrock, Qianfan, GLM, Volcengine (Doubao), local (Ollama, vLLM, SGLang, LM Studio), unified gateways (LiteLLM, OpenRouter, Cloudflare AI Gateway, Vercel AI Gateway), 15+ more
+**Reference capability:**
+- 30+ providers: Anthropic, OpenAI, Google Gemini, xAI, Mistral, Groq, Perplexity, Moonshot/Kimi, MiniMax, Venice, Z.AI, Amazon Bedrock, and more
 - `provider/model` format for addressing
 - Config validation with per-provider error reporting at startup
 
@@ -119,12 +119,11 @@
 
 ## 5. OAuth + API Key Support
 
-**OpenClaw capability:**
-- Anthropic: API key or OAuth via Claude Code `setup-token` flow
+**Reference capability:**
+- Anthropic: API key or OAuth via CLI `setup-token` flow
 - OpenAI: API key or OAuth browser flow
-- Qwen/Qianfan: OAuth
 - Token expiry detection and re-auth prompts
-- `openclaw models auth paste-token --provider anthropic` for out-of-band token paste
+- Out-of-band token paste for remote/CI scenarios
 
 **Krythor capability:**
 - Dual-auth UI in wizard: API key or "OAuth later" (sets `setupHint: 'oauth_available'`)
@@ -142,11 +141,10 @@
 
 ## 6. Model Registry and Model Routing
 
-**OpenClaw capability:**
-- `agents.defaults.model.primary: "provider/model"` format
+**Reference capability:**
+- `provider/model` format for primary model assignment
 - Model aliases (opus, sonnet, gpt, gemini) for quick switching
-- `/model` in-chat model switching without restart
-- `models.mode: "merge"` for layering provider configurations
+- In-chat model switching without restart
 - Per-agent model assignment
 
 **Krythor capability:**
@@ -160,17 +158,16 @@
 - `ModelEngine.listModels()` returns full model catalog
 
 **Status:** PRESENT-STRONGER
-**Why it matters:** Krythor's learning-based recommendation and circuit breaker fallback exceed OpenClaw's routing capabilities. Model aliases and in-chat switching are missing but lower priority.
+**Why it matters:** Krythor's learning-based recommendation and circuit breaker fallback exceed the reference's routing capabilities. Model aliases and in-chat switching are missing but lower priority.
 **Implement:** later (Phase 2 — aliases; Phase 3 — in-chat commands)
 
 ---
 
 ## 7. Local Model Support
 
-**OpenClaw capability:**
+**Reference capability:**
 - Ollama, vLLM, SGLang, LM Studio — all via OpenAI-compatible endpoint
-- `models.mode: "merge"` keeps hosted fallbacks when local is down
-- Hardware requirement guidance ($30k+ for best results; Raspberry Pi 4 for light use)
+- Fallback merge mode keeps hosted providers when local is down
 - Local models skip provider-side safety filters — warned in docs
 
 **Krythor capability:**
@@ -190,7 +187,7 @@
 
 ## 8. Agent System
 
-**OpenClaw capability:**
+**Reference capability:**
 - Multi-agent routing with isolated sessions per agent/workspace/sender
 - Sub-agent spawning and management
 - Session management with idle timeout
@@ -220,14 +217,13 @@
 
 ## 9. Tools / Skills / Plugins
 
-**OpenClaw capability:**
+**Reference capability:**
 - Built-in tools: exec/process, browser (Chromium CDP), web_search/web_fetch, read/write/edit, apply_patch, message, canvas, nodes, cron/gateway, image/image_generate, sessions/agents
 - Skills: markdown files injected into system prompt; workspace/shared/plugin scoped
 - Plugins: channels, model providers, custom tools, speech/image generation
 - Tool access profiles: full, coding, messaging, minimal
 - Tool allow/deny lists per agent
-- ClawHub: skill discovery and install CLI (`clawhub install <slug>`)
-- Sandbox mode: Docker-based with workspace access modes
+- Docker sandbox with workspace access modes
 
 **Krythor capability:**
 - `SkillRegistry` + `SkillRunner` with permission checking via GuardEngine
@@ -237,7 +233,6 @@
 - No built-in exec/browser/web_search tools
 - No in-process file read/write tools
 - No plugin architecture
-- No ClawHub equivalent
 - No Docker sandbox
 
 **Status:** PARTIAL
@@ -248,14 +243,12 @@
 
 ## 10. Memory System
 
-**OpenClaw capability:**
-- SQLite per-agent at `~/.openclaw/memory/<agentId>.sqlite`
+**Reference capability:**
+- SQLite per-agent memory store
 - Semantic search via embeddings (OpenAI, Gemini, Voyage, Mistral, Ollama)
 - Hybrid BM25+vector retrieval with optional MMR re-ranking
-- Session transcript indexing (experimental)
 - Daily memory files (`memory/YYYY-MM-DD.md`) auto-created
 - MEMORY.md curated long-term facts
-- QMD sidecar (BM25+vectors+reranking, local-first, experimental)
 - Temporal decay option for boosting recent memories
 
 **Krythor capability:**
@@ -278,12 +271,11 @@
 
 ## 11. Sessions / Conversation Isolation
 
-**OpenClaw capability:**
+**Reference capability:**
 - Session isolation per channel peer (prevents cross-user context leakage)
-- Session idle timeout (configurable `session.idleMinutes`, default 60)
-- `/new` or `/reset` in-channel session reset
+- Session idle timeout (configurable, default 60 min)
+- In-channel session reset commands
 - Session transcript storage with permission constraints
-- Session list view with reasoning mode overrides per session
 
 **Krythor capability:**
 - `ConversationStore` for conversation history per conversation ID
@@ -302,8 +294,8 @@
 
 ## 12. Web Control UI
 
-**OpenClaw capability:**
-- Vite + Lit-based dashboard at `http://<host>:<port>/`
+**Reference capability:**
+- Vite-based dashboard at `http://<host>:<port>/`
 - Real-time chat with streaming responses, tool call visualization, abort
 - Channel status + QR login + per-channel config
 - Session list with reasoning mode overrides
@@ -337,7 +329,7 @@
 
 ## 13. Dashboard / Monitoring
 
-**OpenClaw capability:**
+**Reference capability:**
 - Health snapshots and event logging
 - Manual RPC call execution for troubleshooting
 - Package/git updates with automated restart
@@ -361,9 +353,9 @@
 
 ## 14. Web Chat / Chat Surfaces
 
-**OpenClaw capability:**
+**Reference capability:**
 - Control UI web chat with streaming, tool visualization, abort
-- WebChat channel (dedicated public-facing chat surface)
+- Dedicated public-facing web chat surface
 - TUI (terminal UI) for local chat
 
 **Krythor capability:**
@@ -381,8 +373,8 @@
 
 ## 15. TUI / CLI Surfaces
 
-**OpenClaw capability:**
-- `openclaw` global CLI with onboard, doctor, gateway, status, dashboard, logs, config, models, pairing, cron, nodes, security audit subcommands
+**Reference capability:**
+- Global CLI with onboard, doctor, gateway, status, dashboard, logs, config, models, pairing, cron, nodes, security audit subcommands
 - TUI for interactive chat in terminal
 - `--verbose`, `--non-interactive` flags
 
@@ -402,12 +394,11 @@
 
 ## 16. Channels / Messaging Integrations
 
-**OpenClaw capability:**
-- 22 channels: WhatsApp, Telegram, Discord, Slack, iMessage, Signal, Matrix, LINE, Google Chat, Teams, Mattermost, Nostr, IRC, Twitch, Zalo, Feishu, Nextcloud Talk, Synology Chat, Tlon, and more
+**Reference capability:**
+- 22 channels: WhatsApp, Telegram, Discord, Slack, iMessage, Signal, Matrix, LINE, Google Chat, Teams, Mattermost, Nostr, IRC, Twitch, and more
 - Channel routing: bind senders/groups to distinct agents
 - Group allow/deny lists; mention gating
 - Per-channel pairing/allowlist/open DM modes
-- WebChat channel for public web exposure
 
 **Krythor capability:**
 - No channel integrations
@@ -415,14 +406,14 @@
 - Architecture not ready per product direction
 
 **Status:** MISSING (intentional)
-**Why it matters:** Channels are OpenClaw's primary differentiator. Krythor's value prop is different (local AI platform, not messaging bridge). Adding channels would require a separate architecture decision.
+**Why it matters:** Channels are a differentiator for messaging-first products. Krythor's value prop is different (local AI platform, not messaging bridge). Adding channels would require a separate architecture decision.
 **Implement:** skip (document as a deliberate product boundary)
 
 ---
 
 ## 17. Remote Gateway / Multi-Gateway
 
-**OpenClaw capability:**
+**Reference capability:**
 - Remote CLI with `--url` flag for pointing at remote gateway
 - SSH forwarding + Tailscale Serve for secure remote access
 - Multiple instances with isolated port/config/state/workspace
@@ -443,7 +434,7 @@
 
 ## 18. Discovery / Node Pairing
 
-**OpenClaw capability:**
+**Reference capability:**
 - Bonjour/mDNS LAN advertisement with metadata (hostname, ports, TLS fingerprints)
 - Tailnet discovery via MagicDNS
 - SSH fallback for any SSH-accessible host
@@ -457,19 +448,19 @@
 - No mDNS advertisement
 
 **Status:** MISSING
-**Why it matters:** Node pairing enables the most powerful OpenClaw workflows (mobile camera, screen capture). Out of scope for Krythor's current direction.
+**Why it matters:** Node pairing enables powerful multi-device workflows (mobile camera, screen capture). Out of scope for Krythor's current direction.
 **Implement:** skip (document as future consideration)
 
 ---
 
 ## 19. Security / Permissions
 
-**OpenClaw capability:**
-- DM access modes: pairing (default), allowlist, open (`"*"`), disabled
+**Reference capability:**
+- DM access modes: pairing (default), allowlist, open, disabled
 - Per-gateway trust boundary model
 - Tool-level profiles: messaging, minimal, custom allow/deny per agent
 - Docker sandbox with workspace access modes (none/read/read-write)
-- `openclaw security audit` with `--deep` / `--fix` flags
+- Security audit command with `--deep` / `--fix` flags
 - SSRF policy for browser tool
 - Filesystem permission enforcement (700 dirs, 600 files)
 - Credential rotation guidelines
@@ -499,12 +490,12 @@
 
 ## 20. Config Schema / Templates
 
-**OpenClaw capability:**
-- `~/.openclaw/openclaw.json` (JSON5) as single config file
+**Reference capability:**
+- Single JSON5 config file with full coverage
 - AGENTS.md, SOUL.md, USER.md, TOOLS.md, MEMORY.md, HEARTBEAT.md templates
 - BOOTSTRAP.md for first-run initialization
 - Workspace as git repository (recommended practice)
-- `openclaw config set` / `configure` for safe partial updates
+- Safe partial update commands
 - `${VAR_NAME}` env var substitution in config strings
 - SecretRef objects for sensitive fields
 
@@ -525,13 +516,13 @@
 
 ## 21. Troubleshooting / Doctor / Repair
 
-**OpenClaw capability:**
-- `openclaw doctor` — auto-repair config and state (requires running gateway)
-- `openclaw status` / `openclaw status --all` — quick 60-second diagnostic
-- `openclaw gateway probe` — gateway-specific probe
-- `openclaw channels status --probe` — per-channel health check
-- `openclaw logs --follow` — live log tailing
-- `openclaw security audit --deep --fix` — security audit with auto-fix
+**Reference capability:**
+- `krythor doctor` — auto-repair config and state
+- `krythor status` / `krythor status --all` — quick 60-second diagnostic
+- `krythor gateway probe` — gateway-specific probe
+- `krythor channels status --probe` — per-channel health check
+- `krythor logs --follow` — live log tailing
+- `krythor security audit --deep --fix` — security audit with auto-fix
 
 **Krythor capability:**
 - `krythor doctor` — system probe + config + DB + gateway + embedding checks
@@ -550,10 +541,10 @@
 
 ## 22. Help / Docs / Examples
 
-**OpenClaw capability:**
-- Full docs site (docs.openclaw.ai) with 50+ pages
+**Reference capability:**
+- Full docs site with 50+ pages
 - Getting started guide with 5-step flow
-- Reference pages for AGENTS.default, wizard, memory-config, token-use
+- Reference pages for defaults, wizard, memory-config, token-use
 - Templates for AGENTS.md, TOOLS.md
 - FAQ covering common issues
 - Troubleshooting guide with repair workflow table
@@ -580,11 +571,10 @@
 
 ## 23. Testing / Diagnostics / Resilience
 
-**OpenClaw capability:**
+**Reference capability:**
 - Three test tiers: unit/integration, e2e (gateway smoke), live (real providers)
-- `pnpm test:live` — real provider/model validation with credential discovery
-- `pnpm test:contracts` — plugin/channel interface verification
-- Android integration test (`pnpm android:test:integration`)
+- Live provider/model validation with credential discovery
+- Plugin/channel interface verification
 - Multi-model matrix coverage
 - Intentionally-unstable live tier (catches format changes, auth issues, rate limits)
 
@@ -606,11 +596,11 @@
 
 ## 24. Release / Packaging / Updater
 
-**OpenClaw capability:**
-- npm publish (`openclaw@latest`)
+**Reference capability:**
+- npm global publish
 - Docker image
-- Nix, Ansible, Bun alternatives
-- Auto-update: `openclaw update` from UI
+- Nix, Ansible alternatives
+- Auto-update from UI
 - Tag-based GitHub releases
 
 **Krythor capability:**
@@ -631,9 +621,9 @@
 
 ## 25. Data Migration / Backward Compatibility
 
-**OpenClaw capability:**
-- Migration on startup with `openclaw doctor` for state repair
-- `$OPENCLAW_STATE_DIR` portability — copy to new machine + doctor = full restore
+**Reference capability:**
+- Migration on startup with doctor for state repair
+- `$STATE_DIR` portability — copy to new machine + doctor = full restore
 - Workspace git repo as backup strategy
 - Config kept/modify/reset flow in wizard (no silent overwrites)
 

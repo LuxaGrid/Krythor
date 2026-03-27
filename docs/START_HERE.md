@@ -193,7 +193,7 @@ See [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) for step-by-step fixes.
 | [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) | Top 10 issues with fixes |
 | [REMOTE_GATEWAY.md](./REMOTE_GATEWAY.md) | SSH forwarding, Tailscale, Nginx |
 | [DEPLOYMENT.md](./DEPLOYMENT.md) | Daemon mode, Docker, systemd/launchd |
-| [OPENCLAW_GAP_ANALYSIS.md](./OPENCLAW_GAP_ANALYSIS.md) | Feature comparison vs OpenClaw |
+| [GAP_ANALYSIS.md](./GAP_ANALYSIS.md) | Feature gap analysis and roadmap context |
 | [KRYTHOR_PHASE_PLAN.md](./KRYTHOR_PHASE_PLAN.md) | Roadmap and phase plan |
 | [help/testing.md](./help/testing.md) | How to run and write tests |
 | [templates/AGENTS.md](./templates/AGENTS.md) | Agent workspace template |
