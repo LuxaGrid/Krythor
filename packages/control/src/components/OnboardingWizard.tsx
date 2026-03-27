@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   addProvider,
   patchAppConfig,
@@ -137,6 +137,7 @@ const CHANNEL_ICONS: Record<string, string> = {
   telegram:  '📨',
   discord:   '💬',
   whatsapp:  '📱',
+  webchat:   '🌐',
 };
 
 export function OnboardingWizard({ onComplete }: Props) {
@@ -158,6 +159,7 @@ export function OnboardingWizard({ onComplete }: Props) {
   const [channelSaving, setChannelSaving]       = useState(false);
   const [channelError, setChannelError]         = useState<string | null>(null);
   const [channelsConfigured, setChannelsConfigured] = useState(0);
+  const [webchatCopied, setWebchatCopied]       = useState<'url' | 'embed' | null>(null);
 
   useEffect(() => {
     setDetecting(true);
@@ -237,6 +239,13 @@ export function OnboardingWizard({ onComplete }: Props) {
       [providerId]: { ...(prev[providerId] ?? {}), [key]: value },
     }));
   };
+
+  const copyToClipboard = useCallback((text: string, which: 'url' | 'embed') => {
+    void navigator.clipboard.writeText(text).then(() => {
+      setWebchatCopied(which);
+      setTimeout(() => setWebchatCopied(null), 2000);
+    });
+  }, []);
 
   // Return true if a channel card has all required fields filled
   const isChannelFilled = (meta: ChatChannelProviderMeta): boolean => {
@@ -455,34 +464,92 @@ export function OnboardingWizard({ onComplete }: Props) {
   // ── Render: channels ─────────────────────────────────────────────────────────
 
   if (step === 'channels') {
+    const chatUrl    = `${window.location.protocol}//${window.location.host}/chat`;
+    const embedSnippet = `<iframe src="${chatUrl}" width="400" height="600" frameborder="0" allow="microphone"></iframe>`;
+
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/95">
-        <div className="animate-[fadeIn_0.2s_ease-in] w-full max-w-lg mx-4 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl p-8 space-y-5">
+        <div className="animate-[fadeIn_0.2s_ease-in] w-full max-w-2xl mx-4 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl p-8 space-y-5">
           <div>
             <h2 className="text-zinc-100 font-semibold text-lg">Connect Chat Channels</h2>
             <p className="text-zinc-500 text-xs mt-1">
-              Optional — connect Telegram, Discord, or WhatsApp so your agents can receive messages.
+              Optional — connect channels so your agents can receive messages.
             </p>
           </div>
 
           {/* Provider cards */}
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 gap-3">
             {channelProviders.length === 0
-              ? /* Loading / empty placeholders */
-                (['telegram', 'discord', 'whatsapp'] as const).map(id => (
+              ? /* Loading placeholders */
+                (['telegram', 'discord', 'whatsapp', 'webchat'] as const).map(id => (
                   <div key={id} className="bg-zinc-800 border border-zinc-700 rounded-lg p-3 opacity-40 animate-pulse h-20" />
                 ))
               : channelProviders.map(meta => {
-                  const isWhatsApp    = meta.type === 'whatsapp' || meta.id === 'whatsapp';
-                  const isSelected    = selectedChannels.has(meta.id);
-                  const icon          = CHANNEL_ICONS[meta.id] ?? CHANNEL_ICONS[meta.type] ?? '💬';
-                  const draft         = channelDrafts[meta.id] ?? {};
+                  const isWhatsApp = meta.type === 'whatsapp' || meta.id === 'whatsapp';
+                  const isWebChat  = meta.id === 'webchat';
+                  const isSelected = selectedChannels.has(meta.id);
+                  const icon       = CHANNEL_ICONS[meta.id] ?? CHANNEL_ICONS[meta.type] ?? '💬';
+                  const draft      = channelDrafts[meta.id] ?? {};
 
+                  // ── Web Chat card ────────────────────────────────────────
+                  if (isWebChat) {
+                    return (
+                      <div key={meta.id} className="bg-zinc-800/80 border border-zinc-700 rounded-lg p-3 col-span-2">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-lg">{icon}</span>
+                          <p className="text-zinc-200 text-xs font-medium">{meta.displayName}</p>
+                          <span className="ml-auto text-[10px] bg-emerald-900/40 text-emerald-400 border border-emerald-800/30 px-1.5 py-0.5 rounded">
+                            Ready — no setup needed
+                          </span>
+                        </div>
+                        <p className="text-zinc-500 text-[11px] mb-3 leading-relaxed">
+                          Your chat page is live. Share the URL or embed it on any webpage.
+                        </p>
+                        {/* Chat URL row */}
+                        <div className="flex items-center gap-2 mb-2">
+                          <code className="flex-1 bg-zinc-900 border border-zinc-700 rounded px-2 py-1.5 text-[11px] text-zinc-300 font-mono truncate">
+                            {chatUrl}
+                          </code>
+                          <button
+                            onClick={() => copyToClipboard(chatUrl, 'url')}
+                            className="px-2.5 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-zinc-300 text-[11px] rounded transition-colors whitespace-nowrap"
+                          >
+                            {webchatCopied === 'url' ? '✓ Copied' : 'Copy URL'}
+                          </button>
+                          <a
+                            href={chatUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="px-2.5 py-1.5 bg-brand-700 hover:bg-brand-600 text-white text-[11px] rounded transition-colors whitespace-nowrap"
+                          >
+                            Open →
+                          </a>
+                        </div>
+                        {/* Embed snippet row */}
+                        <div className="flex items-center gap-2">
+                          <code className="flex-1 bg-zinc-900 border border-zinc-700 rounded px-2 py-1.5 text-[11px] text-zinc-400 font-mono truncate">
+                            {embedSnippet}
+                          </code>
+                          <button
+                            onClick={() => copyToClipboard(embedSnippet, 'embed')}
+                            className="px-2.5 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-zinc-300 text-[11px] rounded transition-colors whitespace-nowrap"
+                          >
+                            {webchatCopied === 'embed' ? '✓ Copied' : 'Copy embed'}
+                          </button>
+                        </div>
+                        <p className="text-zinc-700 text-[10px] mt-2">
+                          The chat URL includes your auth token — keep it private or use it only on trusted networks.
+                        </p>
+                      </div>
+                    );
+                  }
+
+                  // ── WhatsApp card ────────────────────────────────────────
                   if (isWhatsApp) {
                     return (
                       <div
                         key={meta.id}
-                        className="bg-zinc-800 border border-zinc-700 rounded-lg p-3 opacity-60 cursor-not-allowed col-span-1"
+                        className="bg-zinc-800 border border-zinc-700 rounded-lg p-3 opacity-60 cursor-not-allowed"
                         title="Requires manual setup"
                       >
                         <div className="text-lg mb-1">{icon}</div>
@@ -494,6 +561,7 @@ export function OnboardingWizard({ onComplete }: Props) {
                     );
                   }
 
+                  // ── Telegram / Discord cards ─────────────────────────────
                   return (
                     <div
                       key={meta.id}
@@ -502,11 +570,7 @@ export function OnboardingWizard({ onComplete }: Props) {
                           ? 'bg-brand-900/50 border-brand-600'
                           : 'bg-zinc-800 border-zinc-700 hover:border-zinc-600'}`}
                     >
-                      {/* Card header — always clickable to toggle */}
-                      <div
-                        className="p-3"
-                        onClick={() => toggleChannel(meta.id)}
-                      >
+                      <div className="p-3" onClick={() => toggleChannel(meta.id)}>
                         <div className="text-lg mb-1">{icon}</div>
                         <p className={`text-xs font-medium truncate ${isSelected ? 'text-brand-200' : 'text-zinc-300'}`}>
                           {meta.displayName}
@@ -515,8 +579,6 @@ export function OnboardingWizard({ onComplete }: Props) {
                           {meta.description}
                         </p>
                       </div>
-
-                      {/* Inline credential form when selected */}
                       {isSelected && (
                         <div className="px-3 pb-3 space-y-1.5 border-t border-brand-800/40 pt-2">
                           {meta.credentialFields
@@ -528,8 +590,8 @@ export function OnboardingWizard({ onComplete }: Props) {
                                 value={draft[field.key] ?? ''}
                                 onChange={e => setDraftField(meta.id, field.key, e.target.value)}
                                 placeholder={
-                                  field.key === 'botToken'   ? (meta.type === 'telegram' ? '123456:ABC-DEF…' : 'Bot token…') :
-                                  field.key === 'channelId'  ? '123456789012345678' :
+                                  field.key === 'botToken'  ? (meta.type === 'telegram' ? '123456:ABC-DEF…' : 'Bot token…') :
+                                  field.key === 'channelId' ? '123456789012345678' :
                                   field.hint || field.label
                                 }
                                 className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-200 placeholder-zinc-600 outline-none border border-zinc-700 focus:border-zinc-500"
@@ -608,7 +670,11 @@ export function OnboardingWizard({ onComplete }: Props) {
             </div>
           )}
           <div className="flex justify-between">
-            <span className="text-zinc-500">Chat Channels</span>
+            <span className="text-zinc-500">Web Chat</span>
+            <span className="text-emerald-400">ready</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-zinc-500">Other Channels</span>
             <span className={channelsConfigured > 0 ? 'text-emerald-400' : 'text-zinc-600'}>
               {channelsConfigured > 0 ? `${channelsConfigured} connected` : 'none configured'}
             </span>

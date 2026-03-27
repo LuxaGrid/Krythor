@@ -14,7 +14,7 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 
-export type ChannelType = 'telegram' | 'discord' | 'whatsapp';
+export type ChannelType = 'telegram' | 'discord' | 'whatsapp' | 'webchat';
 
 export type ChannelStatus =
   | 'not_installed'
@@ -45,7 +45,7 @@ export interface ChannelProviderMeta {
   type: ChannelType;
   displayName: string;
   description: string;
-  installStrategy: 'npm_package' | 'env_config' | 'webhook';
+  installStrategy: 'npm_package' | 'env_config' | 'webhook' | 'built_in';
   credentialFields: Array<{
     key: string;
     label: string;
@@ -54,7 +54,7 @@ export interface ChannelProviderMeta {
     required: boolean;
   }>;
   requiresPairing: boolean;
-  docsUrl: string;
+  docsUrl?: string;
 }
 
 export const CHANNEL_PROVIDERS: ChannelProviderMeta[] = [
@@ -133,6 +133,16 @@ export const CHANNEL_PROVIDERS: ChannelProviderMeta[] = [
     ],
     requiresPairing: true,
     docsUrl: 'https://wwebjs.dev/',
+  },
+  {
+    id: 'webchat',
+    type: 'webchat',
+    displayName: 'Web Chat',
+    description:
+      'Embed a chat widget on any webpage, or share the hosted chat URL directly.',
+    installStrategy: 'built_in',
+    credentialFields: [],
+    requiresPairing: false,
   },
 ];
 
