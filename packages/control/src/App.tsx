@@ -107,9 +107,9 @@ function AboutDialog({ health, onClose }: AboutDialogProps) {
       className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm"
       onClick={handleBackdrop}
     >
-      <div className="bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl w-[480px] max-w-[95vw] overflow-hidden">
+      <div className="bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl w-[480px] max-w-[95vw] max-h-[90vh] flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="px-6 pt-6 pb-4 border-b border-zinc-800">
+        <div className="px-6 pt-6 pb-4 border-b border-zinc-800 shrink-0">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-4">
               <img src="/logo.png" alt="Krythor" className="h-14 w-14 object-contain drop-shadow-lg shrink-0" />
@@ -129,7 +129,7 @@ function AboutDialog({ health, onClose }: AboutDialogProps) {
         </div>
 
         {/* Body */}
-        <div className="px-6 py-4 space-y-4 text-sm">
+        <div className="px-6 py-4 space-y-4 text-sm overflow-y-auto flex-1">
           {/* Version info */}
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center gap-2">
@@ -258,7 +258,7 @@ function AboutDialog({ health, onClose }: AboutDialogProps) {
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-3 bg-zinc-950/50 border-t border-zinc-800 flex justify-end">
+        <div className="px-6 py-3 bg-zinc-950/50 border-t border-zinc-800 flex justify-end shrink-0">
           <button
             onClick={onClose}
             className="px-4 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs rounded transition-colors"
