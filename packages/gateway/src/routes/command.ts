@@ -51,63 +51,91 @@ export function registerCommandRoute(
     const models = core.getModels();
 
     // In-chat /command handling — intercept slash commands before inference.
-    // /model <id>    — switch model for this and subsequent messages
-    // /agent <id>    — switch agent for this and subsequent messages
-    // /clear         — return a synthetic 'cleared' signal (client clears history display)
-    // These return a synthetic JSON response; no inference is triggered.
+    // /new            — start a new conversation (creates a DB record, signals the client)
+    // /compact        — trim old messages from the stored conversation context
+    // /model <id>     — switch model for this and subsequent messages
+    // /agent <id>     — switch agent for this and subsequent messages
+    // /clear          — return a synthetic 'cleared' signal (client clears history display)
+    // These return a synthetic response; no inference is triggered.
+    // When stream=true, responses are wrapped in SSE so the client reader can handle them.
     if (input.startsWith('/')) {
       const [cmd, ...args] = input.trim().split(/\s+/);
       const arg = args.join(' ').trim();
 
+      /** Emit a synthetic slash-command response in the correct format. */
+      const slashReply = (payload: Record<string, unknown>) => {
+        if (stream) {
+          reply.raw.writeHead(200, {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+          });
+          reply.raw.write(`data: ${JSON.stringify({ type: 'done', output: payload.output, duration: 0, ...payload })}\n\n`);
+          reply.raw.end();
+          return reply;
+        }
+        return reply.send({ input, timestamp: new Date().toISOString(), processingTimeMs: 0, ...payload });
+      };
+
+      if (cmd === '/new') {
+        // Start a new conversation — create a fresh conversation record and signal the client
+        let newConvId: string | undefined;
+        if (convStore) {
+          const conv = convStore.createConversation(agentId);
+          newConvId = conv.id;
+          if (stream) {
+            // Emit the conversation event before done so the client can open it
+            reply.raw.writeHead(200, {
+              'Content-Type': 'text/event-stream',
+              'Cache-Control': 'no-cache',
+              'Connection': 'keep-alive',
+            });
+            reply.raw.write(`data: ${JSON.stringify({ type: 'conversation', conversationId: newConvId, title: 'New Chat' })}\n\n`);
+            reply.raw.write(`data: ${JSON.stringify({ type: 'done', output: '(new conversation started)', duration: 0, conversationId: newConvId, command: 'new' })}\n\n`);
+            reply.raw.end();
+            return reply;
+          }
+        }
+        return slashReply({ output: '(new conversation started)', command: 'new', newConversationId: newConvId, agentId });
+      }
+
+      if (cmd === '/compact') {
+        // Compact context: keep only the most recent N message pairs in the stored conversation
+        const COMPACT_KEEP = 10; // keep last 10 messages
+        if (conversationId && convStore) {
+          const msgs = convStore.getMessages(conversationId);
+          if (msgs.length > COMPACT_KEEP) {
+            const toDelete = msgs.slice(0, msgs.length - COMPACT_KEEP);
+            for (const m of toDelete) {
+              convStore.deleteMessage?.(m.id);
+            }
+          }
+          const kept = Math.min(msgs.length, COMPACT_KEEP);
+          return slashReply({ output: `(context compacted — kept last ${kept} messages)`, command: 'compact', conversationId });
+        }
+        return slashReply({ output: '(context compacted)', command: 'compact' });
+      }
+
       if (cmd === '/clear') {
-        return reply.send({
-          input,
-          output: '(chat history cleared)',
-          command: 'clear',
-          timestamp: new Date().toISOString(),
-          processingTimeMs: 0,
-        });
+        return slashReply({ output: '(chat history cleared)', command: 'clear' });
       }
 
       if (cmd === '/model') {
         if (!arg) {
           const modelList = models?.listModels().map(m => `${m.id} (${m.providerId})`).join(', ') ?? '(no models)';
-          return reply.send({
-            input,
-            output: `Available models: ${modelList}. Use /model <id> to switch.`,
-            command: 'model:list',
-            timestamp: new Date().toISOString(),
-            processingTimeMs: 0,
-          });
+          return slashReply({ output: `Available models: ${modelList}. Use /model <id> to switch.`, command: 'model:list' });
         }
-        return reply.send({
-          input,
-          output: `Model switched to: ${arg}. This will be used for your next message.`,
-          command: 'model:switch',
-          modelId: arg,
-          timestamp: new Date().toISOString(),
-          processingTimeMs: 0,
-        });
+        return slashReply({ output: `Model switched to: ${arg}. This will be used for your next message.`, command: 'model:switch', modelId: arg });
       }
 
       if (cmd === '/agent') {
         if (!arg) {
-          return reply.send({
-            input,
+          return slashReply({
             output: agentId ? `Active agent: ${agentId}. Use /agent <id> to switch.` : 'No agent active. Use /agent <id> to switch.',
             command: 'agent:status',
-            timestamp: new Date().toISOString(),
-            processingTimeMs: 0,
           });
         }
-        return reply.send({
-          input,
-          output: `Agent switched to: ${arg}. This will be used for your next message.`,
-          command: 'agent:switch',
-          agentId: arg,
-          timestamp: new Date().toISOString(),
-          processingTimeMs: 0,
-        });
+        return slashReply({ output: `Agent switched to: ${arg}. This will be used for your next message.`, command: 'agent:switch', agentId: arg });
       }
 
       // Unknown slash command — fall through to inference so plugins/agents can handle it

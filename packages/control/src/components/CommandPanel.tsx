@@ -547,6 +547,7 @@ interface SlashCmd {
 const SLASH_CMDS: SlashCmd[] = [
   { cmd: '/new',     hint: 'Start a new conversation',           apply: ({ handleNew }) => handleNew() },
   { cmd: '/clear',   hint: 'Clear the current conversation',     apply: ({ handleNew }) => handleNew() },
+  { cmd: '/compact', hint: 'Compact context (trim old messages)',apply: ({ setInput }) => setInput('/compact') },
   { cmd: '/memory',  hint: 'Open Memory panel',                  apply: ({ onTabChange }) => onTabChange('memory') },
   { cmd: '/agents',  hint: 'Open Agents panel',                  apply: ({ onTabChange }) => onTabChange('agents') },
   { cmd: '/models',  hint: 'Open Models panel',                  apply: ({ onTabChange }) => onTabChange('models') },
