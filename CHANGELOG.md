@@ -11,6 +11,17 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+#### Setup & CLI improvements (2026-03-27)
+
+- **QuickStart vs Advanced setup mode**: wizard opens with a mode selector — QuickStart configures a provider and starts immediately with secure defaults; Advanced gives full control over gateway port/bind/auth, chat channels, and web search
+- **Section-specific reconfiguration**: `krythor setup --section <name>` (or `krythor configure --section <name>`) reconfigures only one section — `provider`, `gateway`, `channels`, or `web-search` — without re-running the full wizard
+- **`--reset` flag on setup**: forces reconfiguration without the interactive "overwrite existing config?" prompt; useful for scripted re-provisioning
+- **`krythor agents add [name]`**: creates a new agent from the terminal; prompts for name, description, system prompt, and model; uses the gateway API if the gateway is running (live update without restart), or writes directly to agents.json when offline
+- **`krythor agents list`**: lists all configured agents with their IDs and assigned models; uses gateway API if running, else reads agents.json directly
+- **`ensureGatewayDefaults` in Installer**: QuickStart mode writes a secure default gateway.json (127.0.0.1:47200, token auth, auto-generated token) if one does not already exist
+- **Tool security note in setup**: when a cloud provider is configured, setup surfaces a reminder to use capable models for agents that will run tools, reducing prompt injection risk
+- **`getAuthHeader()` helper in start.js**: reads the gateway auth token from app-config.json or gateway.json for CLI commands that call gateway APIs (agents add/list)
+
 #### Chat Channels & File Access (2026-03-26)
 
 - **Chat channel onboarding — Telegram**: built-in Telegram bot integration; enter Bot Token (from @BotFather) in Settings → Chat Channels → + Add Channel; polling-based message delivery; no pairing step required

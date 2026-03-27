@@ -153,6 +153,188 @@ async function isPortInUse() {
   });
 }
 
+// ── krythor agents add / list ──────────────────────────────────────────────
+// Creates a new agent or lists existing agents.
+// If the gateway is running, uses the API. Otherwise writes directly to agents.json.
+
+function getAgentsConfigPath() {
+  const os = require('os');
+  const path = require('path');
+  if (process.env['KRYTHOR_DATA_DIR']) {
+    return path.join(process.env['KRYTHOR_DATA_DIR'], '..', 'config', 'agents.json');
+  }
+  if (process.platform === 'win32') {
+    const appData = process.env['APPDATA'] || path.join(os.homedir(), 'AppData', 'Roaming');
+    return path.join(appData, 'Krythor', 'agents.json');
+  }
+  if (process.platform === 'darwin') {
+    return path.join(os.homedir(), 'Library', 'Application Support', 'Krythor', 'agents.json');
+  }
+  return path.join(os.homedir(), '.config', 'krythor', 'agents.json');
+}
+
+async function runAgentsList() {
+  const g = '\x1b[32m'; const d = '\x1b[2m'; const rs = '\x1b[0m'; const b = '\x1b[1m';
+
+  // Try gateway API first
+  try {
+    const resp = await fetch(`http://${HOST}:${PORT}/api/agents`, {
+      signal: AbortSignal.timeout(2000),
+      headers: await getAuthHeader(),
+    });
+    if (resp.ok) {
+      const agents = await resp.json();
+      if (!Array.isArray(agents) || agents.length === 0) {
+        console.log(`${d}  No agents configured.${rs}`);
+        console.log(`  Create one with: ${g}krythor agents add${rs}`);
+        process.exit(0);
+      }
+      console.log(`\x1b[36m  KRYTHOR\x1b[0m — Agents (${agents.length})`);
+      console.log('');
+      for (const a of agents) {
+        const model = a.modelId ? ` ${d}[${a.modelId}]${rs}` : '';
+        console.log(`  ${g}${a.name}${rs}${model}  ${d}${a.id}${rs}`);
+        if (a.description) console.log(`    ${d}${a.description}${rs}`);
+      }
+      console.log('');
+      process.exit(0);
+    }
+  } catch { /* gateway offline — fall through to file read */ }
+
+  // Fallback: read agents.json directly
+  const fs = require('fs');
+  const agentsPath = getAgentsConfigPath();
+  if (!fs.existsSync(agentsPath)) {
+    console.log(`${d}  No agents configured.${rs}`);
+    console.log(`  Create one with: ${g}krythor agents add${rs}`);
+    process.exit(0);
+  }
+  try {
+    const agents = JSON.parse(fs.readFileSync(agentsPath, 'utf-8'));
+    if (!Array.isArray(agents) || agents.length === 0) {
+      console.log(`${d}  No agents configured.${rs}`);
+      process.exit(0);
+    }
+    console.log(`\x1b[36m  KRYTHOR\x1b[0m — Agents (${agents.length})`);
+    console.log('');
+    for (const a of agents) {
+      const model = a.modelId ? ` ${d}[${a.modelId}]${rs}` : '';
+      console.log(`  ${g}${a.name}${rs}${model}  ${d}${a.id}${rs}`);
+      if (a.description) console.log(`    ${d}${a.description}${rs}`);
+    }
+    console.log('');
+  } catch (e) {
+    console.error(`\x1b[31mFailed to read agents.json:\x1b[0m ${e.message}`);
+    process.exit(1);
+  }
+  process.exit(0);
+}
+
+async function runAgentsAdd() {
+  const readline = require('readline');
+  const crypto = require('crypto');
+  const fs = require('fs');
+  const g = '\x1b[32m'; const d = '\x1b[2m'; const rs = '\x1b[0m';
+
+  function prompt(question) {
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    return new Promise(resolve => {
+      rl.question(question, ans => { rl.close(); resolve(ans.trim()); });
+    });
+  }
+
+  const nameArg = process.argv[4]; // krythor agents add <name>
+
+  console.log(`\x1b[36m  KRYTHOR\x1b[0m — Create Agent`);
+  console.log('');
+
+  const name = nameArg || await prompt('  Agent name: ');
+  if (!name) {
+    console.error('\x1b[31mAgent name is required.\x1b[0m');
+    process.exit(1);
+  }
+
+  const description = await prompt(`  Description [${name} agent]: `);
+  const systemPromptDefault = `You are ${name}, a helpful AI assistant.`;
+  const systemPromptInput = await prompt(`  System prompt [${systemPromptDefault}]: `);
+  const systemPrompt = systemPromptInput || systemPromptDefault;
+  const modelId = await prompt('  Model ID (leave blank for default): ');
+
+  const agent = {
+    id: crypto.randomUUID(),
+    name,
+    description: description || `${name} agent`,
+    systemPrompt,
+    ...(modelId ? { modelId } : {}),
+    memoryScope: 'agent',
+    maxTurns: 10,
+    temperature: 0.7,
+    tags: [],
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+
+  // Try gateway API first (live update without restart)
+  let savedViaApi = false;
+  try {
+    const resp = await fetch(`http://${HOST}:${PORT}/api/agents`, {
+      method: 'POST',
+      signal: AbortSignal.timeout(3000),
+      headers: { 'Content-Type': 'application/json', ...(await getAuthHeader()) },
+      body: JSON.stringify({ name, description: agent.description, systemPrompt, modelId: modelId || undefined, memoryScope: 'agent' }),
+    });
+    if (resp.ok) {
+      const created = await resp.json();
+      console.log('');
+      console.log(`${g}✓ Agent created:${rs} ${created.name}  ${d}[${created.id}]${rs}`);
+      savedViaApi = true;
+    }
+  } catch { /* gateway offline */ }
+
+  if (!savedViaApi) {
+    // Fallback: write directly to agents.json
+    const agentsPath = getAgentsConfigPath();
+    const dir = require('path').dirname(agentsPath);
+    fs.mkdirSync(dir, { recursive: true });
+    let agents = [];
+    if (fs.existsSync(agentsPath)) {
+      try { agents = JSON.parse(fs.readFileSync(agentsPath, 'utf-8')); } catch {}
+    }
+    if (!Array.isArray(agents)) agents = [];
+    agents.push(agent);
+    fs.writeFileSync(agentsPath, JSON.stringify(agents, null, 2), 'utf-8');
+    console.log('');
+    console.log(`${g}✓ Agent created:${rs} ${agent.name}  ${d}[${agent.id}]${rs}`);
+    console.log(`${d}  Saved to: ${agentsPath}${rs}`);
+    console.log(`${d}  Start Krythor to activate: krythor${rs}`);
+  }
+
+  process.exit(0);
+}
+
+// Helper: reads the gateway auth token from app-config.json
+async function getAuthHeader() {
+  const os = require('os');
+  const path = require('path');
+  const fs = require('fs');
+  try {
+    let configDir;
+    if (process.platform === 'win32') {
+      configDir = path.join(process.env['APPDATA'] || path.join(os.homedir(), 'AppData', 'Roaming'), 'Krythor');
+    } else if (process.platform === 'darwin') {
+      configDir = path.join(os.homedir(), 'Library', 'Application Support', 'Krythor');
+    } else {
+      configDir = path.join(os.homedir(), '.config', 'krythor');
+    }
+    const cfg = JSON.parse(fs.readFileSync(path.join(configDir, 'app-config.json'), 'utf-8'));
+    if (cfg.token) return { 'Authorization': `Bearer ${cfg.token}` };
+    // Also try gateway.json
+    const gw = JSON.parse(fs.readFileSync(path.join(configDir, 'gateway.json'), 'utf-8'));
+    if (gw.auth?.token) return { 'Authorization': `Bearer ${gw.auth.token}` };
+  } catch {}
+  return {};
+}
+
 // ── krythor status ─────────────────────────────────────────────────────────
 // Quick health summary — hits /health and prints key metrics.
 // Exit 0 if gateway responds, exit 1 if not reachable.
@@ -1730,9 +1912,10 @@ const COMMAND_HELP = {
   setup: {
     summary: 'Run the interactive setup wizard',
     detail: [
-      'Usage: krythor setup [--non-interactive] [--install-service]',
+      'Usage: krythor setup [--non-interactive] [--install-service] [--section <name>] [--reset]',
       '',
       'Guides you through:',
+      '  - QuickStart (provider + start) or Advanced (full config)',
       '  - Provider selection (Anthropic, OpenAI, Ollama, etc.)',
       '  - API key or OAuth configuration',
       '  - Model selection',
@@ -1740,23 +1923,51 @@ const COMMAND_HELP = {
       '  - Gateway launch',
       '',
       'Flags:',
-      '  --non-interactive   Skip all prompts (uses defaults / env vars).',
-      '                      Equivalent to: KRYTHOR_NON_INTERACTIVE=1',
-      '  --install-service   After setup, register Krythor to start at login.',
-      '                      Equivalent to running: krythor service install',
+      '  --non-interactive      Skip all prompts (uses defaults / env vars).',
+      '                         Equivalent to: KRYTHOR_NON_INTERACTIVE=1',
+      '  --install-service      After setup, register Krythor to start at login.',
+      '  --section <name>       Reconfigure one section only:',
+      '                         provider | gateway | channels | web-search',
+      '  --reset                Force reconfiguration without the "overwrite?" prompt.',
       '',
-      'Safe to re-run — will ask before overwriting existing config.',
+      'Safe to re-run — will ask before overwriting existing config (unless --reset).',
     ],
   },
   configure: {
     summary: 'Reconfigure Krythor (alias for: krythor setup)',
     detail: [
-      'Usage: krythor configure',
+      'Usage: krythor configure [--section <name>]',
       '',
       'Re-runs the setup wizard to update provider, model, or agent settings.',
       'Equivalent to: krythor setup',
       '',
-      'Use this after changing API keys, switching providers, or adding channels.',
+      'Flags:',
+      '  --section <name>   Reconfigure only one section:',
+      '                     provider | gateway | channels | web-search',
+      '',
+      'Examples:',
+      '  krythor configure                    — full wizard',
+      '  krythor configure --section provider — re-enter API key / switch provider',
+      '  krythor configure --section channels — add or update chat channels',
+    ],
+  },
+  agents: {
+    summary: 'Manage agents from the command line',
+    detail: [
+      'Usage: krythor agents <add|list> [name]',
+      '',
+      '  add [name]   Create a new agent interactively.',
+      '               Prompts for name, description, system prompt, and model.',
+      '               If the gateway is running, creates via API (live update).',
+      '               Otherwise writes directly to agents.json.',
+      '',
+      '  list         List all configured agents with their IDs and models.',
+      '               Uses the gateway API if running, else reads agents.json.',
+      '',
+      'Examples:',
+      '  krythor agents add                 — interactive, prompts for name',
+      '  krythor agents add "Support Bot"   — skip the name prompt',
+      '  krythor agents list                — print all agents',
     ],
   },
   dashboard: {
@@ -2039,8 +2250,16 @@ if (process.argv.includes('setup')) {
   const setupEnv = process.argv.includes('--non-interactive')
     ? { ...process.env, KRYTHOR_NON_INTERACTIVE: '1' }
     : process.env;
+  // Build extra args to pass through to setup.js
+  const extraArgs = [];
+  const sectionIdx = process.argv.indexOf('--section');
+  if (sectionIdx !== -1 && process.argv[sectionIdx + 1]) {
+    extraArgs.push('--section', process.argv[sectionIdx + 1]);
+  }
+  if (process.argv.includes('--reset')) extraArgs.push('--reset');
+  const extraStr = extraArgs.map(a => `"${a}"`).join(' ');
   try {
-    execSync(`"${NODE_BIN}" "${setupScript}"`, { stdio: 'inherit', env: setupEnv });
+    execSync(`"${NODE_BIN}" "${setupScript}" ${extraStr}`.trim(), { stdio: 'inherit', env: setupEnv });
   } catch { /* exit code from setup.js propagates */ }
   // After setup completes: if --install-service was passed, register as a service
   if (process.argv.includes('--install-service')) {
@@ -2057,10 +2276,36 @@ if (process.argv[2] === 'configure') {
   console.log('\x1b[2m  Re-running setup wizard…\x1b[0m');
   console.log('');
   const setupScript = join(__dirname, 'packages', 'setup', 'dist', 'bin', 'setup.js');
+  // Pass --section if provided: krythor configure --section provider
+  const sectionIdx = process.argv.indexOf('--section');
+  const sectionArg = sectionIdx !== -1 && process.argv[sectionIdx + 1]
+    ? `--section "${process.argv[sectionIdx + 1]}"`
+    : '';
   try {
-    execSync(`"${NODE_BIN}" "${setupScript}"`, { stdio: 'inherit' });
+    execSync(`"${NODE_BIN}" "${setupScript}" ${sectionArg}`.trim(), { stdio: 'inherit' });
   } catch { /* exit code from setup.js propagates */ }
   process.exit(0);
+}
+
+// ── krythor agents <sub-command> ────────────────────────────────────────────
+if (process.argv[2] === 'agents') {
+  const sub = process.argv[3];
+  if (sub === 'add') {
+    runAgentsAdd().catch(e => {
+      console.error('\x1b[31mFatal:\x1b[0m', e.message);
+      process.exit(1);
+    });
+  } else if (sub === 'list') {
+    runAgentsList().catch(e => {
+      console.error('\x1b[31mFatal:\x1b[0m', e.message);
+      process.exit(1);
+    });
+  } else {
+    console.log('Usage:');
+    console.log('  krythor agents add [name]    Create a new agent');
+    console.log('  krythor agents list          List all configured agents');
+    process.exit(0);
+  }
 }
 
 // ── krythor dashboard — open browser to Control UI ────────────────────────

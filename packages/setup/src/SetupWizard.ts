@@ -116,7 +116,16 @@ async function pickModel(knownModels: string[], defaultModel: string): Promise<s
 
 // ─── SetupWizard ──────────────────────────────────────────────────────────────
 
+export interface SetupWizardOptions {
+  /** Only reconfigure a specific section (provider | gateway | channels | web-search) */
+  section?: 'provider' | 'gateway' | 'channels' | 'web-search';
+  /** Reset config without prompting for confirmation */
+  reset?: boolean;
+}
+
 export class SetupWizard {
+  constructor(private readonly opts: SetupWizardOptions = {}) {}
+
   async run(): Promise<void> {
     // ── Non-interactive guard ───────────────────────────────────────────────
     // When KRYTHOR_NON_INTERACTIVE=1 is set (e.g. in CI or scripted installs),
@@ -130,6 +139,14 @@ export class SetupWizard {
     }
 
     this.printBanner();
+
+    // ── Section-only reconfiguration ────────────────────────────────────────
+    // krythor setup --section provider|gateway|channels|web-search
+    if (this.opts.section) {
+      await this.runSection(this.opts.section);
+      closeRL();
+      return;
+    }
 
     // 1. Probe the system
     console.log(fmt.info('Scanning system…'));
@@ -146,7 +163,8 @@ export class SetupWizard {
     const installer = new Installer(sys.configDir);
     if (sys.hasExistingConfig) {
       console.log(fmt.warn('Existing configuration detected.'));
-      const reset = await confirm('  Overwrite and reconfigure?', false);
+      // --reset flag skips the prompt and forces reconfiguration
+      const reset = this.opts.reset ? true : await confirm('  Overwrite and reconfigure?', false);
       if (!reset) {
         console.log(fmt.info('Keeping existing configuration.'));
         // Still ensure default agent exists even on keep
@@ -178,6 +196,19 @@ export class SetupWizard {
     // 4. Create default agent
     installer.writeDefaultAgent();
     console.log(fmt.ok('Default "Krythor" agent created.'));
+
+    // 4b. QuickStart vs Advanced mode
+    console.log(fmt.head('Setup Mode'));
+    console.log(fmt.dim('  QuickStart — configure a provider and start immediately (recommended)'));
+    console.log(fmt.dim('  Advanced   — full control: gateway port, auth, channels, web search'));
+    console.log('');
+    const setupMode = await choose(
+      'Choose setup mode',
+      ['QuickStart (recommended)', 'Advanced (full control)'],
+      0,
+    );
+    const isAdvanced = setupMode.startsWith('Advanced');
+    console.log('');
 
     // 5. Provider setup
     console.log(fmt.head('Provider Setup'));
@@ -233,18 +264,43 @@ export class SetupWizard {
         console.log(fmt.dim(`  ${rec.recommendation_label}: ${rec.recommendation_reason}`));
       }
       firstModel = await this.configureProvider(installer, providerType, sys);
+
+      // Tool security note — shown when provider is cloud-based
+      // Stronger models resist prompt injection better; surface this during onboarding.
+      const isCloudProvider = !['ollama', 'lmstudio', 'llamaserver'].includes(providerType);
+      if (isCloudProvider && firstModel) {
+        console.log('');
+        console.log(fmt.dim('  Security note: if your agent will run tools (exec, web_fetch, webhooks),'));
+        console.log(fmt.dim('  use the most capable model available. Weaker models are more susceptible'));
+        console.log(fmt.dim('  to prompt injection via tool output. You can change the model later in'));
+        console.log(fmt.dim('  the Models tab or per-agent in the Agents tab.'));
+      }
     } else {
       console.log(fmt.dim('  Skipped. You can add providers via the Models tab in the Control UI.'));
     }
 
     // 6. Gateway configuration (port, bind, auth)
-    await this.configureGateway(installer);
+    // In QuickStart mode: use defaults (127.0.0.1:47200, token auth) — no prompts.
+    if (isAdvanced) {
+      await this.configureGateway(installer);
+    } else {
+      installer.ensureGatewayDefaults();
+      console.log(fmt.ok('Gateway: 127.0.0.1:47200 (token auth, loopback only)'));
+    }
 
     // 7. Chat channels (Telegram, Discord, Slack)
-    await this.configureChannels(installer);
+    // In QuickStart mode: skip channel setup — can be done later via Control UI.
+    if (isAdvanced) {
+      await this.configureChannels(installer);
+    } else {
+      console.log(fmt.dim('  Channels: skipped — configure via Chat Channels tab in the Control UI.'));
+    }
 
     // 8. Web search (optional)
-    await this.configureWebSearch(installer);
+    // In QuickStart mode: skip — DuckDuckGo is the default and needs no config.
+    if (isAdvanced) {
+      await this.configureWebSearch(installer);
+    }
 
     // 9. Write app config with defaults
     installer.writeAppConfig({
@@ -1049,6 +1105,47 @@ export class SetupWizard {
     } else {
       console.log(fmt.warn('Gateway did not respond in time. Check logs.'));
       console.log(fmt.info(`Manual start:  node "${gatewayPath}"`));
+    }
+  }
+
+  // ── Section-only reconfiguration ────────────────────────────────────────────
+  // `krythor setup --section <name>` reconfigures only that section.
+
+  private async runSection(section: SetupWizardOptions['section']): Promise<void> {
+    console.log(fmt.info(`Scanning system…`));
+    const sys = await probe();
+    const installer = new Installer(sys.configDir);
+    installer.ensureDirs(sys.dataDir);
+
+    switch (section) {
+      case 'provider': {
+        console.log(fmt.head('Provider Setup'));
+        const providerLabel = await choose(
+          'Which AI provider would you like to configure?',
+          ['anthropic', 'openai', 'openrouter', 'groq', 'kimi', 'minimax', 'venice', 'z.ai', 'ollama', 'openai-compat', 'skip'],
+          0,
+        );
+        if (providerLabel !== 'skip') {
+          await this.configureProvider(installer, providerLabel, sys);
+        }
+        console.log(fmt.ok('Provider configuration updated.'));
+        break;
+      }
+      case 'gateway':
+        await this.configureGateway(installer);
+        console.log(fmt.ok('Gateway configuration updated.'));
+        break;
+      case 'channels':
+        await this.configureChannels(installer);
+        console.log(fmt.ok('Channel configuration updated.'));
+        break;
+      case 'web-search':
+        await this.configureWebSearch(installer);
+        console.log(fmt.ok('Web search configuration updated.'));
+        break;
+      default:
+        console.log(fmt.err(`Unknown section: ${section}`));
+        console.log(fmt.dim('  Valid sections: provider, gateway, channels, web-search'));
     }
   }
 }

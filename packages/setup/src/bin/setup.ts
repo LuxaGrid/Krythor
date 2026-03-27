@@ -594,7 +594,17 @@ if (args.includes('doctor')) {
   });
 } else {
   // ── Normal wizard mode ─────────────────────────────────────────────────────
-  new SetupWizard().run().catch(err => {
+  // Parse --section and --reset flags passed from start.js
+  const sectionIdx = args.indexOf('--section');
+  const sectionArg = sectionIdx !== -1 ? args[sectionIdx + 1] : undefined;
+  const validSections = ['provider', 'gateway', 'channels', 'web-search'] as const;
+  type Section = typeof validSections[number];
+  const section: Section | undefined = validSections.includes(sectionArg as Section)
+    ? (sectionArg as Section)
+    : undefined;
+  const reset = args.includes('--reset');
+
+  new SetupWizard({ section, reset }).run().catch(err => {
     console.error('\x1b[31mSetup failed:\x1b[0m', err instanceof Error ? err.message : err);
     process.exit(1);
   });

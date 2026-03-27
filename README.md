@@ -77,6 +77,10 @@ This is **AI you can operate**.
 * **Gateway sub-commands** — `krythor gateway status/stop/restart` as aliases for the common gateway operations
 * **Reconfigure shortcut** — `krythor configure` re-runs the setup wizard; `krythor dashboard` opens the Control UI in a browser
 * **Non-interactive setup** — `krythor setup --non-interactive` (or `KRYTHOR_NON_INTERACTIVE=1`) skips all prompts for automated installs; `--install-service` chains service registration
+* **QuickStart vs Advanced setup** — wizard starts with a mode selector: QuickStart configures a provider and starts immediately; Advanced gives full control over gateway, channels, and web search
+* **Section-specific reconfiguration** — `krythor setup --section provider|gateway|channels|web-search` reconfigures only one section without re-running the full wizard; `--reset` bypasses the overwrite prompt
+* **Agent CLI** — `krythor agents add [name]` creates an agent from the terminal (live via API if gateway is running, or writes to agents.json directly); `krythor agents list` shows all agents
+* **Tool security guidance** — setup surfaces a note during onboarding reminding users to use capable models when agents will run tools, reducing prompt injection risk
 * **Backup command** — `krythor backup` creates a timestamped archive of the data directory
 * **Doctor + Repair** — comprehensive diagnostics with migration integrity check and credential validation
 * **Local-first** — all data stays on your machine
@@ -377,12 +381,25 @@ All commands assume Krythor is installed via the one-line installer or a release
 
 | Command | Description |
 |---------|-------------|
-| `krythor setup` | Run the interactive setup wizard |
+| `krythor setup` | Run the interactive setup wizard (QuickStart or Advanced mode) |
 | `krythor setup --non-interactive` | Run setup non-interactively (uses defaults / env vars) |
 | `krythor setup --install-service` | Run setup, then register Krythor to start at login |
+| `krythor setup --section provider` | Reconfigure only the AI provider / API key |
+| `krythor setup --section gateway` | Reconfigure only gateway port / bind / auth |
+| `krythor setup --section channels` | Reconfigure only chat channels |
+| `krythor setup --section web-search` | Reconfigure only web search provider |
+| `krythor setup --reset` | Force reconfiguration without the "overwrite?" prompt |
 | `krythor configure` | Reconfigure Krythor — alias for `krythor setup` |
+| `krythor configure --section provider` | Quick provider reconfiguration |
 | `krythor service install` | Register Krythor to auto-start at login (without re-running setup) |
 | `krythor service uninstall` | Remove the auto-start registration |
+
+### Agent management
+
+| Command | Description |
+|---------|-------------|
+| `krythor agents add [name]` | Create a new agent (uses gateway API if running, else writes to agents.json) |
+| `krythor agents list` | List all configured agents with IDs and models |
 
 ### Diagnostics and maintenance
 

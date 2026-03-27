@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync, chmodSync, readdirSync, copyFileSync } from 'fs';
 import { join } from 'path';
-import { randomUUID } from 'crypto';
+import { randomBytes, randomUUID } from 'crypto';
 
 export type AuthMethod = 'api_key' | 'oauth' | 'none';
 
@@ -243,6 +243,25 @@ export class Installer {
     const f = join(this.configDir, 'gateway.json');
     if (!existsSync(f)) return {};
     try { return JSON.parse(readFileSync(f, 'utf8')) as Partial<GatewayConfig>; } catch { return {}; }
+  }
+
+  /**
+   * Write gateway.json with secure defaults if it doesn't already exist.
+   * Used by QuickStart mode to skip the interactive gateway config step.
+   * Never overwrites an existing gateway config.
+   */
+  ensureGatewayDefaults(): void {
+    const f = join(this.configDir, 'gateway.json');
+    if (existsSync(f)) return; // preserve existing config
+    const config: GatewayConfig = {
+      port: 47200,
+      bind: '127.0.0.1',
+      auth: {
+        mode: 'token',
+        token: randomBytes(32).toString('hex'),
+      },
+    };
+    writeFileSync(f, JSON.stringify(config, null, 2), 'utf8');
   }
 
   writeChannelsConfig(config: ChannelConfig): void {
