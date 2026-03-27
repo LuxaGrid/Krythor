@@ -336,10 +336,24 @@ export class AgentRunner {
     contextMessages?: Array<{ role: string; content: string }>,
     bootstrapContext?: string,
   ): AgentMessage[] {
+    // ── Date/Time section ──────────────────────────────────────────────────
+    const now = new Date();
+    const dateTimeSection = [
+      '\n\n## Date / Time',
+      `Today is ${now.toISOString().slice(0, 10)}, ${now.toUTCString().slice(17, 22)} UTC.`,
+    ].join('\n');
+
+    // ── Runtime metadata section ───────────────────────────────────────────
+    const runtimeLines = ['\n\n## Runtime', `Agent ID: ${agent.id}`];
+    if (input.runId) runtimeLines.push(`Run ID: ${input.runId}`);
+    const runtimeSection = runtimeLines.join('\n');
+
     const systemPrompt = [
       agent.systemPrompt,
       input.contextOverride ? `\nAdditional context:\n${input.contextOverride}` : '',
       memoryContext,
+      dateTimeSection,
+      runtimeSection,
       bootstrapContext ? `\n\n${bootstrapContext}` : '',
     ].join('');
 
