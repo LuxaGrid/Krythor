@@ -705,6 +705,12 @@ export const exportProviderConfig = () => req<{ providers: unknown[] }>('GET', '
 export const importProviderConfig = (providers: unknown[]) =>
   req<{ imported: number; updated: number; skipped: number }>('POST', '/config/import', { providers });
 
+export const exportFullConfig = () => req<Record<string, unknown>>('GET', '/config/export/full');
+export const importFullConfig = (payload: Record<string, unknown>, dryRun = false) =>
+  req<{ imported: Record<string, number>; skipped: string[]; errors: string[]; dryRun: boolean }>(
+    'POST', `/config/import/full?dryRun=${dryRun}`, payload,
+  );
+
 // ── Outbound channels (webhooks) ──────────────────────────────────────────────
 export type ChannelEvent =
   | 'agent_run_complete' | 'agent_run_failed' | 'memory_saved' | 'memory_deleted'

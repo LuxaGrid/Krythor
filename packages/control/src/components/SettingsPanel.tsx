@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { health, getGatewayInfo, getHeartbeatHistory, getDiscordConfig, setDiscordConfig, stopDiscord, listPlugins, exportProviderConfig, importProviderConfig, listWebChatPairings, createWebChatPairing, revokeWebChatPairing } from '../api.ts';
+import { health, getGatewayInfo, getHeartbeatHistory, getDiscordConfig, setDiscordConfig, stopDiscord, listPlugins, exportProviderConfig, importProviderConfig, exportFullConfig, importFullConfig, listWebChatPairings, createWebChatPairing, revokeWebChatPairing } from '../api.ts';
 import type { Health, GatewayInfo, ProviderHealthEntry, DiscordConfig, Plugin, WebChatPairingEntry, WebChatPairingCreated } from '../api.ts';
 import { PanelHeader } from './PanelHeader.tsx';
 import { useLocale } from '../i18n/index.js';
@@ -90,6 +90,9 @@ export function SettingsPanel() {
   const [exportStatus, setExportStatus] = useState<string | null>(null);
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [importError, setImportError]   = useState<string | null>(null);
+  const [fullExportStatus, setFullExportStatus] = useState<string | null>(null);
+  const [fullImportStatus, setFullImportStatus] = useState<string | null>(null);
+  const [fullImportError, setFullImportError]   = useState<string | null>(null);
 
   // Web Chat Pairing state
   const [chatPairings, setChatPairings] = useState<WebChatPairingEntry[]>([]);
@@ -206,6 +209,43 @@ export function SettingsPanel() {
         setImportStatus(`Imported ${result.imported}, updated ${result.updated}, skipped ${result.skipped}.`);
       } catch (err) {
         setImportError(err instanceof Error ? err.message : 'Import failed.');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  }
+
+  async function handleFullExportConfig() {
+    setFullExportStatus(null);
+    try {
+      const data = await exportFullConfig();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href = url; a.download = 'krythor-full-config.json'; a.click();
+      URL.revokeObjectURL(url);
+      setFullExportStatus('Full config exported.');
+    } catch { setFullExportStatus('Export failed.'); }
+  }
+
+  function handleFullImportConfig(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setFullImportError(null);
+    setFullImportStatus(null);
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      try {
+        const json = JSON.parse(ev.target?.result as string) as Record<string, unknown>;
+        if (json['krythorFullExport'] !== '1') {
+          setFullImportError('Not a full Krythor config export file.');
+          return;
+        }
+        const result = await importFullConfig(json, false);
+        const counts = Object.entries(result.imported).map(([k, v]) => `${k}: ${v}`).join(', ');
+        setFullImportStatus(`Imported — ${counts || 'nothing'}.${result.errors.length ? ` Errors: ${result.errors.length}` : ''}`);
+      } catch (err) {
+        setFullImportError(err instanceof Error ? err.message : 'Import failed.');
       }
     };
     reader.readAsText(file);
@@ -363,6 +403,24 @@ export function SettingsPanel() {
           {exportStatus && <p className="text-green-400 text-xs">{exportStatus}</p>}
           {importStatus && <p className="text-green-400 text-xs">{importStatus}</p>}
           {importError  && <p className="text-red-400  text-xs">{importError}</p>}
+
+          <hr className="border-zinc-800 my-1" />
+          <p className="text-zinc-600 text-xs">Full system export includes agents, guard policies, cron jobs, channels, skills, and providers.</p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={handleFullExportConfig}
+              className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs rounded-lg transition-colors"
+            >
+              Export full config
+            </button>
+            <label className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs rounded-lg transition-colors cursor-pointer">
+              Import full config
+              <input type="file" accept=".json" onChange={handleFullImportConfig} className="hidden" />
+            </label>
+          </div>
+          {fullExportStatus && <p className="text-green-400 text-xs">{fullExportStatus}</p>}
+          {fullImportStatus && <p className="text-green-400 text-xs">{fullImportStatus}</p>}
+          {fullImportError  && <p className="text-red-400  text-xs">{fullImportError}</p>}
         </div>
       </Section>
 

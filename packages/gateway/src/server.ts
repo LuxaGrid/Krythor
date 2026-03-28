@@ -1318,7 +1318,7 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   registerProviderRoutes(app, models);
   registerOAuthRoutes(app, models);
   registerLocalModelsRoute(app);
-  registerConfigPortabilityRoutes(app, models);
+  registerConfigPortabilityRoutes(app, models, orchestrator, guard, skillRegistry, join(dataDir, 'config'));
   registerPluginRoutes(app, pluginLoader);
   registerApprovalRoutes(app, approvalManager);
   registerAuditRoutes(app, auditLogger, auditStore, accessProfileStore);
