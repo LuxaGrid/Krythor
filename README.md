@@ -43,15 +43,21 @@ This is **AI you can operate**.
 * **Provider priority ordering** — configure which providers are tried first via the ⚙ advanced settings panel (priority, maxRetries, enable/disable per provider)
 * **Dual-auth support** — connect cloud providers with an API key; "Connect" button opens provider dashboard in a new tab
 * **Persistent memory** — BM25 + semantic hybrid retrieval across sessions with tagging, export/import, and bulk pruning
-* **Agent system** — custom prompts, memory scope, model preferences, tool permissions, chaining/handoff per agent
+* **Agent system** — custom prompts, memory scope, model preferences, tool permissions, chaining/handoff per agent; agent-to-agent coordination via `agents_list` and `agent_ping` tools; `run:spawn_announced` event emitted before sub-agent spawn
+* **Context management** — tool result trimming (>4 KB trimmed before model call); `ContextEngine.beforeCompact()` hook for memory flush before compaction; configurable compaction budget
 * **Agent import/export** — share agent configs as JSON files
 * **Skills** — reusable task templates with structured routing hints, task profiles, and built-in templates (summarize, translate, explain)
 * **Guard engine** — policy-based allow/deny control per operation with persistent audit trail and live test mode; three distinct safety modes (Guarded, Balanced, Power User) with color-coded cards showing per-mode behavior
-* **Tool system** — exec (local commands), web_search (DuckDuckGo), web_fetch (URL content), user-defined webhook tools with one-click test-fire
-* **Session management** — named conversations, archive/restore, pinning, idle detection, export as JSON/Markdown
+* **Tool system** — exec (local commands), web_search (DuckDuckGo), web_fetch (URL content), generate_image (DALL-E / Stable Diffusion via pluggable provider), agents_list, agent_ping (agent-to-agent messaging), user-defined webhook tools with one-click test-fire
+* **Tool profiles** — named `allowedTools` presets: `minimal` (search + read), `messaging` (chat + session tools), `coding` (full dev toolset), `full` (all tools); set via `GET /api/tools/profiles`
+* **Image generation** — `POST /api/image/generate` with pluggable `ImageGenProvider` slot; agents can call `generate_image` tool when a provider is registered
+* **Media understanding** — inbound media attachments (images, audio, video) from chat channels are digested: images base64-encoded for vision models, audio/video produce descriptive context; `POST /api/media/analyze`
+* **Text-to-speech** — `/tts <text>` in-chat slash command; `POST /api/tts` endpoint with pluggable `TtsProvider` slot; `GET /api/tts/status` to check availability
+* **Session management** — named conversations, archive/restore, pinning, idle detection, export as JSON/Markdown; session tools (`sessions_list`, `sessions_history`, `sessions_send`, `sessions_spawn`) accessible to agents
+* **Session maintenance config** — configurable retention: `sessionPruneAfterDays`, `sessionMaxConversations`, `sessionMaxDiskBytes` (disk-budget prune), `sessionRotateAfterMessages` (auto-archive at message limit)
 * **Conversation search** — filter conversations by title in the sidebar
 * **Token spend history** — ring buffer of last 1000 inferences; Dashboard shows per-model sparkline with token breakdown
-* **Chat channel onboarding** — connect Telegram, Discord, and WhatsApp as inbound bot channels; setup wizard with step-by-step credential entry; WhatsApp pairing code flow; credential masking in all API responses
+* **Chat channel onboarding** — connect Telegram, Discord, WhatsApp, Slack (Socket Mode), Signal (signal-cli JSON-RPC), Mattermost (WebSocket), Google Chat (webhooks), BlueBubbles, and iMessage as inbound bot channels; setup wizard with step-by-step credential entry; WhatsApp pairing code flow; credential masking in all API responses
 * **File & Computer Access (Access Profiles)** — 9 file operation tools (read, write, edit, move, copy, delete, make_directory, list_directory, stat_path); three access profiles per agent: `safe` (workspace only), `standard` (workspace + non-system paths, shell with confirmation), `full_access` (unrestricted); audit log at `~/.krythor/file-audit.log`
 * **Outbound channels** — webhook notifications on lifecycle events (agent runs, memory, providers); HMAC-SHA256 signed; compatible with Zapier, n8n, Discord/Slack incoming webhooks
 * **LAN discovery** — gateways on the same network find each other automatically via UDP multicast; manual peer registration for cross-network pairing
@@ -63,14 +69,16 @@ This is **AI you can operate**.
 * **Slash commands** — type `/` in the chat input to autocomplete commands: `/new`, `/clear`, `/memory`, `/agents`, `/models`, `/skills`, `/guard`, `/dash`, `/logs`, `/settings`
 * **Dashboard heartbeat + circuit breaker** — live view of background provider health checks, warnings, recent run stats, and per-circuit state (open/closed/half-open)
 * **Web chat widget** — embeddable chat page at `/chat`; no React bundle required
+* **Canvas** — agent-editable HTML/CSS/JS pages served under the gateway; `GET/POST /api/canvas`, `PATCH/DELETE /api/canvas/:id`, `GET /api/canvas/:id/render` (live HTML output); agents can create and update canvas pages via tools
+* **Multi-language UI** — interface available in English, 简体中文, 繁體中文, Português (Brasil), Deutsch, and Español; auto-detected from browser locale; persisted to localStorage; language picker in Settings
 * **Transparent execution** — see exactly which model ran, why, and fallback behavior; learning system improves recommendations from override feedback
-* **Heartbeat monitoring** — background provider health tracking and anomaly detection with warning indicators in the status bar
+* **Heartbeat monitoring** — background provider health tracking and anomaly detection with warning indicators in the status bar; configurable `heartbeatDirectPolicy` (reactive/proactive), `heartbeatThinkingDefault`, `heartbeatMentionPatterns`, and `heartbeatResetTriggers`
 * **Real-time event stream** — filterable event stream with timestamps, icons, type coloring, and payload detail extraction
 * **Live log viewer** — filterable, searchable logs with pause, copy, and expandable raw JSON per entry
-* **Terminal dashboard** — `krythor tui` for a live status view without a browser
-* **Auto-update check** — notified at startup when a newer release is available
+* **Terminal dashboard** — `krythor-tui` for a live ANSI dashboard (gateway health, agents, sessions) with 5-second auto-refresh; `q` to quit, `r` to refresh
+* **Auto-update check** — `GET /api/update/check?channel=stable|beta|dev` returns version and channel info; `POST /api/update/set-channel` to switch channels
 * **Auto-versioning** — build version is derived from git commit count and shown in the status bar; increments automatically on every push without manual version bumps
-* **Config hot reload** — `providers.json` watched with `fs.watch()`; `POST /api/config/reload` for manual trigger
+* **Config hot reload** — configurable `configReloadMode`: `hot` (providers.json only), `hybrid` (providers + agents + guard), `restart` (log-only), `off` (disable watcher); `POST /api/config/reload` for manual trigger
 * **Config export/import** — portable provider config with secrets redacted
 * **Config editor** — edit raw JSON config files directly in the UI with syntax validation and Ctrl+S to save
 * **Daemon mode** — `krythor start --daemon`, `krythor stop`, `krythor restart`; `krythor service install` registers auto-start at login
@@ -80,6 +88,7 @@ This is **AI you can operate**.
 * **QuickStart vs Advanced setup** — wizard starts with a mode selector: QuickStart configures a provider and starts immediately; Advanced gives full control over gateway, channels, and web search
 * **Section-specific reconfiguration** — `krythor setup --section provider|gateway|channels|web-search` reconfigures only one section without re-running the full wizard; `--reset` bypasses the overwrite prompt
 * **Agent CLI** — `krythor agents add [name]` creates an agent from the terminal (live via API if gateway is running, or writes to agents.json directly); `krythor agents list` shows all agents
+* **Krythor CLI** — `krythor status` (gateway health + counts), `krythor sessions` (recent sessions table), `krythor models` (provider + model list), `krythor call <text>` (one-shot agent message from terminal)
 * **Tool security guidance** — setup surfaces a note during onboarding reminding users to use capable models when agents will run tools, reducing prompt injection risk
 * **Backup command** — `krythor backup` creates a timestamped archive of the data directory
 * **Doctor + Repair** — comprehensive diagnostics with migration integrity check and credential validation
