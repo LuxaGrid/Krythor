@@ -206,6 +206,57 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
     logger.warn('Auth is DISABLED — all API routes are unprotected');
   }
 
+  // ── TLS / HTTPS setup ────────────────────────────────────────────────────
+  // Reads httpsEnabled, httpsCertPath, httpsKeyPath, httpsSelfSigned from
+  // app-config.json. When httpsSelfSigned is true and cert/key files are
+  // missing, generates a self-signed certificate and stores it in configDir.
+  let tlsOptions: { cert: Buffer; key: Buffer } | null = null;
+  {
+    const appCfgPath = join(dataDir, 'config', 'app-config.json');
+    let rawAppCfg: Record<string, unknown> = {};
+    if (existsSync(appCfgPath)) {
+      try { rawAppCfg = JSON.parse(readFileSync(appCfgPath, 'utf8')) as Record<string, unknown>; } catch { /* ignore */ }
+    }
+    const httpsEnabled = rawAppCfg['httpsEnabled'] === true;
+    if (httpsEnabled) {
+      const selfSigned = rawAppCfg['httpsSelfSigned'] === true;
+      const certPath = typeof rawAppCfg['httpsCertPath'] === 'string'
+        ? rawAppCfg['httpsCertPath']
+        : join(dataDir, 'config', 'tls-cert.pem');
+      const keyPath = typeof rawAppCfg['httpsKeyPath'] === 'string'
+        ? rawAppCfg['httpsKeyPath']
+        : join(dataDir, 'config', 'tls-key.pem');
+
+      try {
+        if (selfSigned && (!existsSync(certPath) || !existsSync(keyPath))) {
+          // Generate self-signed cert using selfsigned package
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
+          const selfsigned = require('selfsigned') as {
+            generate: (attrs: Array<{ name: string; value: string }>, opts: Record<string, unknown>) => { cert: string; private: string };
+          };
+          const pems = selfsigned.generate(
+            [{ name: 'commonName', value: 'krythor-gateway' }],
+            { days: 3650, keySize: 2048 }
+          );
+          const { mkdirSync } = await import('fs');
+          mkdirSync(join(dataDir, 'config'), { recursive: true });
+          const { writeFileSync } = await import('fs');
+          writeFileSync(certPath, pems.cert, 'utf8');
+          writeFileSync(keyPath, pems.private, 'utf8');
+          logger.warn('Generated self-signed TLS certificate — add to browser trust store for production use', { certPath, keyPath });
+        }
+        tlsOptions = {
+          cert: readFileSync(certPath),
+          key:  readFileSync(keyPath),
+        };
+        logger.info('TLS/HTTPS enabled', { certPath, selfSigned });
+      } catch (tlsErr) {
+        logger.error('TLS setup failed — falling back to HTTP', { error: String(tlsErr) });
+        tlsOptions = null;
+      }
+    }
+  }
+
   // Use pino-pretty only in dev AND when it is resolvable as a real module.
   // In a bundled dist pino-pretty cannot be loaded as a worker thread even if
   // bundled inline — it must exist on disk. Disable it silently if absent.
@@ -218,6 +269,7 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
     try { require.resolve('pino-pretty'); usePretty = true; } catch { /* not available */ }
   }
   const app = Fastify({
+    ...(tlsOptions ? { https: tlsOptions } : {}),
     bodyLimit: 1_048_576, // 1 MB — prevents OOM from oversized request bodies
     logger: usePretty
       ? {

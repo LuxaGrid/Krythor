@@ -234,6 +234,26 @@ export interface AppConfigRaw {
    * Default: 20. Set to 0 for unlimited.
    */
   agentMaxRunsPerMinute?: number;
+  /**
+   * Enable HTTPS. When true the gateway serves TLS instead of plain HTTP.
+   * Default: false.
+   */
+  httpsEnabled?: boolean;
+  /**
+   * Path to the TLS certificate file (PEM format).
+   * Required when httpsEnabled=true and httpsSelfSigned=false.
+   */
+  httpsCertPath?: string;
+  /**
+   * Path to the TLS private key file (PEM format).
+   * Required when httpsEnabled=true and httpsSelfSigned=false.
+   */
+  httpsKeyPath?: string;
+  /**
+   * When true and cert/key files are not found, generate a self-signed certificate.
+   * Default: false. Not for production — add to browser trust store for local use.
+   */
+  httpsSelfSigned?: boolean;
 }
 
 export function parseAppConfig(raw: unknown): ValidationResult<AppConfigRaw> {
@@ -476,6 +496,30 @@ export function parseAppConfig(raw: unknown): ValidationResult<AppConfigRaw> {
       value.agentMaxRunsPerMinute = r['agentMaxRunsPerMinute'];
     } else {
       errors.push(`agentMaxRunsPerMinute: expected non-negative number, got ${String(r['agentMaxRunsPerMinute'])}`);
+    }
+  }
+
+  for (const boolField of ['httpsEnabled', 'httpsSelfSigned'] as const) {
+    if (boolField in r) {
+      if (r[boolField] === null || r[boolField] === undefined) {
+        // cleared — omit
+      } else if (typeof r[boolField] === 'boolean') {
+        (value as Record<string, unknown>)[boolField] = r[boolField];
+      } else {
+        errors.push(`${boolField}: expected boolean, got ${typeof r[boolField]}`);
+      }
+    }
+  }
+
+  for (const strField of ['httpsCertPath', 'httpsKeyPath'] as const) {
+    if (strField in r) {
+      if (r[strField] === null || r[strField] === undefined) {
+        // cleared — omit
+      } else if (typeof r[strField] === 'string') {
+        (value as Record<string, unknown>)[strField] = r[strField];
+      } else {
+        errors.push(`${strField}: expected string, got ${typeof r[strField]}`);
+      }
     }
   }
 

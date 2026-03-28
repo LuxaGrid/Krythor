@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { health, getGatewayInfo, getHeartbeatHistory, getDiscordConfig, setDiscordConfig, stopDiscord, listPlugins, exportProviderConfig, importProviderConfig, exportFullConfig, importFullConfig, listWebChatPairings, createWebChatPairing, revokeWebChatPairing, listApiKeys, createApiKey, revokeApiKey } from '../api.ts';
+import { health, getGatewayInfo, getHeartbeatHistory, getDiscordConfig, setDiscordConfig, stopDiscord, listPlugins, exportProviderConfig, importProviderConfig, exportFullConfig, importFullConfig, listWebChatPairings, createWebChatPairing, revokeWebChatPairing, listApiKeys, createApiKey, revokeApiKey, getAppConfig, patchAppConfig } from '../api.ts';
 import type { Health, GatewayInfo, ProviderHealthEntry, DiscordConfig, Plugin, WebChatPairingEntry, WebChatPairingCreated, ApiKeySafe, ApiKeyPermission } from '../api.ts';
 import { PanelHeader } from './PanelHeader.tsx';
 import { useLocale } from '../i18n/index.js';
@@ -103,6 +103,14 @@ export function SettingsPanel() {
   const [chatPairBusy, setChatPairBusy] = useState(false);
   const [chatPairErr, setChatPairErr]   = useState<string | null>(null);
 
+  // TLS state
+  const [tlsEnabled, setTlsEnabled]           = useState(false);
+  const [tlsCertPath, setTlsCertPath]         = useState('');
+  const [tlsKeyPath, setTlsKeyPath]           = useState('');
+  const [tlsSelfSigned, setTlsSelfSigned]     = useState(true);
+  const [tlsSaving, setTlsSaving]             = useState(false);
+  const [tlsMsg, setTlsMsg]                   = useState<string | null>(null);
+
   // API Key management state
   const [apiKeys, setApiKeys]                 = useState<ApiKeySafe[]>([]);
   const [newKeyName, setNewKeyName]           = useState('');
@@ -139,14 +147,21 @@ export function SettingsPanel() {
   useEffect(() => {
     async function load() {
       try {
-        const [h, info, hist, disc, plugs] = await Promise.all([
+        const [h, info, hist, disc, plugs, appCfg] = await Promise.all([
           health(),
           getGatewayInfo().catch(() => null),
           getHeartbeatHistory().catch(() => ({})),
           getDiscordConfig().catch(() => null),
           listPlugins().catch(() => []),
+          getAppConfig().catch(() => null),
         ]);
         setHealthData(h);
+        if (appCfg) {
+          setTlsEnabled(appCfg.httpsEnabled ?? false);
+          setTlsCertPath(appCfg.httpsCertPath ?? '');
+          setTlsKeyPath(appCfg.httpsKeyPath ?? '');
+          setTlsSelfSigned(appCfg.httpsSelfSigned ?? true);
+        }
         setGatewayInfo(info);
         setProviderHistory(hist);
         setPlugins(plugs);
@@ -171,6 +186,24 @@ export function SettingsPanel() {
   }
 
   const toggleTheme = () => setTheme(t => t === 'dark' ? 'light' : 'dark');
+
+  async function handleTlsSave() {
+    setTlsSaving(true);
+    setTlsMsg(null);
+    try {
+      await patchAppConfig({
+        httpsEnabled: tlsEnabled,
+        httpsSelfSigned: tlsSelfSigned,
+        httpsCertPath: tlsCertPath || undefined,
+        httpsKeyPath: tlsKeyPath || undefined,
+      });
+      setTlsMsg('TLS settings saved. Restart the gateway to apply.');
+    } catch (e: unknown) {
+      setTlsMsg(e instanceof Error ? e.message : 'Failed to save TLS settings');
+    } finally {
+      setTlsSaving(false);
+    }
+  }
 
   const ALL_PERMISSIONS: ApiKeyPermission[] = [
     'chat', 'agents:read', 'agents:write', 'agents:run',
@@ -653,6 +686,41 @@ export function SettingsPanel() {
           </p>
         </Section>
       )}
+
+      {/* TLS / HTTPS */}
+      <Section title="TLS / HTTPS">
+        <p className="text-zinc-500 text-xs mb-3">
+          Enable HTTPS for the gateway. Changes require a gateway restart to take effect.
+          Self-signed generates a certificate automatically — add it to your browser trust store for local use.
+        </p>
+        <div className="space-y-2">
+          <label className="flex items-center gap-2 text-sm text-zinc-300 cursor-pointer">
+            <input type="checkbox" checked={tlsEnabled} onChange={e => setTlsEnabled(e.target.checked)} className="accent-sky-500" />
+            Enable HTTPS
+          </label>
+          {tlsEnabled && (
+            <>
+              <label className="flex items-center gap-2 text-sm text-zinc-300 cursor-pointer">
+                <input type="checkbox" checked={tlsSelfSigned} onChange={e => setTlsSelfSigned(e.target.checked)} className="accent-sky-500" />
+                Auto-generate self-signed certificate
+              </label>
+              {!tlsSelfSigned && (
+                <>
+                  <input type="text" placeholder="Certificate path (.pem)" value={tlsCertPath} onChange={e => setTlsCertPath(e.target.value)}
+                    className="w-full text-sm bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500" />
+                  <input type="text" placeholder="Private key path (.pem)" value={tlsKeyPath} onChange={e => setTlsKeyPath(e.target.value)}
+                    className="w-full text-sm bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500" />
+                </>
+              )}
+            </>
+          )}
+          {tlsMsg && <p className={`text-xs ${tlsMsg.includes('Failed') ? 'text-red-400' : 'text-green-400'}`}>{tlsMsg}</p>}
+          <button onClick={() => void handleTlsSave()} disabled={tlsSaving}
+            className="text-xs px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 disabled:opacity-50 text-white rounded transition-colors">
+            {tlsSaving ? 'Saving…' : 'Save TLS Settings'}
+          </button>
+        </div>
+      </Section>
 
       {/* API Keys */}
       <Section title="API Keys">

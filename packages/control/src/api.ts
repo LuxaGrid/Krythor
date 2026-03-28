@@ -128,6 +128,10 @@ export interface AppConfig {
   guardPreset?: 'permissive' | 'balanced' | 'strict';
   privacyMode?: boolean;
   workspacePath?: string;
+  httpsEnabled?: boolean;
+  httpsCertPath?: string;
+  httpsKeyPath?: string;
+  httpsSelfSigned?: boolean;
 }
 
 // ── Command ────────────────────────────────────────────────────────────────

@@ -30,7 +30,8 @@
     "@krythor/models": "workspace:*",
     "@krythor/skills": "workspace:*",
     "@whiskeysockets/baileys": "7.0.0-rc.9",
-    "fastify": "^5.2.1"
+    "fastify": "^5.2.1",
+    "selfsigned": "^5.5.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

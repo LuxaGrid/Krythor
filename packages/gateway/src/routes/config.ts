@@ -52,6 +52,14 @@ export interface AppConfig {
   privacyRoutingEnabled?: boolean;
   /** When privacyRoutingEnabled is true: block requests when prompt is private/restricted but no local provider is available. Default: false. */
   privacyBlockOnSensitive?: boolean;
+  /** Enable HTTPS. Requires restart. Default: false. */
+  httpsEnabled?: boolean;
+  /** Path to TLS cert file (PEM). Used when httpsEnabled=true. */
+  httpsCertPath?: string;
+  /** Path to TLS key file (PEM). Used when httpsEnabled=true. */
+  httpsKeyPath?: string;
+  /** Auto-generate self-signed cert when httpsEnabled=true and cert/key not found. */
+  httpsSelfSigned?: boolean;
 }
 
 export function registerConfigRoute(app: FastifyInstance, configDir: string, guard?: GuardEngine, orchestrator?: AgentOrchestrator, memory?: MemoryEngine, heartbeatRef?: HeartbeatRef, approvalManager?: ApprovalManager): void {
@@ -155,6 +163,10 @@ export function registerConfigRoute(app: FastifyInstance, configDir: string, gua
           heartbeatResetTriggers:      { type: ['array', 'null'], items: { type: 'string', maxLength: 200 }, maxItems: 50 },
           configReloadMode:            { type: ['string', 'null'], enum: ['hot', 'hybrid', 'restart', 'off', null] },
           webhookToken:                { type: ['string', 'null'], maxLength: 512 },
+          httpsEnabled:                { type: ['boolean', 'null'] },
+          httpsCertPath:               { type: ['string', 'null'], maxLength: 1024 },
+          httpsKeyPath:                { type: ['string', 'null'], maxLength: 1024 },
+          httpsSelfSigned:             { type: ['boolean', 'null'] },
         },
         additionalProperties: false,
       },
@@ -256,6 +268,18 @@ export function registerConfigRoute(app: FastifyInstance, configDir: string, gua
     }
     if ('webhookToken' in patch) {
       updated.webhookToken = (patch['webhookToken'] as string | null) ?? undefined;
+    }
+    if ('httpsEnabled' in patch) {
+      updated.httpsEnabled = (patch['httpsEnabled'] as boolean | null) ?? undefined;
+    }
+    if ('httpsCertPath' in patch) {
+      updated.httpsCertPath = (patch['httpsCertPath'] as string | null) ?? undefined;
+    }
+    if ('httpsKeyPath' in patch) {
+      updated.httpsKeyPath = (patch['httpsKeyPath'] as string | null) ?? undefined;
+    }
+    if ('httpsSelfSigned' in patch) {
+      updated.httpsSelfSigned = (patch['httpsSelfSigned'] as boolean | null) ?? undefined;
     }
     write(updated);
     // Never return webhookToken in the response — treat it as write-only
