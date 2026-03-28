@@ -395,6 +395,25 @@ export function registerModelRoutes(
     return reply.send({ active: 'stub' });
   });
 
+  // GET /api/models/circuit-status — per-provider circuit breaker states
+  app.get('/api/models/circuit-status', async (_req, reply) => {
+    const stats = models.circuitStats();
+    const providers = models.listProviders();
+    const providerMap = new Map(providers.map(p => [p.id, p]));
+    const result = Object.entries(stats).map(([id, s]) => ({
+      id,
+      name: providerMap.get(id)?.name ?? id,
+      state: s.state,
+      failures: s.failures,
+      lastFailureAt: s.lastFailureAt,
+      avgLatencyMs: s.avgLatencyMs,
+      totalRequests: s.totalRequests,
+      totalFailures: s.totalFailures,
+      totalSuccesses: s.totalSuccesses,
+    }));
+    return reply.send({ providers: result });
+  });
+
   // POST /api/models/infer — direct inference (for testing)
   app.post('/api/models/infer', {
     schema: {
