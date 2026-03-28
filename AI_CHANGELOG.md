@@ -4,6 +4,75 @@ Tracks all AI-assisted implementation work on this codebase.
 
 ---
 
+## 2026-03-28 — v0.8: Graceful Shutdown, API Keys, TLS, Job Queue, Agent Tools, Semantic Search, Notification Feed, Plugin Sandboxing, Structured Output
+
+### Feature 1 — Graceful shutdown (packages: core, gateway)
+- `AgentOrchestrator.activeRunCount()` returns in-flight run count via `AgentRunner`
+- `AgentOrchestrator.waitForDrain(timeoutMs)` polls at 500ms intervals until count reaches 0 or deadline passes
+- `gracefulShutdown(signal)` in `gateway/src/index.ts` closes the server then drains runs (30s budget)
+- `SIGTERM` and `SIGINT` both call `gracefulShutdown`; `waitForDrain` is exposed on the Fastify app via an untyped property
+
+### Feature 2 — Health-based circuit breaker (packages: models, gateway)
+- `CircuitBreaker` was already fully implemented; added `GET /api/models/circuit-status` endpoint
+- Returns per-provider circuit state (`closed`, `open`, `half-open`) with failure counts and latency stats
+
+### Feature 3 — Named API keys (packages: gateway, control)
+- `ApiKeyStore` (new file) stores SHA-256-hashed `kry_` prefixed keys in `<dataDir>/config/api-keys.json`
+- 11 permission types; `hasPermission()` enforces scope; `touch()` updates last-used timestamp
+- `GET/POST /api/auth/keys`, `DELETE /api/auth/keys/:id`, `PATCH /api/auth/keys/:id`
+- Gateway auth preHandler validates `kry_*` tokens against `ApiKeyStore` after master token check
+- `SettingsPanel.tsx` exposes key list, create form (name + permission checkboxes), copy-once display, revoke buttons
+
+### Feature 4 — TLS / HTTPS support (packages: gateway, core, control)
+- `selfsigned` npm package generates self-signed certs when `httpsSelfSigned: true`
+- `AppConfigRaw` and gateway's `AppConfig` extended with `httpsEnabled`, `httpsCertPath`, `httpsKeyPath`, `httpsSelfSigned`
+- Fastify constructor receives `https: { key, cert }` when TLS is enabled
+- Settings panel has a TLS section with enable toggle, self-signed option, and cert path inputs
+
+### Feature 5 — Persistent job queue (packages: memory, gateway)
+- Migration 012 adds `job_queue` table with indexes on `(status, run_after)` and `agent_id`
+- `JobQueue` class: `enqueue()`, `claim()`, `complete()`, `fail()` (exponential backoff), `cancel()`, `get()`, `list()`, `pending()`, `resetOrphaned()`, `cleanup()`
+- Gateway: 5-second processor loop claims and runs jobs via `orchestrator.runAgent()`; `resetOrphaned()` on startup; cleanup on close
+- `GET /api/jobs`, `GET /api/jobs/:id`, `DELETE /api/jobs/:id` REST endpoints
+
+### Feature 6 — Tool use in agent inference loop (package: core)
+- `AgentTools.ts`: `AGENT_TOOLS` array (7 tools) and `getAgentTools()` filter respecting `allowedTools`/`deniedTools`
+- `ToolExecutor.ts`: dispatches `file_read`, `file_write`, `shell_exec`, `memory_search`, `memory_save`, `web_search`, `web_fetch` to their handlers
+- `MemoryLike` interface decouples core from `@krythor/memory` to avoid circular dependency
+- Both exported from `@krythor/core/src/index.ts`
+
+### Feature 7 — Semantic search for memory (package: gateway)
+- `GET /api/memory/semantic-search?q=&limit=10` added to `routes/memory.ts`
+- Uses `memory.searchSemantic()` if embedding provider is active; falls back to `memory.search()` with `mode: 'bm25'`
+- `semanticSearchMemory()` added to `packages/control/src/api.ts`
+
+### Feature 8 — In-UI notification feed (packages: gateway, control)
+- Gateway broadcasts `notification:agent_run_failed` on `run:failed` agent events
+- Circuit-open notifier polls `circuitStats()` every 30s and broadcasts `notification:circuit_open` on first open transition
+- `jobQueue.fail` is monkey-patched to broadcast `notification:job_failed` for each failure
+- `NotificationFeed.tsx` (new component): bell icon with SVG, unread count badge, 50-notification dropdown with mark-read and clear-all
+- Integrated into `StatusBar.tsx` next to the about button
+
+### Feature 9 — Plugin sandboxing (package: core)
+- `PluginSandbox.ts` (new): forks `sandbox-worker.js` per invocation with a 30s kill timeout
+- `sandbox-worker.ts` (new): receives `{ type: 'run', pluginPath, input }` via IPC, requires the plugin, calls `run()`, and sends `{ type: 'result' | 'error', ... }` back
+- `tsup.config.ts` adds `sandbox-worker.ts` as a separate entry so it compiles to `dist/tools/sandbox-worker.js`
+- `PluginLoader` imports `PluginSandbox` and routes all `loadedPlugin.run()` calls through it; falls back to direct require when worker is absent
+
+### Feature 10 — Structured output / JSON mode (packages: models, gateway, control)
+- `ResponseFormat` interface added to `InferenceRequest` in `@krythor/models/src/types.ts`
+- `StructuredOutputError` class (new) — carries `rawOutput` and `validationError` fields
+- `StructuredOutputValidator` (new) — strips markdown fences, `JSON.parse()`, validates type + required properties against schema
+- `OpenAIProvider.infer()` passes `response_format: { type: 'json_object' }` or `json_schema` block to the API
+- `AnthropicProvider.infer()` appends JSON instruction to system message (Anthropic has no native response_format)
+- `/api/models/infer` schema updated to accept `responseFormat`
+- `/api/command` schema updated; `responseFormat` forwarded to `privacyRouter.infer()` on the direct path
+- `CommandPanel.tsx` adds `{} JSON` toggle button that passes `{ type: 'json_object' }` as `responseFormat` to `streamCommand`
+
+Build status: 496 gateway tests passing, all 4 packages typecheck clean.
+
+---
+
 ## 2026-03-28 — v0.7: Audit Persistence, Rate Limiting, Streaming Approvals, Agent Bus, Janitor UI, Webhook Hardening, Full Config Export/Import, Wizard Security Steps, Dashboard Metrics
 
 ### Feature 1 — Audit log persistence (packages: memory, gateway)

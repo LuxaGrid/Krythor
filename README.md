@@ -142,6 +142,33 @@ The onboarding wizard now includes four post-channel steps: Security Profile (Sa
 ### Dashboard real-time metrics
 `GET /api/dashboard/metrics/series` returns a 60-minute sliding window of per-minute request counts, error counts, and latency sums. The Dashboard panel renders three sparklines (req/min, errors, latency) with a totals row showing aggregate request count, error count, avg latency, and error rate.
 
+### Graceful shutdown
+On `SIGTERM` or `SIGINT`, the gateway drains all active agent runs (up to 30 seconds) before exiting. `AgentOrchestrator.waitForDrain()` polls active run counts at 500ms intervals; the server's `close()` hook coordinates cleanup of open connections, cron scheduler, and job queue.
+
+### Named API keys
+Create named API keys with scoped permissions via `POST /api/auth/keys`. Keys are SHA-256-hashed at rest and prefixed `kry_`. Permissions include `admin`, `read`, `write`, `run_agent`, `manage_agents`, `manage_memory`, `manage_providers`, `manage_guard`, `manage_channels`, `manage_skills`, and `view_audit`. Keys are revocable individually. The Settings panel exposes key management UI.
+
+### TLS / HTTPS support
+Enable optional HTTPS via `httpsEnabled: true` in `app-config.json`. Set `httpsSelfSigned: true` to auto-generate a self-signed certificate using `selfsigned`, or provide paths to `httpsCertPath` / `httpsKeyPath`. The Settings panel has a TLS section.
+
+### Persistent job queue
+SQLite-backed job queue (migration 012). Jobs are `pending`, `running`, `completed`, `failed`, or `cancelled`. The processor polls every 5 seconds, claims up to 5 jobs, and runs them via `AgentOrchestrator.runAgent()`. Exponential backoff retry (up to `maxAttempts`, default 3). `GET /api/jobs`, `GET /api/jobs/:id`, `DELETE /api/jobs/:id` expose the queue.
+
+### Tool use in agent inference loop
+Agents can use `file_read`, `file_write`, `shell_exec`, `memory_search`, `memory_save`, `web_search`, and `web_fetch` tools. `AGENT_TOOLS` definitions and `getAgentTools()` filter function are in `@krythor/core`. `ToolExecutor` dispatches calls to the correct handler (FilesystemTool, ExecTool, MemoryLike, WebSearchTool, WebFetchTool).
+
+### Vector / semantic search for memory
+`GET /api/memory/semantic-search?q=...&limit=10` surfaces memories by semantic similarity using the configured Ollama embedding provider. Falls back to BM25 text search when no embedding provider is active.
+
+### In-UI notification feed
+A bell icon in the StatusBar surfaces real-time notifications: agent run failures, circuit breaker open events, and job failures. Notifications arrive over the existing WebSocket stream (`notification:agent_run_failed`, `notification:circuit_open`, `notification:job_failed`). Unread badge, mark-all-read, and clear-all controls are included.
+
+### Plugin sandboxing
+Plugin `run()` functions now execute in a forked child process (`sandbox-worker.js`) via `PluginSandbox`. Each invocation spawns a fresh worker with a 30-second timeout. Plugin crashes and memory leaks are isolated from the gateway. Falls back to in-process execution when the compiled worker is not present.
+
+### Structured output / JSON mode
+`InferenceRequest` accepts `responseFormat: { type: 'json_object' | 'json_schema', schema?, name? }`. OpenAI providers pass `response_format` natively; Anthropic appends a system instruction. `StructuredOutputValidator` validates the response and throws `StructuredOutputError` on failure. The CommandPanel has a `{} JSON` toggle button.
+
 ### Other notable capabilities
 - Heartbeat engine — background maintenance loop: stale run detection, memory hygiene, model signal checks, config integrity checks
 - Canvas — agent-editable HTML/CSS/JS pages served under the gateway
