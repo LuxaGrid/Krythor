@@ -115,6 +115,33 @@ Schedule agents to run automatically. Supports 5-field cron expressions (`0 7 * 
 ### Session compaction
 POST `/api/memory/compact` manually triggers session compaction (summarizing old conversation turns to free storage). Available as a "Compact Sessions" button in the Memory tab.
 
+### Audit log persistence
+Guard decisions are persisted to SQLite (migration 011). `GET /api/audit/log` supports `limit`, `offset`, `agentId`, `operation`, and `since` filters backed by indexed queries. Falls back to the in-memory ring buffer when the DB is unavailable.
+
+### Per-agent rate limiting
+Each agent has a configurable runs-per-minute cap (default: 20). Excess calls receive a `429 Too Many Requests` with `Retry-After: 60`. Set via `agentMaxRunsPerMinute` in `app-config.json` or call `orchestrator.setMaxRunsPerMinute()`.
+
+### Streaming approval integration
+Guard `require-approval` verdicts during streamed responses send an `approval_required` SSE event immediately (no buffering). The UI surfaces an inline approval prompt mid-stream; on resolution an `approval_granted` event fires and streaming continues.
+
+### Agent-to-agent messaging bus
+`AgentMessageBus` provides in-process `send()`, `subscribe()`, and `delegate()` methods. `POST /api/agents/:id/message`, `GET /api/agents/:id/messages`, and `POST /api/agents/delegate` expose the bus over HTTP.
+
+### Scheduled memory cleanup UI
+The Memory tab shows janitor status (last run, next scheduled run, pruning stats) and provides a "Run Now" button. `GET /api/memory/janitor/status` and `POST /api/memory/janitor/run` back the UI.
+
+### Webhook inbound hardening
+Inbound webhooks (`POST /api/hooks/wake`, `POST /api/hooks/agent`) now require HMAC-SHA256 replay-attack protection: `X-Krythor-Timestamp` (5-minute window), `X-Krythor-Nonce` (per-request dedup), and `X-Krythor-Signature` (`HMAC-SHA256(token:ts:nonce:body)`).
+
+### Full config export / import
+`GET /api/config/export/full` returns a complete snapshot of agents, guard policies, access profiles, cron jobs, channels, skills, and providers (keys redacted). `POST /api/config/import/full?dryRun=true` supports per-section import flags and dry-run validation. The Settings panel exposes both actions.
+
+### First-run wizard security guidance
+The onboarding wizard now includes four post-channel steps: Security Profile (Safe / Standard / Full Access), Guard Policy preset (Permissive / Balanced / Strict), Privacy Routing toggle with local-provider awareness, and Workspace path configuration. Selections are saved to `app-config.json`.
+
+### Dashboard real-time metrics
+`GET /api/dashboard/metrics/series` returns a 60-minute sliding window of per-minute request counts, error counts, and latency sums. The Dashboard panel renders three sparklines (req/min, errors, latency) with a totals row showing aggregate request count, error count, avg latency, and error rate.
+
 ### Other notable capabilities
 - Heartbeat engine — background maintenance loop: stale run detection, memory hygiene, model signal checks, config integrity checks
 - Canvas — agent-editable HTML/CSS/JS pages served under the gateway

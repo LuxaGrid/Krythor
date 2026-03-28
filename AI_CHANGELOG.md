@@ -4,6 +4,63 @@ Tracks all AI-assisted implementation work on this codebase.
 
 ---
 
+## 2026-03-28 — v0.7: Audit Persistence, Rate Limiting, Streaming Approvals, Agent Bus, Janitor UI, Webhook Hardening, Full Config Export/Import, Wizard Security Steps, Dashboard Metrics
+
+### Feature 1 — Audit log persistence (packages: memory, gateway)
+- Migration 011 adds `audit_log` table with indexes on `timestamp`, `agent_id`, `operation`
+- `AuditStore` class: `insert()`, `query()`, `tail()`, `clear()`; exported from `@krythor/memory`
+- `AccessProfileStore` wires AuditStore for dual write (ring buffer + SQLite)
+- `GET /api/audit/log` uses SQLite primary path with in-memory fallback; supports `limit`, `offset`, `agentId`, `operation`, `since` filters
+
+### Feature 2 — Per-agent rate limiting (package: core, gateway)
+- `RunRateLimitError` in `AgentOrchestrator` — rolling 60s window, default 20 runs/min
+- `setMaxRunsPerMinute(0)` disables the cap; `agentMaxRunsPerMinute` in `app-config.json` configures it at startup
+- Gateway returns `429` with `Retry-After: 60` header on rate limit hit
+- Agent message bus routes (`/api/agents/:id/message`, `/api/agents/:id/messages`, `/api/agents/delegate`) added
+
+### Feature 3 — Streaming approval integration (package: gateway, control)
+- `command.ts` writes SSE headers and sends `approval_required` event before blocking on approval
+- `req['_sseAlreadyOpen']` flag prevents double `writeHead` in subsequent streaming blocks
+- `CommandPanel.tsx` renders an inline approval prompt with Allow / Allow for Session / Deny buttons
+- `respondApproval()` added to `api.ts`
+
+### Feature 4 — Agent-to-agent messaging bus (package: core, gateway)
+- `AgentMessageBus`: `send()`, `subscribe()`, `getMessages()`, `delegate()`
+- Three new HTTP endpoints expose the bus; exported from `@krythor/core`
+
+### Feature 5 — Scheduled memory cleanup UI (packages: gateway, control)
+- `GET /api/memory/janitor/status` and `POST /api/memory/janitor/run`
+- `JanitorStatus` tracks `lastRunAt`, `nextRunAt`, `lastResult`, `config`
+- `MemoryPanel.tsx` shows last/next run times, pruning stats, and "Run Now" button
+
+### Feature 6 — Webhook inbound hardening (package: gateway)
+- `hooks.ts` rewritten with HMAC-SHA256 replay-attack protection
+- Validates `X-Krythor-Timestamp` (±5 min), `X-Krythor-Nonce` (nonce dedup with auto-eviction), `X-Krythor-Signature` (`HMAC-SHA256(token:ts:nonce:body)`)
+- Error codes: `MISSING_TIMESTAMP`, `TIMESTAMP_TOO_OLD`, `MISSING_NONCE`, `REPLAY_DETECTED`, `INVALID_SIGNATURE`
+
+### Feature 7 — Full config export / import (packages: gateway, control)
+- `config.portability.ts` adds `GET /api/config/export/full` and `POST /api/config/import/full`
+- Exports: agents, guard policies, access profiles, cron jobs, channels, skills, providers (keys redacted)
+- Import supports `?dryRun=true` and per-section boolean flags; returns per-section counts
+- SettingsPanel exposes full export/import buttons
+
+### Feature 8 — First-run wizard security guidance (package: control)
+- Four new wizard steps after channels: `security_profile`, `guard_policy`, `privacy_routing`, `workspace`
+- Each step calls `patchAppConfig()` with the chosen value
+- `AppConfig` interface extended with `defaultProfile`, `guardPreset`, `privacyMode`, `workspacePath`
+- Full Access profile shows a warning banner; privacy routing warns when no local provider is detected
+
+### Feature 9 — Dashboard real-time metrics with trend lines (packages: gateway, control)
+- `MetricsCollector`: 60-minute sliding window, per-minute buckets for requests, errors, latency sum
+- `onResponse` hook in `server.ts` records all `/api/*` requests automatically
+- `GET /api/dashboard/metrics/series` returns time-series payload
+- `DashboardPanel.tsx` renders req/min, errors, and latency sparklines plus a totals row
+- 7 new unit tests for `MetricsCollector`
+
+Build status: 880 tests passing, all packages typecheck clean, 15 pre-existing gateway failures (migration SQL not loadable in test runner — unrelated to this session's changes).
+
+---
+
 ## 2026-03-28 — v0.6: Privacy Routing, Workspace Isolation, CLI Policy/Audit, Compaction UI, Approvals WS Push, Cron UI
 
 ### Feature 1 — PrivacyRouter wiring (packages: core, gateway)
