@@ -10,6 +10,8 @@ export type { ModelRecommendation, TaskPreference, RecommendationPreference } fr
 export { PreferenceStore } from './PreferenceStore.js';
 export { CircuitBreaker, CircuitOpenError } from './CircuitBreaker.js';
 export type { CircuitStats } from './CircuitBreaker.js';
+export { StructuredOutputError } from './StructuredOutputError.js';
+export { validateStructuredOutput } from './StructuredOutputValidator.js';
 export { ModelRegistry } from './ModelRegistry.js';
 export { resolveCredential } from './credential.js';
 export { ModelRouter } from './ModelRouter.js';
@@ -36,4 +38,5 @@ export type {
   InferenceResponse,
   StreamChunk,
   RoutingContext,
+  ResponseFormat,
 } from './types.js';

@@ -40,17 +40,27 @@ export function registerCommandRoute(
           modelId:        { type: 'string' },
           stream:         { type: 'boolean' },
           conversationId: { type: 'string' },
+          responseFormat: {
+            type: 'object',
+            properties: {
+              type:   { type: 'string', enum: ['json_object', 'json_schema'] },
+              schema: { type: 'object' },
+              name:   { type: 'string' },
+            },
+            required: ['type'],
+          },
         },
         additionalProperties: false,
       },
     },
   }, async (req, reply) => {
-    const { input, agentId, modelId, stream, conversationId } = req.body as {
+    const { input, agentId, modelId, stream, conversationId, responseFormat } = req.body as {
       input: string;
       agentId?: string;
       modelId?: string;
       stream?: boolean;
       conversationId?: string;
+      responseFormat?: import('@krythor/models').ResponseFormat;
     };
 
     // Resolve model engine early so it's available for slash-command responses.
@@ -585,7 +595,7 @@ export function registerCommandRoute(
           // Privacy routing: classify prompt and potentially re-route to local provider
           if (privacyRouter) {
             const privacyResult = await privacyRouter.infer(
-              { messages: [{ role: 'user', content: input }], ...(resolvedModelId && { model: resolvedModelId }) },
+              { messages: [{ role: 'user', content: input }], ...(resolvedModelId && { model: resolvedModelId }), ...(responseFormat && { responseFormat }) },
             );
             const output = privacyResult.content;
             const duration = Date.now() - startTime;

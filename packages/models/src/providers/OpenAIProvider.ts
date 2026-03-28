@@ -1,5 +1,6 @@
 import { BaseProvider } from './BaseProvider.js';
 import type { InferenceRequest, InferenceResponse, StreamChunk } from '../types.js';
+import { validateStructuredOutput } from '../StructuredOutputValidator.js';
 
 interface OpenAIMessage { role: string; content: string; }
 
@@ -43,6 +44,12 @@ export class OpenAIProvider extends BaseProvider {
       messages: request.messages as OpenAIMessage[],
       ...(request.temperature !== undefined && { temperature: request.temperature }),
       ...(request.maxTokens !== undefined && { max_tokens: request.maxTokens }),
+      // Structured output / JSON mode
+      ...(request.responseFormat && {
+        response_format: request.responseFormat.type === 'json_schema' && request.responseFormat.schema
+          ? { type: 'json_schema', json_schema: { name: request.responseFormat.name ?? 'response', strict: true, schema: request.responseFormat.schema } }
+          : { type: 'json_object' },
+      }),
     };
 
     const data = await this.httpPost(`${this.config.endpoint}/chat/completions`, body, this.headers, signal) as {
@@ -50,8 +57,14 @@ export class OpenAIProvider extends BaseProvider {
       usage?: { prompt_tokens?: number; completion_tokens?: number };
     };
 
+    const rawContent = data.choices?.[0]?.message?.content ?? '';
+    // Validate structured output if requested
+    if (request.responseFormat) {
+      validateStructuredOutput(rawContent, request.responseFormat);
+    }
+
     return {
-      content: data.choices?.[0]?.message?.content ?? '',
+      content: rawContent,
       model,
       providerId: this.config.id,
       promptTokens: data.usage?.prompt_tokens,

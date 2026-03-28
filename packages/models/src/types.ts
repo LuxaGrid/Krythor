@@ -90,6 +90,24 @@ export interface Message {
   content: string;
 }
 
+/**
+ * Structured output / JSON mode configuration.
+ *
+ *   type: 'json_object'    — Instructs the model to always produce valid JSON
+ *                            (no schema validation; just guaranteed parseable JSON).
+ *   type: 'json_schema'    — Same as json_object but also validates the response
+ *                            against the provided JSON Schema.  Throws
+ *                            StructuredOutputError if the response is not valid JSON
+ *                            or does not conform to the schema.
+ */
+export interface ResponseFormat {
+  type: 'json_object' | 'json_schema';
+  /** JSON Schema to validate against when type === 'json_schema'. */
+  schema?: Record<string, unknown>;
+  /** Optional human-readable name for the schema (used in OpenAI's structured output API). */
+  name?: string;
+}
+
 export interface InferenceRequest {
   messages: Message[];
   model?: string;            // override specific model ID
@@ -97,6 +115,8 @@ export interface InferenceRequest {
   temperature?: number;
   maxTokens?: number;
   stream?: boolean;
+  /** Optional structured output / JSON mode configuration. */
+  responseFormat?: ResponseFormat;
 }
 
 export interface InferenceResponse {

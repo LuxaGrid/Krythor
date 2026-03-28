@@ -174,6 +174,7 @@ export function streamCommand(
   modelId?: string,
   onEvent?: (event: StreamEvent) => void,
   signal?: AbortSignal,
+  responseFormat?: ResponseFormat,
 ): Promise<void> {
   const streamHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
   if (_gatewayToken) streamHeaders['Authorization'] = `Bearer ${_gatewayToken}`;
@@ -186,6 +187,7 @@ export function streamCommand(
       ...(agentId        && { agentId }),
       ...(modelId        && { modelId }),
       ...(conversationId && { conversationId }),
+      ...(responseFormat && { responseFormat }),
     }),
     signal,
   }).then(async (response) => {
@@ -539,7 +541,12 @@ export interface GuardVerdict {
 // ── Embeddings ────────────────────────────────────────────────────────────────
 export interface InferenceMessage { role: 'user' | 'assistant' | 'system'; content: string }
 export interface InferenceResponse { content: string; model?: string; providerId?: string; tokensUsed?: number }
-export const directInfer = (messages: InferenceMessage[], opts?: { model?: string; providerId?: string; temperature?: number; maxTokens?: number }) =>
+export interface ResponseFormat {
+  type: 'json_object' | 'json_schema';
+  schema?: Record<string, unknown>;
+  name?: string;
+}
+export const directInfer = (messages: InferenceMessage[], opts?: { model?: string; providerId?: string; temperature?: number; maxTokens?: number; responseFormat?: ResponseFormat }) =>
   req<InferenceResponse>('POST', '/models/infer', { messages, ...opts });
 export const listModelPreferences = () => req<TaskPreference[]>('GET', '/recommend/preferences');
 export const clearModelPreference = (taskType: string) =>

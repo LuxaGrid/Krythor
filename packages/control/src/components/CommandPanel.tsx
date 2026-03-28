@@ -23,6 +23,7 @@ import {
   type StreamEvent,
   type Health,
   type ModelInfo,
+  type ResponseFormat,
 } from '../api.ts';
 import { useAppConfig } from '../App.tsx';
 import { ModelRecommendationBar, ModelSwitcher } from './ModelRecommendation.tsx';
@@ -572,6 +573,7 @@ export function CommandPanel({ health, onTabChange, newChatRef }: Props) {
   const [historyIdx, setHistoryIdx]           = useState(-1);
   const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
   const [selectedModelId, setSelectedModelId] = useState<string | undefined>(config.selectedModel);
+  const [jsonMode, setJsonMode]               = useState(false);
   const [showFirstRun, setShowFirstRun]       = useState(() => !localStorage.getItem(FIRST_RUN_KEY));
   const [showArchived, setShowArchived]       = useState(false);
   const [slashIdx, setSlashIdx]               = useState(0);
@@ -813,6 +815,7 @@ export function CommandPanel({ health, onTabChange, newChatRef }: Props) {
           }
         },
         controller.signal,
+        jsonMode ? ({ type: 'json_object' } satisfies ResponseFormat) : undefined,
       );
     } catch (err) {
       if ((err as Error).name !== 'AbortError') {
@@ -1079,13 +1082,26 @@ export function CommandPanel({ health, onTabChange, newChatRef }: Props) {
 
           <div className="flex items-center justify-between mt-1.5 px-1">
             <p className="text-zinc-400 text-sm">Enter to send · Shift+Enter for newline</p>
-            {availableModels.length > 1 && (
-              <ModelSwitcher
-                selectedModelId={selectedModelId}
-                models={availableModels}
-                onChange={(modelId) => setSelectedModelId(modelId)}
-              />
-            )}
+            <div className="flex items-center gap-2">
+              {/* JSON mode toggle */}
+              <button
+                onClick={() => setJsonMode(m => !m)}
+                title="JSON mode — force model to respond with valid JSON"
+                className={`text-[10px] font-mono px-2 py-0.5 rounded border transition-colors focus:outline-none
+                  ${jsonMode
+                    ? 'bg-brand-900/60 border-brand-600 text-brand-300'
+                    : 'bg-zinc-800/60 border-zinc-700 text-zinc-600 hover:text-zinc-400 hover:border-zinc-600'}`}
+              >
+                {'{}'} JSON
+              </button>
+              {availableModels.length > 1 && (
+                <ModelSwitcher
+                  selectedModelId={selectedModelId}
+                  models={availableModels}
+                  onChange={(modelId) => setSelectedModelId(modelId)}
+                />
+              )}
+            </div>
           </div>
         </div>
       </div>

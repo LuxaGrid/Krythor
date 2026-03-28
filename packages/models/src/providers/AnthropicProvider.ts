@@ -1,5 +1,6 @@
 import { BaseProvider } from './BaseProvider.js';
 import type { InferenceRequest, InferenceResponse, StreamChunk, Message } from '../types.js';
+import { validateStructuredOutput } from '../StructuredOutputValidator.js';
 
 export class AnthropicProvider extends BaseProvider {
 
@@ -48,11 +49,22 @@ export class AnthropicProvider extends BaseProvider {
     const systemMsg = request.messages.find(m => m.role === 'system');
     const userMsgs = request.messages.filter(m => m.role !== 'system');
 
+    // JSON mode: Anthropic does not have a native response_format field.
+    // Append a JSON instruction to the system message instead.
+    let systemText = systemMsg?.content ?? '';
+    if (request.responseFormat) {
+      const schemaHint = request.responseFormat.schema
+        ? ` Conform to this JSON Schema: ${JSON.stringify(request.responseFormat.schema)}.`
+        : '';
+      const jsonInstruction = `You MUST respond with valid JSON only — no prose, no markdown fences.${schemaHint}`;
+      systemText = systemText ? `${systemText}\n\n${jsonInstruction}` : jsonInstruction;
+    }
+
     const body: Record<string, unknown> = {
       model,
       max_tokens: request.maxTokens ?? 1024,
       messages: userMsgs.map(m => ({ role: m.role, content: m.content })),
-      ...(systemMsg && { system: systemMsg.content }),
+      ...(systemText && { system: systemText }),
       ...(request.temperature !== undefined && { temperature: request.temperature }),
     };
 
@@ -66,13 +78,18 @@ export class AnthropicProvider extends BaseProvider {
       usage?: { input_tokens?: number; output_tokens?: number };
     };
 
-    const content = data.content
+    const rawContent = data.content
       ?.filter(b => b.type === 'text')
       .map(b => b.text ?? '')
       .join('') ?? '';
 
+    // Validate structured output if requested
+    if (request.responseFormat) {
+      validateStructuredOutput(rawContent, request.responseFormat);
+    }
+
     return {
-      content,
+      content: rawContent,
       model,
       providerId: this.config.id,
       promptTokens: data.usage?.input_tokens,
