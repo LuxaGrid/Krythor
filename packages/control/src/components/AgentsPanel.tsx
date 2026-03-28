@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useSidebarResize } from '../hooks/useSidebarResize.ts';
 import { SidebarResizeHandle } from './SidebarResizeHandle.tsx';
 import {
   listAgents, createAgent, updateAgent, deleteAgent, runAgent,
-  listRuns, agentStats, listProviders, listModels, importAgent, exportAgent,
+  listRuns, agentStats, listModels, importAgent, exportAgent,
   getAgentAccessProfile, setAgentAccessProfile,
-  type Agent, type AgentRun, type AgentStats, type Provider, type ModelInfo,
+  type Agent, type AgentRun, type AgentStats, type ModelInfo,
 } from '../api.ts';
 import { useAppConfig } from '../App.tsx';
 import { PanelHeader } from './PanelHeader.tsx';
@@ -211,8 +211,8 @@ export function AgentsPanel() {
   const [agents, setAgents]   = useState<Agent[]>([]);
   const [runs, setRuns]       = useState<AgentRun[]>([]);
   const [stats, setStats]     = useState<AgentStats | null>(null);
-  const [providers, setProviders] = useState<Provider[]>([]);
   const [modelInfos, setModelInfos] = useState<ModelInfo[]>([]);
+  const modelsLoadedRef = useRef(false);
   const [selected, setSelected] = useState<Agent | null>(null);
 
   // Access profiles per agent
@@ -232,16 +232,9 @@ export function AgentsPanel() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [a, s, p, m] = await Promise.all([
-        listAgents(),
-        agentStats(),
-        listProviders().catch(() => [] as Provider[]),
-        listModels().catch(() => [] as ModelInfo[]),
-      ]);
+      const [a, s] = await Promise.all([listAgents(), agentStats()]);
       setAgents(a);
       setStats(s);
-      setProviders(p);
-      setModelInfos(m);
       // Auto-select the configured agent
       if (config.selectedAgentId && !selected) {
         const found = a.find(ag => ag.id === config.selectedAgentId);
@@ -283,6 +276,14 @@ export function AgentsPanel() {
     if (!selected) return;
     listRuns(selected.id).then(setRuns).catch(() => {});
   }, [selected]);
+
+  // Lazy-load models once when the create/edit form first opens
+  useEffect(() => {
+    if (showForm && !modelsLoadedRef.current) {
+      modelsLoadedRef.current = true;
+      listModels().then(setModelInfos).catch(() => {});
+    }
+  }, [showForm]);
 
   const openCreate = () => {
     setEditingId(null);
@@ -413,18 +414,13 @@ export function AgentsPanel() {
     } catch { /* ignore */ }
   };
 
-  // Build model list for the dropdown from /api/models (authoritative).
-  // Fall back to flattening provider.models arrays if modelInfos is empty.
-  const providerMap = new Map(providers.map(p => [p.id, p.name]));
-  const allModels = modelInfos.length > 0
-    ? modelInfos.map(m => ({
-        label: `${m.id} (${providerMap.get(m.providerId) ?? m.providerId})`,
-        modelId: m.id,
-        providerId: m.providerId,
-      }))
-    : providers.flatMap(p =>
-        (p.models ?? []).map(m => ({ label: `${m} (${p.name})`, modelId: m, providerId: p.id }))
-      );
+  const allModels = useMemo(() =>
+    modelInfos.map(m => ({
+      label: `${m.id} (${m.provider})`,
+      modelId: m.id,
+      providerId: m.providerId,
+    }))
+  , [modelInfos]);
 
   const { width: sidebarW, onMouseDown: sidebarDrag } = useSidebarResize('agents', 208);
 

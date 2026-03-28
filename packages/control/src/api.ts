@@ -396,7 +396,7 @@ export interface Provider {
   setupHint?: string;
 }
 export interface PingResult { ok: boolean; latencyMs: number; error?: string; lastUnavailableReason?: string }
-export interface ModelInfo  { id: string; name: string; providerId: string; badges: string[] }
+export interface ModelInfo  { id: string; name: string; providerId: string; provider: string; badges: string[] }
 
 // ── Agents ────────────────────────────────────────────────────────────────
 export const listAgents  = () => req<Agent[]>('GET', '/agents');

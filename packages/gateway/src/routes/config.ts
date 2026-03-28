@@ -36,38 +36,30 @@ export interface AppConfig {
 export function registerConfigRoute(app: FastifyInstance, configDir: string, guard?: GuardEngine, orchestrator?: AgentOrchestrator, memory?: MemoryEngine): void {
   const configPath = join(configDir, 'app-config.json');
 
-  /** Read the raw file object (all fields preserved — includes gatewayToken etc.). */
+  // Read the raw file — all fields preserved, including gatewayToken managed by auth.ts.
+  // Returns {} when the file is missing; logs and returns {} when the file is unparseable.
   function readRaw(): Record<string, unknown> {
-    if (!existsSync(configPath)) return {};
     try {
       return JSON.parse(readFileSync(configPath, 'utf8')) as Record<string, unknown>;
-    } catch {
+    } catch (err) {
+      const missing = (err as NodeJS.ErrnoException).code === 'ENOENT';
+      if (!missing) app.log.error({ err }, `[config] Failed to parse ${configPath} — returning empty config`);
       return {};
     }
   }
 
   function read(): AppConfig {
-    if (!existsSync(configPath)) return {};
-    try {
-      const raw = JSON.parse(readFileSync(configPath, 'utf8')) as unknown;
-      const { value, errors } = parseAppConfig(raw);
-      if (errors.length > 0) {
-        app.log.warn({ errors }, `[config] Validation warnings in ${configPath}`);
-      }
-      return value;
-    } catch (err) {
-      app.log.error({ err }, `[config] Failed to parse ${configPath} — returning empty config`);
-      return {};
+    const raw = readRaw();
+    const { value, errors } = parseAppConfig(raw);
+    if (errors.length > 0) {
+      app.log.warn({ errors }, `[config] Validation warnings in ${configPath}`);
     }
+    return value;
   }
 
-  /**
-   * Write AppConfig fields back, preserving all unknown fields (e.g. gatewayToken)
-   * that live in the same file but are managed by other subsystems.
-   */
+  // Merge AppConfig fields onto the raw file so unmanaged fields (e.g. gatewayToken) survive.
   function write(config: AppConfig): void {
-    const raw = readRaw();
-    atomicWriteJSON(configPath, { ...raw, ...config });
+    atomicWriteJSON(configPath, { ...readRaw(), ...config });
   }
 
   // Apply settings from config at startup
