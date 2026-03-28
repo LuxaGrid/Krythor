@@ -1141,6 +1141,47 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
       }
     }
 
+    // ── Agent tools ────────────────────────────────────────────────────────────
+    if (toolName === 'agents_list') {
+      try {
+        const agents = orchestrator.listAgents().map(a => ({
+          id:          a.id,
+          name:        a.name,
+          description: a.description ?? '',
+          modelId:     a.modelId ?? null,
+          tags:        a.tags ?? [],
+        }));
+        return JSON.stringify(agents, null, 2);
+      } catch (err) {
+        return `agents_list error: ${err instanceof Error ? err.message : String(err)}`;
+      }
+    }
+
+    if (toolName === 'agent_ping') {
+      try {
+        const params = JSON.parse(input) as { agentId?: string; message?: string };
+        if (!params.agentId) return 'agent_ping: agentId is required';
+        if (!params.message) return 'agent_ping: message is required';
+
+        // Verify the calling agent has agent_ping in its allowedTools
+        const callerAgent = orchestrator.getAgent(agentId);
+        if (!callerAgent?.allowedTools?.includes('agent_ping')) {
+          return `agent_ping: "${agentId}" does not have "agent_ping" in allowedTools`;
+        }
+
+        const targetAgent = orchestrator.getAgent(params.agentId);
+        if (!targetAgent) return `agent_ping: agent "${params.agentId}" not found`;
+
+        const run = await orchestrator.runAgent(params.agentId, {
+          input: params.message,
+          contextOverride: `[agent_ping from agent ${agentId}]`,
+        }, {});
+        return run.output ?? '(no response)';
+      } catch (err) {
+        return `agent_ping error: ${err instanceof Error ? err.message : String(err)}`;
+      }
+    }
+
     // ── Shell tools — profile-checked and guard-checked by ShellToolDispatcher ─
     const shellResult = await shellDispatcher.dispatch(agentId, toolName, input);
     if (shellResult !== null) return shellResult;

@@ -74,12 +74,15 @@ type CustomCall         = { tool: 'custom';             name: string;   input: s
 type SpawnAgentCall     = { tool: 'spawn_agent';        agentId: string; message: string };
 type SessionsListCall   = { tool: 'sessions_list';     limit?: number; agentId?: string; includeArchived?: boolean };
 type SessionsHistoryCall = { tool: 'sessions_history'; conversationId: string; limit?: number };
+type AgentsListCall     = { tool: 'agents_list' };
+type AgentPingCall      = { tool: 'agent_ping';        agentId: string; message: string };
 type AnyToolCall        = ExecCall | WebSearchCall | WebFetchCall
   | ReadFileCall | WriteFileCall | EditFileCall | ApplyPatchCall
   | GetPageTextCall
   | ShellExecCall | ListProcessesCall
   | CustomCall | SpawnAgentCall
-  | SessionsListCall | SessionsHistoryCall;
+  | SessionsListCall | SessionsHistoryCall
+  | AgentsListCall | AgentPingCall;
 
 /**
  * Attempt to extract a handoff directive from a model response.
@@ -189,6 +192,16 @@ function extractToolCall(response: string): AnyToolCall | null {
         conversationId: parsed['conversationId'] as string,
         limit: typeof parsed['limit'] === 'number' ? parsed['limit'] : undefined,
       };
+    }
+
+    if (tool === 'agents_list') {
+      return { tool: 'agents_list' };
+    }
+
+    if (tool === 'agent_ping' &&
+        typeof parsed['agentId'] === 'string' && parsed['agentId'].length > 0 &&
+        typeof parsed['message'] === 'string') {
+      return { tool: 'agent_ping', agentId: parsed['agentId'] as string, message: parsed['message'] as string };
     }
 
     // Custom webhook tool — any other tool name with an "input" field
@@ -706,6 +719,33 @@ export class AgentRunner {
           }
         } catch (err) {
           toolResult = `Tool "sessions_history" failed: ${err instanceof Error ? err.message : String(err)}`;
+        }
+      }
+    } else if (call.tool === 'agents_list') {
+      if (!this.customToolDispatcher) {
+        toolResult = 'Tool "agents_list" is not available in this configuration.';
+      } else {
+        try {
+          const result = await this.customToolDispatcher('agents_list', '{}', agentId);
+          toolResult = result !== null
+            ? `Tool result for agents_list:\n${result}`
+            : 'Tool "agents_list" is not available.';
+        } catch (err) {
+          toolResult = `Tool "agents_list" failed: ${err instanceof Error ? err.message : String(err)}`;
+        }
+      }
+    } else if (call.tool === 'agent_ping') {
+      if (!this.customToolDispatcher) {
+        toolResult = 'Tool "agent_ping" is not available in this configuration.';
+      } else {
+        try {
+          const params = JSON.stringify({ agentId: call.agentId, message: call.message });
+          const result = await this.customToolDispatcher('agent_ping', params, agentId);
+          toolResult = result !== null
+            ? `Tool result for agent_ping:\n${result}`
+            : `Tool "agent_ping": agent "${call.agentId}" is not available.`;
+        } catch (err) {
+          toolResult = `Tool "agent_ping" failed: ${err instanceof Error ? err.message : String(err)}`;
         }
       }
     } else if (call.tool === 'custom') {

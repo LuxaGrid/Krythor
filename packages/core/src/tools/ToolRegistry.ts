@@ -309,6 +309,42 @@ export const TOOL_REGISTRY: ToolEntry[] = [
     alwaysAllowed: false,
   },
   {
+    name: 'agents_list',
+    description:
+      'List all agents registered in this Krythor instance. ' +
+      'Returns an array of agents with id, name, description, modelId, and tags. ' +
+      'Read-only. Use this to discover which agents are available before calling agent_ping.',
+    parameters: {},
+    requiresGuard: false,
+    alwaysAllowed: false,
+  },
+  {
+    name: 'agent_ping',
+    description:
+      'Send a message to another agent and receive its response. ' +
+      'The target agent runs a single synchronous turn and returns its output. ' +
+      'Use agents_list first to discover available agent IDs. ' +
+      'Add "agent_ping" to the agent\'s allowedTools to permit this tool.',
+    parameters: {
+      agentId: {
+        type:        'string',
+        description: 'The ID of the target agent to ping.',
+        required:    true,
+        minLength:   1,
+        maxLength:   100,
+      },
+      message: {
+        type:        'string',
+        description: 'The message to send to the target agent.',
+        required:    true,
+        minLength:   1,
+        maxLength:   4000,
+      },
+    },
+    requiresGuard: false,
+    alwaysAllowed: false,
+  },
+  {
     name: 'sessions_history',
     description:
       'Fetch the message history for a specific conversation (session). ' +
