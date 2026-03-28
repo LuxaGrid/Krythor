@@ -272,6 +272,7 @@ export const pinMemory    = (id: string) => req<MemoryEntry>('POST', `/memory/${
 export const unpinMemory  = (id: string) => req<MemoryEntry>('POST', `/memory/${id}/unpin`);
 export const memoryStats  = () => req<MemoryStats>('GET', '/memory/stats');
 export const pruneMemory     = (maxEntries?: number) => req<{ deleted: number; totalEntries: number }>('POST', '/memory/prune', maxEntries !== undefined ? { maxEntries } : {});
+export const compactMemory   = () => req<{ compacted: number; rawPruned: number }>('POST', '/memory/compact', {});
 export const summarizeMemory = (scope?: string, batchSize?: number) => req<{ summarized: number; summaryEntryId?: string; totalEntries: number }>('POST', '/memory/summarize', { scope, batchSize });
 export const pruneMemoryBulk = (filters: { olderThan?: string; tag?: string; source?: string }) => {
   const qs = new URLSearchParams(
@@ -1043,3 +1044,45 @@ export async function createWebChatPairing(opts?: {
 export async function revokeWebChatPairing(id: string): Promise<{ ok: boolean }> {
   return req('DELETE', `/webchat/pair/${encodeURIComponent(id)}`);
 }
+
+// ── Cron Jobs ─────────────────────────────────────────────────────────────────
+
+export type CronSchedule =
+  | { kind: 'at'; at: string }
+  | { kind: 'every'; everyMs: number }
+  | { kind: 'cron'; expr: string; tz?: string };
+
+export interface CronJob {
+  id: string;
+  name: string;
+  description?: string;
+  schedule: CronSchedule;
+  agentId?: string;
+  message: string;
+  enabled: boolean;
+  deleteAfterRun?: boolean;
+  lastRunAt?: string;
+  lastFailedAt?: string;
+  lastError?: string;
+  runCount: number;
+  nextRunAt?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateCronJobInput {
+  name: string;
+  description?: string;
+  schedule: CronSchedule;
+  agentId?: string;
+  message: string;
+  enabled?: boolean;
+  deleteAfterRun?: boolean;
+}
+
+export const listCronJobs = () => req<CronJob[]>('GET', '/cron');
+export const getCronJob = (id: string) => req<CronJob>('GET', `/cron/${encodeURIComponent(id)}`);
+export const createCronJob = (input: CreateCronJobInput) => req<CronJob>('POST', '/cron', input);
+export const updateCronJob = (id: string, patch: Partial<CreateCronJobInput>) => req<CronJob>('PATCH', `/cron/${encodeURIComponent(id)}`, patch);
+export const deleteCronJob = (id: string) => req<{ ok: boolean }>('DELETE', `/cron/${encodeURIComponent(id)}`);
+export const runCronJobNow = (id: string) => req<{ ok: boolean; runId?: string }>('POST', `/cron/${encodeURIComponent(id)}/run`);

@@ -5,6 +5,7 @@ import type { GuardEngine } from '@krythor/guard';
 import type { ConversationStore } from '@krythor/memory';
 import type { DevicePairingStore } from '../ws/DevicePairingStore.js';
 import type { ApprovalManager } from '../ApprovalManager.js';
+import type { PrivacyRouter } from '@krythor/models';
 import { classifyError } from '../errors.js';
 
 /** Register a requestId→runId mapping on the app instance (set in server.ts). */
@@ -22,6 +23,7 @@ export function registerCommandRoute(
   convStore?: ConversationStore,
   deviceStore?: DevicePairingStore,
   approvalManager?: ApprovalManager,
+  privacyRouter?: PrivacyRouter,
 ): void {
   app.post('/api/command', {
     config: {
@@ -519,15 +521,28 @@ export function registerCommandRoute(
         }
 
         try {
-          const result = await core.handleCommand(input, resolvedModelId ? { agentModelId: resolvedModelId, ...(resolvedProviderId && { providerId: resolvedProviderId }) } : undefined);
-          const output = (result as { output?: string }).output ?? String(result);
-          const duration = Date.now() - startTime;
+          // Privacy routing: classify prompt and potentially re-route to local provider
+          if (privacyRouter) {
+            const privacyResult = await privacyRouter.infer(
+              { messages: [{ role: 'user', content: input }], ...(resolvedModelId && { model: resolvedModelId }) },
+            );
+            const output = privacyResult.content;
+            const duration = Date.now() - startTime;
+            if (convStore && activeConvId) {
+              convStore.addMessage(activeConvId, 'assistant', output);
+            }
+            reply.raw.write(`data: ${JSON.stringify({ type: 'done', duration, output, conversationId: activeConvId, privacyDecision: privacyResult.privacyDecision })}\n\n`);
+          } else {
+            const result = await core.handleCommand(input, resolvedModelId ? { agentModelId: resolvedModelId, ...(resolvedProviderId && { providerId: resolvedProviderId }) } : undefined);
+            const output = (result as { output?: string }).output ?? String(result);
+            const duration = Date.now() - startTime;
 
-          if (convStore && activeConvId) {
-            convStore.addMessage(activeConvId, 'assistant', output);
+            if (convStore && activeConvId) {
+              convStore.addMessage(activeConvId, 'assistant', output);
+            }
+
+            reply.raw.write(`data: ${JSON.stringify({ type: 'done', duration, output, conversationId: activeConvId })}\n\n`);
           }
-
-          reply.raw.write(`data: ${JSON.stringify({ type: 'done', duration, output, conversationId: activeConvId })}\n\n`);
         } catch (err) {
           const structured = classifyError(err);
           reply.raw.write(`data: ${JSON.stringify({ type: 'error', message: structured.hint || structured.message })}\n\n`);

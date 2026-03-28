@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { listMemory, createMemory, updateMemory, deleteMemory, pinMemory, unpinMemory, pruneMemory, summarizeMemory, pruneMemoryBulk, exportMemory, importMemory, memoryStatsDetailed, listMemoryTags, type MemoryEntry, type MemorySearchResult, type Health, type MemoryStatsDetailed } from '../api.ts';
+import { listMemory, createMemory, updateMemory, deleteMemory, pinMemory, unpinMemory, pruneMemory, compactMemory, summarizeMemory, pruneMemoryBulk, exportMemory, importMemory, memoryStatsDetailed, listMemoryTags, type MemoryEntry, type MemorySearchResult, type Health, type MemoryStatsDetailed } from '../api.ts';
 import { PanelHeader } from './PanelHeader.tsx';
 
 const SCOPES = ['all', 'session', 'user', 'agent', 'workspace', 'skill'];
@@ -271,6 +271,8 @@ export function MemoryPanel({ health }: MemoryPanelProps) {
   const [editing, setEditing]   = useState<(MemoryEntry & { tags?: string[] }) | null>(null);
   const [pruning, setPruning]   = useState(false);
   const [pruneResult, setPruneResult] = useState<{ deleted: number } | null>(null);
+  const [compacting, setCompacting] = useState(false);
+  const [compactResult, setCompactResult] = useState<{ compacted: number; rawPruned: number } | null>(null);
   const [summarizing, setSummarizing] = useState(false);
   const [summarizeResult, setSummarizeResult] = useState<{ summarized: number } | null>(null);
   const [showPruneModal, setShowPruneModal] = useState(false);
@@ -410,6 +412,17 @@ export function MemoryPanel({ health }: MemoryPanelProps) {
       void load(0); // reload to reflect deletions
     } catch { /* ignore */ }
     finally { setPruning(false); }
+  };
+
+  const handleCompact = async () => {
+    if (!confirm('Compact sessions? This summarizes old conversation turns to free storage space.')) return;
+    setCompacting(true);
+    setCompactResult(null);
+    try {
+      const result = await compactMemory();
+      setCompactResult(result);
+    } catch { /* ignore */ }
+    finally { setCompacting(false); }
   };
 
   // Results are already filtered server-side; use them directly
@@ -600,6 +613,9 @@ export function MemoryPanel({ health }: MemoryPanelProps) {
           {pruneResult && (
             <span className="text-emerald-600">{pruneResult.deleted} pruned</span>
           )}
+          {compactResult && (
+            <span className="text-blue-500">{compactResult.compacted} compacted</span>
+          )}
           <button
             onClick={handleExport}
             disabled={exporting}
@@ -634,6 +650,14 @@ export function MemoryPanel({ health }: MemoryPanelProps) {
             className="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 rounded text-zinc-500 hover:text-zinc-300 transition-colors"
           >
             bulk prune
+          </button>
+          <button
+            onClick={handleCompact}
+            disabled={compacting}
+            title="Compact sessions — summarize old conversation turns to free storage space"
+            className="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 rounded text-zinc-500 hover:text-zinc-300 transition-colors"
+          >
+            {compacting ? '…' : 'compact sessions'}
           </button>
           <button
             onClick={handlePrune}

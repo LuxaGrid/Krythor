@@ -74,6 +74,7 @@ import { checkReadiness } from './readiness.js';
 import { validateProvidersConfig } from './ConfigValidator.js';
 import { SessionRouter } from './SessionRouter.js';
 import type { SessionConfig } from './SessionRouter.js';
+import { PrivacyRouter } from '@krythor/models';
 
 // ── .env file loading ─────────────────────────────────────────────────────────
 // Load ~/.krythor/.env into process.env before anything else reads env vars.
@@ -625,6 +626,27 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
     (msg, data) => logger.info(msg, data),
   );
 
+  // PrivacyRouter — reads privacyRoutingEnabled from app-config.json.
+  // When enabled, classifies prompt sensitivity before forwarding to ModelEngine
+  // and re-routes private/restricted content to a local provider.
+  let privacyRouter: PrivacyRouter | undefined;
+  {
+    const appCfgPath = join(dataDir, 'config', 'app-config.json');
+    let privacyEnabled = false;
+    let blockOnSensitive = false;
+    try {
+      if (existsSync(appCfgPath)) {
+        const raw = JSON.parse(readFileSync(appCfgPath, 'utf-8')) as Record<string, unknown>;
+        privacyEnabled    = raw['privacyRoutingEnabled']  === true;
+        blockOnSensitive  = raw['privacyBlockOnSensitive'] === true;
+      }
+    } catch { /* best-effort */ }
+    if (privacyEnabled) {
+      privacyRouter = new PrivacyRouter(models, blockOnSensitive);
+      logger.info('PrivacyRouter enabled', { blockOnSensitive });
+    }
+  }
+
   // Initialise guard (loads/creates policy.json on first run)
   const guard = new GuardEngine(join(dataDir, 'config'), dataDir);
 
@@ -836,6 +858,12 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
       }
     });
   };
+
+  // Wire broadcast into approval manager so UI clients get notified immediately
+  // when a new pending approval is created (no need to wait for polling interval).
+  approvalManager.setOnNewApproval((approval) => {
+    broadcast({ type: 'approval:pending', payload: approval });
+  });
 
   // Track run start times for accurate duration calculation
   const runStartTimes = new Map<string, number>();
@@ -1258,7 +1286,7 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   const heartbeatRef: HeartbeatRef = {};
 
   // Register routes
-  registerCommandRoute(app, core, orchestrator, broadcast, guard, convStore, devicePairingStore, approvalManager);
+  registerCommandRoute(app, core, orchestrator, broadcast, guard, convStore, devicePairingStore, approvalManager, privacyRouter);
   registerMemoryRoutes(app, memory, models, guard, channelEmit, approvalManager);
   registerModelRoutes(app, models, memory, guard, channelEmit, approvalManager);
   registerAgentRoutes(app, orchestrator, guard, accessProfileStore, approvalManager);
@@ -1269,7 +1297,7 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   registerRecommendRoutes(app, models, recommender, guard);
   registerToolRoutes(app, guard, execTool, core);
   registerCustomToolRoutes(app, customToolStore, guard);
-  registerFileToolRoutes(app, guard, accessProfileStore, approvalManager);
+  registerFileToolRoutes(app, guard, accessProfileStore, approvalManager, orchestrator);
   registerShellToolRoutes(app, guard, accessProfileStore, approvalManager);
   registerProviderRoutes(app, models);
   registerOAuthRoutes(app, models);

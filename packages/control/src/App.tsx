@@ -27,6 +27,7 @@ import { ApprovalModal } from './components/ApprovalModal.tsx';
 import { AuditPanel } from './components/AuditPanel.tsx';
 import { WorkspacePanel } from './components/WorkspacePanel.tsx';
 import { DevicesPanel } from './components/DevicesPanel.tsx';
+import { CronPanel } from './components/CronPanel.tsx';
 
 // ── App Config Context ─────────────────────────────────────────────────────
 interface AppConfigCtx {
@@ -40,7 +41,7 @@ export const AppConfigContext = createContext<AppConfigCtx>({
 export const useAppConfig = () => useContext(AppConfigContext);
 
 // ── Tabs ──────────────────────────────────────────────────────────────────
-type Tab = 'command' | 'agents' | 'skills' | 'memory' | 'models' | 'guard' | 'events' | 'mission' | 'command-center' | 'workflow' | 'dashboard' | 'settings' | 'logs' | 'config-editor' | 'custom-tools' | 'channels' | 'chat-channels' | 'file-browser' | 'audit' | 'workspace' | 'devices';
+type Tab = 'command' | 'agents' | 'skills' | 'memory' | 'models' | 'guard' | 'events' | 'mission' | 'command-center' | 'workflow' | 'dashboard' | 'settings' | 'logs' | 'config-editor' | 'custom-tools' | 'channels' | 'chat-channels' | 'file-browser' | 'audit' | 'workspace' | 'devices' | 'cron';
 
 // Primary tabs — always visible
 const PRIMARY_TABS: { id: Tab; label: string; hint: string }[] = [
@@ -69,6 +70,7 @@ const ADVANCED_TABS: { id: Tab; label: string; hint: string }[] = [
   { id: 'audit',         label: 'Audit Log',       hint: 'Structured audit event history' },
   { id: 'workspace',     label: 'Workspace',       hint: 'Bootstrap files injected into every agent run' },
   { id: 'devices',       label: 'Devices',         hint: 'Paired WS devices — approve or deny connection requests' },
+  { id: 'cron',          label: 'Cron Jobs',       hint: 'Schedule agents to run automatically on a time-based schedule' },
 ];
 
 const ALL_TABS = [...PRIMARY_TABS, ...ADVANCED_TABS];
@@ -316,7 +318,7 @@ function saveTabOrder(order: Tab[]) {
   try { localStorage.setItem(TAB_ORDER_KEY, JSON.stringify(order)); } catch { /* ignore */ }
 }
 
-function TabBar({ tab, setTab, eventCount, pairingCount }: { tab: Tab; setTab: (t: Tab) => void; eventCount: number; pairingCount: number }) {
+function TabBar({ tab, setTab, eventCount, pairingCount, approvalCount }: { tab: Tab; setTab: (t: Tab) => void; eventCount: number; pairingCount: number; approvalCount: number }) {
   const [customOpen, setCustomOpen] = useState(false);
   const [pinned, setPinned]         = useState<Tab[]>(loadPinned);
   const [tabOrder, setTabOrder]     = useState<Tab[]>(() => { const p = loadPinned(); return loadTabOrder(p); });
@@ -426,6 +428,9 @@ function TabBar({ tab, setTab, eventCount, pairingCount }: { tab: Tab; setTab: (
             )}
             {t.id === 'chat-channels' && pairingCount > 0 && (
               <span className="bg-amber-600 text-white text-[10px] rounded-full px-1.5 py-px leading-none">{pairingCount}</span>
+            )}
+            {t.id === 'guard' && approvalCount > 0 && (
+              <span className="bg-red-600 text-white text-[10px] rounded-full px-1.5 py-px leading-none">{approvalCount}</span>
             )}
             {isDragTarget && <span className="absolute left-0 top-1 bottom-1 w-0.5 bg-brand-500 rounded-full" />}
             {/* Unpin ✕ — only shown on hover, not on last tab */}
@@ -605,6 +610,7 @@ function AppInner({ onTokenReady }: { onTokenReady: (token: string) => void }) {
   const [showPalette, setShowPalette] = useState(false);
   const { connected, events, clearEvents } = useGatewayContext();
   const [pairingCount, setPairingCount] = useState(0);
+  const [approvalCount, setApprovalCount] = useState(0);
 
   // Ref to trigger "new chat" from CommandPanel via global shortcut
   const newChatRef = useRef<(() => void) | null>(null);
@@ -614,6 +620,40 @@ function AppInner({ onTokenReady }: { onTokenReady: (token: string) => void }) {
       setHealthData(data);
     }).catch(() => {});
   }, []);
+
+  // Poll for pending approvals every 3 s — update badge count.
+  // Also increments when a 'approval:pending' WS event arrives.
+  useEffect(() => {
+    let cancelled = false;
+    const pollApprovals = async () => {
+      try {
+        const token = getGatewayToken();
+        const headers: Record<string, string> = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        const res = await fetch('/api/approvals', { headers });
+        if (res.ok && !cancelled) {
+          const data = await res.json() as { count?: number };
+          setApprovalCount(data.count ?? 0);
+        }
+      } catch { /* ignore */ }
+    };
+    void pollApprovals();
+    const t = setInterval(() => { void pollApprovals(); }, 3_000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, []);
+
+  // Bump approval count when WS push arrives (complement polling)
+  useEffect(() => {
+    const last = events[events.length - 1];
+    if (last && (last as unknown as Record<string, unknown>)['type'] === 'approval:pending') {
+      setApprovalCount(c => c + 1);
+    }
+  }, [events]);
+
+  // Clear approval badge when guard tab is opened (user is reviewing)
+  useEffect(() => {
+    if (tab === 'guard') setApprovalCount(0);
+  }, [tab]);
 
   // Poll for pending DM pairing requests every 15 s.
   // Shows a badge on the Chat Channels tab when approvals are waiting.
@@ -785,6 +825,7 @@ function AppInner({ onTokenReady }: { onTokenReady: (token: string) => void }) {
           setTab={setTab}
           eventCount={events.length}
           pairingCount={pairingCount}
+          approvalCount={approvalCount}
         />
 
         {/* Panel area */}
@@ -816,6 +857,7 @@ function AppInner({ onTokenReady }: { onTokenReady: (token: string) => void }) {
           <div className={`h-full ${tab === 'audit'          ? 'block' : 'hidden'}`}><AuditPanel /></div>
           <div className={`h-full ${tab === 'workspace'      ? 'block' : 'hidden'}`}><WorkspacePanel /></div>
           <div className={`h-full ${tab === 'devices'        ? 'block' : 'hidden'}`}><DevicesPanel /></div>
+          <div className={`h-full ${tab === 'cron'           ? 'block' : 'hidden'}`}><CronPanel /></div>
         </div>
       </div>
     </AppConfigContext.Provider>

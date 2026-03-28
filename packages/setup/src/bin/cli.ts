@@ -88,11 +88,82 @@ async function cmdCall(text: string): Promise<void> {
   console.log(result.output ?? '(no response)');
 }
 
+async function cmdPolicyShow(): Promise<void> {
+  const data = await apiFetch('/api/guard/policy') as { policy?: Record<string, unknown>; rules?: unknown[] };
+  if (data.rules) {
+    console.log(`Policy has ${(data.rules as unknown[]).length} rule(s):\n`);
+    for (const rule of data.rules as Array<Record<string, unknown>>) {
+      const enabled = rule['enabled'] !== false ? '' : ' [disabled]';
+      console.log(`  [${rule['id'] ?? '?'}]${enabled} ${rule['action'] ?? '?'} — ${rule['description'] ?? rule['operation'] ?? '(no description)'}`);
+    }
+  } else {
+    console.log(JSON.stringify(data, null, 2));
+  }
+}
+
+async function cmdPolicyCheck(operation: string): Promise<void> {
+  if (!operation.trim()) { console.error('Usage: krythor policy check <operation>'); process.exit(1); }
+  const data = await apiFetch('/api/guard/check', {
+    method: 'POST',
+    body: JSON.stringify({ operation, source: 'user' }),
+  }) as { allowed?: boolean; action?: string; reason?: string; ruleId?: string };
+  const allowed = data.allowed === true;
+  console.log(`Operation:  ${operation}`);
+  console.log(`Verdict:    ${allowed ? 'ALLOW' : 'DENY'}`);
+  console.log(`Action:     ${data.action ?? '(unknown)'}`);
+  if (data.reason) console.log(`Reason:     ${data.reason}`);
+  if (data.ruleId) console.log(`Rule ID:    ${data.ruleId}`);
+  process.exit(allowed ? 0 : 1);
+}
+
+async function cmdAuditTail(n: number): Promise<void> {
+  const data = await apiFetch(`/api/audit?limit=${n}`) as { events?: Array<Record<string, unknown>>; entries?: Array<Record<string, unknown>> };
+  const entries = data.events ?? data.entries ?? [];
+  if (entries.length === 0) { console.log('No audit entries found.'); return; }
+  for (const e of entries) {
+    const ts = e['timestamp'] ? new Date(e['timestamp'] as string).toLocaleTimeString() : '?';
+    const action = e['actionType'] ?? e['type'] ?? '?';
+    const outcome = e['executionOutcome'] ?? e['policyDecision'] ?? '';
+    const agent = e['agentId'] ? ` agent:${e['agentId']}` : '';
+    console.log(`  [${ts}] ${action}${agent}${outcome ? ` — ${outcome}` : ''}`);
+  }
+}
+
+async function cmdApprovalsPending(): Promise<void> {
+  const data = await apiFetch('/api/approvals') as { approvals?: Array<Record<string, unknown>>; count?: number };
+  const approvals = data.approvals ?? [];
+  if (approvals.length === 0) { console.log('No pending approvals.'); return; }
+  console.log(`Pending approvals: ${approvals.length}\n`);
+  for (const a of approvals) {
+    const expires = a['expiresAt'] ? `expires in ${Math.max(0, Math.round(((a['expiresAt'] as number) - Date.now()) / 1000))}s` : '';
+    console.log(`  [${a['id']}] ${a['actionType'] ?? '?'}${a['agentId'] ? ` (agent: ${a['agentId']})` : ''}`);
+    if (a['target']) console.log(`    target: ${a['target']}`);
+    console.log(`    reason: ${a['reason'] ?? '(none)'}`);
+    if (expires) console.log(`    ${expires}`);
+  }
+}
+
 // ── Entry point ─────────────────────────────────────────────────────────────────
 
 const [,, cmd, ...rest] = process.argv;
 
 (async () => {
+  // Handle multi-word sub-commands: "policy show", "policy check <op>", "audit tail", "approvals pending"
+  const fullCmd = [cmd, rest[0]].filter(Boolean).join(' ');
+
+  if (fullCmd === 'policy show') { await cmdPolicyShow(); return; }
+  if (fullCmd === 'policy check') { await cmdPolicyCheck(rest.slice(1).join(' ')); return; }
+  if (cmd === 'policy' && rest[0] === 'check') { await cmdPolicyCheck(rest.slice(1).join(' ')); return; }
+
+  if (fullCmd === 'audit tail') {
+    const nFlag = rest.slice(1).find(a => a.startsWith('--n='));
+    const n = nFlag ? parseInt(nFlag.replace('--n=', ''), 10) : 20;
+    await cmdAuditTail(isNaN(n) ? 20 : n);
+    return;
+  }
+
+  if (fullCmd === 'approvals pending') { await cmdApprovalsPending(); return; }
+
   switch (cmd) {
     case 'status':   await cmdStatus(); break;
     case 'sessions': await cmdSessions(); break;
@@ -100,10 +171,14 @@ const [,, cmd, ...rest] = process.argv;
     case 'call':     await cmdCall(rest.join(' ')); break;
     default:
       console.log('Usage: krythor <command>');
-      console.log('  status    — check gateway health and agent/model counts');
-      console.log('  sessions  — list recent sessions');
-      console.log('  models    — list configured providers and models');
-      console.log('  call <text> — send a one-shot message to the default agent');
+      console.log('  status               — check gateway health and agent/model counts');
+      console.log('  sessions             — list recent sessions');
+      console.log('  models               — list configured providers and models');
+      console.log('  call <text>          — send a one-shot message to the default agent');
+      console.log('  policy show          — print current guard policy rules');
+      console.log('  policy check <op>    — evaluate a guard check and show verdict');
+      console.log('  audit tail [--n=20]  — show last N audit log entries');
+      console.log('  approvals pending    — list pending approval requests');
       process.exit(cmd ? 1 : 0);
   }
 })().catch(err => {

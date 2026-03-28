@@ -48,6 +48,10 @@ export interface AppConfig {
    * Use Authorization: Bearer <token> or X-Krythor-Hook-Token: <token>.
    */
   webhookToken?: string;
+  /** Enable PrivacyRouter — classify prompt sensitivity and re-route private/restricted content to a local provider. Default: false. */
+  privacyRoutingEnabled?: boolean;
+  /** When privacyRoutingEnabled is true: block requests when prompt is private/restricted but no local provider is available. Default: false. */
+  privacyBlockOnSensitive?: boolean;
 }
 
 export function registerConfigRoute(app: FastifyInstance, configDir: string, guard?: GuardEngine, orchestrator?: AgentOrchestrator, memory?: MemoryEngine, heartbeatRef?: HeartbeatRef, approvalManager?: ApprovalManager): void {

@@ -43,6 +43,15 @@ export class ApprovalManager {
   // approved for the session via 'allow_for_session'.
   private sessionApprovals = new Set<string>();
 
+  /** Optional broadcast callback — called when a new approval is created so
+   *  connected UI clients can be notified immediately via WebSocket. */
+  private onNewApproval?: (approval: PendingApproval) => void;
+
+  /** Wire in a broadcast callback after construction (avoids circular dep). */
+  setOnNewApproval(cb: (approval: PendingApproval) => void): void {
+    this.onNewApproval = cb;
+  }
+
   // ── Public API ─────────────────────────────────────────────────────────────
 
   /**
@@ -70,6 +79,9 @@ export class ApprovalManager {
       requestedAt: now,
       expiresAt: now + timeoutMs,
     };
+
+    // Notify broadcast listeners immediately so UI shows the approval without waiting for next poll
+    this.onNewApproval?.(full);
 
     return new Promise<ApprovalResponse>((resolve) => {
       this.pending.set(id, { approval: full, resolve });

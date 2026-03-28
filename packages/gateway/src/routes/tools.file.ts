@@ -17,6 +17,11 @@ import { logger } from '../logger.js';
 import { AccessProfileStore, makeAuditEntry } from '../AccessProfileStore.js';
 import type { AccessProfile } from '../AccessProfileStore.js';
 
+/** Minimal agent shape needed for workspace boundary checks. */
+export interface AgentLookup {
+  getAgent(id: string): { workspaceDir?: string } | null | undefined;
+}
+
 // ─── File Operation Tool Routes ────────────────────────────────────────────────
 //
 // All routes live under /api/tools/files/.
@@ -64,12 +69,24 @@ function workspaceDir(): string {
 /**
  * Returns an error string if the resolved path is not permitted for the given
  * access profile, or undefined if it is allowed.
+ *
+ * When agentWorkspaceDir is provided and the profile is not 'full_access',
+ * access is further restricted to that directory (workspace isolation).
  */
-function checkPathPermission(rawPath: string, profile: AccessProfile): string | undefined {
+function checkPathPermission(rawPath: string, profile: AccessProfile, agentWorkspaceDir?: string): string | undefined {
   // Resolve to absolute, normalize separators
   const resolved = resolve(normalize(rawPath));
 
   if (profile === 'full_access') {
+    return undefined;
+  }
+
+  // Agent workspace isolation — restrict to agent's workspaceDir when set
+  if (agentWorkspaceDir) {
+    const agentWs = resolve(normalize(agentWorkspaceDir));
+    if (!isUnder(resolved, agentWs)) {
+      return `Path '${rawPath}' is outside the agent workspace directory '${agentWs}'. Set profile 'full_access' to bypass workspace isolation.`;
+    }
     return undefined;
   }
 
@@ -118,6 +135,7 @@ async function gate(
   rawPath: string,
   agentId: string,
   approvalManager?: ApprovalManager,
+  agentLookup?: AgentLookup,
 ): Promise<GateResult> {
   // 1. Guard check
   const verdict = guard.check({
@@ -152,16 +170,29 @@ async function gate(
     }
   }
 
-  // 2. Profile check
+  // 2. Profile check — may be further restricted to agent workspaceDir
   const profile = accessProfileStore.getProfile(agentId);
-  const pathErr = checkPathPermission(rawPath, profile);
+
+  // Resolve agent-specific workspace: agents with a workspaceDir set AND profile != full_access
+  // are restricted to their own workspace directory (workspace isolation).
+  let agentWorkspaceDir: string | undefined;
+  if (agentId && agentLookup && profile !== 'full_access') {
+    const agent = agentLookup.getAgent(agentId);
+    if (agent?.workspaceDir) {
+      agentWorkspaceDir = agent.workspaceDir;
+    }
+  }
+
+  const pathErr = checkPathPermission(rawPath, profile, agentWorkspaceDir);
   if (pathErr) {
     return {
       allowed: false,
       statusCode: 403,
-      code: 'PATH_DENIED',
+      code: agentWorkspaceDir ? 'WORKSPACE_BOUNDARY' : 'PATH_DENIED',
       message: pathErr,
-      hint: `Current profile: '${profile}'. Update via PUT /api/agents/:id/access-profile.`,
+      hint: agentWorkspaceDir
+        ? `Agent workspace is restricted to '${agentWorkspaceDir}'. Set profile 'full_access' to bypass.`
+        : `Current profile: '${profile}'. Update via PUT /api/agents/:id/access-profile.`,
     };
   }
 
@@ -175,6 +206,7 @@ export function registerFileToolRoutes(
   guard: GuardEngine,
   accessProfileStore: AccessProfileStore,
   approvalManager?: ApprovalManager,
+  agentLookup?: AgentLookup,
 ): void {
 
   // ── POST /api/tools/files/read ─────────────────────────────────────────────
@@ -194,7 +226,7 @@ export function registerFileToolRoutes(
     const { path: rawPath, agentId = '' } = req.body as { path: string; agentId?: string };
     const operation = 'file:read';
 
-    const check = await gate(guard, accessProfileStore, operation, rawPath, agentId, approvalManager);
+    const check = await gate(guard, accessProfileStore, operation, rawPath, agentId, approvalManager, agentLookup);
     if (!check.allowed) {
       const fail = check as GateFail;
       logger.warn('File tool: read denied', { rawPath, agentId, code: fail.code });
@@ -240,7 +272,7 @@ export function registerFileToolRoutes(
     const { path: rawPath, content, agentId = '' } = req.body as { path: string; content: string; agentId?: string };
     const operation = 'file:write';
 
-    const check = await gate(guard, accessProfileStore, operation, rawPath, agentId, approvalManager);
+    const check = await gate(guard, accessProfileStore, operation, rawPath, agentId, approvalManager, agentLookup);
     if (!check.allowed) {
       const fail = check as GateFail;
       logger.warn('File tool: write denied', { rawPath, agentId, code: fail.code });
@@ -281,7 +313,7 @@ export function registerFileToolRoutes(
     };
     const operation = 'file:write';
 
-    const check = await gate(guard, accessProfileStore, operation, rawPath, agentId, approvalManager);
+    const check = await gate(guard, accessProfileStore, operation, rawPath, agentId, approvalManager, agentLookup);
     if (!check.allowed) {
       const fail = check as GateFail;
       logger.warn('File tool: edit denied', { rawPath, agentId, code: fail.code });
@@ -438,7 +470,7 @@ export function registerFileToolRoutes(
     };
     const operation = 'file:delete';
 
-    const check = await gate(guard, accessProfileStore, operation, rawPath, agentId, approvalManager);
+    const check = await gate(guard, accessProfileStore, operation, rawPath, agentId, approvalManager, agentLookup);
     if (!check.allowed) {
       const fail = check as GateFail;
       logger.warn('File tool: delete denied', { rawPath, agentId, code: fail.code });
@@ -477,7 +509,7 @@ export function registerFileToolRoutes(
     };
     const operation = 'file:write';
 
-    const check = await gate(guard, accessProfileStore, operation, rawPath, agentId, approvalManager);
+    const check = await gate(guard, accessProfileStore, operation, rawPath, agentId, approvalManager, agentLookup);
     if (!check.allowed) {
       const fail = check as GateFail;
       logger.warn('File tool: mkdir denied', { rawPath, agentId, code: fail.code });
@@ -513,7 +545,7 @@ export function registerFileToolRoutes(
     const { path: rawPath, agentId = '' } = req.body as { path: string; agentId?: string };
     const operation = 'file:read';
 
-    const check = await gate(guard, accessProfileStore, operation, rawPath, agentId, approvalManager);
+    const check = await gate(guard, accessProfileStore, operation, rawPath, agentId, approvalManager, agentLookup);
     if (!check.allowed) {
       const fail = check as GateFail;
       logger.warn('File tool: list denied', { rawPath, agentId, code: fail.code });
@@ -566,7 +598,7 @@ export function registerFileToolRoutes(
     const { path: rawPath, agentId = '' } = req.body as { path: string; agentId?: string };
     const operation = 'file:read';
 
-    const check = await gate(guard, accessProfileStore, operation, rawPath, agentId, approvalManager);
+    const check = await gate(guard, accessProfileStore, operation, rawPath, agentId, approvalManager, agentLookup);
     if (!check.allowed) {
       const fail = check as GateFail;
       logger.warn('File tool: stat denied', { rawPath, agentId, code: fail.code });

@@ -350,6 +350,12 @@ export function registerMemoryRoutes(app: FastifyInstance, memory: MemoryEngine,
     return reply.send({ deleted, totalEntries: memory.stats().totalEntries });
   });
 
+  // POST /api/memory/compact — manually trigger session compaction (summarize old turns)
+  app.post('/api/memory/compact', async (_req, reply) => {
+    const result = memory.compactSessions();
+    return reply.send({ compacted: result.compacted, rawPruned: result.rawPruned });
+  });
+
   // POST /api/memory/summarize — consolidate lowest-importance entries in a scope into one
   // Requires a model provider to be configured. Summarizes up to `batchSize` entries at a time.
   app.post('/api/memory/summarize', {

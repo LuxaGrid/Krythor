@@ -217,6 +217,18 @@ export interface AppConfigRaw {
    * 'off'     — disable all config file watching.
    */
   configReloadMode?: 'hot' | 'hybrid' | 'restart' | 'off';
+  /**
+   * Enable PrivacyRouter — classifies prompt sensitivity and re-routes private/restricted
+   * content to a local provider when one is configured.
+   * Default: false.
+   */
+  privacyRoutingEnabled?: boolean;
+  /**
+   * When privacyRoutingEnabled is true and a prompt is classified as private/restricted
+   * but no local provider is available, block the request instead of allowing remote.
+   * Default: false.
+   */
+  privacyBlockOnSensitive?: boolean;
 }
 
 export function parseAppConfig(raw: unknown): ValidationResult<AppConfigRaw> {
@@ -429,6 +441,26 @@ export function parseAppConfig(raw: unknown): ValidationResult<AppConfigRaw> {
       value.configReloadMode = r['configReloadMode'] as AppConfigRaw['configReloadMode'];
     } else {
       errors.push(`configReloadMode: expected one of ${validModes.join(', ')}, got ${String(r['configReloadMode'])}`);
+    }
+  }
+
+  if ('privacyRoutingEnabled' in r) {
+    if (r['privacyRoutingEnabled'] === null || r['privacyRoutingEnabled'] === undefined) {
+      // null means "cleared" — omit
+    } else if (typeof r['privacyRoutingEnabled'] === 'boolean') {
+      value.privacyRoutingEnabled = r['privacyRoutingEnabled'];
+    } else {
+      errors.push(`privacyRoutingEnabled: expected boolean, got ${typeof r['privacyRoutingEnabled']}`);
+    }
+  }
+
+  if ('privacyBlockOnSensitive' in r) {
+    if (r['privacyBlockOnSensitive'] === null || r['privacyBlockOnSensitive'] === undefined) {
+      // null means "cleared" — omit
+    } else if (typeof r['privacyBlockOnSensitive'] === 'boolean') {
+      value.privacyBlockOnSensitive = r['privacyBlockOnSensitive'];
+    } else {
+      errors.push(`privacyBlockOnSensitive: expected boolean, got ${typeof r['privacyBlockOnSensitive']}`);
     }
   }
 
