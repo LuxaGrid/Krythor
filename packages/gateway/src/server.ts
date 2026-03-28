@@ -949,7 +949,7 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
     // ── Session tools (read-only, no guard check required) ─────────────────
     if (toolName === 'sessions_list') {
       try {
-        const params = JSON.parse(input) as { limit?: number; agentId?: string; includeArchived?: boolean };
+        const params = JSON.parse(input) as { limit?: number; agentId?: string; includeArchived?: boolean; activeMinutes?: number };
         const limit = Math.min(Math.max(1, params.limit ?? 20), 100);
         const allConvs = convStore.listConversations(params.includeArchived ?? false);
         const filtered = params.agentId
@@ -957,15 +957,30 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
           : allConvs;
         const now = Date.now();
         const IDLE_MS = 30 * 60 * 1000;
-        const rows = filtered.slice(0, limit).map(c => ({
-          id:           c.id,
-          title:        c.name ?? c.title,
-          agentId:      c.agentId,
-          updatedAt:    c.updatedAt,
-          isIdle:       (now - c.updatedAt) >= IDLE_MS,
-          archived:     c.archived,
-          pinned:       c.pinned,
-        }));
+        const activeThreshold = params.activeMinutes ? params.activeMinutes * 60_000 : null;
+        // Build a lookup of conversationId → sessionKey
+        const sessionEntries = memory.sessionStore.list();
+        const convToSession = new Map(sessionEntries.map(e => [e.conversationId, e]));
+        const rows = filtered
+          .filter(c => activeThreshold === null || (now - c.updatedAt) <= activeThreshold)
+          .slice(0, limit)
+          .map(c => {
+            const se = convToSession.get(c.id);
+            return {
+              id:          c.id,
+              sessionKey:  se?.sessionKey ?? null,
+              title:       c.name ?? c.title,
+              agentId:     c.agentId,
+              channel:     se?.channel ?? null,
+              chatType:    se?.chatType ?? null,
+              displayName: se?.displayName ?? null,
+              updatedAt:   c.updatedAt,
+              isIdle:      (now - c.updatedAt) >= IDLE_MS,
+              archived:    c.archived,
+              pinned:      c.pinned,
+              sendPolicy:  se?.sendPolicy ?? null,
+            };
+          });
         return JSON.stringify(rows, null, 2);
       } catch (err) {
         return `sessions_list error: ${err instanceof Error ? err.message : String(err)}`;
@@ -974,20 +989,155 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
 
     if (toolName === 'sessions_history') {
       try {
-        const params = JSON.parse(input) as { conversationId?: string; limit?: number };
-        if (!params.conversationId) return 'sessions_history: conversationId is required';
-        const conv = convStore.getConversation(params.conversationId);
-        if (!conv) return `sessions_history: conversation "${params.conversationId}" not found`;
+        const params = JSON.parse(input) as { conversationId?: string; sessionKey?: string; limit?: number; includeTools?: boolean };
+        // Accept either conversationId or sessionKey
+        let conversationId = params.conversationId;
+        if (!conversationId && params.sessionKey) {
+          const sessionEntry = memory.sessionStore.getByKey(params.sessionKey);
+          if (!sessionEntry) return `sessions_history: session "${params.sessionKey}" not found`;
+          conversationId = sessionEntry.conversationId;
+        }
+        if (!conversationId) return 'sessions_history: conversationId or sessionKey is required';
+        const conv = convStore.getConversation(conversationId);
+        if (!conv) return `sessions_history: conversation "${conversationId}" not found`;
         const limit = Math.min(Math.max(1, params.limit ?? 20), 50);
-        const all = convStore.getMessages(params.conversationId);
-        // Filter to user/assistant only (no system messages)
+        const all = convStore.getMessages(conversationId);
         const messages = all
-          .filter(m => m.role === 'user' || m.role === 'assistant')
+          .filter(m => params.includeTools ? true : (m.role === 'user' || m.role === 'assistant'))
           .slice(-limit)
           .map(m => ({ role: m.role, content: m.content, createdAt: m.createdAt }));
         return JSON.stringify({ conversationId: conv.id, title: conv.name ?? conv.title, messages }, null, 2);
       } catch (err) {
         return `sessions_history error: ${err instanceof Error ? err.message : String(err)}`;
+      }
+    }
+
+    if (toolName === 'sessions_send') {
+      try {
+        const params = JSON.parse(input) as {
+          sessionKey?: string;
+          conversationId?: string;
+          message: string;
+          timeoutSeconds?: number;
+        };
+        if (!params.message) return 'sessions_send: message is required';
+
+        // Resolve conversationId from sessionKey if needed
+        let conversationId = params.conversationId;
+        let targetAgentId = agentId;
+        if (!conversationId && params.sessionKey) {
+          const entry = memory.sessionStore.getByKey(params.sessionKey);
+          if (!entry) return `sessions_send: session "${params.sessionKey}" not found`;
+          conversationId = entry.conversationId;
+          if (entry.agentId) targetAgentId = entry.agentId;
+        }
+        if (!conversationId) return 'sessions_send: sessionKey or conversationId is required';
+
+        const conv = convStore.getConversation(conversationId);
+        if (!conv) return `sessions_send: conversation "${conversationId}" not found`;
+        if (conv.agentId) targetAgentId = conv.agentId;
+
+        const timeoutMs = ((params.timeoutSeconds ?? 30) * 1000);
+        const contextMsgs = convStore.getMessages(conversationId)
+          .filter(m => m.role === 'user' || m.role === 'assistant')
+          .slice(-50)
+          .map(m => ({ role: m.role, content: m.content }));
+
+        if (timeoutMs <= 0) {
+          // Fire-and-forget
+          const runId = `sess-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+          void orchestrator.runAgent(targetAgentId, { input: params.message }, { contextMessages: contextMsgs, runId })
+            .then(run => {
+              if (run.output) {
+                convStore.addMessage(conversationId!, 'user', params.message);
+                convStore.addMessage(conversationId!, 'assistant', run.output, run.modelUsed);
+              }
+            }).catch(() => {});
+          return JSON.stringify({ runId, status: 'accepted' });
+        }
+
+        // Wait up to timeoutMs
+        let timedOut = false;
+        const timeoutPromise = new Promise<null>(resolve => setTimeout(() => { timedOut = true; resolve(null); }, timeoutMs));
+        const runPromise = orchestrator.runAgent(targetAgentId, { input: params.message }, { contextMessages: contextMsgs });
+        const run = await Promise.race([runPromise, timeoutPromise]);
+
+        if (run === null || timedOut) {
+          return JSON.stringify({ status: 'timeout', error: `sessions_send timed out after ${params.timeoutSeconds}s` });
+        }
+
+        if (run.output) {
+          convStore.addMessage(conversationId, 'user', params.message);
+          convStore.addMessage(conversationId, 'assistant', run.output, run.modelUsed);
+        }
+
+        if (run.status === 'failed') {
+          return JSON.stringify({ status: 'error', error: run.errorMessage ?? 'run failed' });
+        }
+
+        return JSON.stringify({ status: 'ok', reply: run.output ?? '' });
+      } catch (err) {
+        return `sessions_send error: ${err instanceof Error ? err.message : String(err)}`;
+      }
+    }
+
+    if (toolName === 'sessions_spawn') {
+      try {
+        const params = JSON.parse(input) as {
+          task: string;
+          agentId?: string;
+          label?: string;
+          model?: string;
+          runTimeoutSeconds?: number;
+        };
+        if (!params.task) return 'sessions_spawn: task is required';
+
+        const targetAgentId = params.agentId ?? agentId;
+        const agent = orchestrator.listAgents().find(a => a.id === targetAgentId);
+        if (!agent) return `sessions_spawn: agent "${targetAgentId}" not found`;
+
+        const runId = `spawn-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const conv = convStore.createConversation(targetAgentId);
+        const runTimeoutMs = (params.runTimeoutSeconds ?? 0) * 1000;
+
+        // Non-blocking: start the run in the background
+        void (async () => {
+          try {
+            let runPromise = orchestrator.runAgent(targetAgentId, {
+              input: params.task,
+              ...(params.model && { modelOverride: params.model }),
+            }, { runId });
+
+            if (runTimeoutMs > 0) {
+              const timeout = new Promise<null>(resolve => setTimeout(() => resolve(null), runTimeoutMs));
+              const result = await Promise.race([runPromise, timeout]);
+              if (result === null) {
+                orchestrator.stopRun(runId);
+                convStore.addMessage(conv.id, 'assistant', `[Sub-agent ${runId} timed out after ${params.runTimeoutSeconds}s]`);
+                return;
+              }
+              // result is the run
+              const run = result;
+              convStore.addMessage(conv.id, 'user', params.task);
+              if (run.output) convStore.addMessage(conv.id, 'assistant', run.output, run.modelUsed);
+            } else {
+              const run = await runPromise;
+              convStore.addMessage(conv.id, 'user', params.task);
+              if (run.output) convStore.addMessage(conv.id, 'assistant', run.output, run.modelUsed);
+            }
+          } catch (err) {
+            logger.warn('[sessions_spawn] Sub-agent run failed', { runId, err: err instanceof Error ? err.message : String(err) });
+          }
+        })();
+
+        return JSON.stringify({
+          status: 'accepted',
+          runId,
+          childConversationId: conv.id,
+          label: params.label ?? null,
+        });
+      } catch (err) {
+        return `sessions_spawn error: ${err instanceof Error ? err.message : String(err)}`;
       }
     }
 
