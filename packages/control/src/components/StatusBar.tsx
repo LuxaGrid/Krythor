@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { listAgents, listModels, type Health, type ModelInfo } from '../api.ts';
 import { useAppConfig } from '../App.tsx';
+import { NotificationFeed } from './NotificationFeed.tsx';
 
 type Tab = 'command' | 'agents' | 'memory' | 'models' | 'guard' | 'events';
 
@@ -177,6 +178,7 @@ export function StatusBar({ health, connected, onTabChange, onAbout }: Props) {
           <span className="text-sm font-mono text-zinc-400 font-medium">v{health.version}</span>
         )}
         <kbd className="hidden sm:inline text-[10px] text-zinc-700 border border-zinc-800 rounded px-1.5 py-0.5 font-mono" title="Open command palette (Ctrl+K)">⌘K</kbd>
+        <NotificationFeed />
         <button
           onClick={onAbout}
           title="About Krythor (Ctrl+/)"

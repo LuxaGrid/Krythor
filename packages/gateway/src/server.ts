@@ -998,6 +998,18 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
       });
       // Fire channel event
       channelMgr.emit('agent_run_failed', { runId: event.runId, agentId: event.agentId, error: p?.error });
+      // Notification feed event
+      broadcast({
+        type: 'notification:agent_run_failed',
+        payload: {
+          id: `nf_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          ts: Date.now(),
+          runId: event.runId,
+          agentId: event.agentId,
+          agentName: orchestrator.registry.getById(event.agentId)?.name ?? event.agentId,
+          error: redactErrorMessage(p?.error ?? 'unknown'),
+        },
+      });
     }
   });
   guard.on('guard:denied', (payload) => {
@@ -1614,9 +1626,48 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
       }
     }, 5_000);
 
+    // Circuit-open notifier — poll circuitStats every 30s and fire a
+    // notification:circuit_open event when a provider transitions to 'open'.
+    const circuitOpenSeen = new Set<string>();
+    const circuitPollInterval = setInterval(() => {
+      const stats = models.circuitStats();
+      for (const [providerId, stat] of Object.entries(stats)) {
+        if (stat.state === 'open' && !circuitOpenSeen.has(providerId)) {
+          circuitOpenSeen.add(providerId);
+          broadcast({
+            type: 'notification:circuit_open',
+            payload: {
+              id: `nf_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+              ts: Date.now(),
+              providerId,
+              failures: stat.failures,
+            },
+          });
+        } else if (stat.state !== 'open') {
+          circuitOpenSeen.delete(providerId);
+        }
+      }
+    }, 30_000);
+
+    // Job-failed notifier — hook into job processor failures
+    const _origJobProcessorFail = jobQueue.fail.bind(jobQueue);
+    jobQueue.fail = (id: string, error: string): void => {
+      _origJobProcessorFail(id, error);
+      broadcast({
+        type: 'notification:job_failed',
+        payload: {
+          id: `nf_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          ts: Date.now(),
+          jobId: id,
+          error,
+        },
+      });
+    };
+
     app.addHook('onClose', async () => {
       cronScheduler.stop();
       clearInterval(jobProcessorInterval);
+      clearInterval(circuitPollInterval);
       // Cleanup completed/failed jobs older than 7 days on shutdown
       jobQueue.cleanup(7 * 24 * 60 * 60 * 1000);
     });
