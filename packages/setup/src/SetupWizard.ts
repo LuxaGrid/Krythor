@@ -593,11 +593,12 @@ export class SetupWizard {
       console.log(fmt.dim('  Get your API key at: https://platform.moonshot.cn/console/api-keys'));
       apiKey = await ask('  API Key: ');
       models = [await pickModel([
-        'kimi-k2.5',          // latest flagship
-        'kimi-k2',            // agentic / coding
-        'moonshot-v1-32k',    // recommended classic
-        'moonshot-v1-128k',   // long context
-        'moonshot-v1-8k',     // short context / cheap
+        'kimi-k2.5',                     // latest flagship
+        'kimi-k2',                       // agentic / coding
+        'kimi-latest',                   // always latest Kimi
+        'moonshot-v1-128k',              // long context
+        'moonshot-v1-32k',               // recommended classic
+        'moonshot-v1-8k',                // short context / cheap
         'moonshot-v1-32k-vision-preview',
         'moonshot-v1-128k-vision-preview',
       ], 'kimi-k2.5')];
@@ -613,8 +614,11 @@ export class SetupWizard {
         'MiniMax-M2.5',           // latest reasoning
         'MiniMax-M2.5-highspeed', // fast streaming
         'MiniMax-M2',             // reasoning
+        'MiniMax-VL-01',          // vision-language
         'abab6.5s-chat',          // legacy fast
         'abab6.5g-chat',          // legacy general
+        'abab6.5-chat',           // legacy
+        'abab5.5-chat',           // legacy
       ], 'MiniMax-Text-01')];
 
     } else if (type === 'openrouter') {
@@ -646,17 +650,29 @@ export class SetupWizard {
       }
 
       const curatedModels = [
-        'anthropic/claude-sonnet-4-6',      // recommended
+        'anthropic/claude-sonnet-4-6',          // recommended
         'anthropic/claude-opus-4-6',
         'anthropic/claude-haiku-4-5',
+        'anthropic/claude-3-5-sonnet-20241022',
         'openai/gpt-4.1',
         'openai/gpt-4.1-mini',
+        'openai/gpt-4o',
+        'openai/o3',
+        'openai/o4-mini',
         'google/gemini-2.5-pro',
         'google/gemini-2.5-flash',
+        'google/gemini-2.0-flash',
         'meta-llama/llama-3.3-70b-instruct',
+        'meta-llama/llama-3.1-405b-instruct',
         'deepseek/deepseek-r1',
+        'deepseek/deepseek-chat',
         'mistralai/mistral-large',
+        'mistralai/mistral-small',
         'qwen/qwen-2.5-72b-instruct',
+        'qwen/qwen3-235b-a22b',
+        'x-ai/grok-3',
+        'x-ai/grok-3-mini',
+        'cohere/command-r-plus',
       ];
       const modelChoices = liveModels.length > 0 ? liveModels : curatedModels;
       models = [await pickModel(modelChoices, modelChoices[0]!)];
@@ -670,14 +686,20 @@ export class SetupWizard {
       console.log(fmt.dim('  Get your API key at: https://console.groq.com/keys'));
       apiKey = await ask('  API Key: ');
       models = [await pickModel([
-        'llama-3.3-70b-versatile',       // recommended — fast + capable
-        'llama-3.1-8b-instant',          // fastest / cheapest
-        'llama-3.3-70b-specdec',         // speculative decoding
-        'mixtral-8x7b-32768',            // Mixtral — long context
-        'gemma2-9b-it',                  // Google Gemma 2
-        'qwen-qwq-32b',                  // Qwen QwQ reasoning
-        'deepseek-r1-distill-llama-70b', // DeepSeek R1 distill
-        'compound-beta',                 // Groq compound (beta)
+        'llama-3.3-70b-versatile',        // recommended — fast + capable
+        'llama-3.1-8b-instant',           // fastest / cheapest
+        'llama-3.3-70b-specdec',          // speculative decoding
+        'llama-3.1-70b-versatile',        // Llama 3.1 70B
+        'llama3-70b-8192',                // Llama 3 70B
+        'llama3-8b-8192',                 // Llama 3 8B
+        'mixtral-8x7b-32768',             // Mixtral — long context
+        'gemma2-9b-it',                   // Google Gemma 2 9B
+        'gemma-7b-it',                    // Google Gemma 7B
+        'qwen-qwq-32b',                   // Qwen QwQ reasoning
+        'deepseek-r1-distill-llama-70b',  // DeepSeek R1 distill 70B
+        'deepseek-r1-distill-qwen-32b',   // DeepSeek R1 distill 32B
+        'compound-beta',                  // Groq compound (beta)
+        'compound-beta-mini',             // Groq compound mini
       ], 'llama-3.3-70b-versatile')];
 
     } else if (type === 'venice') {
@@ -689,12 +711,18 @@ export class SetupWizard {
       console.log(fmt.dim('  Get your API key at: https://venice.ai/settings/api'));
       apiKey = await ask('  API Key: ');
       models = [await pickModel([
-        'venice-uncensored',       // recommended — Venice flagship
-        'llama-3.3-70b',           // Meta Llama 3.3
-        'mistral-31-24b',          // Mistral
-        'qwen-2.5-72b',            // Alibaba Qwen 2.5
-        'deepseek-r1-671b',        // DeepSeek R1 reasoning
-        'llama-3.2-3b',            // small / fast
+        'venice-uncensored',           // recommended — Venice flagship
+        'llama-3.3-70b',              // Meta Llama 3.3 70B
+        'llama-3.1-405b',             // Meta Llama 3.1 405B
+        'llama-3.2-3b',               // small / fast
+        'mistral-31-24b',             // Mistral 3.1 24B
+        'mistral-nemo',               // Mistral NeMo
+        'qwen-2.5-72b',               // Qwen 2.5 72B
+        'qwen-2.5-coder-32b',         // Qwen Coder
+        'deepseek-r1-671b',           // DeepSeek R1 671B reasoning
+        'deepseek-r1-distill-llama-70b', // DeepSeek R1 distill
+        'deepseek-v3',                // DeepSeek V3
+        'phi-4',                      // Microsoft Phi-4
       ], 'venice-uncensored')];
 
     } else if (type === 'z.ai') {
@@ -706,10 +734,15 @@ export class SetupWizard {
       console.log(fmt.dim('  Get your API key at: https://z.ai/api-access'));
       apiKey = await ask('  API Key: ');
       models = [await pickModel([
-        'gemini-2.5-pro',          // recommended — most capable
-        'gemini-2.5-flash',        // fast + affordable
-        'gemini-2.0-flash',        // previous flash generation
-        'gemini-2.0-pro',          // previous pro generation
+        'gemini-2.5-pro',                  // recommended — most capable
+        'gemini-2.5-flash',                // fast + affordable
+        'gemini-2.5-flash-lite',           // lightest flash
+        'gemini-2.0-flash',                // previous flash
+        'gemini-2.0-flash-lite',           // previous flash lite
+        'gemini-2.0-pro-exp',              // Gemini 2.0 Pro exp
+        'gemini-1.5-pro',                  // Gemini 1.5 Pro
+        'gemini-1.5-flash',                // Gemini 1.5 Flash
+        'gemini-1.5-flash-8b',             // Gemini 1.5 Flash 8B
       ], 'gemini-2.5-pro')];
 
     } else if (type === 'lmstudio') {
