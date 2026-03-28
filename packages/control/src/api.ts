@@ -1145,3 +1145,38 @@ export type ApprovalResponse = 'allow_once' | 'allow_for_session' | 'deny';
 
 export const respondApproval = (id: string, response: ApprovalResponse) =>
   req<{ ok: boolean }>('POST', `/approvals/${encodeURIComponent(id)}/respond`, { response });
+
+// ── API Key management ──────────────────────────────────────────────────────
+
+export type ApiKeyPermission =
+  | 'chat' | 'agents:read' | 'agents:write' | 'agents:run'
+  | 'memory:read' | 'memory:write' | 'models:read' | 'models:infer'
+  | 'tools:file' | 'tools:shell' | 'admin';
+
+export interface ApiKeySafe {
+  id: string;
+  name: string;
+  prefix: string;
+  permissions: ApiKeyPermission[];
+  createdAt: number;
+  lastUsedAt?: number;
+  expiresAt?: number;
+  active: boolean;
+}
+
+export interface ApiKeyCreated {
+  key: string;       // plaintext — shown once
+  entry: ApiKeySafe;
+}
+
+export const listApiKeys = () =>
+  req<{ keys: ApiKeySafe[] }>('GET', '/auth/keys');
+
+export const createApiKey = (name: string, permissions: ApiKeyPermission[], expiresAt?: number) =>
+  req<ApiKeyCreated>('POST', '/auth/keys', { name, permissions, ...(expiresAt ? { expiresAt } : {}) });
+
+export const revokeApiKey = (id: string) =>
+  req<void>('DELETE', `/auth/keys/${encodeURIComponent(id)}`);
+
+export const updateApiKey = (id: string, updates: { name?: string; permissions?: ApiKeyPermission[]; expiresAt?: number | null }) =>
+  req<ApiKeySafe>('PATCH', `/auth/keys/${encodeURIComponent(id)}`, updates);

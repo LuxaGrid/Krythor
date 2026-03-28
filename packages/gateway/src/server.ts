@@ -70,6 +70,8 @@ import { AuditLogger } from './AuditLogger.js';
 import { HeartbeatEngine, type HeartbeatRunRecord, type HeartbeatInsight } from './heartbeat/HeartbeatEngine.js';
 import { logger } from './logger.js';
 import { loadOrCreateToken, verifyToken } from './auth.js';
+import { ApiKeyStore } from './ApiKeyStore.js';
+import { registerApiKeyRoutes } from './routes/apiKeys.js';
 import { registerErrorHandler } from './errors.js';
 import { redactErrorMessage } from './redact.js';
 import { checkReadiness } from './readiness.js';
@@ -192,6 +194,8 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
 
   // Load or generate the auth token before the server starts.
   const authCfg = loadOrCreateToken(join(dataDir, 'config'));
+  // Named API key store — lives alongside auth config
+  const apiKeyStore = new ApiKeyStore(join(dataDir, 'config'));
   if (!authCfg.authDisabled) {
     if ((authCfg as unknown as Record<string, unknown>)['firstRun']) {
       logger.info('Auth token generated (first run) — stored in app-config.json');
@@ -352,9 +356,19 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
       const wsToken = (req.query as Record<string, string>)['token'];
 
       const token = bearerToken ?? wsToken;
-      if (!verifyToken(token, authCfg.token)) {
-        reply.code(401).send({ error: 'Unauthorized — invalid or missing token' });
+      // 1. Check master token (KRYTHOR_GATEWAY_TOKEN / gatewayToken)
+      if (verifyToken(token, authCfg.token)) return;
+      // 2. Check named API keys
+      if (token && token.startsWith('kry_')) {
+        const apiKey = apiKeyStore.validate(token);
+        if (apiKey) {
+          // Record last-used and attach to request for downstream permission checks
+          apiKeyStore.touch(apiKey.id);
+          (req as unknown as Record<string, unknown>)['apiKey'] = apiKey;
+          return;
+        }
       }
+      reply.code(401).send({ error: 'Unauthorized — invalid or missing token' });
     });
   }
 
@@ -1324,6 +1338,7 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   registerPluginRoutes(app, pluginLoader);
   registerApprovalRoutes(app, approvalManager);
   registerAuditRoutes(app, auditLogger, auditStore, accessProfileStore);
+  registerApiKeyRoutes(app, apiKeyStore);
   registerWorkspaceRoutes(app);
 
   // Inbound webhook routes — POST /api/hooks/wake + /api/hooks/agent

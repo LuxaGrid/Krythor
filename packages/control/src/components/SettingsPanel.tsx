@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { health, getGatewayInfo, getHeartbeatHistory, getDiscordConfig, setDiscordConfig, stopDiscord, listPlugins, exportProviderConfig, importProviderConfig, exportFullConfig, importFullConfig, listWebChatPairings, createWebChatPairing, revokeWebChatPairing } from '../api.ts';
-import type { Health, GatewayInfo, ProviderHealthEntry, DiscordConfig, Plugin, WebChatPairingEntry, WebChatPairingCreated } from '../api.ts';
+import { health, getGatewayInfo, getHeartbeatHistory, getDiscordConfig, setDiscordConfig, stopDiscord, listPlugins, exportProviderConfig, importProviderConfig, exportFullConfig, importFullConfig, listWebChatPairings, createWebChatPairing, revokeWebChatPairing, listApiKeys, createApiKey, revokeApiKey } from '../api.ts';
+import type { Health, GatewayInfo, ProviderHealthEntry, DiscordConfig, Plugin, WebChatPairingEntry, WebChatPairingCreated, ApiKeySafe, ApiKeyPermission } from '../api.ts';
 import { PanelHeader } from './PanelHeader.tsx';
 import { useLocale } from '../i18n/index.js';
 
@@ -103,6 +103,14 @@ export function SettingsPanel() {
   const [chatPairBusy, setChatPairBusy] = useState(false);
   const [chatPairErr, setChatPairErr]   = useState<string | null>(null);
 
+  // API Key management state
+  const [apiKeys, setApiKeys]                 = useState<ApiKeySafe[]>([]);
+  const [newKeyName, setNewKeyName]           = useState('');
+  const [newKeyPerms, setNewKeyPerms]         = useState<ApiKeyPermission[]>(['chat']);
+  const [createdKey, setCreatedKey]           = useState<string | null>(null);
+  const [apiKeyBusy, setApiKeyBusy]           = useState(false);
+  const [apiKeyErr, setApiKeyErr]             = useState<string | null>(null);
+
   // Discord state
   const [discord, setDiscord]           = useState<DiscordConfig | null>(null);
   const [discordForm, setDiscordForm]   = useState({ token: '', channelId: '', agentId: '' });
@@ -118,6 +126,13 @@ export function SettingsPanel() {
     try {
       const { tokens } = await listWebChatPairings();
       setChatPairings(tokens);
+    } catch { /* non-fatal */ }
+  }, []);
+
+  const loadApiKeys = useCallback(async () => {
+    try {
+      const { keys } = await listApiKeys();
+      setApiKeys(keys);
     } catch { /* non-fatal */ }
   }, []);
 
@@ -144,7 +159,8 @@ export function SettingsPanel() {
     }
     load();
     void loadChatPairings();
-  }, [loadChatPairings]);
+    void loadApiKeys();
+  }, [loadChatPairings, loadApiKeys]);
 
   if (loading) {
     return (
@@ -155,6 +171,46 @@ export function SettingsPanel() {
   }
 
   const toggleTheme = () => setTheme(t => t === 'dark' ? 'light' : 'dark');
+
+  const ALL_PERMISSIONS: ApiKeyPermission[] = [
+    'chat', 'agents:read', 'agents:write', 'agents:run',
+    'memory:read', 'memory:write', 'models:read', 'models:infer',
+    'tools:file', 'tools:shell', 'admin',
+  ];
+
+  async function handleCreateApiKey() {
+    if (!newKeyName.trim() || newKeyPerms.length === 0) {
+      setApiKeyErr('Name and at least one permission are required.');
+      return;
+    }
+    setApiKeyBusy(true);
+    setApiKeyErr(null);
+    setCreatedKey(null);
+    try {
+      const { key } = await createApiKey(newKeyName.trim(), newKeyPerms);
+      setCreatedKey(key);
+      setNewKeyName('');
+      setNewKeyPerms(['chat']);
+      await loadApiKeys();
+    } catch (e: unknown) {
+      setApiKeyErr(e instanceof Error ? e.message : 'Failed to create key');
+    } finally {
+      setApiKeyBusy(false);
+    }
+  }
+
+  async function handleRevokeApiKey(id: string) {
+    try {
+      await revokeApiKey(id);
+      await loadApiKeys();
+    } catch { /* non-fatal */ }
+  }
+
+  function togglePerm(p: ApiKeyPermission) {
+    setNewKeyPerms(prev =>
+      prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]
+    );
+  }
 
   async function handleDiscordSave() {
     setDiscordError(null);
@@ -597,6 +653,78 @@ export function SettingsPanel() {
           </p>
         </Section>
       )}
+
+      {/* API Keys */}
+      <Section title="API Keys">
+        <p className="text-zinc-500 text-xs mb-3">
+          Named keys with scoped permissions. The master gateway token always works regardless of keys here.
+          Key plaintext is shown only once at creation.
+        </p>
+
+        {/* Existing keys */}
+        {apiKeys.length > 0 && (
+          <div className="mb-3 space-y-1">
+            {apiKeys.map(k => (
+              <div key={k.id} className="flex items-center gap-2 py-1.5 border-b border-zinc-800 last:border-0">
+                <span className={`w-2 h-2 rounded-full shrink-0 ${k.active ? 'bg-green-500' : 'bg-zinc-600'}`} title={k.active ? 'active' : 'revoked'} />
+                <span className="text-zinc-200 text-sm font-medium flex-1 truncate" title={k.name}>{k.name}</span>
+                <span className="text-zinc-500 text-xs font-mono">{k.prefix}…</span>
+                <span className="text-zinc-600 text-xs truncate max-w-[180px]" title={k.permissions.join(', ')}>{k.permissions.join(', ')}</span>
+                {k.lastUsedAt && (
+                  <span className="text-zinc-600 text-xs">used {new Date(k.lastUsedAt).toLocaleDateString()}</span>
+                )}
+                {k.active && (
+                  <button onClick={() => void handleRevokeApiKey(k.id)}
+                    className="text-xs text-red-500 hover:text-red-400 px-1.5 py-0.5 rounded hover:bg-red-950/40 transition-colors">
+                    Revoke
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+        {apiKeys.length === 0 && (
+          <p className="text-zinc-600 text-xs mb-3">No API keys yet.</p>
+        )}
+
+        {/* Created key display */}
+        {createdKey && (
+          <div className="mb-3 p-2 bg-green-950/40 border border-green-800/50 rounded text-xs">
+            <p className="text-green-400 font-medium mb-1">Key created — copy now, it will not be shown again:</p>
+            <code className="text-green-300 break-all select-all">{createdKey}</code>
+            <button onClick={() => { void navigator.clipboard.writeText(createdKey); }}
+              className="ml-2 text-green-400 hover:text-green-300 underline">Copy</button>
+            <button onClick={() => setCreatedKey(null)}
+              className="ml-3 text-zinc-500 hover:text-zinc-400">Dismiss</button>
+          </div>
+        )}
+
+        {/* Create form */}
+        <div className="space-y-2">
+          <input
+            type="text"
+            placeholder="Key name (e.g. My Script)"
+            value={newKeyName}
+            onChange={e => setNewKeyName(e.target.value)}
+            className="w-full text-sm bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+          />
+          <div className="flex flex-wrap gap-1.5">
+            {ALL_PERMISSIONS.map(p => (
+              <label key={p} className="flex items-center gap-1 text-xs text-zinc-400 cursor-pointer select-none">
+                <input type="checkbox" checked={newKeyPerms.includes(p)} onChange={() => togglePerm(p)}
+                  className="accent-sky-500" />
+                {p}
+              </label>
+            ))}
+          </div>
+          {apiKeyErr && <p className="text-red-400 text-xs">{apiKeyErr}</p>}
+          <button onClick={() => void handleCreateApiKey()} disabled={apiKeyBusy}
+            className="text-xs px-3 py-1.5 bg-sky-700 hover:bg-sky-600 disabled:opacity-50 text-white rounded transition-colors">
+            {apiKeyBusy ? 'Creating…' : 'Create API Key'}
+          </button>
+        </div>
+      </Section>
+
       </div>
     </div>
   );
