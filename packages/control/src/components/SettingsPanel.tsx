@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { health, getGatewayInfo, getHeartbeatHistory, getDiscordConfig, setDiscordConfig, stopDiscord, listPlugins, exportProviderConfig, importProviderConfig, listWebChatPairings, createWebChatPairing, revokeWebChatPairing } from '../api.ts';
 import type { Health, GatewayInfo, ProviderHealthEntry, DiscordConfig, Plugin, WebChatPairingEntry, WebChatPairingCreated } from '../api.ts';
 import { PanelHeader } from './PanelHeader.tsx';
+import { useLocale } from '../i18n/index.js';
 
 // ── Theme helpers ─────────────────────────────────────────────────────────────
 
@@ -79,6 +80,7 @@ export function SettingsPanel() {
   const [gatewayInfo, setGatewayInfo]   = useState<GatewayInfo | null>(null);
   const [providerHistory, setProviderHistory] = useState<Record<string, ProviderHealthEntry[]>>({});
   const [theme, setTheme]               = useState<Theme>(getStoredTheme());
+  const { locale, localeCode, setLocale, localeNames, localeCodes } = useLocale();
   const [loading, setLoading]           = useState(true);
 
   // Plugin state
@@ -292,14 +294,26 @@ export function SettingsPanel() {
 
       {/* Appearance */}
       <Section title="Appearance">
-        <div className="flex items-center gap-3 py-1.5">
-          <span className="text-zinc-500 text-xs w-36 shrink-0">Theme</span>
+        <div className="flex items-center gap-3 py-1.5 border-b border-zinc-800">
+          <span className="text-zinc-500 text-xs w-36 shrink-0">{locale.settings_theme}</span>
           <button
             onClick={toggleTheme}
             className="text-xs px-3 py-1 rounded border border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-zinc-100 transition-colors"
           >
             {theme === 'dark' ? 'Dark (active) — switch to Light' : 'Light (active) — switch to Dark'}
           </button>
+        </div>
+        <div className="flex items-center gap-3 py-1.5">
+          <span className="text-zinc-500 text-xs w-36 shrink-0">{locale.settings_language}</span>
+          <select
+            value={localeCode}
+            onChange={e => setLocale(e.target.value as typeof localeCode)}
+            className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:border-zinc-500"
+          >
+            {localeCodes.map(code => (
+              <option key={code} value={code}>{localeNames[code]}</option>
+            ))}
+          </select>
         </div>
       </Section>
 
