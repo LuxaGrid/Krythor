@@ -1,13 +1,21 @@
 import type { FastifyInstance } from 'fastify';
 import type { AuditLogger } from '../AuditLogger.js';
+import type { AuditStore } from '@krythor/memory';
+import type { AccessProfileStore } from '../AccessProfileStore.js';
 
 // ─── Audit Routes ─────────────────────────────────────────────────────────────
 //
-// GET /api/audit       — query audit events
-// GET /api/audit/tail  — last N events
+// GET /api/audit       — query high-level audit events (AuditLogger)
+// GET /api/audit/tail  — last N events (AuditLogger)
+// GET /api/audit/log   — query access-profile audit entries (AuditStore / SQLite)
 //
 
-export function registerAuditRoutes(app: FastifyInstance, auditLogger: AuditLogger): void {
+export function registerAuditRoutes(
+  app: FastifyInstance,
+  auditLogger: AuditLogger,
+  auditStore?: AuditStore,
+  accessProfileStore?: AccessProfileStore,
+): void {
 
   // GET /api/audit/tail — last N events (default 50)
   app.get<{
@@ -54,5 +62,61 @@ export function registerAuditRoutes(app: FastifyInstance, auditLogger: AuditLogg
     const paginated = events.slice(-limit).reverse();
 
     return reply.send({ events: paginated, total: events.length });
+  });
+
+  // GET /api/audit/log — access-profile audit entries from SQLite (or in-memory fallback)
+  // Query params: limit, offset, agentId, operation, since (Unix ms timestamp)
+  app.get<{
+    Querystring: {
+      limit?:     string;
+      offset?:    string;
+      agentId?:   string;
+      operation?: string;
+      since?:     string;
+    };
+  }>('/api/audit/log', async (req, reply) => {
+    const limit  = Math.min(500, Math.max(1, parseInt(req.query.limit  ?? '50',  10) || 50));
+    const offset = Math.max(0,              parseInt(req.query.offset  ?? '0',   10) || 0);
+    const since  = req.query.since ? parseInt(req.query.since, 10) || undefined : undefined;
+
+    if (auditStore) {
+      // Primary path: query persistent SQLite store
+      const entries = auditStore.query({
+        agentId:   req.query.agentId,
+        operation: req.query.operation,
+        limit,
+        offset,
+        since,
+      });
+      return reply.send({ entries, source: 'sqlite' });
+    }
+
+    // Fallback path: query in-memory ring buffer from AccessProfileStore
+    if (accessProfileStore) {
+      let entries = accessProfileStore.getAuditLog(limit);
+      if (req.query.agentId) {
+        entries = entries.filter(e => e.agentId === req.query.agentId);
+      }
+      if (req.query.operation) {
+        entries = entries.filter(e => e.operation === req.query.operation);
+      }
+      if (since !== undefined) {
+        entries = entries.filter(e => e.ts >= since);
+      }
+      // Convert to the common AuditEntry shape
+      const mapped = entries.slice(offset, offset + limit).map(e => ({
+        id:        e.id,
+        agentId:   e.agentId,
+        operation: e.operation,
+        target:    e.path,
+        profile:   e.profile,
+        allowed:   e.allowed,
+        reason:    e.reason,
+        timestamp: e.ts,
+      }));
+      return reply.send({ entries: mapped, source: 'memory' });
+    }
+
+    return reply.send({ entries: [], source: 'unavailable' });
   });
 }

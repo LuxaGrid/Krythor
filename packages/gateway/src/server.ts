@@ -7,7 +7,7 @@ import { join } from 'path';
 import { existsSync, readFileSync, readdirSync, watch as fsWatch } from 'fs';
 import { homedir, networkInterfaces } from 'os';
 import { KrythorCore, AgentOrchestrator, ExecTool, CustomToolStore, WebhookTool, PluginLoader, AgentWorkspaceManager, getDefaultWorkspaceDir, AgentAuthProfileStore } from '@krythor/core';
-import { MemoryEngine, GuardDecisionStore, OllamaEmbeddingProvider } from '@krythor/memory';
+import { MemoryEngine, GuardDecisionStore, OllamaEmbeddingProvider, AuditStore } from '@krythor/memory';
 import { ModelEngine, ModelRecommender, PreferenceStore } from '@krythor/models';
 import { GuardEngine } from '@krythor/guard';
 import { SkillRegistry, SkillRunner } from '@krythor/skills';
@@ -996,10 +996,14 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   const customToolStore = new CustomToolStore(join(dataDir, 'config'));
   const webhookTool = new WebhookTool();
 
+  // Audit store — persists access-profile audit entries to SQLite (migration 011).
+  // Shares the same DB connection as the rest of the memory subsystem.
+  const auditStore = new AuditStore(memory.db);
+
   // Access profile store — persists per-agent filesystem access levels.
   // Constructed before the custom tool dispatcher so ShellToolDispatcher can
   // reference it synchronously at dispatch time.
-  const accessProfileStore = new AccessProfileStore(join(dataDir, 'config'));
+  const accessProfileStore = new AccessProfileStore(join(dataDir, 'config'), auditStore);
 
   // Shell tool dispatcher — routes shell_exec and list_processes tool calls
   // through the access profile + guard layer before executing.
@@ -1305,7 +1309,7 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   registerConfigPortabilityRoutes(app, models);
   registerPluginRoutes(app, pluginLoader);
   registerApprovalRoutes(app, approvalManager);
-  registerAuditRoutes(app, auditLogger);
+  registerAuditRoutes(app, auditLogger, auditStore, accessProfileStore);
   registerWorkspaceRoutes(app);
 
   // Inbound webhook routes — POST /api/hooks/wake + /api/hooks/agent

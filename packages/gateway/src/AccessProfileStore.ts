@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync, mkdirSync, appendFileSync } from 'fs';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
+import type { AuditStore as AuditStoreType } from '@krythor/memory';
 
 // ─── Access Profile Store ─────────────────────────────────────────────────────
 //
@@ -38,11 +39,13 @@ export class AccessProfileStore {
   private auditLogPath: string;
   private profiles: Record<string, AccessProfile> = {};
   private auditRing: AuditEntry[] = [];
+  private auditStore?: AuditStoreType;
 
-  constructor(configDir: string) {
+  constructor(configDir: string, auditStore?: AuditStoreType) {
     this.configDir = configDir;
     this.profilesPath = join(configDir, PROFILES_FILE);
     this.auditLogPath = join(configDir, AUDIT_LOG_FILE);
+    this.auditStore = auditStore;
     this._ensureDir();
     this._load();
   }
@@ -67,7 +70,7 @@ export class AccessProfileStore {
 
   // ── Audit log operations ─────────────────────────────────────────────────
 
-  /** Appends an audit entry to the ring buffer and flushes to disk. */
+  /** Appends an audit entry to the ring buffer, flushes to disk, and persists to SQLite if configured. */
   logAudit(entry: AuditEntry): void {
     this.auditRing.push(entry);
     // Trim to ring limit — remove oldest entries when over capacity
@@ -78,6 +81,21 @@ export class AccessProfileStore {
     try {
       appendFileSync(this.auditLogPath, JSON.stringify(entry) + '\n', 'utf-8');
     } catch { /* non-fatal */ }
+    // Persist to SQLite if an AuditStore is wired in
+    if (this.auditStore) {
+      try {
+        this.auditStore.insert({
+          id:        entry.id,
+          agentId:   entry.agentId,
+          operation: entry.operation,
+          target:    entry.path,
+          profile:   entry.profile,
+          allowed:   entry.allowed,
+          reason:    entry.reason,
+          timestamp: entry.ts,
+        });
+      } catch { /* non-fatal — ring buffer is the fallback */ }
+    }
   }
 
   /** Returns the most recent audit entries (default: all up to ring limit). */

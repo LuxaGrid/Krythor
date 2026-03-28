@@ -40,6 +40,8 @@ export type { WriteResult } from './MemoryWriter.js';
 export { HeartbeatInsightStore } from './db/HeartbeatInsightStore.js';
 export type { PersistedInsight } from './db/HeartbeatInsightStore.js';
 export { SessionStore, resolveSessionKey } from './db/SessionStore.js';
+export { AuditStore } from './db/AuditStore.js';
+export type { AuditEntry } from './db/AuditStore.js';
 export type {
   SessionEntry,
   SessionKind,
