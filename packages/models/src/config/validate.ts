@@ -10,7 +10,7 @@
 
 import type { ProviderConfig, ProviderType, AuthMethod, OAuthAccount } from '../types.js';
 
-const VALID_PROVIDER_TYPES: ProviderType[] = ['ollama', 'openai', 'anthropic', 'openai-compat', 'gguf'];
+const VALID_PROVIDER_TYPES: ProviderType[] = ['ollama', 'openai', 'anthropic', 'openai-compat', 'gguf', 'claude-agent-sdk'];
 const VALID_AUTH_METHODS: AuthMethod[] = ['api_key', 'oauth', 'none'];
 
 export interface ProviderValidationResult {

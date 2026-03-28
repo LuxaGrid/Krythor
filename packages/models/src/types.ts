@@ -1,6 +1,6 @@
 // ─── Provider auth types ──────────────────────────────────────────────────────
 
-export type ProviderType = 'ollama' | 'openai' | 'anthropic' | 'openai-compat' | 'gguf';
+export type ProviderType = 'ollama' | 'openai' | 'anthropic' | 'openai-compat' | 'gguf' | 'claude-agent-sdk';
 
 export type AuthMethod = 'api_key' | 'oauth' | 'none';
 

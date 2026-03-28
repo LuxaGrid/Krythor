@@ -36,6 +36,12 @@ export const PROVIDER_CAPABILITIES: Record<ProviderType, ProviderCapabilities> =
     supportsCustomBaseUrl: true,
     supportsModelListing:  false,
   },
+  'claude-agent-sdk': {
+    supportsOAuth:         false, // uses ANTHROPIC_API_KEY or cloud env vars (Bedrock/Vertex/Foundry)
+    supportsApiKey:        true,
+    supportsCustomBaseUrl: false, // endpoint is managed by the SDK internally
+    supportsModelListing:  false,
+  },
 };
 
 export function getCapabilities(type: ProviderType): ProviderCapabilities {

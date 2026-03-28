@@ -11,6 +11,7 @@ import { OllamaProvider } from './providers/OllamaProvider.js';
 import { OpenAIProvider } from './providers/OpenAIProvider.js';
 import { AnthropicProvider } from './providers/AnthropicProvider.js';
 import { OpenAICompatProvider } from './providers/OpenAICompatProvider.js';
+import { ClaudeAgentSdkProvider } from './providers/ClaudeAgentSdkProvider.js';
 
 // ─── Credential Encryption ───────────────────────────────────────────────────
 // AES-256-GCM with a machine-derived key. No OS keychain dependency.
@@ -321,11 +322,12 @@ export class ModelRegistry {
 
   private instantiate(config: ProviderConfig): BaseProvider {
     const map: Record<ProviderType, new (c: ProviderConfig) => BaseProvider> = {
-      ollama:          OllamaProvider,
-      openai:          OpenAIProvider,
-      anthropic:       AnthropicProvider,
-      'openai-compat': OpenAICompatProvider,
-      gguf:            OpenAICompatProvider, // GGUF via llama-server uses OpenAI-compat API
+      ollama:              OllamaProvider,
+      openai:              OpenAIProvider,
+      anthropic:           AnthropicProvider,
+      'openai-compat':     OpenAICompatProvider,
+      gguf:                OpenAICompatProvider, // GGUF via llama-server uses OpenAI-compat API
+      'claude-agent-sdk':  ClaudeAgentSdkProvider,
     };
     const Cls = map[config.type];
     if (!Cls) throw new Error(`Unknown provider type: ${config.type}`);
