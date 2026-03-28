@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { AgentOrchestrator, CreateAgentInput, UpdateAgentInput, RunAgentInput } from '@krythor/core';
-import { RunQueueFullError } from '@krythor/core';
+import { RunQueueFullError, RunRateLimitError } from '@krythor/core';
 import type { GuardEngine } from '@krythor/guard';
 import { validateString, MAX_NAME_LEN, MAX_DESCRIPTION_LEN, MAX_SYSTEM_PROMPT_LEN } from '../validate.js';
 import type { AccessProfileStore } from '../AccessProfileStore.js';
@@ -246,6 +246,10 @@ export function registerAgentRoutes(
       const run = await orchestrator.runAgent(req.params.id, { input: message });
       return reply.send({ output: run.output ?? '', modelUsed: run.modelUsed, status: run.status, runId: run.id });
     } catch (err) {
+      if (err instanceof RunRateLimitError) {
+        reply.header('Retry-After', '60');
+        return reply.code(429).send({ error: err.message });
+      }
       if (err instanceof RunQueueFullError) {
         reply.header('Retry-After', '30');
         return reply.code(429).send({ error: err.message });
@@ -286,6 +290,10 @@ export function registerAgentRoutes(
       const run = await orchestrator.runAgent(req.params.id, req.body as RunAgentInput);
       return reply.send(run);
     } catch (err) {
+      if (err instanceof RunRateLimitError) {
+        reply.header('Retry-After', '60');
+        return reply.code(429).send({ error: err.message });
+      }
       if (err instanceof RunQueueFullError) {
         reply.header('Retry-After', '30');
         return reply.code(429).send({ error: err.message });

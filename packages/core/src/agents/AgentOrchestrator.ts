@@ -59,6 +59,20 @@ export class RunQueueFullError extends Error {
   }
 }
 
+/** Thrown when a per-agent runs-per-minute cap is exceeded. */
+export class RunRateLimitError extends Error {
+  constructor(agentId: string, limit: number) {
+    super(
+      `Agent "${agentId}" has exceeded ${limit} runs/min. ` +
+      'Retry after 60 seconds.',
+    );
+    this.name = 'RunRateLimitError';
+  }
+}
+
+/** Default max runs per minute per agent (0 = unlimited). */
+const DEFAULT_MAX_RUNS_PER_MINUTE = 20;
+
 /** Interval at which the idle-timeout janitor runs (ms). */
 const JANITOR_INTERVAL_MS = 15_000; // 15 seconds
 
@@ -66,6 +80,10 @@ export class AgentOrchestrator extends EventEmitter {
   readonly registry: AgentRegistry;
   private runner: AgentRunner;
   private runHistory = new Map<string, AgentRun>(); // runId → run (capped at 500)
+
+  // Per-agent run timestamps for rate-limiting (rolling 60-second window)
+  private readonly agentRunTimestamps = new Map<string, number[]>();
+  private maxRunsPerMinute: number = DEFAULT_MAX_RUNS_PER_MINUTE;
 
   // Queue of resolve functions waiting for a run slot
   private readonly waitQueue: Array<{ resolve: () => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }> = [];
@@ -212,6 +230,14 @@ export class AgentOrchestrator extends EventEmitter {
   }
 
   /**
+   * Set the per-agent runs-per-minute cap. Pass 0 to disable.
+   * Default: 20. Called from server.ts after reading app-config.json.
+   */
+  setMaxRunsPerMinute(limit: number): void {
+    this.maxRunsPerMinute = Math.max(0, limit);
+  }
+
+  /**
    * Wire in an ExecTool after construction (called from server.ts after both
    * orchestrator and execTool are initialized). Replaces the runner instance
    * so subsequent runs have access to exec capabilities.
@@ -269,6 +295,7 @@ export class AgentOrchestrator extends EventEmitter {
     input: RunAgentInput,
     options?: { contextMessages?: Array<{ role: string; content: string }>; runId?: string },
   ): Promise<AgentRun> {
+    this.checkRateLimit(agentId);
     await this.acquireSlot();
     const agent = this.registry.getById(agentId);
     if (!agent) throw new Error(`Agent "${agentId}" not found`);
@@ -299,6 +326,7 @@ export class AgentOrchestrator extends EventEmitter {
     input: RunAgentInput,
     options?: { contextMessages?: Array<{ role: string; content: string }>; runId?: string },
   ): Promise<AgentRun> {
+    this.checkRateLimit(agentId);
     await this.acquireSlot();
     const agent = this.registry.getById(agentId);
     if (!agent) throw new Error(`Agent "${agentId}" not found`);
@@ -409,6 +437,38 @@ export class AgentOrchestrator extends EventEmitter {
   }
 
   // ── Private ────────────────────────────────────────────────────────────────
+
+  /**
+   * Check per-agent runs-per-minute cap.
+   * Records a timestamp for the current run and throws RunRateLimitError if
+   * the rolling 60-second window contains more than maxRunsPerMinute entries.
+   * Noop when maxRunsPerMinute is 0 (unlimited).
+   */
+  private checkRateLimit(agentId: string): void {
+    if (this.maxRunsPerMinute === 0) return; // unlimited
+
+    const now = Date.now();
+    const windowStart = now - 60_000;
+
+    // Get or create the timestamp list for this agent, pruning old entries
+    let timestamps = this.agentRunTimestamps.get(agentId);
+    if (!timestamps) {
+      timestamps = [];
+      this.agentRunTimestamps.set(agentId, timestamps);
+    }
+
+    // Remove timestamps outside the 60-second rolling window
+    while (timestamps.length > 0 && timestamps[0]! < windowStart) {
+      timestamps.shift();
+    }
+
+    if (timestamps.length >= this.maxRunsPerMinute) {
+      throw new RunRateLimitError(agentId, this.maxRunsPerMinute);
+    }
+
+    // Record this run
+    timestamps.push(now);
+  }
 
   /**
    * Acquire a run slot. If at capacity, waits in the queue.

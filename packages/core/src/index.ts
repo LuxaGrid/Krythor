@@ -23,7 +23,7 @@ export {
 export type { ValidationResult, AgentDefinitionRaw, AppConfigRaw, ProviderConfigRaw } from './config/validate.js';
 export { SystemIdentityProvider } from './SystemIdentityProvider.js';
 export type { SoulMetadata } from './SystemIdentityProvider.js';
-export { AgentOrchestrator, RunQueueFullError } from './agents/AgentOrchestrator.js';
+export { AgentOrchestrator, RunQueueFullError, RunRateLimitError } from './agents/AgentOrchestrator.js';
 export { AgentRegistry } from './agents/AgentRegistry.js';
 export { AgentRunner, NO_REPLY } from './agents/AgentRunner.js';
 export type { LearningSignal, LearningRecorder, HandoffResolver, CustomToolDispatcher, SpawnAgentResolver, GuardLike } from './agents/AgentRunner.js';

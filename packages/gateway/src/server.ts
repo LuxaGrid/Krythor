@@ -1519,6 +1519,17 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
     }
   } catch { /* startup heartbeat config is best-effort */ }
 
+  // Apply per-agent rate limit from app-config.json
+  try {
+    if (existsSync(appConfigPath)) {
+      const rateCfg = JSON.parse(readFileSync(appConfigPath, 'utf-8')) as Record<string, unknown>;
+      if (typeof rateCfg['agentMaxRunsPerMinute'] === 'number') {
+        orchestrator.setMaxRunsPerMinute(rateCfg['agentMaxRunsPerMinute']);
+        logger.info('Per-agent rate limit configured', { agentMaxRunsPerMinute: rateCfg['agentMaxRunsPerMinute'] });
+      }
+    }
+  } catch { /* best-effort */ }
+
   // Chat channel registry (inbound bot channels — Telegram, Discord, WhatsApp)
   const chatChannelRegistry = new ChatChannelRegistry(join(dataDir, 'config'));
 

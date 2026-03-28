@@ -229,6 +229,11 @@ export interface AppConfigRaw {
    * Default: false.
    */
   privacyBlockOnSensitive?: boolean;
+  /**
+   * Maximum number of agent runs allowed per minute per agent.
+   * Default: 20. Set to 0 for unlimited.
+   */
+  agentMaxRunsPerMinute?: number;
 }
 
 export function parseAppConfig(raw: unknown): ValidationResult<AppConfigRaw> {
@@ -461,6 +466,16 @@ export function parseAppConfig(raw: unknown): ValidationResult<AppConfigRaw> {
       value.privacyBlockOnSensitive = r['privacyBlockOnSensitive'];
     } else {
       errors.push(`privacyBlockOnSensitive: expected boolean, got ${typeof r['privacyBlockOnSensitive']}`);
+    }
+  }
+
+  if ('agentMaxRunsPerMinute' in r) {
+    if (r['agentMaxRunsPerMinute'] === null || r['agentMaxRunsPerMinute'] === undefined) {
+      // null means "cleared" — omit
+    } else if (typeof r['agentMaxRunsPerMinute'] === 'number' && r['agentMaxRunsPerMinute'] >= 0) {
+      value.agentMaxRunsPerMinute = r['agentMaxRunsPerMinute'];
+    } else {
+      errors.push(`agentMaxRunsPerMinute: expected non-negative number, got ${String(r['agentMaxRunsPerMinute'])}`);
     }
   }
 
