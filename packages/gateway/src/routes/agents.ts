@@ -4,6 +4,8 @@ import { RunQueueFullError } from '@krythor/core';
 import type { GuardEngine } from '@krythor/guard';
 import { validateString, MAX_NAME_LEN, MAX_DESCRIPTION_LEN, MAX_SYSTEM_PROMPT_LEN } from '../validate.js';
 import type { AccessProfileStore } from '../AccessProfileStore.js';
+import type { ApprovalManager } from '../ApprovalManager.js';
+import { guardCheck } from '../guardCheck.js';
 
 interface ParallelJob { agentId: string; input: RunAgentInput }
 interface ParallelBody { jobs: ParallelJob[] }
@@ -14,6 +16,7 @@ export function registerAgentRoutes(
   orchestrator: AgentOrchestrator,
   guard?: GuardEngine,
   accessProfileStore?: AccessProfileStore,
+  approvalManager?: ApprovalManager,
 ): void {
 
   // GET /api/agents
@@ -235,15 +238,8 @@ export function registerAgentRoutes(
     }
 
     if (guard) {
-      const verdict = guard.check({
-        operation: 'agent:run',
-        source: 'user',
-        sourceId: req.params.id,
-        content: message,
-      });
-      if (!verdict.allowed) {
-        return reply.code(403).send({ error: 'Guard denied agent run', reason: verdict.reason, guardVerdict: verdict });
-      }
+      const allowed = await guardCheck({ guard, approvalManager, reply, operation: 'agent:run', source: 'user', sourceId: req.params.id, target: message });
+      if (!allowed) return;
     }
 
     try {
@@ -282,19 +278,8 @@ export function registerAgentRoutes(
     // Guard check before running agent
     if (guard) {
       const body = req.body as { input: string };
-      const verdict = guard.check({
-        operation: 'agent:run',
-        source: 'user',
-        sourceId: req.params.id,
-        content: body.input,
-      });
-      if (!verdict.allowed) {
-        return reply.code(403).send({
-          error: 'Guard denied agent run',
-          reason: verdict.reason,
-          guardVerdict: verdict,
-        });
-      }
+      const allowed = await guardCheck({ guard, approvalManager, reply, operation: 'agent:run', source: 'user', sourceId: req.params.id, target: body.input });
+      if (!allowed) return;
     }
 
     try {

@@ -1,6 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import type { ConversationStore, MemoryEngine } from '@krythor/memory';
 import type { GuardEngine } from '@krythor/guard';
+import type { ApprovalManager } from '../ApprovalManager.js';
+import { guardCheck } from '../guardCheck.js';
 
 /** Conversations are considered idle after this many milliseconds without activity. */
 const SESSION_IDLE_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes
@@ -20,14 +22,14 @@ function withIdleStatus(conv: { id: string; title: string; agentId: string | nul
   };
 }
 
-export function registerConversationRoutes(app: FastifyInstance, store: ConversationStore, guard?: GuardEngine, emit?: (event: string, data: Record<string, unknown>) => void, memory?: MemoryEngine): void {
+export function registerConversationRoutes(app: FastifyInstance, store: ConversationStore, guard?: GuardEngine, emit?: (event: string, data: Record<string, unknown>) => void, memory?: MemoryEngine, approvalManager?: ApprovalManager): void {
 
   // GET /api/conversations — list all, with idle status metadata
   // ?include_archived=true — include archived conversations (hidden by default)
   app.get<{ Querystring: { include_archived?: string } }>('/api/conversations', async (req, reply) => {
     if (guard) {
-      const verdict = guard.check({ operation: 'conversation:read', source: 'user' });
-      if (!verdict.allowed) return reply.code(403).send({ error: 'GUARD_DENIED', reason: verdict.reason });
+      const allowed = await guardCheck({ guard, approvalManager, reply, operation: 'conversation:read', source: 'user' });
+      if (!allowed) return;
     }
     const includeArchived = req.query.include_archived === 'true' || req.query.include_archived === '1';
     return reply.send(store.listConversations(includeArchived).map(withIdleStatus));
@@ -54,8 +56,8 @@ export function registerConversationRoutes(app: FastifyInstance, store: Conversa
   // GET /api/conversations/:id — get single conversation with session age metadata
   app.get<{ Params: { id: string } }>('/api/conversations/:id', async (req, reply) => {
     if (guard) {
-      const verdict = guard.check({ operation: 'conversation:read', source: 'user' });
-      if (!verdict.allowed) return reply.code(403).send({ error: 'GUARD_DENIED', reason: verdict.reason });
+      const allowed = await guardCheck({ guard, approvalManager, reply, operation: 'conversation:read', source: 'user' });
+      if (!allowed) return;
     }
     const conv = store.getConversation(req.params.id);
     if (!conv) return reply.code(404).send({ error: 'Conversation not found' });
@@ -112,8 +114,8 @@ export function registerConversationRoutes(app: FastifyInstance, store: Conversa
   // Response: { messages, total, page, limit, hasMore }
   app.get<{ Params: { id: string }; Querystring: { page?: string; limit?: string } }>('/api/conversations/:id/messages', async (req, reply) => {
     if (guard) {
-      const verdict = guard.check({ operation: 'conversation:read', source: 'user' });
-      if (!verdict.allowed) return reply.code(403).send({ error: 'GUARD_DENIED', reason: verdict.reason });
+      const allowed = await guardCheck({ guard, approvalManager, reply, operation: 'conversation:read', source: 'user' });
+      if (!allowed) return;
     }
     const conv = store.getConversation(req.params.id);
     if (!conv) return reply.code(404).send({ error: 'Conversation not found' });
@@ -212,8 +214,8 @@ export function registerConversationRoutes(app: FastifyInstance, store: Conversa
   // GET /api/sessions/maintenance — dry-run estimate
   app.get('/api/sessions/maintenance', async (_req, reply) => {
     if (guard) {
-      const verdict = guard.check({ operation: 'conversation:read', source: 'user' });
-      if (!verdict.allowed) return reply.code(403).send({ error: 'GUARD_DENIED', reason: verdict.reason });
+      const allowed = await guardCheck({ guard, approvalManager, reply, operation: 'conversation:read', source: 'user' });
+      if (!allowed) return;
     }
     if (!memory) {
       // Without a memory engine, return basic counts from the conversation store
@@ -232,8 +234,8 @@ export function registerConversationRoutes(app: FastifyInstance, store: Conversa
   // POST /api/sessions/maintenance/run — trigger cleanup
   app.post('/api/sessions/maintenance/run', async (_req, reply) => {
     if (guard) {
-      const verdict = guard.check({ operation: 'conversation:write', source: 'user' });
-      if (!verdict.allowed) return reply.code(403).send({ error: 'GUARD_DENIED', reason: verdict.reason });
+      const allowed = await guardCheck({ guard, approvalManager, reply, operation: 'conversation:write', source: 'user' });
+      if (!allowed) return;
     }
     if (!memory) {
       return reply.code(503).send({ error: 'Memory engine not configured.' });

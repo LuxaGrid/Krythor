@@ -3,6 +3,8 @@ import type { GuardEngine } from '@krythor/guard';
 import type { AgentOrchestrator } from '@krythor/core';
 import type { MemoryEngine } from '@krythor/memory';
 import type { HeartbeatEngine } from '../heartbeat/HeartbeatEngine.js';
+import type { ApprovalManager } from '../ApprovalManager.js';
+import { guardCheck } from '../guardCheck.js';
 
 /** Late-bound reference box so config route can reach heartbeat after it's created. */
 export interface HeartbeatRef { instance?: HeartbeatEngine }
@@ -48,7 +50,7 @@ export interface AppConfig {
   webhookToken?: string;
 }
 
-export function registerConfigRoute(app: FastifyInstance, configDir: string, guard?: GuardEngine, orchestrator?: AgentOrchestrator, memory?: MemoryEngine, heartbeatRef?: HeartbeatRef): void {
+export function registerConfigRoute(app: FastifyInstance, configDir: string, guard?: GuardEngine, orchestrator?: AgentOrchestrator, memory?: MemoryEngine, heartbeatRef?: HeartbeatRef, approvalManager?: ApprovalManager): void {
   const configPath = join(configDir, 'app-config.json');
 
   // Read the raw file — all fields preserved, including gatewayToken managed by auth.ts.
@@ -155,8 +157,8 @@ export function registerConfigRoute(app: FastifyInstance, configDir: string, gua
     },
   }, async (req, reply) => {
     if (guard) {
-      const verdict = guard.check({ operation: 'config:write', source: 'user' });
-      if (!verdict.allowed) return reply.code(403).send({ error: 'GUARD_DENIED', reason: verdict.reason });
+      const allowed = await guardCheck({ guard, approvalManager, reply, operation: 'config:write', source: 'user' });
+      if (!allowed) return;
     }
     const current = read();
     const patch = req.body as Record<string, unknown>;
@@ -294,8 +296,8 @@ export function registerConfigRoute(app: FastifyInstance, configDir: string, gua
     },
   }, async (req, reply) => {
     if (guard) {
-      const verdict = guard.check({ operation: 'config:write', source: 'user' });
-      if (!verdict.allowed) return reply.code(403).send({ error: 'GUARD_DENIED', reason: verdict.reason });
+      const allowed = await guardCheck({ guard, approvalManager, reply, operation: 'config:write', source: 'user' });
+      if (!allowed) return;
     }
     const filename = EDITABLE_CONFIG_FILES[req.params.key];
     if (!filename) return reply.code(404).send({ error: `Unknown config key: ${req.params.key}` });

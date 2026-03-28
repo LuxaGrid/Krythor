@@ -1255,19 +1255,19 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   const heartbeatRef: HeartbeatRef = {};
 
   // Register routes
-  registerCommandRoute(app, core, orchestrator, broadcast, guard, convStore, devicePairingStore);
-  registerMemoryRoutes(app, memory, models, guard, channelEmit);
-  registerModelRoutes(app, models, memory, guard, channelEmit);
-  registerAgentRoutes(app, orchestrator, guard, accessProfileStore);
+  registerCommandRoute(app, core, orchestrator, broadcast, guard, convStore, devicePairingStore, approvalManager);
+  registerMemoryRoutes(app, memory, models, guard, channelEmit, approvalManager);
+  registerModelRoutes(app, models, memory, guard, channelEmit, approvalManager);
+  registerAgentRoutes(app, orchestrator, guard, accessProfileStore, approvalManager);
   registerGuardRoutes(app, guard, guardDecisionStore);
-  registerConfigRoute(app, join(dataDir, 'config'), guard, orchestrator, memory, heartbeatRef);
-  registerConversationRoutes(app, convStore, guard, channelEmit, memory ?? undefined);
-  registerSkillRoutes(app, skillRegistry, guard, skillRunner);
+  registerConfigRoute(app, join(dataDir, 'config'), guard, orchestrator, memory, heartbeatRef, approvalManager);
+  registerConversationRoutes(app, convStore, guard, channelEmit, memory ?? undefined, approvalManager);
+  registerSkillRoutes(app, skillRegistry, guard, skillRunner, approvalManager);
   registerRecommendRoutes(app, models, recommender, guard);
   registerToolRoutes(app, guard, execTool, core);
   registerCustomToolRoutes(app, customToolStore, guard);
-  registerFileToolRoutes(app, guard, accessProfileStore);
-  registerShellToolRoutes(app, guard, accessProfileStore);
+  registerFileToolRoutes(app, guard, accessProfileStore, approvalManager);
+  registerShellToolRoutes(app, guard, accessProfileStore, approvalManager);
   registerProviderRoutes(app, models);
   registerOAuthRoutes(app, models);
   registerLocalModelsRoute(app);

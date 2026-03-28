@@ -4,6 +4,7 @@ import type { AgentEvent } from '@krythor/core';
 import type { GuardEngine } from '@krythor/guard';
 import type { ConversationStore } from '@krythor/memory';
 import type { DevicePairingStore } from '../ws/DevicePairingStore.js';
+import type { ApprovalManager } from '../ApprovalManager.js';
 import { classifyError } from '../errors.js';
 
 /** Register a requestId→runId mapping on the app instance (set in server.ts). */
@@ -20,6 +21,7 @@ export function registerCommandRoute(
   guard?: GuardEngine,
   convStore?: ConversationStore,
   deviceStore?: DevicePairingStore,
+  approvalManager?: ApprovalManager,
 ): void {
   app.post('/api/command', {
     config: {
@@ -263,23 +265,39 @@ export function registerCommandRoute(
         content: input,
         ...(agentId && { sourceId: agentId }),
       });
-      if (!verdict.allowed) {
+
+      // Route require-approval verdicts through the approval manager when available
+      let guardAllowed = verdict.allowed;
+      if (!verdict.allowed && verdict.action === 'require-approval' && approvalManager) {
+        const response = await approvalManager.requestApproval({
+          agentId,
+          actionType: 'command:execute',
+          target: input,
+          reason: verdict.reason ?? 'Policy requires approval for this action.',
+          riskSummary: `command:execute on: ${input.slice(0, 120)}`,
+          context: { verdict: verdict as unknown as Record<string, unknown> },
+        }).catch(() => 'deny' as const);
+        guardAllowed = response !== 'deny';
+      }
+
+      if (!guardAllowed) {
+        const denyReason = verdict.reason ?? 'Guard denied operation';
         if (stream) {
           reply.raw.writeHead(200, {
             'Content-Type': 'text/event-stream',
             'Cache-Control': 'no-cache',
             'Connection': 'keep-alive',
           });
-          reply.raw.write(`data: ${JSON.stringify({ type: 'error', message: `Command denied by security policy: ${verdict.reason}` })}\n\n`);
+          reply.raw.write(`data: ${JSON.stringify({ type: 'error', message: `Command denied by security policy: ${denyReason}` })}\n\n`);
           reply.raw.end();
           return reply;
         }
         return reply.code(403).send({
           input,
-          output: `Command denied by security policy: ${verdict.reason}`,
+          output: `Command denied by security policy: ${denyReason}`,
           timestamp: new Date().toISOString(),
           processingTimeMs: 0,
-          error: { code: 'GUARD_DENIED', message: verdict.reason, hint: 'Adjust your Guard policy in the Guard tab if this is unexpected.' },
+          error: { code: verdict.action === 'require-approval' ? 'APPROVAL_DENIED' : 'GUARD_DENIED', message: denyReason, hint: 'Adjust your Guard policy in the Guard tab if this is unexpected.' },
           guardVerdict: verdict,
         });
       }

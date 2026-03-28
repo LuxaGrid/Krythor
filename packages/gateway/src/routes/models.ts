@@ -5,6 +5,8 @@ import type { MemoryEngine } from '@krythor/memory';
 import type { GuardEngine } from '@krythor/guard';
 import { OllamaEmbeddingProvider } from '@krythor/memory';
 import { validateString, validateUrl, MAX_NAME_LEN, MAX_ENDPOINT_LEN, MAX_API_KEY_LEN } from '../validate.js';
+import type { ApprovalManager } from '../ApprovalManager.js';
+import { guardCheck } from '../guardCheck.js';
 
 /**
  * Validate a provider endpoint URL.
@@ -65,6 +67,7 @@ export function registerModelRoutes(
   memory?: MemoryEngine,
   guard?: GuardEngine,
   emit?: (event: string, data: Record<string, unknown>) => void,
+  approvalManager?: ApprovalManager,
 ): void {
 
   // GET /api/models — list all models across all providers (with badges + provider info)
@@ -410,8 +413,8 @@ export function registerModelRoutes(
     },
   }, async (req, reply) => {
     if (guard) {
-      const verdict = guard.check({ operation: 'model:infer', source: 'user' });
-      if (!verdict.allowed) return reply.code(403).send({ error: 'GUARD_DENIED', reason: verdict.reason });
+      const allowed = await guardCheck({ guard, approvalManager, reply, operation: 'model:infer', source: 'user' });
+      if (!allowed) return;
     }
     try {
       const response = await models.infer(req.body as InferenceRequest);

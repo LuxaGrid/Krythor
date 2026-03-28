@@ -4,8 +4,10 @@ import { SkillConcurrencyError, SkillPermissionError, SkillTimeoutError, BUILTIN
 import type { GuardEngine } from '@krythor/guard';
 import { sendError } from '../errors.js';
 import { logger } from '../logger.js';
+import type { ApprovalManager } from '../ApprovalManager.js';
+import { guardCheck } from '../guardCheck.js';
 
-export function registerSkillRoutes(app: FastifyInstance, skills: SkillRegistry, guard: GuardEngine, runner: SkillRunner): void {
+export function registerSkillRoutes(app: FastifyInstance, skills: SkillRegistry, guard: GuardEngine, runner: SkillRunner, approvalManager?: ApprovalManager): void {
 
   // GET /api/skills/builtins — list built-in skill templates (no user data required)
   app.get('/api/skills/builtins', async (_req, reply) => {
@@ -68,10 +70,8 @@ export function registerSkillRoutes(app: FastifyInstance, skills: SkillRegistry,
       },
     },
   }, async (req, reply) => {
-    const verdict = guard.check({ operation: 'skill:create', source: 'user' });
-    if (!verdict.allowed) {
-      return sendError(reply, 403, 'GUARD_DENIED', verdict.reason, 'Check your guard policy rules');
-    }
+    const allowed = await guardCheck({ guard, approvalManager, reply, operation: 'skill:create', source: 'user' });
+    if (!allowed) return;
     const skill = skills.create(req.body as CreateSkillInput);
     return reply.code(201).send(skill);
   });
@@ -140,10 +140,8 @@ export function registerSkillRoutes(app: FastifyInstance, skills: SkillRegistry,
       return sendError(reply, 409, 'SKILL_DISABLED', `Skill "${skill.name}" is disabled`, 'Enable the skill before running it');
     }
 
-    const verdict = guard.check({ operation: 'skill:execute', source: 'user', sourceId: req.params.id });
-    if (!verdict.allowed) {
-      return sendError(reply, 403, 'GUARD_DENIED', verdict.reason, 'Check your guard policy rules');
-    }
+    const allowed = await guardCheck({ guard, approvalManager, reply, operation: 'skill:execute', source: 'user', sourceId: req.params.id });
+    if (!allowed) return;
 
     try {
       const { input } = req.body as { input: string };
@@ -171,10 +169,8 @@ export function registerSkillRoutes(app: FastifyInstance, skills: SkillRegistry,
 
   // DELETE /api/skills/:id
   app.delete<{ Params: { id: string } }>('/api/skills/:id', async (req, reply) => {
-    const verdict = guard.check({ operation: 'skill:delete', source: 'user' });
-    if (!verdict.allowed) {
-      return sendError(reply, 403, 'GUARD_DENIED', verdict.reason, 'Check your guard policy rules');
-    }
+    const allowed = await guardCheck({ guard, approvalManager, reply, operation: 'skill:delete', source: 'user' });
+    if (!allowed) return;
     try {
       skills.delete(req.params.id);
       return reply.code(204).send();

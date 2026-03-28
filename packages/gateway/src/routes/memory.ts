@@ -4,14 +4,16 @@ import type { ModelEngine } from '@krythor/models';
 import type { GuardEngine } from '@krythor/guard';
 import { sendError } from '../errors.js';
 import { createHash } from 'crypto';
+import type { ApprovalManager } from '../ApprovalManager.js';
+import { guardCheck } from '../guardCheck.js';
 
-export function registerMemoryRoutes(app: FastifyInstance, memory: MemoryEngine, models?: ModelEngine, guard?: GuardEngine, emit?: (event: string, data: Record<string, unknown>) => void): void {
+export function registerMemoryRoutes(app: FastifyInstance, memory: MemoryEngine, models?: ModelEngine, guard?: GuardEngine, emit?: (event: string, data: Record<string, unknown>) => void, approvalManager?: ApprovalManager): void {
 
   // GET /api/memory — list / search entries
   app.get('/api/memory', async (req, reply) => {
     if (guard) {
-      const verdict = guard.check({ operation: 'memory:read', source: 'user' });
-      if (!verdict.allowed) return reply.code(403).send({ error: 'GUARD_DENIED', reason: verdict.reason });
+      const allowed = await guardCheck({ guard, approvalManager, reply, operation: 'memory:read', source: 'user' });
+      if (!allowed) return;
     }
     const q = req.query as Record<string, string>;
     const results = await memory.search({
@@ -33,8 +35,8 @@ export function registerMemoryRoutes(app: FastifyInstance, memory: MemoryEngine,
   // Supports the same query params as GET /api/memory plus explicit page/limit.
   app.get('/api/memory/search', async (req, reply) => {
     if (guard) {
-      const verdict = guard.check({ operation: 'memory:read', source: 'user' });
-      if (!verdict.allowed) return reply.code(403).send({ error: 'GUARD_DENIED', reason: verdict.reason });
+      const allowed = await guardCheck({ guard, approvalManager, reply, operation: 'memory:read', source: 'user' });
+      if (!allowed) return;
     }
     const q = req.query as Record<string, string>;
     const page  = Math.max(1, parseInt(q.page, 10) || 1);
@@ -64,8 +66,8 @@ export function registerMemoryRoutes(app: FastifyInstance, memory: MemoryEngine,
   // GET /api/memory/stats — total entries, oldest/newest date, size estimate
   app.get('/api/memory/stats', async (_req, reply) => {
     if (guard) {
-      const verdict = guard.check({ operation: 'memory:read', source: 'user' });
-      if (!verdict.allowed) return reply.code(403).send({ error: 'GUARD_DENIED', reason: verdict.reason });
+      const allowed = await guardCheck({ guard, approvalManager, reply, operation: 'memory:read', source: 'user' });
+      if (!allowed) return;
     }
     const base = memory.stats();
     // Retrieve all entries for date range + size estimate (low overhead — metadata only)
@@ -90,8 +92,8 @@ export function registerMemoryRoutes(app: FastifyInstance, memory: MemoryEngine,
   // Used by the Memory tab UI to populate the tag filter dropdown.
   app.get('/api/memory/tags', async (_req, reply) => {
     if (guard) {
-      const verdict = guard.check({ operation: 'memory:read', source: 'user' });
-      if (!verdict.allowed) return reply.code(403).send({ error: 'GUARD_DENIED', reason: verdict.reason });
+      const allowed = await guardCheck({ guard, approvalManager, reply, operation: 'memory:read', source: 'user' });
+      if (!allowed) return;
     }
     const all = memory.store.queryEntries({ limit: 1_000_000 });
     const tagSet = new Set<string>();
@@ -106,8 +108,8 @@ export function registerMemoryRoutes(app: FastifyInstance, memory: MemoryEngine,
   // GET /api/memory/export — export all entries as JSON array (auth required)
   app.get('/api/memory/export', async (_req, reply) => {
     if (guard) {
-      const verdict = guard.check({ operation: 'memory:read', source: 'user' });
-      if (!verdict.allowed) return reply.code(403).send({ error: 'GUARD_DENIED', reason: verdict.reason });
+      const allowed = await guardCheck({ guard, approvalManager, reply, operation: 'memory:read', source: 'user' });
+      if (!allowed) return;
     }
     const all = memory.store.queryEntries({ limit: 1_000_000 });
     const exported = all.map(e => ({
@@ -157,8 +159,8 @@ export function registerMemoryRoutes(app: FastifyInstance, memory: MemoryEngine,
     },
   }, async (req, reply) => {
     if (guard) {
-      const verdict = guard.check({ operation: 'memory:write', source: 'user' });
-      if (!verdict.allowed) return reply.code(403).send({ error: 'GUARD_DENIED', reason: verdict.reason });
+      const allowed = await guardCheck({ guard, approvalManager, reply, operation: 'memory:write', source: 'user' });
+      if (!allowed) return;
     }
 
     const items = req.body as Array<{
@@ -213,8 +215,8 @@ export function registerMemoryRoutes(app: FastifyInstance, memory: MemoryEngine,
   // GET /api/memory/:id
   app.get<{ Params: { id: string } }>('/api/memory/:id', async (req, reply) => {
     if (guard) {
-      const verdict = guard.check({ operation: 'memory:read', source: 'user' });
-      if (!verdict.allowed) return reply.code(403).send({ error: 'GUARD_DENIED', reason: verdict.reason });
+      const allowed = await guardCheck({ guard, approvalManager, reply, operation: 'memory:read', source: 'user' });
+      if (!allowed) return;
     }
     const entry = memory.getById(req.params.id);
     if (!entry) return reply.code(404).send({ error: 'Not found' });
@@ -279,8 +281,8 @@ export function registerMemoryRoutes(app: FastifyInstance, memory: MemoryEngine,
   // At least one filter is required to prevent accidental full wipes.
   app.delete('/api/memory', async (req, reply) => {
     if (guard) {
-      const verdict = guard.check({ operation: 'memory:write', source: 'user' });
-      if (!verdict.allowed) return reply.code(403).send({ error: 'GUARD_DENIED', reason: verdict.reason });
+      const allowed = await guardCheck({ guard, approvalManager, reply, operation: 'memory:write', source: 'user' });
+      if (!allowed) return;
     }
 
     const q = req.query as Record<string, string>;

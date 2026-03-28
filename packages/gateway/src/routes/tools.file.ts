@@ -11,6 +11,7 @@ import {
 } from 'fs/promises';
 import type { FastifyInstance } from 'fastify';
 import type { GuardEngine, OperationType } from '@krythor/guard';
+import type { ApprovalManager } from '../ApprovalManager.js';
 import { sendError } from '../errors.js';
 import { logger } from '../logger.js';
 import { AccessProfileStore, makeAuditEntry } from '../AccessProfileStore.js';
@@ -116,6 +117,7 @@ async function gate(
   operation: OperationType,
   rawPath: string,
   agentId: string,
+  approvalManager?: ApprovalManager,
 ): Promise<GateResult> {
   // 1. Guard check
   const verdict = guard.check({
@@ -124,13 +126,30 @@ async function gate(
     sourceId: agentId,
   });
   if (!verdict.allowed) {
-    return {
-      allowed: false,
-      statusCode: 403,
-      code: 'GUARD_DENIED',
-      message: verdict.reason ?? 'Guard denied operation',
-      hint: 'Adjust your Guard policy in the Guard tab if this is unexpected.',
-    };
+    // Route require-approval through approval manager when available
+    if (verdict.action === 'require-approval' && approvalManager) {
+      const response = await approvalManager.requestApproval({
+        agentId,
+        actionType: operation,
+        target: rawPath,
+        reason: verdict.reason ?? 'Policy requires approval for this action.',
+        riskSummary: `agent requested: ${operation} on ${rawPath}`,
+        context: { verdict: verdict as unknown as Record<string, unknown> },
+      }).catch(() => 'deny' as const);
+      if (response !== 'deny') {
+        // approved — fall through to profile check
+      } else {
+        return { allowed: false, statusCode: 403, code: 'APPROVAL_DENIED', message: 'Approval request denied by user.', hint: 'The action was blocked by the approval flow.' };
+      }
+    } else {
+      return {
+        allowed: false,
+        statusCode: 403,
+        code: 'GUARD_DENIED',
+        message: verdict.reason ?? 'Guard denied operation',
+        hint: 'Adjust your Guard policy in the Guard tab if this is unexpected.',
+      };
+    }
   }
 
   // 2. Profile check
@@ -155,6 +174,7 @@ export function registerFileToolRoutes(
   app: FastifyInstance,
   guard: GuardEngine,
   accessProfileStore: AccessProfileStore,
+  approvalManager?: ApprovalManager,
 ): void {
 
   // ── POST /api/tools/files/read ─────────────────────────────────────────────
@@ -174,7 +194,7 @@ export function registerFileToolRoutes(
     const { path: rawPath, agentId = '' } = req.body as { path: string; agentId?: string };
     const operation = 'file:read';
 
-    const check = await gate(guard, accessProfileStore, operation, rawPath, agentId);
+    const check = await gate(guard, accessProfileStore, operation, rawPath, agentId, approvalManager);
     if (!check.allowed) {
       const fail = check as GateFail;
       logger.warn('File tool: read denied', { rawPath, agentId, code: fail.code });
@@ -220,7 +240,7 @@ export function registerFileToolRoutes(
     const { path: rawPath, content, agentId = '' } = req.body as { path: string; content: string; agentId?: string };
     const operation = 'file:write';
 
-    const check = await gate(guard, accessProfileStore, operation, rawPath, agentId);
+    const check = await gate(guard, accessProfileStore, operation, rawPath, agentId, approvalManager);
     if (!check.allowed) {
       const fail = check as GateFail;
       logger.warn('File tool: write denied', { rawPath, agentId, code: fail.code });
@@ -261,7 +281,7 @@ export function registerFileToolRoutes(
     };
     const operation = 'file:write';
 
-    const check = await gate(guard, accessProfileStore, operation, rawPath, agentId);
+    const check = await gate(guard, accessProfileStore, operation, rawPath, agentId, approvalManager);
     if (!check.allowed) {
       const fail = check as GateFail;
       logger.warn('File tool: edit denied', { rawPath, agentId, code: fail.code });
@@ -418,7 +438,7 @@ export function registerFileToolRoutes(
     };
     const operation = 'file:delete';
 
-    const check = await gate(guard, accessProfileStore, operation, rawPath, agentId);
+    const check = await gate(guard, accessProfileStore, operation, rawPath, agentId, approvalManager);
     if (!check.allowed) {
       const fail = check as GateFail;
       logger.warn('File tool: delete denied', { rawPath, agentId, code: fail.code });
@@ -457,7 +477,7 @@ export function registerFileToolRoutes(
     };
     const operation = 'file:write';
 
-    const check = await gate(guard, accessProfileStore, operation, rawPath, agentId);
+    const check = await gate(guard, accessProfileStore, operation, rawPath, agentId, approvalManager);
     if (!check.allowed) {
       const fail = check as GateFail;
       logger.warn('File tool: mkdir denied', { rawPath, agentId, code: fail.code });
@@ -493,7 +513,7 @@ export function registerFileToolRoutes(
     const { path: rawPath, agentId = '' } = req.body as { path: string; agentId?: string };
     const operation = 'file:read';
 
-    const check = await gate(guard, accessProfileStore, operation, rawPath, agentId);
+    const check = await gate(guard, accessProfileStore, operation, rawPath, agentId, approvalManager);
     if (!check.allowed) {
       const fail = check as GateFail;
       logger.warn('File tool: list denied', { rawPath, agentId, code: fail.code });
@@ -546,7 +566,7 @@ export function registerFileToolRoutes(
     const { path: rawPath, agentId = '' } = req.body as { path: string; agentId?: string };
     const operation = 'file:read';
 
-    const check = await gate(guard, accessProfileStore, operation, rawPath, agentId);
+    const check = await gate(guard, accessProfileStore, operation, rawPath, agentId, approvalManager);
     if (!check.allowed) {
       const fail = check as GateFail;
       logger.warn('File tool: stat denied', { rawPath, agentId, code: fail.code });
