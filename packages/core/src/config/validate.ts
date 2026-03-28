@@ -168,6 +168,26 @@ export interface AppConfigRaw {
    */
   sessionRotateAfterMessages?: number;
   /**
+   * Days after which a session is eligible for compaction (summarization of older turns).
+   * Default: 0 (disabled).
+   */
+  sessionCompactAfterDays?: number;
+  /**
+   * Maximum number of turns per session. Oldest turns trimmed when exceeded.
+   * Default: 0 (disabled).
+   */
+  sessionMaxTurns?: number;
+  /**
+   * Maximum raw transcript bytes per session. Oldest messages trimmed when exceeded.
+   * Default: 0 (disabled).
+   */
+  sessionMaxTranscriptBytes?: number;
+  /**
+   * When true, raw transcript is deleted after successful compaction.
+   * Default: false.
+   */
+  sessionDeleteRawAfterSuccess?: boolean;
+  /**
    * Heartbeat policy for direct/proactive messages.
    * 'reactive' — respond only when explicitly called (default).
    * 'proactive' — heartbeat may generate unsolicited check-in messages.
@@ -315,6 +335,46 @@ export function parseAppConfig(raw: unknown): ValidationResult<AppConfigRaw> {
       value.sessionRotateAfterMessages = r['sessionRotateAfterMessages'];
     } else {
       errors.push(`sessionRotateAfterMessages: expected non-negative number, got ${String(r['sessionRotateAfterMessages'])}`);
+    }
+  }
+
+  if ('sessionCompactAfterDays' in r) {
+    if (r['sessionCompactAfterDays'] === null || r['sessionCompactAfterDays'] === undefined) {
+      // null means "cleared" — omit
+    } else if (typeof r['sessionCompactAfterDays'] === 'number' && r['sessionCompactAfterDays'] >= 0) {
+      value.sessionCompactAfterDays = r['sessionCompactAfterDays'];
+    } else {
+      errors.push(`sessionCompactAfterDays: expected non-negative number, got ${String(r['sessionCompactAfterDays'])}`);
+    }
+  }
+
+  if ('sessionMaxTurns' in r) {
+    if (r['sessionMaxTurns'] === null || r['sessionMaxTurns'] === undefined) {
+      // null means "cleared" — omit
+    } else if (typeof r['sessionMaxTurns'] === 'number' && r['sessionMaxTurns'] >= 0) {
+      value.sessionMaxTurns = r['sessionMaxTurns'];
+    } else {
+      errors.push(`sessionMaxTurns: expected non-negative number, got ${String(r['sessionMaxTurns'])}`);
+    }
+  }
+
+  if ('sessionMaxTranscriptBytes' in r) {
+    if (r['sessionMaxTranscriptBytes'] === null || r['sessionMaxTranscriptBytes'] === undefined) {
+      // null means "cleared" — omit
+    } else if (typeof r['sessionMaxTranscriptBytes'] === 'number' && r['sessionMaxTranscriptBytes'] >= 0) {
+      value.sessionMaxTranscriptBytes = r['sessionMaxTranscriptBytes'];
+    } else {
+      errors.push(`sessionMaxTranscriptBytes: expected non-negative number, got ${String(r['sessionMaxTranscriptBytes'])}`);
+    }
+  }
+
+  if ('sessionDeleteRawAfterSuccess' in r) {
+    if (r['sessionDeleteRawAfterSuccess'] === null || r['sessionDeleteRawAfterSuccess'] === undefined) {
+      // null means "cleared" — omit
+    } else if (typeof r['sessionDeleteRawAfterSuccess'] === 'boolean') {
+      value.sessionDeleteRawAfterSuccess = r['sessionDeleteRawAfterSuccess'];
+    } else {
+      errors.push(`sessionDeleteRawAfterSuccess: expected boolean, got ${typeof r['sessionDeleteRawAfterSuccess']}`);
     }
   }
 

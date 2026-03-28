@@ -17,17 +17,30 @@ import type Database from 'better-sqlite3';
 // All rules are designed to be safe to run multiple times (idempotent).
 //
 
-const MEMORY_ENTRY_RETENTION_DAYS    = 90;
-const MEMORY_ENTRY_LOW_IMPORTANCE    = 0.2;   // entries below this threshold are prunable
-const DEFAULT_CONVERSATION_RETENTION_DAYS    = 90;
-const LEARNING_RECORD_RETENTION_DAYS = 90;
-const LEARNING_RECORD_MAX_ROWS       = 50_000;
+const MEMORY_ENTRY_RETENTION_DAYS         = 90;
+const MEMORY_ENTRY_LOW_IMPORTANCE         = 0.2;   // entries below this threshold are prunable
+const DEFAULT_CONVERSATION_RETENTION_DAYS = 90;
+const LEARNING_RECORD_RETENTION_DAYS      = 90;
+const LEARNING_RECORD_MAX_ROWS            = 50_000;
+
+// Per-kind retention overrides (days). 0 means disabled for that kind.
+// All other kinds fall back to conversationRetentionDays.
+const KIND_RETENTION_DAYS: Record<string, number> = {
+  temporary: 1,
+  debug:     3,
+};
+
+// Failed agent_run sessions get this many extra days on top of normal retention.
+const FAILED_RUN_EXTRA_DAYS = 30;
 
 export interface JanitorResult {
   memoryEntriesPruned: number;
   conversationsPruned: number;
   learningRecordsPruned: number;
   heartbeatInsightsPruned: number;
+  sessionsCompacted: number;
+  rawTranscriptsPruned: number;
+  sessionsByKindPruned: Record<string, number>;
   ranAt: number;
   /** Row counts per table after pruning — useful for heartbeat insights and diagnostics. */
   tableCountsAfter: Record<string, number>;
@@ -58,6 +71,29 @@ export interface DbJanitorConfig {
    * Default: 0 (disabled).
    */
   rotateAfterMessages?: number;
+  /**
+   * Days after which uncompacted, non-pinned conversations are eligible for compaction.
+   * Compaction writes a compact_summary and optionally trims raw messages.
+   * Default: 0 (disabled).
+   */
+  compactAfterDays?: number;
+  /**
+   * Maximum number of turns (messages) per conversation before compaction is triggered.
+   * Default: 0 (disabled).
+   */
+  maxTurns?: number;
+  /**
+   * Maximum total bytes of raw message content per conversation.
+   * When exceeded, oldest messages are trimmed after compaction.
+   * Default: 0 (disabled).
+   */
+  maxTranscriptBytes?: number;
+  /**
+   * When true, raw transcript messages are deleted after successful compaction.
+   * The compact_summary is preserved as the sole record.
+   * Default: false.
+   */
+  deleteRawAfterSuccess?: boolean;
 }
 
 export class DbJanitor {
@@ -93,6 +129,9 @@ export class DbJanitor {
       conversationsPruned:     0,
       learningRecordsPruned:   0,
       heartbeatInsightsPruned: 0,
+      sessionsCompacted:       0,
+      rawTranscriptsPruned:    0,
+      sessionsByKindPruned:    {},
       ranAt: Date.now(),
       tableCountsAfter: {},
     };
@@ -119,6 +158,26 @@ export class DbJanitor {
       this.archiveOverMessageLimit();
     } catch (err) {
       this.log('error', '[janitor] rotate-after-messages archive failed', { error: err instanceof Error ? err.message : String(err) });
+    }
+
+    try {
+      this.enforcePerSessionLimits();
+    } catch (err) {
+      this.log('error', '[janitor] per-session limit enforcement failed', { error: err instanceof Error ? err.message : String(err) });
+    }
+
+    try {
+      const cr = this.compactSessions();
+      result.sessionsCompacted    = cr.compacted;
+      result.rawTranscriptsPruned = cr.rawPruned;
+    } catch (err) {
+      this.log('error', '[janitor] compaction failed', { error: err instanceof Error ? err.message : String(err) });
+    }
+
+    try {
+      result.sessionsByKindPruned = this.pruneBySessionKind();
+    } catch (err) {
+      this.log('error', '[janitor] session-kind prune failed', { error: err instanceof Error ? err.message : String(err) });
     }
 
     try {
@@ -288,6 +347,201 @@ export class DbJanitor {
     return byAge.changes + byCap.changes;
   }
 
+  // ── Compaction ─────────────────────────────────────────────────────────────
+
+  /**
+   * Public facade — run the compaction pass on demand without a full janitor run.
+   * Summarizes older sessions and optionally trims raw transcripts.
+   */
+  compact(): { compacted: number; rawPruned: number } {
+    return this.compactSessions();
+  }
+
+  private compactSessions(): { compacted: number; rawPruned: number } {
+    const compactAfterDays   = this.config.compactAfterDays   ?? 0;
+    const maxTurns           = this.config.maxTurns           ?? 0;
+    const maxTranscriptBytes = this.config.maxTranscriptBytes ?? 0;
+    const deleteRaw          = this.config.deleteRawAfterSuccess ?? false;
+
+    if (compactAfterDays <= 0 && maxTurns <= 0 && maxTranscriptBytes <= 0) {
+      return { compacted: 0, rawPruned: 0 };
+    }
+
+    const conditions: string[] = ['compacted_at IS NULL', 'pinned = 0'];
+    const params: Record<string, unknown> = {};
+
+    if (compactAfterDays > 0) {
+      const cutoff = Date.now() - compactAfterDays * 24 * 60 * 60 * 1000;
+      conditions.push('updated_at < @compactCutoff');
+      params['compactCutoff'] = cutoff;
+    }
+
+    const candidates = this.db.prepare(
+      `SELECT id, title FROM conversations WHERE ${conditions.join(' AND ')}`
+    ).all(params) as { id: string; title: string }[];
+
+    let compacted = 0;
+    let rawPruned = 0;
+    const now = Date.now();
+
+    for (const conv of candidates) {
+      try {
+        const msgCountRow = this.db.prepare(
+          `SELECT COUNT(*) as c, COALESCE(SUM(LENGTH(content)), 0) as sz FROM messages WHERE conversation_id = ?`
+        ).get(conv.id) as { c: number; sz: number };
+
+        if (msgCountRow.c === 0) continue;
+
+        const meetsMaxTurns      = maxTurns > 0 && msgCountRow.c >= maxTurns;
+        const meetsMaxTranscript = maxTranscriptBytes > 0 && msgCountRow.sz >= maxTranscriptBytes;
+        const meetsAge           = compactAfterDays > 0;
+
+        if (!meetsMaxTurns && !meetsMaxTranscript && !meetsAge) continue;
+
+        const summary = this.generateSummary(conv.id, conv.title, msgCountRow.c);
+
+        this.db.prepare(`
+          UPDATE conversations SET compacted_at = @now, compact_summary = @summary WHERE id = @id
+        `).run({ now, summary, id: conv.id });
+
+        compacted++;
+
+        if (deleteRaw || (maxTranscriptBytes > 0 && msgCountRow.sz >= maxTranscriptBytes)) {
+          this.db.prepare(`DELETE FROM messages WHERE conversation_id = ?`).run(conv.id);
+          this.db.prepare(`UPDATE conversations SET transcript_pruned_at = @now WHERE id = @id`).run({ now, id: conv.id });
+          rawPruned++;
+        }
+      } catch (err) {
+        this.log('warn', `[janitor] compaction failed for conversation ${conv.id}`, {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    return { compacted, rawPruned };
+  }
+
+  /**
+   * Generate a lightweight rule-based summary for a conversation.
+   * Protected so tests and subclasses can override with LLM-based summarization.
+   */
+  protected generateSummary(conversationId: string, title: string, messageCount: number): string {
+    const firstAssistant = this.db.prepare(`
+      SELECT content FROM messages
+      WHERE conversation_id = ? AND role = 'assistant'
+      ORDER BY created_at ASC LIMIT 1
+    `).get(conversationId) as { content: string } | undefined;
+
+    const lastAssistant = this.db.prepare(`
+      SELECT content FROM messages
+      WHERE conversation_id = ? AND role = 'assistant'
+      ORDER BY created_at DESC LIMIT 1
+    `).get(conversationId) as { content: string } | undefined;
+
+    const firstSnippet = firstAssistant
+      ? firstAssistant.content.slice(0, 200).replace(/\n/g, ' ')
+      : '(no assistant messages)';
+    const lastSnippet = lastAssistant && lastAssistant.content !== firstAssistant?.content
+      ? ' ... ' + lastAssistant.content.slice(0, 200).replace(/\n/g, ' ')
+      : '';
+
+    return `[Compacted: ${messageCount} messages] "${title}" — ${firstSnippet}${lastSnippet}`;
+  }
+
+  // ── Per-session limit enforcement ───────────────────────────────────────────
+
+  /**
+   * Trim oldest messages from conversations that exceed maxTurns or maxTranscriptBytes.
+   * Operates per-conversation so one bloated conversation does not cascade into others.
+   */
+  private enforcePerSessionLimits(): void {
+    const maxTurns           = this.config.maxTurns           ?? 0;
+    const maxTranscriptBytes = this.config.maxTranscriptBytes ?? 0;
+
+    if (maxTurns > 0) {
+      const over = this.db.prepare(`
+        SELECT conversation_id FROM messages
+        GROUP BY conversation_id HAVING COUNT(*) > @maxTurns
+      `).all({ maxTurns }) as { conversation_id: string }[];
+
+      for (const { conversation_id } of over) {
+        this.db.prepare(`
+          DELETE FROM messages WHERE id IN (
+            SELECT id FROM messages WHERE conversation_id = @cid
+            ORDER BY created_at ASC LIMIT -1 OFFSET @maxTurns
+          )
+        `).run({ cid: conversation_id, maxTurns });
+      }
+    }
+
+    if (maxTranscriptBytes > 0) {
+      const over = this.db.prepare(`
+        SELECT conversation_id FROM messages
+        GROUP BY conversation_id HAVING SUM(LENGTH(content)) > @maxTranscriptBytes
+      `).all({ maxTranscriptBytes }) as { conversation_id: string }[];
+
+      for (const { conversation_id } of over) {
+        for (let attempt = 0; attempt < 500; attempt++) {
+          const sizeRow = this.db.prepare(
+            `SELECT COALESCE(SUM(LENGTH(content)), 0) as sz FROM messages WHERE conversation_id = ?`
+          ).get(conversation_id) as { sz: number };
+          if (sizeRow.sz <= maxTranscriptBytes) break;
+          this.db.prepare(`
+            DELETE FROM messages WHERE id = (
+              SELECT id FROM messages WHERE conversation_id = ? ORDER BY created_at ASC LIMIT 1
+            )
+          `).run(conversation_id);
+        }
+      }
+    }
+  }
+
+  // ── Per-kind retention ──────────────────────────────────────────────────────
+
+  /**
+   * Prune conversations by session kind using per-kind retention windows.
+   * temporary/debug sessions are deleted faster than interactive/agent_run sessions.
+   * Failed agent_run sessions get FAILED_RUN_EXTRA_DAYS extra retention.
+   */
+  private pruneBySessionKind(): Record<string, number> {
+    const pruned: Record<string, number> = {};
+    const defaultRetention = this.config.conversationRetentionDays ?? DEFAULT_CONVERSATION_RETENTION_DAYS;
+
+    for (const [kind, retentionDays] of Object.entries(KIND_RETENTION_DAYS)) {
+      if (retentionDays <= 0) continue;
+      const cutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
+      const result = this.db.prepare(`
+        DELETE FROM conversations WHERE id IN (
+          SELECT s.conversation_id FROM sessions s
+          WHERE s.kind = @kind AND s.updated_at < @cutoff
+        )
+      `).run({ kind, cutoff });
+      pruned[kind] = result.changes;
+    }
+
+    // agent_run: normal age prune but skip any whose linked run failed recently
+    if (defaultRetention > 0) {
+      const normalCutoff = Date.now() - defaultRetention * 24 * 60 * 60 * 1000;
+      const failedCutoff = Date.now() - (defaultRetention + FAILED_RUN_EXTRA_DAYS) * 24 * 60 * 60 * 1000;
+      const result = this.db.prepare(`
+        DELETE FROM conversations WHERE id IN (
+          SELECT s.conversation_id FROM sessions s
+          WHERE s.kind = 'agent_run'
+            AND s.updated_at < @normalCutoff
+            AND s.conversation_id NOT IN (
+              SELECT DISTINCT ar.parent_run_id FROM agent_runs ar
+              WHERE ar.status = 'failed'
+                AND ar.completed_at > @failedCutoff
+                AND ar.parent_run_id IS NOT NULL
+            )
+        )
+      `).run({ normalCutoff, failedCutoff });
+      pruned['agent_run'] = (pruned['agent_run'] ?? 0) + result.changes;
+    }
+
+    return pruned;
+  }
+
   // ── Diagnostic / dry-run ────────────────────────────────────────────────────
 
   /**
@@ -326,6 +580,7 @@ export class DbJanitor {
       'memory_entries',
       'conversations',
       'messages',
+      'sessions',
       'agent_runs',
       'guard_decisions',
       'learning_records',

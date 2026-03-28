@@ -31,6 +31,10 @@ export interface AppConfig {
   sessionMaxConversations?: number;
   sessionMaxDiskBytes?: number;
   sessionRotateAfterMessages?: number;
+  sessionCompactAfterDays?: number;
+  sessionMaxTurns?: number;
+  sessionMaxTranscriptBytes?: number;
+  sessionDeleteRawAfterSuccess?: boolean;
   heartbeatDirectPolicy?: 'reactive' | 'proactive';
   heartbeatThinkingDefault?: boolean;
   heartbeatMentionPatterns?: string[];
@@ -88,16 +92,24 @@ export function registerConfigRoute(app: FastifyInstance, configDir: string, gua
     orchestrator.setBootstrapTruncationWarning(startupCfg.bootstrapTruncationWarning);
   }
   if (memory && (
-    startupCfg.sessionPruneAfterDays !== undefined ||
-    startupCfg.sessionMaxConversations !== undefined ||
-    startupCfg.sessionMaxDiskBytes !== undefined ||
-    startupCfg.sessionRotateAfterMessages !== undefined
+    startupCfg.sessionPruneAfterDays        !== undefined ||
+    startupCfg.sessionMaxConversations      !== undefined ||
+    startupCfg.sessionMaxDiskBytes          !== undefined ||
+    startupCfg.sessionRotateAfterMessages   !== undefined ||
+    startupCfg.sessionCompactAfterDays      !== undefined ||
+    startupCfg.sessionMaxTurns              !== undefined ||
+    startupCfg.sessionMaxTranscriptBytes    !== undefined ||
+    startupCfg.sessionDeleteRawAfterSuccess !== undefined
   )) {
     memory.setJanitorConfig({
       conversationRetentionDays: startupCfg.sessionPruneAfterDays,
-      maxConversations: startupCfg.sessionMaxConversations,
-      maxDiskBytes: startupCfg.sessionMaxDiskBytes,
-      rotateAfterMessages: startupCfg.sessionRotateAfterMessages,
+      maxConversations:          startupCfg.sessionMaxConversations,
+      maxDiskBytes:              startupCfg.sessionMaxDiskBytes,
+      rotateAfterMessages:       startupCfg.sessionRotateAfterMessages,
+      compactAfterDays:          startupCfg.sessionCompactAfterDays,
+      maxTurns:                  startupCfg.sessionMaxTurns,
+      maxTranscriptBytes:        startupCfg.sessionMaxTranscriptBytes,
+      deleteRawAfterSuccess:     startupCfg.sessionDeleteRawAfterSuccess,
     });
   }
   // Note: heartbeat startup config is applied in server.ts after HeartbeatEngine is created,
@@ -126,7 +138,11 @@ export function registerConfigRoute(app: FastifyInstance, configDir: string, gua
           sessionPruneAfterDays:       { type: ['integer', 'null'], minimum: 1, maximum: 3650 },
           sessionMaxConversations:     { type: ['integer', 'null'], minimum: 1, maximum: 100000 },
           sessionMaxDiskBytes:         { type: ['integer', 'null'], minimum: 0 },
-          sessionRotateAfterMessages:  { type: ['integer', 'null'], minimum: 1 },
+          sessionRotateAfterMessages:   { type: ['integer', 'null'], minimum: 1 },
+          sessionCompactAfterDays:      { type: ['integer', 'null'], minimum: 0, maximum: 3650 },
+          sessionMaxTurns:              { type: ['integer', 'null'], minimum: 0 },
+          sessionMaxTranscriptBytes:    { type: ['integer', 'null'], minimum: 0 },
+          sessionDeleteRawAfterSuccess: { type: ['boolean', 'null'] },
           heartbeatDirectPolicy:       { type: ['string', 'null'], enum: ['reactive', 'proactive', null] },
           heartbeatThinkingDefault:    { type: ['boolean', 'null'] },
           heartbeatMentionPatterns:    { type: ['array', 'null'], items: { type: 'string', maxLength: 200 }, maxItems: 50 },
@@ -180,12 +196,33 @@ export function registerConfigRoute(app: FastifyInstance, configDir: string, gua
     if ('sessionRotateAfterMessages' in patch) {
       updated.sessionRotateAfterMessages = (patch['sessionRotateAfterMessages'] as number | null) ?? undefined;
     }
-    if (memory && ('sessionPruneAfterDays' in patch || 'sessionMaxConversations' in patch || 'sessionMaxDiskBytes' in patch || 'sessionRotateAfterMessages' in patch)) {
+    if ('sessionCompactAfterDays' in patch) {
+      updated.sessionCompactAfterDays = (patch['sessionCompactAfterDays'] as number | null) ?? undefined;
+    }
+    if ('sessionMaxTurns' in patch) {
+      updated.sessionMaxTurns = (patch['sessionMaxTurns'] as number | null) ?? undefined;
+    }
+    if ('sessionMaxTranscriptBytes' in patch) {
+      updated.sessionMaxTranscriptBytes = (patch['sessionMaxTranscriptBytes'] as number | null) ?? undefined;
+    }
+    if ('sessionDeleteRawAfterSuccess' in patch) {
+      updated.sessionDeleteRawAfterSuccess = (patch['sessionDeleteRawAfterSuccess'] as boolean | null) ?? undefined;
+    }
+    if (memory && (
+      'sessionPruneAfterDays' in patch || 'sessionMaxConversations' in patch ||
+      'sessionMaxDiskBytes' in patch || 'sessionRotateAfterMessages' in patch ||
+      'sessionCompactAfterDays' in patch || 'sessionMaxTurns' in patch ||
+      'sessionMaxTranscriptBytes' in patch || 'sessionDeleteRawAfterSuccess' in patch
+    )) {
       memory.setJanitorConfig({
         conversationRetentionDays: updated.sessionPruneAfterDays,
-        maxConversations: updated.sessionMaxConversations,
-        maxDiskBytes: updated.sessionMaxDiskBytes,
-        rotateAfterMessages: updated.sessionRotateAfterMessages,
+        maxConversations:          updated.sessionMaxConversations,
+        maxDiskBytes:              updated.sessionMaxDiskBytes,
+        rotateAfterMessages:       updated.sessionRotateAfterMessages,
+        compactAfterDays:          updated.sessionCompactAfterDays,
+        maxTurns:                  updated.sessionMaxTurns,
+        maxTranscriptBytes:        updated.sessionMaxTranscriptBytes,
+        deleteRawAfterSuccess:     updated.sessionDeleteRawAfterSuccess,
       });
     }
     if ('heartbeatDirectPolicy' in patch) {

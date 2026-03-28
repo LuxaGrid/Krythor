@@ -29,6 +29,15 @@ export type DmScope =
 
 export type ChatType = 'direct' | 'group' | 'channel' | 'cron' | 'hook' | 'node' | 'main';
 
+/** Lifecycle classification for per-kind retention rules. */
+export type SessionKind =
+  | 'interactive'
+  | 'agent_run'
+  | 'cron_run'
+  | 'tool_run'
+  | 'debug'
+  | 'temporary';
+
 export type SendPolicy = 'allow' | 'deny';
 
 export interface SendPolicyRule {
@@ -60,6 +69,8 @@ export interface SessionEntry {
   sendPolicy: SendPolicy | null;
   modelOverride: string | null;
   originLabel: string | null;
+  /** Lifecycle classification. Defaults to 'interactive' if omitted. */
+  kind?: SessionKind;
   createdAt: number;
   updatedAt: number;
 }
@@ -90,6 +101,7 @@ interface SessionRow {
   send_policy: string | null;
   model_override: string | null;
   origin_label: string | null;
+  kind: string;
   created_at: number;
   updated_at: number;
 }
@@ -109,6 +121,7 @@ function rowToEntry(row: SessionRow): SessionEntry {
     sendPolicy:    (row.send_policy as SendPolicy) ?? null,
     modelOverride: row.model_override,
     originLabel:   row.origin_label,
+    kind:          (row.kind as SessionKind) ?? 'interactive',
     createdAt:     row.created_at,
     updatedAt:     row.updated_at,
   };
@@ -182,6 +195,7 @@ export class SessionStore {
 
   upsert(entry: Omit<SessionEntry, 'createdAt' | 'updatedAt'>): SessionEntry {
     const now = Date.now();
+    const kind = entry.kind ?? 'interactive';
     const existing = this.getByKey(entry.sessionKey);
     if (existing) {
       this.db.prepare(`
@@ -198,23 +212,24 @@ export class SessionStore {
           send_policy     = @sendPolicy,
           model_override  = @modelOverride,
           origin_label    = @originLabel,
+          kind            = @kind,
           updated_at      = @now
         WHERE session_key = @sessionKey
-      `).run({ ...entry, now });
-      return { ...entry, createdAt: existing.createdAt, updatedAt: now };
+      `).run({ ...entry, kind, now });
+      return { ...entry, kind, createdAt: existing.createdAt, updatedAt: now };
     }
     this.db.prepare(`
       INSERT INTO sessions (
         session_key, conversation_id, agent_id, channel, chat_type,
         peer_id, account_id, display_name, last_channel, last_to,
-        send_policy, model_override, origin_label, created_at, updated_at
+        send_policy, model_override, origin_label, kind, created_at, updated_at
       ) VALUES (
         @sessionKey, @conversationId, @agentId, @channel, @chatType,
         @peerId, @accountId, @displayName, @lastChannel, @lastTo,
-        @sendPolicy, @modelOverride, @originLabel, @now, @now
+        @sendPolicy, @modelOverride, @originLabel, @kind, @now, @now
       )
-    `).run({ ...entry, now });
-    return { ...entry, createdAt: now, updatedAt: now };
+    `).run({ ...entry, kind, now });
+    return { ...entry, kind, createdAt: now, updatedAt: now };
   }
 
   // ── List ──────────────────────────────────────────────────────────────────
@@ -277,6 +292,13 @@ export class SessionStore {
 
   delete(sessionKey: string): void {
     this.db.prepare('DELETE FROM sessions WHERE session_key = @sessionKey').run({ sessionKey });
+  }
+
+  setKind(sessionKey: string, kind: SessionKind): void {
+    const now = Date.now();
+    this.db.prepare(
+      'UPDATE sessions SET kind = @kind, updated_at = @now WHERE session_key = @sessionKey'
+    ).run({ sessionKey, kind, now });
   }
 
   // ── Send policy evaluation ─────────────────────────────────────────────────

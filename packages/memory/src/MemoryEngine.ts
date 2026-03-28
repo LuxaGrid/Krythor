@@ -142,6 +142,14 @@ export class MemoryEngine {
   }
 
   /**
+   * Run compaction pass only — summarize older sessions without a full janitor run.
+   * Safe to call on demand from maintenance windows or the heartbeat.
+   */
+  compactSessions(): { compacted: number; rawPruned: number } {
+    return this.janitor.compact();
+  }
+
+  /**
    * Dry-run maintenance estimate — returns what would be pruned without mutating.
    */
   dryRunMaintenance(): { wouldPruneByAge: number; wouldPruneByCount: number; currentCount: number } {

@@ -231,3 +231,188 @@ describe('DbJanitor — run() result', () => {
     expect(typeof result.ranAt).toBe('number');
   });
 });
+
+// ── compaction ─────────────────────────────────────────────────────────────────
+
+describe('DbJanitor — compact()', () => {
+  it('does nothing when all compaction options are 0 (default)', () => {
+    const db = openDb();
+    const janitor = new DbJanitor(db);
+    const cid = insertConversation(db, OLD);
+    db.prepare(`INSERT INTO messages (id, conversation_id, role, content, created_at) VALUES (?, ?, 'assistant', 'hello', ?)`)
+      .run(randomUUID(), cid, OLD);
+
+    const result = janitor.compact();
+    expect(result.compacted).toBe(0);
+    expect(result.rawPruned).toBe(0);
+    db.close();
+  });
+
+  it('compacts a conversation exceeding compactAfterDays', () => {
+    const db = openDb();
+    const janitor = new DbJanitor(db, undefined, { compactAfterDays: 50 });
+    const cid = insertConversation(db, OLD); // 100 days old — exceeds 50-day threshold
+    db.prepare(`INSERT INTO messages (id, conversation_id, role, content, created_at) VALUES (?, ?, 'assistant', 'summary content here', ?)`)
+      .run(randomUUID(), cid, OLD);
+
+    const result = janitor.compact();
+    expect(result.compacted).toBe(1);
+
+    const row = db.prepare(`SELECT compact_summary FROM conversations WHERE id = ?`).get(cid) as { compact_summary: string };
+    expect(row.compact_summary).toBeTruthy();
+    expect(row.compact_summary).toContain('[Compacted:');
+    db.close();
+  });
+
+  it('does not compact already-compacted conversations', () => {
+    const db = openDb();
+    const janitor = new DbJanitor(db, undefined, { compactAfterDays: 50 });
+    const cid = insertConversation(db, OLD);
+    db.prepare(`UPDATE conversations SET compacted_at = ? WHERE id = ?`).run(Date.now(), cid);
+
+    const result = janitor.compact();
+    expect(result.compacted).toBe(0);
+    db.close();
+  });
+
+  it('does not compact pinned conversations', () => {
+    const db = openDb();
+    const janitor = new DbJanitor(db, undefined, { compactAfterDays: 50 });
+    const cid = insertConversation(db, OLD);
+    db.prepare(`UPDATE conversations SET pinned = 1 WHERE id = ?`).run(cid);
+    db.prepare(`INSERT INTO messages (id, conversation_id, role, content, created_at) VALUES (?, ?, 'assistant', 'content', ?)`)
+      .run(randomUUID(), cid, OLD);
+
+    const result = janitor.compact();
+    expect(result.compacted).toBe(0);
+    db.close();
+  });
+
+  it('deletes raw transcript when deleteRawAfterSuccess = true', () => {
+    const db = openDb();
+    const janitor = new DbJanitor(db, undefined, { compactAfterDays: 50, deleteRawAfterSuccess: true });
+    const cid = insertConversation(db, OLD);
+    db.prepare(`INSERT INTO messages (id, conversation_id, role, content, created_at) VALUES (?, ?, 'assistant', 'content', ?)`)
+      .run(randomUUID(), cid, OLD);
+
+    expect(count(db, 'messages')).toBe(1);
+    const result = janitor.compact();
+    expect(result.rawPruned).toBe(1);
+    expect(count(db, 'messages')).toBe(0);
+
+    const row = db.prepare(`SELECT transcript_pruned_at FROM conversations WHERE id = ?`).get(cid) as { transcript_pruned_at: number | null };
+    expect(row.transcript_pruned_at).toBeGreaterThan(0);
+    db.close();
+  });
+
+  it('compacts when maxTurns exceeded', () => {
+    const db = openDb();
+    const janitor = new DbJanitor(db, undefined, { maxTurns: 2 });
+    const cid = insertConversation(db, RECENT);
+    for (let i = 0; i < 3; i++) {
+      db.prepare(`INSERT INTO messages (id, conversation_id, role, content, created_at) VALUES (?, ?, 'user', 'msg', ?)`)
+        .run(randomUUID(), cid, RECENT);
+    }
+
+    const result = janitor.compact();
+    expect(result.compacted).toBe(1);
+    db.close();
+  });
+
+  it('JanitorResult includes sessionsCompacted and rawTranscriptsPruned', () => {
+    const db = openDb();
+    // Use conversationRetentionDays: 0 to disable age pruning so compaction runs first
+    const janitor = new DbJanitor(db, undefined, { compactAfterDays: 50, deleteRawAfterSuccess: true, conversationRetentionDays: 0 });
+    const cid = insertConversation(db, OLD);
+    db.prepare(`INSERT INTO messages (id, conversation_id, role, content, created_at) VALUES (?, ?, 'assistant', 'hi', ?)`)
+      .run(randomUUID(), cid, OLD);
+
+    const result = janitor.run();
+    expect(result.sessionsCompacted).toBe(1);
+    expect(result.rawTranscriptsPruned).toBe(1);
+    db.close();
+  });
+});
+
+// ── per-session limit enforcement ──────────────────────────────────────────────
+
+describe('DbJanitor — enforcePerSessionLimits (via run)', () => {
+  it('trims oldest messages when maxTurns exceeded', () => {
+    const db = openDb();
+    const janitor = new DbJanitor(db, undefined, { maxTurns: 2 });
+    const cid = insertConversation(db, RECENT);
+    for (let i = 0; i < 5; i++) {
+      db.prepare(`INSERT INTO messages (id, conversation_id, role, content, created_at) VALUES (?, ?, 'user', 'msg', ?)`)
+        .run(randomUUID(), cid, RECENT + i);
+    }
+
+    expect(count(db, 'messages')).toBe(5);
+    janitor.run();
+    expect(count(db, 'messages')).toBeLessThanOrEqual(2);
+    db.close();
+  });
+
+  it('does nothing when maxTurns = 0 (default)', () => {
+    const db = openDb();
+    const janitor = new DbJanitor(db);
+    const cid = insertConversation(db, RECENT);
+    for (let i = 0; i < 5; i++) {
+      db.prepare(`INSERT INTO messages (id, conversation_id, role, content, created_at) VALUES (?, ?, 'user', 'msg', ?)`)
+        .run(randomUUID(), cid, RECENT + i);
+    }
+
+    janitor.run();
+    expect(count(db, 'messages')).toBe(5);
+    db.close();
+  });
+});
+
+// ── session kind ───────────────────────────────────────────────────────────────
+
+describe('DbJanitor — sessionsByKindPruned in JanitorResult', () => {
+  it('includes sessionsByKindPruned field', () => {
+    const db = openDb();
+    const janitor = new DbJanitor(db);
+    const result = janitor.run();
+    expect(result.sessionsByKindPruned).toBeDefined();
+    expect(typeof result.sessionsByKindPruned).toBe('object');
+    db.close();
+  });
+
+  it('prunes temporary-kind sessions faster (1-day retention)', () => {
+    const db = openDb();
+    const janitor = new DbJanitor(db);
+
+    // Insert a conversation + session with kind = 'temporary', updated 2 days ago
+    const tempConvId = randomUUID();
+    const twoDaysAgo = NOW - 2 * DAY_MS;
+    db.prepare(`INSERT INTO conversations (id, title, created_at, updated_at) VALUES (?, 'Temp', ?, ?)`)
+      .run(tempConvId, twoDaysAgo, twoDaysAgo);
+    db.prepare(`
+      INSERT INTO sessions (session_key, conversation_id, agent_id, channel, chat_type,
+        peer_id, account_id, display_name, last_channel, last_to,
+        send_policy, model_override, origin_label, kind, created_at, updated_at)
+      VALUES (?, ?, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'temporary', ?, ?)
+    `).run('temp-key-' + randomUUID(), tempConvId, twoDaysAgo, twoDaysAgo);
+
+    // Insert a conversation + session with kind = 'interactive', also 2 days ago — should survive
+    const interConvId = randomUUID();
+    db.prepare(`INSERT INTO conversations (id, title, created_at, updated_at) VALUES (?, 'Inter', ?, ?)`)
+      .run(interConvId, twoDaysAgo, twoDaysAgo);
+    db.prepare(`
+      INSERT INTO sessions (session_key, conversation_id, agent_id, channel, chat_type,
+        peer_id, account_id, display_name, last_channel, last_to,
+        send_policy, model_override, origin_label, kind, created_at, updated_at)
+      VALUES (?, ?, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'interactive', ?, ?)
+    `).run('inter-key-' + randomUUID(), interConvId, twoDaysAgo, twoDaysAgo);
+
+    janitor.run();
+
+    // temporary should be gone (1-day retention), interactive should survive
+    const tempRow = db.prepare(`SELECT id FROM conversations WHERE id = ?`).get(tempConvId);
+    const interRow = db.prepare(`SELECT id FROM conversations WHERE id = ?`).get(interConvId);
+    expect(tempRow).toBeUndefined();
+    expect(interRow).toBeDefined();
+    db.close();
+  });
+});

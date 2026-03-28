@@ -16,7 +16,7 @@ export { EmbeddingCache } from './embedding/EmbeddingCache.js';
 export { MigrationRunner } from './db/MigrationRunner.js';
 export type { MigrationResult } from './db/MigrationRunner.js';
 export { DbJanitor } from './db/DbJanitor.js';
-export type { JanitorResult } from './db/DbJanitor.js';
+export type { JanitorResult, DbJanitorConfig, LogFn } from './db/DbJanitor.js';
 export { applySchema } from './db/schema.js';
 export type { StartupCheckResult } from './db/schema.js';
 export { OllamaEmbeddingProvider } from './embedding/OllamaEmbeddingProvider.js';
@@ -42,6 +42,7 @@ export type { PersistedInsight } from './db/HeartbeatInsightStore.js';
 export { SessionStore, resolveSessionKey } from './db/SessionStore.js';
 export type {
   SessionEntry,
+  SessionKind,
   DmScope,
   ChatType,
   SendPolicy,
