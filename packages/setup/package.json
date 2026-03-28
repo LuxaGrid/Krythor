@@ -8,7 +8,8 @@
   "types": "dist/index.d.ts",
   "bin": {
     "krythor-setup": "dist/bin/setup.js",
-    "krythor": "dist/bin/cli.js"
+    "krythor": "dist/bin/cli.js",
+    "krythor-tui": "dist/bin/tui.js"
   },
   "exports": {
     ".": {
