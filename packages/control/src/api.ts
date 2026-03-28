@@ -124,6 +124,10 @@ export interface AppConfig {
   selectedAgentId?: string;
   selectedModel?: string;
   onboardingComplete?: boolean;
+  defaultProfile?: 'safe' | 'standard' | 'full_access';
+  guardPreset?: 'permissive' | 'balanced' | 'strict';
+  privacyMode?: boolean;
+  workspacePath?: string;
 }
 
 // ── Command ────────────────────────────────────────────────────────────────

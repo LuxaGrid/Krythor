@@ -393,6 +393,7 @@ describe('Phase 4 — max concurrency: orchestrator queue', () => {
 
     const tmpDir = mkdtempSync(join(tmpdir(), 'krythor-queue-full-'));
     const orchestrator = new AgentOrchestrator(null, blockingModelEngine, tmpDir);
+    orchestrator.setMaxRunsPerMinute(0); // disable rate limiting so queue-full logic is testable
     const agent = orchestrator.createAgent({ name: 'Queue Test', systemPrompt: 'test', maxTurns: 1 });
 
     // Saturate the active run slots (MAX_ACTIVE_RUNS = 10)

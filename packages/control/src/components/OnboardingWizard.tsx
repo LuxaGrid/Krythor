@@ -55,7 +55,7 @@ interface Props {
   onComplete: () => void;
 }
 
-type Step = 'welcome' | 'provider' | 'channels' | 'done';
+type Step = 'welcome' | 'provider' | 'channels' | 'security_profile' | 'guard_policy' | 'privacy_routing' | 'workspace' | 'done';
 
 // ─── Provider metadata ────────────────────────────────────────────────────────
 //
@@ -161,6 +161,14 @@ export function OnboardingWizard({ onComplete }: Props) {
   const [channelsConfigured, setChannelsConfigured] = useState(0);
   const [webchatCopied, setWebchatCopied]       = useState<'url' | 'embed' | null>(null);
 
+  // ── Security wizard state ─────────────────────────────────────────────────────
+  const [selectedProfile, setSelectedProfile]   = useState<'safe' | 'standard' | 'full_access'>('standard');
+  const [guardPreset, setGuardPreset]           = useState<'permissive' | 'balanced' | 'strict'>('balanced');
+  const [privacyEnabled, setPrivacyEnabled]     = useState(false);
+  const [workspacePath, setWorkspacePath]       = useState('');
+  const [securitySaving, setSecuritySaving]     = useState(false);
+  const [securityError, setSecurityError]       = useState<string | null>(null);
+
   useEffect(() => {
     setDetecting(true);
     detectLocalProviders().then(found => {
@@ -262,7 +270,7 @@ export function OnboardingWizard({ onComplete }: Props) {
       p => selectedChannels.has(p.id) && isChannelFilled(p),
     );
     if (toSave.length === 0) {
-      setStep('done');
+      setStep('security_profile');
       return;
     }
     setChannelSaving(true);
@@ -278,7 +286,7 @@ export function OnboardingWizard({ onComplete }: Props) {
         });
       }
       setChannelsConfigured(toSave.length);
-      setStep('done');
+      setStep('security_profile');
     } catch (err) {
       setChannelError(err instanceof Error ? err.message : 'Failed to save channel');
     } finally {
@@ -618,7 +626,7 @@ export function OnboardingWizard({ onComplete }: Props) {
               {channelSaving ? 'Saving…' : 'Continue →'}
             </button>
             <button
-              onClick={() => setStep('done')}
+              onClick={() => setStep('security_profile')}
               className="px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 text-sm rounded-lg"
             >
               Skip for now
@@ -627,6 +635,352 @@ export function OnboardingWizard({ onComplete }: Props) {
 
           <p className="text-zinc-700 text-[10px] text-center">
             You can configure chat channels at any time in the Channels tab.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Render: security_profile ─────────────────────────────────────────────────
+
+  if (step === 'security_profile') {
+    const profiles: Array<{
+      id: 'safe' | 'standard' | 'full_access';
+      label: string;
+      description: string;
+      warn?: boolean;
+    }> = [
+      {
+        id:          'safe',
+        label:       'Safe',
+        description: 'Read-only operations only. Cannot write files, run commands, or make external requests.',
+      },
+      {
+        id:          'standard',
+        label:       'Standard',
+        description: 'Balanced defaults — reads and writes within the workspace, limited external access.',
+      },
+      {
+        id:          'full_access',
+        label:       'Full Access',
+        description: 'No operation restrictions. Use only if you trust all agents and inputs.',
+        warn:        true,
+      },
+    ];
+
+    const handleApplyProfile = async () => {
+      setSecurityError(null);
+      setSecuritySaving(true);
+      try {
+        await patchAppConfig({ defaultProfile: selectedProfile });
+        setStep('guard_policy');
+      } catch (err) {
+        setSecurityError(err instanceof Error ? err.message : 'Failed to save profile');
+      } finally {
+        setSecuritySaving(false);
+      }
+    };
+
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/95">
+        <div className="animate-[fadeIn_0.2s_ease-in] w-full max-w-md mx-4 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl p-8 space-y-5">
+          <div>
+            <h2 className="text-zinc-100 font-semibold text-lg">Security Profile</h2>
+            <p className="text-zinc-500 text-xs mt-1">
+              Choose the default permission profile applied to agent runs.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            {profiles.map(p => (
+              <button
+                key={p.id}
+                onClick={() => setSelectedProfile(p.id)}
+                className={`w-full text-left rounded-lg border px-4 py-3 transition-colors
+                  ${selectedProfile === p.id
+                    ? p.warn
+                      ? 'bg-amber-950/40 border-amber-700 text-amber-200'
+                      : 'bg-brand-900/50 border-brand-600 text-brand-200'
+                    : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-zinc-600'}`}
+              >
+                <p className="text-sm font-medium">{p.label}</p>
+                <p className="text-xs mt-0.5 leading-relaxed opacity-80">{p.description}</p>
+              </button>
+            ))}
+          </div>
+
+          {selectedProfile === 'full_access' && (
+            <div className="bg-amber-950/30 border border-amber-800/40 rounded-lg p-3 text-xs text-amber-400 leading-relaxed">
+              Full Access removes all guard-level restrictions. Agents can read and write anywhere on the system. Only use this in fully controlled environments.
+            </div>
+          )}
+
+          {securityError && (
+            <p className="text-red-400 text-xs bg-red-950/30 rounded-lg p-2">{securityError}</p>
+          )}
+
+          <div className="flex gap-3">
+            <button
+              onClick={handleApplyProfile}
+              disabled={securitySaving}
+              className="flex-1 px-4 py-2.5 bg-brand-600 hover:bg-brand-500 disabled:opacity-40 text-white text-sm rounded-lg font-medium"
+            >
+              {securitySaving ? 'Saving…' : 'Continue →'}
+            </button>
+            <button
+              onClick={() => setStep('guard_policy')}
+              className="px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 text-sm rounded-lg"
+            >
+              Skip
+            </button>
+          </div>
+          <p className="text-zinc-700 text-[10px] text-center">
+            You can change the security profile per-agent in the Agents tab.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Render: guard_policy ──────────────────────────────────────────────────────
+
+  if (step === 'guard_policy') {
+    const presets: Array<{
+      id: 'permissive' | 'balanced' | 'strict';
+      label: string;
+      description: string;
+    }> = [
+      {
+        id:          'permissive',
+        label:       'Permissive',
+        description: 'Minimal content filtering. Recommended for internal or developer use.',
+      },
+      {
+        id:          'balanced',
+        label:       'Balanced',
+        description: 'Moderate filtering — blocks harmful content while allowing broad utility.',
+      },
+      {
+        id:          'strict',
+        label:       'Strict',
+        description: 'Strong filtering with approval gates for sensitive operations.',
+      },
+    ];
+
+    const handleApplyGuard = async () => {
+      setSecurityError(null);
+      setSecuritySaving(true);
+      try {
+        await patchAppConfig({ guardPreset });
+        setStep('privacy_routing');
+      } catch (err) {
+        setSecurityError(err instanceof Error ? err.message : 'Failed to save guard policy');
+      } finally {
+        setSecuritySaving(false);
+      }
+    };
+
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/95">
+        <div className="animate-[fadeIn_0.2s_ease-in] w-full max-w-md mx-4 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl p-8 space-y-5">
+          <div>
+            <h2 className="text-zinc-100 font-semibold text-lg">Guard Policy</h2>
+            <p className="text-zinc-500 text-xs mt-1">
+              Set the content-filtering level applied to all agent outputs.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            {presets.map(p => (
+              <button
+                key={p.id}
+                onClick={() => setGuardPreset(p.id)}
+                className={`w-full text-left rounded-lg border px-4 py-3 transition-colors
+                  ${guardPreset === p.id
+                    ? 'bg-brand-900/50 border-brand-600 text-brand-200'
+                    : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-zinc-600'}`}
+              >
+                <p className="text-sm font-medium">{p.label}</p>
+                <p className="text-xs mt-0.5 leading-relaxed opacity-80">{p.description}</p>
+              </button>
+            ))}
+          </div>
+
+          {securityError && (
+            <p className="text-red-400 text-xs bg-red-950/30 rounded-lg p-2">{securityError}</p>
+          )}
+
+          <div className="flex gap-3">
+            <button
+              onClick={handleApplyGuard}
+              disabled={securitySaving}
+              className="flex-1 px-4 py-2.5 bg-brand-600 hover:bg-brand-500 disabled:opacity-40 text-white text-sm rounded-lg font-medium"
+            >
+              {securitySaving ? 'Saving…' : 'Continue →'}
+            </button>
+            <button
+              onClick={() => setStep('privacy_routing')}
+              className="px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 text-sm rounded-lg"
+            >
+              Skip
+            </button>
+          </div>
+          <p className="text-zinc-700 text-[10px] text-center">
+            Guard policies can be fine-tuned in Settings after setup.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Render: privacy_routing ───────────────────────────────────────────────────
+
+  if (step === 'privacy_routing') {
+    const hasLocalProvider = detected.length > 0;
+
+    const handleApplyPrivacy = async () => {
+      setSecurityError(null);
+      setSecuritySaving(true);
+      try {
+        await patchAppConfig({ privacyMode: privacyEnabled });
+        setStep('workspace');
+      } catch (err) {
+        setSecurityError(err instanceof Error ? err.message : 'Failed to save privacy setting');
+      } finally {
+        setSecuritySaving(false);
+      }
+    };
+
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/95">
+        <div className="animate-[fadeIn_0.2s_ease-in] w-full max-w-md mx-4 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl p-8 space-y-5">
+          <div>
+            <h2 className="text-zinc-100 font-semibold text-lg">Privacy Routing</h2>
+            <p className="text-zinc-500 text-xs mt-1">
+              Route sensitive prompts to a local provider instead of cloud APIs.
+            </p>
+          </div>
+
+          <div className="bg-zinc-800/60 border border-zinc-700 rounded-lg p-4 space-y-3">
+            <div className="flex items-start gap-3">
+              <button
+                onClick={() => setPrivacyEnabled(v => !v)}
+                className={`mt-0.5 w-10 h-5 rounded-full flex-shrink-0 relative transition-colors
+                  ${privacyEnabled ? 'bg-brand-600' : 'bg-zinc-700'}`}
+                aria-checked={privacyEnabled}
+                role="switch"
+              >
+                <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform
+                  ${privacyEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+              </button>
+              <div>
+                <p className="text-zinc-200 text-sm font-medium">Enable privacy routing</p>
+                <p className="text-zinc-500 text-xs mt-0.5 leading-relaxed">
+                  When enabled, requests tagged as sensitive will be redirected to a local provider if one is available.
+                </p>
+              </div>
+            </div>
+
+            {privacyEnabled && !hasLocalProvider && (
+              <div className="bg-amber-950/30 border border-amber-800/40 rounded-lg p-2.5 text-xs text-amber-400 leading-relaxed">
+                No local provider detected. Privacy routing will have no effect until a local provider (e.g. Ollama) is added.
+              </div>
+            )}
+            {privacyEnabled && hasLocalProvider && (
+              <div className="bg-emerald-950/20 border border-emerald-800/30 rounded-lg p-2.5 text-xs text-emerald-400">
+                Local provider detected — privacy routing is ready.
+              </div>
+            )}
+          </div>
+
+          {securityError && (
+            <p className="text-red-400 text-xs bg-red-950/30 rounded-lg p-2">{securityError}</p>
+          )}
+
+          <div className="flex gap-3">
+            <button
+              onClick={handleApplyPrivacy}
+              disabled={securitySaving}
+              className="flex-1 px-4 py-2.5 bg-brand-600 hover:bg-brand-500 disabled:opacity-40 text-white text-sm rounded-lg font-medium"
+            >
+              {securitySaving ? 'Saving…' : 'Continue →'}
+            </button>
+            <button
+              onClick={() => setStep('workspace')}
+              className="px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 text-sm rounded-lg"
+            >
+              Skip
+            </button>
+          </div>
+          <p className="text-zinc-700 text-[10px] text-center">
+            Privacy routing can be toggled in Settings at any time.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Render: workspace ─────────────────────────────────────────────────────────
+
+  if (step === 'workspace') {
+    const handleApplyWorkspace = async () => {
+      setSecurityError(null);
+      setSecuritySaving(true);
+      try {
+        if (workspacePath.trim()) {
+          await patchAppConfig({ workspacePath: workspacePath.trim() });
+        }
+        setStep('done');
+      } catch (err) {
+        setSecurityError(err instanceof Error ? err.message : 'Failed to save workspace path');
+      } finally {
+        setSecuritySaving(false);
+      }
+    };
+
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/95">
+        <div className="animate-[fadeIn_0.2s_ease-in] w-full max-w-md mx-4 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl p-8 space-y-5">
+          <div>
+            <h2 className="text-zinc-100 font-semibold text-lg">Workspace</h2>
+            <p className="text-zinc-500 text-xs mt-1">
+              Set the default directory agents can read and write files in.
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            <input
+              value={workspacePath}
+              onChange={e => setWorkspacePath(e.target.value)}
+              placeholder="/home/user/workspace  or  C:\Users\you\workspace"
+              className="w-full bg-zinc-800 rounded-lg px-3 py-2.5 text-xs text-zinc-200 placeholder-zinc-600 outline-none border border-zinc-700 focus:border-zinc-500 font-mono"
+            />
+            <p className="text-zinc-600 text-xs leading-relaxed">
+              Agents with the Standard or Safe profile are restricted to this directory. Leave blank to use the system default.
+            </p>
+          </div>
+
+          {securityError && (
+            <p className="text-red-400 text-xs bg-red-950/30 rounded-lg p-2">{securityError}</p>
+          )}
+
+          <div className="flex gap-3">
+            <button
+              onClick={handleApplyWorkspace}
+              disabled={securitySaving}
+              className="flex-1 px-4 py-2.5 bg-brand-600 hover:bg-brand-500 disabled:opacity-40 text-white text-sm rounded-lg font-medium"
+            >
+              {securitySaving ? 'Saving…' : 'Finish Setup →'}
+            </button>
+            <button
+              onClick={() => setStep('done')}
+              className="px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 text-sm rounded-lg"
+            >
+              Skip
+            </button>
+          </div>
+          <p className="text-zinc-700 text-[10px] text-center">
+            You can change the workspace path in Settings at any time.
           </p>
         </div>
       </div>

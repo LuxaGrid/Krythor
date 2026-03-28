@@ -148,13 +148,13 @@ describe('Integration — guard + command route', () => {
 // ── 3. DB migration + integrity check ─────────────────────────────────────────
 
 describe('Integration — applySchema (migration + integrity check)', () => {
-  it('runs all 10 migrations on a fresh in-memory DB and reports ok integrity', () => {
+  it('runs all 11 migrations on a fresh in-memory DB and reports ok integrity', () => {
     const db = new Database(':memory:');
     const result = applySchema(db);
 
-    expect(result.migration.applied).toBe(10);
-    expect(result.migration.total).toBe(10);
-    expect(result.migration.userVersion).toBe(10);
+    expect(result.migration.applied).toBe(11);
+    expect(result.migration.total).toBe(11);
+    expect(result.migration.userVersion).toBe(11);
     expect(result.integrityStatus).toBe('ok');
     expect(result.integrityMessages).toHaveLength(0);
     db.close();
@@ -169,7 +169,7 @@ describe('Integration — applySchema (migration + integrity check)', () => {
     const second = applySchema(db, dbPath);
 
     expect(second.migration.applied).toBe(0);
-    expect(second.migration.userVersion).toBe(10);
+    expect(second.migration.userVersion).toBe(11);
     expect(second.integrityStatus).toBe('ok');
     db.close();
   });
