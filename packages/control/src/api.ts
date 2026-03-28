@@ -1184,3 +1184,36 @@ export const revokeApiKey = (id: string) =>
 
 export const updateApiKey = (id: string, updates: { name?: string; permissions?: ApiKeyPermission[]; expiresAt?: number | null }) =>
   req<ApiKeySafe>('PATCH', `/auth/keys/${encodeURIComponent(id)}`, updates);
+
+// ── Job Queue ───────────────────────────────────────────────────────────────
+
+export type JobStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+
+export interface JobEntry {
+  id: string;
+  type: 'agent_run' | 'cron_run' | 'delegation';
+  status: JobStatus;
+  agentId: string;
+  input: string;
+  output?: string;
+  error?: string;
+  priority: number;
+  createdAt: number;
+  startedAt?: number;
+  completedAt?: number;
+  attempts: number;
+  maxAttempts: number;
+  runAfter: number;
+}
+
+export const listJobs = (opts?: { status?: string; agentId?: string; limit?: number }) => {
+  const params = new URLSearchParams();
+  if (opts?.status)  params.set('status', opts.status);
+  if (opts?.agentId) params.set('agentId', opts.agentId);
+  if (opts?.limit)   params.set('limit', String(opts.limit));
+  const qs = params.toString();
+  return req<{ jobs: JobEntry[]; pending: number }>('GET', `/jobs${qs ? `?${qs}` : ''}`);
+};
+
+export const cancelJob = (id: string) =>
+  req<void>('DELETE', `/jobs/${encodeURIComponent(id)}`);

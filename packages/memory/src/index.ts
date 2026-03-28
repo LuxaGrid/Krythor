@@ -42,6 +42,8 @@ export type { PersistedInsight } from './db/HeartbeatInsightStore.js';
 export { SessionStore, resolveSessionKey } from './db/SessionStore.js';
 export { AuditStore } from './db/AuditStore.js';
 export type { AuditEntry } from './db/AuditStore.js';
+export { JobQueue } from './db/JobQueue.js';
+export type { Job, JobType, JobStatus } from './db/JobQueue.js';
 export type {
   SessionEntry,
   SessionKind,

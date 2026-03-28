@@ -7,7 +7,7 @@ import { join } from 'path';
 import { existsSync, readFileSync, readdirSync, watch as fsWatch } from 'fs';
 import { homedir, networkInterfaces } from 'os';
 import { KrythorCore, AgentOrchestrator, ExecTool, CustomToolStore, WebhookTool, PluginLoader, AgentWorkspaceManager, getDefaultWorkspaceDir, AgentAuthProfileStore, AgentMessageBus } from '@krythor/core';
-import { MemoryEngine, GuardDecisionStore, OllamaEmbeddingProvider, AuditStore } from '@krythor/memory';
+import { MemoryEngine, GuardDecisionStore, OllamaEmbeddingProvider, AuditStore, JobQueue } from '@krythor/memory';
 import { ModelEngine, ModelRecommender, PreferenceStore } from '@krythor/models';
 import { GuardEngine } from '@krythor/guard';
 import { SkillRegistry, SkillRunner } from '@krythor/skills';
@@ -72,6 +72,7 @@ import { logger } from './logger.js';
 import { loadOrCreateToken, verifyToken } from './auth.js';
 import { ApiKeyStore } from './ApiKeyStore.js';
 import { registerApiKeyRoutes } from './routes/apiKeys.js';
+import { registerJobRoutes } from './routes/jobs.js';
 import { registerErrorHandler } from './errors.js';
 import { redactErrorMessage } from './redact.js';
 import { checkReadiness } from './readiness.js';
@@ -1068,6 +1069,14 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   // Shares the same DB connection as the rest of the memory subsystem.
   const auditStore = new AuditStore(memory.db);
 
+  // Job queue — persists agent_run, cron_run, delegation jobs in SQLite (migration 012).
+  // On startup, reset any jobs that were left 'running' from a previous crash.
+  const jobQueue = new JobQueue(memory.db);
+  const orphanedCount = jobQueue.resetOrphaned();
+  if (orphanedCount > 0) {
+    logger.info(`Job queue: reset ${orphanedCount} orphaned running job(s) to pending on startup`);
+  }
+
   // Access profile store — persists per-agent filesystem access levels.
   // Constructed before the custom tool dispatcher so ShellToolDispatcher can
   // reference it synchronously at dispatch time.
@@ -1409,6 +1418,9 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   const cronStore = new CronStore(join(dataDir, 'config'));
   const cronScheduler = new CronScheduler(cronStore, orchestrator);
   registerCronRoutes(app, cronStore, cronScheduler);
+
+  // Job queue routes
+  registerJobRoutes(app, jobQueue);
   registerAgentAuthRoutes(app, agentAuthStore);
 
   // Web Chat pairing — shareable one-time links for /chat
@@ -1589,7 +1601,25 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   if (process.env['NODE_ENV'] !== 'test') {
     heartbeat.start();
     cronScheduler.start();
-    app.addHook('onClose', async () => { cronScheduler.stop(); });
+
+    // Job processor — claim and run pending jobs every 5 seconds
+    const jobProcessorInterval = setInterval(() => {
+      const jobs = jobQueue.claim(5);
+      for (const job of jobs) {
+        orchestrator.runAgent(job.agentId, { input: job.input }, { runId: job.id })
+          .then((run) => { jobQueue.complete(job.id, run.output ?? ''); })
+          .catch((err: unknown) => {
+            jobQueue.fail(job.id, err instanceof Error ? err.message : String(err));
+          });
+      }
+    }, 5_000);
+
+    app.addHook('onClose', async () => {
+      cronScheduler.stop();
+      clearInterval(jobProcessorInterval);
+      // Cleanup completed/failed jobs older than 7 days on shutdown
+      jobQueue.cleanup(7 * 24 * 60 * 60 * 1000);
+    });
   }
 
   // Dashboard route is registered after heartbeat is instantiated so it can
