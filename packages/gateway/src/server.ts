@@ -67,6 +67,32 @@ import { registerErrorHandler } from './errors.js';
 import { redactErrorMessage } from './redact.js';
 import { checkReadiness } from './readiness.js';
 import { validateProvidersConfig } from './ConfigValidator.js';
+import { SessionRouter } from './SessionRouter.js';
+import type { SessionConfig } from './SessionRouter.js';
+
+// ── .env file loading ─────────────────────────────────────────────────────────
+// Load ~/.krythor/.env into process.env before anything else reads env vars.
+// Variables already set in the environment take precedence (env wins over .env).
+// Format: KEY=VALUE, # comments, blank lines ignored.
+(function loadDotEnv() {
+  try {
+    const envPath = join(homedir(), '.krythor', '.env');
+    if (existsSync(envPath)) {
+      const lines = readFileSync(envPath, 'utf-8').split('\n');
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) continue;
+        const eqIdx = trimmed.indexOf('=');
+        if (eqIdx < 1) continue;
+        const key = trimmed.slice(0, eqIdx).trim();
+        const val = trimmed.slice(eqIdx + 1).trim().replace(/^["']|["']$/g, '');
+        if (key && !(key in process.env)) {
+          process.env[key] = val;
+        }
+      }
+    }
+  } catch { /* .env load is best-effort */ }
+})();
 
 export const GATEWAY_PORT = process.env['KRYTHOR_PORT'] ? parseInt(process.env['KRYTHOR_PORT'], 10) : 47200;
 export const GATEWAY_HOST = process.env['KRYTHOR_HOST'] ?? '127.0.0.1';
@@ -1202,8 +1228,20 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   // Channel routes (outbound webhooks) — #16
   registerChannelRoutes(app, channelMgr);
 
+  // Session router — reads session config from app-config.json
+  const sessionConfig = ((): SessionConfig => {
+    try {
+      if (existsSync(appConfigPath)) {
+        const cfg = JSON.parse(readFileSync(appConfigPath, 'utf-8')) as Record<string, unknown>;
+        return (cfg['session'] ?? {}) as SessionConfig;
+      }
+    } catch { /* fallback to defaults */ }
+    return {};
+  })();
+  const sessionRouter = new SessionRouter(memory.sessionStore, convStore, sessionConfig);
+
   // Inbound channel manager — manages Telegram, Discord, WhatsApp from registry
-  const inboundMgr = new InboundChannelManager(chatChannelRegistry, orchestrator, dataDir, logger, convStore);
+  const inboundMgr = new InboundChannelManager(chatChannelRegistry, orchestrator, dataDir, logger, convStore, sessionRouter);
   if (process.env['NODE_ENV'] !== 'test') {
     inboundMgr.startAll().catch(err => logger.error('[inbound] startAll error', { err: err instanceof Error ? err.message : String(err) }));
   }

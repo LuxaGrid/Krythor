@@ -26,7 +26,9 @@
 
 import type { AgentOrchestrator } from '@krythor/core';
 import type { ConversationStore } from '@krythor/memory';
+import { resolveSessionKey } from '@krythor/memory';
 import type { DmPairingStore } from './DmPairingStore.js';
+import type { SessionRouter } from './SessionRouter.js';
 import { logger } from './logger.js';
 
 const DISCORD_API = 'https://discord.com/api/v10';
@@ -162,10 +164,9 @@ export class DiscordInbound {
   private orchestrator: AgentOrchestrator;
   private pairingStore: DmPairingStore;
   private convStore: ConversationStore | null;
+  private sessionRouter: SessionRouter | null;
   private processing = false;
   private channelId: string = 'discord';
-  /** Per-author conversation tracking: authorId → conversationId */
-  private authorConvMap = new Map<string, string>();
   /**
    * Deduplication cache — tracks recently processed message IDs to prevent
    * re-processing the same message if fetchMessages overlaps on a poll boundary.
@@ -173,10 +174,16 @@ export class DiscordInbound {
    */
   private readonly seenMessageIds = new Set<string>();
 
-  constructor(orchestrator: AgentOrchestrator, pairingStore: DmPairingStore, convStore: ConversationStore | null = null) {
+  constructor(
+    orchestrator: AgentOrchestrator,
+    pairingStore: DmPairingStore,
+    convStore: ConversationStore | null = null,
+    sessionRouter: SessionRouter | null = null,
+  ) {
     this.orchestrator = orchestrator;
     this.pairingStore = pairingStore;
     this.convStore = convStore;
+    this.sessionRouter = sessionRouter;
   }
 
   // ── Configuration ──────────────────────────────────────────────────────────
@@ -361,31 +368,67 @@ export class DiscordInbound {
     logger.info('[discord] Processing message', { msgId: msg.id, author: msg.author.id });
 
     const authorId = msg.author.id;
+    const isGuild = !!this.config.guildId;
+    const chatType = isGuild ? 'group' : 'direct';
 
-    // Check for session reset triggers (case-insensitive exact match)
-    const triggers = this.config.resetTriggers ?? ['/new'];
-    const isReset = triggers.some(t => msg.content.trim().toLowerCase() === t.toLowerCase());
-    if (isReset) {
-      this.authorConvMap.delete(authorId);
-      await this.sendMessage('(new conversation started)', msg.id).catch(() => {});
-      return;
-    }
+    // Check for session reset triggers
+    const isReset = this.sessionRouter
+      ? this.sessionRouter.isResetTrigger(msg.content)
+      : (['/new', '/reset', ...(this.config.resetTriggers ?? [])]).some(
+          t => msg.content.trim().toLowerCase() === t.toLowerCase(),
+        );
 
-    // Resolve or create a per-author conversation for context continuity
-    let conversationId = this.authorConvMap.get(authorId);
+    let conversationId: string | undefined;
     let contextMessages: Array<{ role: string; content: string }> = [];
 
-    if (this.convStore) {
-      if (!conversationId) {
-        const conv = this.convStore.createConversation(this.config.agentId);
-        conversationId = conv.id;
-        this.authorConvMap.set(authorId, conversationId);
+    if (this.sessionRouter && this.convStore) {
+      if (isReset) {
+        const key = resolveSessionKey({
+          agentId: this.config.agentId,
+          channel: 'discord',
+          chatType,
+          peerId: !isGuild ? authorId : undefined,
+          groupId: isGuild ? this.config.channelId : undefined,
+          dmScope: this.sessionRouter.getConfig().dmScope ?? 'main',
+        });
+        this.sessionRouter.resetSession(key, this.config.agentId);
+        await this.sendMessage('(new conversation started)', msg.id).catch(() => {});
+        return;
       }
+
+      const resolved = this.sessionRouter.resolveConversation({
+        agentId: this.config.agentId,
+        channel: 'discord',
+        chatType,
+        peerId: !isGuild ? authorId : undefined,
+        groupId: isGuild ? this.config.channelId : undefined,
+      });
+
+      if (!this.sessionRouter.isSendAllowed(resolved.entry)) return;
+
+      conversationId = resolved.conversationId;
       const msgs = this.convStore.getMessages(conversationId);
-      // Apply historyLimit to prevent unbounded context growth
       const historyLimit = this.config.historyLimit ?? 50;
       const limited = historyLimit > 0 ? msgs.slice(-historyLimit) : msgs;
       contextMessages = limited.map(m => ({ role: m.role, content: m.content }));
+
+    } else if (this.convStore) {
+      // Legacy path: no SessionRouter
+      if (isReset) {
+        await this.sendMessage('(new conversation started)', msg.id).catch(() => {});
+        return;
+      }
+      const conv = this.convStore.createConversation(this.config.agentId);
+      conversationId = conv.id;
+      const msgs = this.convStore.getMessages(conversationId);
+      const historyLimit = this.config.historyLimit ?? 50;
+      const limited = historyLimit > 0 ? msgs.slice(-historyLimit) : msgs;
+      contextMessages = limited.map(m => ({ role: m.role, content: m.content }));
+    } else {
+      if (isReset) {
+        await this.sendMessage('(new conversation started)', msg.id).catch(() => {});
+        return;
+      }
     }
 
     const typingPromise = this.sendTyping().catch(() => {});

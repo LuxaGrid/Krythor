@@ -39,3 +39,13 @@ export type {
 export type { WriteResult } from './MemoryWriter.js';
 export { HeartbeatInsightStore } from './db/HeartbeatInsightStore.js';
 export type { PersistedInsight } from './db/HeartbeatInsightStore.js';
+export { SessionStore, resolveSessionKey } from './db/SessionStore.js';
+export type {
+  SessionEntry,
+  DmScope,
+  ChatType,
+  SendPolicy,
+  SendPolicyRule,
+  SendPolicyConfig,
+  ResolveSessionKeyParams,
+} from './db/SessionStore.js';

@@ -20,6 +20,7 @@
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join as _join } from 'path';
 import { homedir as _homedir } from 'os';
+import { execSync } from 'child_process';
 
 export function getDefaultWorkspaceDir(): string {
   if (process.env['KRYTHOR_WORKSPACE_DIR']) {
@@ -147,8 +148,33 @@ export class AgentWorkspaceManager {
         // this is a new workspace. We track this by checking all defaults existed.
         // Simple heuristic: if AGENTS.md exists (we just wrote it), create BOOTSTRAP.md.
         writeFileSync(bootstrapPath, BOOTSTRAP_MD, 'utf-8');
+
+        // Auto-init git repo for brand-new workspaces (best-effort, silently skipped if git unavailable)
+        this._tryGitInit();
       }
     }
+  }
+
+  private _tryGitInit(): void {
+    try {
+      execSync('git --version', { stdio: 'ignore', timeout: 3000 });
+      if (!existsSync(_join(this.workspaceDir, '.git'))) {
+        execSync('git init', { cwd: this.workspaceDir, stdio: 'ignore', timeout: 5000 });
+        // Write a .gitignore for common sensitive files
+        const gitignorePath = _join(this.workspaceDir, '.gitignore');
+        if (!existsSync(gitignorePath)) {
+          writeFileSync(gitignorePath, [
+            '# Krythor workspace — commit AGENTS.md, SOUL.md, MEMORY.md, memory/',
+            '# Do NOT commit credentials or large binary files.',
+            '.env',
+            '*.key',
+            '*.pem',
+            'node_modules/',
+            '.DS_Store',
+          ].join('\n') + '\n', 'utf-8');
+        }
+      }
+    } catch { /* git not available or init failed — silently continue */ }
   }
 
   /** Returns the workspace directory path. */

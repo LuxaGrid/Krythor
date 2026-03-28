@@ -27,7 +27,9 @@
 
 import type { AgentOrchestrator } from '@krythor/core';
 import type { ConversationStore } from '@krythor/memory';
+import { resolveSessionKey } from '@krythor/memory';
 import type { DmPairingStore } from './DmPairingStore.js';
+import type { SessionRouter } from './SessionRouter.js';
 import { logger } from './logger.js';
 
 const TELEGRAM_API = 'https://api.telegram.org';
@@ -181,13 +183,12 @@ export class TelegramInbound {
   private orchestrator: AgentOrchestrator;
   private pairingStore: DmPairingStore;
   private convStore: ConversationStore | null;
+  private sessionRouter: SessionRouter | null;
   private running = false;
   private offset = 0;
   private abortController: AbortController | null = null;
   private botUsername: string | null = null;
   private channelId: string = 'telegram';
-  /** Per-sender DM conversation tracking: senderId → conversationId */
-  private senderConvMap = new Map<string, string>();
   /**
    * Deduplication cache — tracks recently processed update_ids to prevent
    * re-processing the same message on reconnect or poll overlap.
@@ -195,10 +196,16 @@ export class TelegramInbound {
    */
   private readonly seenUpdateIds = new Set<number>();
 
-  constructor(orchestrator: AgentOrchestrator, pairingStore: DmPairingStore, convStore: ConversationStore | null = null) {
+  constructor(
+    orchestrator: AgentOrchestrator,
+    pairingStore: DmPairingStore,
+    convStore: ConversationStore | null = null,
+    sessionRouter: SessionRouter | null = null,
+  ) {
     this.orchestrator = orchestrator;
     this.pairingStore = pairingStore;
     this.convStore = convStore;
+    this.sessionRouter = sessionRouter;
   }
 
   // ── Configuration ──────────────────────────────────────────────────────────
@@ -425,33 +432,74 @@ export class TelegramInbound {
     }
   }
 
-  private async runAgent(chatId: number, fromId: string, text: string): Promise<void> {
+  private async runAgent(chatId: number, fromId: string, text: string, isGroup = false): Promise<void> {
     if (!this.config) return;
     try {
-      // Check for session reset triggers (case-insensitive exact match)
-      const triggers = this.config.resetTriggers ?? ['/new'];
-      const isReset = triggers.some(t => text.trim().toLowerCase() === t.toLowerCase());
-      if (isReset) {
-        this.senderConvMap.delete(fromId);
-        await this.sendMessage(chatId, '(new conversation started)');
-        return;
-      }
+      // Check for session reset triggers
+      const isReset = this.sessionRouter
+        ? this.sessionRouter.isResetTrigger(text)
+        : ['/new', '/reset', ...(this.config.resetTriggers ?? [])].some(
+            t => text.trim().toLowerCase() === t.toLowerCase(),
+          );
 
-      // Resolve or create a per-sender conversation for context continuity
-      let conversationId = this.senderConvMap.get(fromId);
+      let conversationId: string | undefined;
       let contextMessages: Array<{ role: string; content: string }> = [];
 
-      if (this.convStore) {
-        if (!conversationId) {
-          const conv = this.convStore.createConversation(this.config.agentId);
-          conversationId = conv.id;
-          this.senderConvMap.set(fromId, conversationId);
+      if (this.sessionRouter && this.convStore) {
+        const chatType = isGroup ? 'group' : 'direct';
+        const groupId  = isGroup ? String(chatId) : undefined;
+
+        if (isReset) {
+          const key = resolveSessionKey({
+            agentId: this.config.agentId,
+            channel: 'telegram',
+            chatType,
+            peerId: !isGroup ? fromId : undefined,
+            groupId,
+            dmScope: this.sessionRouter.getConfig().dmScope ?? 'main',
+          });
+          conversationId = this.sessionRouter.resetSession(key, this.config.agentId);
+          await this.sendMessage(chatId, '(new conversation started)');
+          return;
         }
+
+        const resolved = this.sessionRouter.resolveConversation({
+          agentId: this.config.agentId,
+          channel: 'telegram',
+          chatType,
+          peerId: !isGroup ? fromId : undefined,
+          groupId,
+          displayName: String(chatId),
+        });
+
+        // Check send policy
+        if (!this.sessionRouter.isSendAllowed(resolved.entry)) {
+          return;
+        }
+
+        conversationId = resolved.conversationId;
         const msgs = this.convStore.getMessages(conversationId);
-        // Apply historyLimit to prevent unbounded context growth
         const historyLimit = this.config.historyLimit ?? 50;
         const limited = historyLimit > 0 ? msgs.slice(-historyLimit) : msgs;
         contextMessages = limited.map(m => ({ role: m.role, content: m.content }));
+
+      } else if (this.convStore) {
+        // Legacy path: no SessionRouter (backward compat)
+        if (isReset) {
+          await this.sendMessage(chatId, '(new conversation started)');
+          return;
+        }
+        const conv = this.convStore.createConversation(this.config.agentId);
+        conversationId = conv.id;
+        const msgs = this.convStore.getMessages(conversationId);
+        const historyLimit = this.config.historyLimit ?? 50;
+        const limited = historyLimit > 0 ? msgs.slice(-historyLimit) : msgs;
+        contextMessages = limited.map(m => ({ role: m.role, content: m.content }));
+      } else {
+        if (isReset) {
+          await this.sendMessage(chatId, '(new conversation started)');
+          return;
+        }
       }
 
       const run = await this.orchestrator.runAgent(this.config.agentId, {

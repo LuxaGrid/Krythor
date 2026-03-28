@@ -21,6 +21,7 @@ import { DmPairingStore } from './DmPairingStore.js';
 import { DiscordInbound } from './DiscordInbound.js';
 import { TelegramInbound } from './TelegramInbound.js';
 import { WhatsAppInbound } from './WhatsAppInbound.js';
+import type { SessionRouter } from './SessionRouter.js';
 import { logger } from './logger.js';
 
 type AnyInbound = DiscordInbound | TelegramInbound | WhatsAppInbound;
@@ -34,6 +35,7 @@ export class InboundChannelManager {
   private readonly errors = new Map<string, string>();
   private readonly pairingStore: DmPairingStore;
   private readonly convStore: ConversationStore | null;
+  private readonly sessionRouter: SessionRouter | null;
 
   constructor(
     registry: ChatChannelRegistry,
@@ -41,6 +43,7 @@ export class InboundChannelManager {
     dataDir: string,
     log: typeof logger,
     convStore: ConversationStore | null = null,
+    sessionRouter: SessionRouter | null = null,
   ) {
     this.registry = registry;
     this.orchestrator = orchestrator;
@@ -48,6 +51,7 @@ export class InboundChannelManager {
     this.log = log;
     this.pairingStore = new DmPairingStore(join(dataDir, 'pairing'));
     this.convStore = convStore;
+    this.sessionRouter = sessionRouter;
   }
 
   // ── Public API ─────────────────────────────────────────────────────────────
@@ -141,7 +145,7 @@ export class InboundChannelManager {
             this.registry.recordHealthCheck(configId, false, err);
             return { ok: false, error: err };
           }
-          const discord = new DiscordInbound(this.orchestrator, this.pairingStore, this.convStore);
+          const discord = new DiscordInbound(this.orchestrator, this.pairingStore, this.convStore, this.sessionRouter);
           discord.configure({
             token,
             channelId,
@@ -170,7 +174,7 @@ export class InboundChannelManager {
             this.registry.recordHealthCheck(configId, false, err);
             return { ok: false, error: err };
           }
-          const telegram = new TelegramInbound(this.orchestrator, this.pairingStore, this.convStore);
+          const telegram = new TelegramInbound(this.orchestrator, this.pairingStore, this.convStore, this.sessionRouter);
           telegram.configure({
             token,
             agentId,

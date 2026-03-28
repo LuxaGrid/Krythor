@@ -13,6 +13,7 @@ import { EmbeddingRegistry } from './embedding/EmbeddingProvider.js';
 import { DbJanitor } from './db/DbJanitor.js';
 import type { JanitorResult, LogFn, DbJanitorConfig } from './db/DbJanitor.js';
 import { HeartbeatInsightStore } from './db/HeartbeatInsightStore.js';
+import { SessionStore } from './db/SessionStore.js';
 import type {
   CreateMemoryInput,
   UpdateMemoryInput,
@@ -47,6 +48,7 @@ export class MemoryEngine {
   readonly db: Database.Database;
   readonly janitor: DbJanitor;
   readonly heartbeatInsightStore: HeartbeatInsightStore;
+  readonly sessionStore: SessionStore;
   /** Directory containing memory.db and any .bak backup files. */
   readonly dbDir: string;
   private _decayInterval: ReturnType<typeof setInterval> | null = null;
@@ -71,6 +73,7 @@ export class MemoryEngine {
     this.retriever = new MemoryRetriever(this.store, this.scorer, this.embeddings);
     this.janitor = new DbJanitor(this.db, logFn);
     this.heartbeatInsightStore = new HeartbeatInsightStore(this.db);
+    this.sessionStore = new SessionStore(this.db);
 
     // Apply decay, clear session-scoped memories, and run retention janitor on
     // startup (non-blocking). Session scope is documented as "cleared on session

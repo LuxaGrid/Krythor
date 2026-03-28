@@ -3,26 +3,28 @@
 // Loads workspace bootstrap files and injects them into the system prompt.
 //
 // Bootstrap files (read from the workspace directory):
-//   AGENTS.md    — operating instructions + "memory"
-//   SOUL.md      — persona, boundaries, tone
-//   TOOLS.md     — user-maintained tool notes
-//   IDENTITY.md  — agent name/vibe/emoji
-//   USER.md      — user profile + preferred address
-//   MEMORY.md    — optional persistent notes across sessions (only injected when present)
-//   HEARTBEAT.md — optional tiny checklist for heartbeat runs
-//   BOOTSTRAP.md — one-time first-run ritual (deleted after completion)
+//   AGENTS.md              — operating instructions + "memory"
+//   SOUL.md                — persona, boundaries, tone
+//   TOOLS.md               — user-maintained tool notes
+//   IDENTITY.md            — agent name/vibe/emoji
+//   USER.md                — user profile + preferred address
+//   MEMORY.md              — optional curated long-term notes (when present)
+//   memory/YYYY-MM-DD.md   — today's daily log (optional, auto-injected)
+//   memory/YYYY-MM-DD.md   — yesterday's daily log (optional, auto-injected)
+//   HEARTBEAT.md           — optional tiny checklist for heartbeat runs
+//   BOOTSTRAP.md           — one-time first-run ritual (deleted after completion)
 //
 // Injection behaviour:
 //   - Files are trimmed to BOOTSTRAP_MAX_CHARS per file (default 20 000 chars)
 //   - Total injection across all files is capped at BOOTSTRAP_TOTAL_MAX_CHARS (default 150 000)
 //   - Missing files inject a one-line "missing" marker, EXCEPT optional files
-//   - Optional files (MEMORY.md): silently skipped when not present
+//   - Optional files (MEMORY.md, daily logs): silently skipped when not present
 //   - Blank files are skipped silently
 //   - Truncated files end with a "[...truncated]" marker
 //   - Sub-agent runs only receive AGENTS.md and TOOLS.md (promptMode: 'minimal')
 //
 
-import { existsSync, readFileSync } from 'fs';
+import { existsSync, readFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 
 export const BOOTSTRAP_MAX_CHARS       = 20_000;
@@ -30,6 +32,21 @@ export const BOOTSTRAP_TOTAL_MAX_CHARS = 150_000;
 
 /** Files that are silently skipped when not present (no "missing" marker injected). */
 const OPTIONAL_BOOTSTRAP_FILES = new Set(['MEMORY.md', 'HEARTBEAT.md', 'BOOTSTRAP.md']);
+
+/** Return YYYY-MM-DD for a given Date (local time on the gateway host). */
+function dailyLogName(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `memory/${y}-${m}-${d}.md`;
+}
+
+/** Return today's and yesterday's daily log filenames. */
+export function getDailyLogNames(): [string, string] {
+  const today = new Date();
+  const yesterday = new Date(today.getTime() - 86_400_000);
+  return [dailyLogName(today), dailyLogName(yesterday)];
+}
 
 /** Files injected on a full (non-subagent) run, in order. */
 export const BOOTSTRAP_FILES_FULL = [
@@ -39,6 +56,7 @@ export const BOOTSTRAP_FILES_FULL = [
   'IDENTITY.md',
   'USER.md',
   'MEMORY.md',
+  // Daily logs are resolved dynamically at load time (today + yesterday)
   'HEARTBEAT.md',
   'BOOTSTRAP.md',
 ] as const;
@@ -81,8 +99,26 @@ export class WorkspaceBootstrapLoader {
       return { files: [], projectContext: '', totalRawChars: 0, totalInjectedChars: 0 };
     }
 
-    const filenames: readonly string[] =
-      promptMode === 'minimal' ? BOOTSTRAP_FILES_MINIMAL : BOOTSTRAP_FILES_FULL;
+    // Ensure the memory subdirectory exists (no-op if already present)
+    try {
+      mkdirSync(join(this.workspaceDir, 'memory'), { recursive: true });
+    } catch { /* ignore */ }
+
+    // Build the file list — for full mode, splice in today+yesterday daily logs after MEMORY.md
+    let filenames: string[];
+    if (promptMode === 'minimal') {
+      filenames = [...BOOTSTRAP_FILES_MINIMAL];
+    } else {
+      const [todayLog, yesterdayLog] = getDailyLogNames();
+      const base = [...BOOTSTRAP_FILES_FULL] as string[];
+      const memoryIdx = base.indexOf('MEMORY.md');
+      // Insert daily logs right after MEMORY.md
+      base.splice(memoryIdx + 1, 0, todayLog, yesterdayLog);
+      // Daily logs are always optional (silently skipped when missing)
+      OPTIONAL_BOOTSTRAP_FILES.add(todayLog);
+      OPTIONAL_BOOTSTRAP_FILES.add(yesterdayLog);
+      filenames = base;
+    }
 
     const results: BootstrapFileResult[] = [];
     let totalInjected = 0;
