@@ -372,3 +372,22 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 export function getToolEntry(name: string): ToolEntry | undefined {
   return TOOL_REGISTRY.find(t => t.name === name);
 }
+
+/** Named tool profiles — pre-defined allowedTools arrays for common agent configurations. */
+export const TOOL_PROFILES: Record<string, string[]> = {
+  /** Minimal: web search and read only — safe for untrusted contexts */
+  minimal:    ['web_search', 'web_fetch', 'read_file', 'agents_list'],
+  /** Messaging: chat-oriented tools — session management, agent coordination */
+  messaging:  ['web_search', 'web_fetch', 'agents_list', 'agent_ping', 'sessions_list', 'sessions_history'],
+  /** Coding: full development toolset */
+  coding:     ['exec', 'read_file', 'write_file', 'edit_file', 'apply_patch', 'shell_exec', 'web_search', 'web_fetch', 'agents_list'],
+  /** Full: all registered tools */
+  full:       [], // empty = resolved at runtime to all tool names
+};
+
+/** Resolve a profile name to a tool name array. 'full' returns all registered tool names. */
+export function resolveToolProfile(profile: string): string[] | undefined {
+  if (!(profile in TOOL_PROFILES)) return undefined;
+  if (profile === 'full') return TOOL_REGISTRY.map(t => t.name);
+  return TOOL_PROFILES[profile]!;
+}

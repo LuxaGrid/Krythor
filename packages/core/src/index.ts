@@ -5,7 +5,7 @@ export { WebSearchTool, WEB_SEARCH_TIMEOUT_MS, WEB_SEARCH_CACHE_TTL_MS } from '.
 export type { WebSearchResult, WebSearchResponse } from './tools/WebSearchTool.js';
 export { WebFetchTool, WEB_FETCH_MAX_CHARS, WEB_FETCH_MAX_CHARS_CAP, WEB_FETCH_TIMEOUT_MS, WEB_FETCH_CACHE_TTL_MS } from './tools/WebFetchTool.js';
 export type { WebFetchResult, SsrfBlockedResult } from './tools/WebFetchTool.js';
-export { TOOL_REGISTRY, getToolEntry } from './tools/ToolRegistry.js';
+export { TOOL_REGISTRY, getToolEntry, TOOL_PROFILES, resolveToolProfile } from './tools/ToolRegistry.js';
 export type { ToolEntry, ToolParameter } from './tools/ToolRegistry.js';
 export { WebhookTool } from './tools/WebhookTool.js';
 export type { CustomToolDefinition, HttpMethod } from './tools/WebhookTool.js';

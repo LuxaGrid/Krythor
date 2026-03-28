@@ -38,6 +38,7 @@ export interface SlashCommandResult {
   response: string | null;  // null = not a slash command
   isReset: boolean;
   isHandled: boolean;
+  ttsText?: string;
 }
 
 const HELP_TEXT = [
@@ -51,6 +52,7 @@ const HELP_TEXT = [
   '/compact — compact conversation context',
   '/new [model] — start a new conversation',
   '/reset — alias for /new',
+  '/tts <text> — synthesize text to speech (queued for TTS provider)',
 ].join('\n');
 
 /**
@@ -175,6 +177,14 @@ export function handleSlashCommand(
   if (command === '/stop') {
     // The caller is responsible for implementing actual stop — we just signal it
     return { response: '(stop requested — no active run to stop)', isReset: false, isHandled: true };
+  }
+
+  // ── TTS ───────────────────────────────────────────────────────────────────
+  if (command === '/tts') {
+    if (!args) {
+      return { response: 'Usage: /tts <text to speak>', isReset: false, isHandled: true };
+    }
+    return { response: '🔊 (TTS queued)', isReset: false, isHandled: true, ttsText: args };
   }
 
   // ── Unknown slash command ─────────────────────────────────────────────────

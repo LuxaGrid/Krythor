@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { GuardEngine } from '@krythor/guard';
-import { ExecTool, ExecDeniedError, ExecTimeoutError, WebSearchTool, WebFetchTool, TOOL_REGISTRY, WEB_FETCH_MAX_CHARS_CAP, KrythorCore } from '@krythor/core';
+import { ExecTool, ExecDeniedError, ExecTimeoutError, WebSearchTool, WebFetchTool, TOOL_REGISTRY, TOOL_PROFILES, resolveToolProfile, WEB_FETCH_MAX_CHARS_CAP, KrythorCore } from '@krythor/core';
 import { sendError } from '../errors.js';
 import { logger } from '../logger.js';
 import { validateUrl } from '../validate.js';
@@ -26,6 +26,15 @@ export function registerToolRoutes(
   execTool: ExecTool,
   core?: KrythorCore,
 ): void {
+
+  // GET /api/tools/profiles — named tool profiles
+  app.get('/api/tools/profiles', async (_req, reply) => {
+    const resolved: Record<string, string[]> = {};
+    for (const name of Object.keys(TOOL_PROFILES)) {
+      resolved[name] = resolveToolProfile(name) ?? [];
+    }
+    return reply.send({ profiles: resolved });
+  });
 
   // GET /api/tools — full tool registry
   app.get('/api/tools', async (_req, reply) => {

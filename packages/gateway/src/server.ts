@@ -58,6 +58,8 @@ import { nodeRegistry } from './ws/NodeRegistry.js';
 import { registerAgentAuthRoutes } from './routes/agentAuth.js';
 import { WebChatPairingStore } from './WebChatPairingStore.js';
 import { registerWebChatPairingRoutes } from './routes/webchatPairing.js';
+import { registerTtsRoute } from './routes/tts.js';
+import { registerCanvasRoute } from './routes/canvas.js';
 import { ApprovalManager } from './ApprovalManager.js';
 import { AuditLogger } from './AuditLogger.js';
 import { HeartbeatEngine, type HeartbeatRunRecord, type HeartbeatInsight } from './heartbeat/HeartbeatEngine.js';
@@ -1254,6 +1256,9 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   // Web Chat pairing — shareable one-time links for /chat
   const webChatPairingStore = new WebChatPairingStore();
   registerWebChatPairingRoutes(app, webChatPairingStore, () => authCfg.token, uiDist);
+
+  registerTtsRoute(app);
+  registerCanvasRoute(app, dataDir);
 
   registerStreamWs(app, core, () => authCfg.token, guard, devicePairingStore, gatewayId, KRYTHOR_VERSION);
   registerDeviceRoutes(app, devicePairingStore, broadcast);
