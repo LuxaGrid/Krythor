@@ -2,6 +2,7 @@ import { existsSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { TOOL_REGISTRY } from './ToolRegistry.js';
 import type { ToolEntry } from './ToolRegistry.js';
+import { PluginSandbox } from './PluginSandbox.js';
 
 // ─── PluginLoader ─────────────────────────────────────────────────────────────
 //
@@ -64,9 +65,11 @@ export class PluginLoader {
   private readonly pluginsDir: string;
   private loaded: LoadedPlugin[] = [];
   private records: PluginLoadRecord[] = [];
+  private readonly sandbox: PluginSandbox;
 
   constructor(dataDir: string) {
     this.pluginsDir = join(dataDir, 'plugins');
+    this.sandbox = new PluginSandbox();
   }
 
   /**
@@ -149,11 +152,14 @@ export class PluginLoader {
       TOOL_REGISTRY.push(entry);
       registeredNames.add(name);
 
+      const filePath2 = join(this.pluginsDir, file);
       const loadedPlugin: LoadedPlugin = {
         name,
         description: plugin.description.trim(),
         file,
-        run: plugin.run.bind(plugin),
+        // Run via sandbox: forks a child process for each invocation so plugin
+        // crashes and memory leaks are isolated from the gateway process.
+        run: (input: string) => this.sandbox.run(filePath2, input),
       };
       this.loaded.push(loadedPlugin);
       this.records.push({ file, status: 'loaded', name, description: loadedPlugin.description });
