@@ -300,6 +300,23 @@ export const importMemory = (entries: unknown[]) =>
   req<{ imported: number; skipped: number }>('POST', '/memory/import', { entries });
 export const memoryStatsDetailed = () => req<MemoryStatsDetailed>('GET', '/memory/stats');
 export const listMemoryTags = () => req<{ tags: string[] }>('GET', '/memory/tags');
+
+export interface JanitorStatus {
+  lastRunAt:  number | null;
+  nextRunAt:  number | null;
+  lastResult: {
+    memoryEntriesPruned:  number;
+    conversationsPruned:  number;
+    learningRecordsPruned: number;
+    heartbeatInsightsPruned: number;
+    sessionsCompacted:    number;
+    rawTranscriptsPruned: number;
+    ranAt:                number;
+  } | null;
+  config: Record<string, unknown>;
+}
+export const getJanitorStatus = () => req<JanitorStatus>('GET', '/memory/janitor/status');
+export const runJanitor = () => req<JanitorStatus['lastResult']>('POST', '/memory/janitor/run');
 export interface MemoryStatsDetailed extends MemoryStats {
   oldest?: string | null;
   newest?: string | null;

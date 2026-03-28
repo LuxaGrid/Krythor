@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { MemoryEngine, CreateMemoryInput, UpdateMemoryInput, MemoryScope } from '@krythor/memory';
+import type { JanitorResult, DbJanitorConfig } from '@krythor/memory';
 import type { ModelEngine } from '@krythor/models';
 import type { GuardEngine } from '@krythor/guard';
 import { sendError } from '../errors.js';
@@ -7,7 +8,23 @@ import { createHash } from 'crypto';
 import type { ApprovalManager } from '../ApprovalManager.js';
 import { guardCheck } from '../guardCheck.js';
 
-export function registerMemoryRoutes(app: FastifyInstance, memory: MemoryEngine, models?: ModelEngine, guard?: GuardEngine, emit?: (event: string, data: Record<string, unknown>) => void, approvalManager?: ApprovalManager): void {
+/** Shared janitor status — updated by server.ts whenever janitor runs. */
+export interface JanitorStatus {
+  lastRunAt:   number | null;
+  nextRunAt:   number | null;
+  lastResult:  JanitorResult | null;
+  config:      DbJanitorConfig;
+}
+
+export function registerMemoryRoutes(
+  app: FastifyInstance,
+  memory: MemoryEngine,
+  models?: ModelEngine,
+  guard?: GuardEngine,
+  emit?: (event: string, data: Record<string, unknown>) => void,
+  approvalManager?: ApprovalManager,
+  janitorStatus?: JanitorStatus,
+): void {
 
   // GET /api/memory — list / search entries
   app.get('/api/memory', async (req, reply) => {
@@ -443,5 +460,33 @@ export function registerMemoryRoutes(app: FastifyInstance, memory: MemoryEngine,
     const existing = memory.getById(req.params.id);
     if (!existing) return reply.code(404).send({ error: 'Not found' });
     return reply.send(memory.unpin(req.params.id));
+  });
+
+  // ── Janitor status endpoints ──────────────────────────────────────────────
+
+  // GET /api/memory/janitor/status — last run time, next run time, last result, config
+  app.get('/api/memory/janitor/status', async (_req, reply) => {
+    return reply.send({
+      lastRunAt:  janitorStatus?.lastRunAt  ?? null,
+      nextRunAt:  janitorStatus?.nextRunAt  ?? null,
+      lastResult: janitorStatus?.lastResult ?? null,
+      config:     janitorStatus?.config     ?? {},
+    });
+  });
+
+  // POST /api/memory/janitor/run — trigger a manual janitor run immediately
+  app.post('/api/memory/janitor/run', async (_req, reply) => {
+    try {
+      const result = memory.runJanitor();
+      const now = Date.now();
+      if (janitorStatus) {
+        janitorStatus.lastRunAt  = now;
+        janitorStatus.lastResult = result;
+        // nextRunAt is not updated here (that's scheduled by heartbeat)
+      }
+      return reply.send(result);
+    } catch (err) {
+      return sendError(reply, 500, 'JANITOR_FAILED', err instanceof Error ? err.message : 'Janitor run failed');
+    }
   });
 }

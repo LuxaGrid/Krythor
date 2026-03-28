@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { listMemory, createMemory, updateMemory, deleteMemory, pinMemory, unpinMemory, pruneMemory, compactMemory, summarizeMemory, pruneMemoryBulk, exportMemory, importMemory, memoryStatsDetailed, listMemoryTags, type MemoryEntry, type MemorySearchResult, type Health, type MemoryStatsDetailed } from '../api.ts';
+import { listMemory, createMemory, updateMemory, deleteMemory, pinMemory, unpinMemory, pruneMemory, compactMemory, summarizeMemory, pruneMemoryBulk, exportMemory, importMemory, memoryStatsDetailed, listMemoryTags, getJanitorStatus, runJanitor, type MemoryEntry, type MemorySearchResult, type Health, type MemoryStatsDetailed, type JanitorStatus } from '../api.ts';
 import { PanelHeader } from './PanelHeader.tsx';
 
 const SCOPES = ['all', 'session', 'user', 'agent', 'workspace', 'skill'];
@@ -279,12 +279,26 @@ export function MemoryPanel({ health }: MemoryPanelProps) {
   const [exporting, setExporting]   = useState(false);
   const [importResult, setImportResult] = useState<string | null>(null);
   const [detailedStats, setDetailedStats] = useState<MemoryStatsDetailed | null>(null);
+  const [janitorStatus, setJanitorStatus] = useState<JanitorStatus | null>(null);
+  const [runningJanitor, setRunningJanitor] = useState(false);
 
-  // Load detailed memory stats + available tags
+  // Load detailed memory stats + available tags + janitor status
   useEffect(() => {
     memoryStatsDetailed().then(setDetailedStats).catch(() => {});
     listMemoryTags().then(r => setAvailableTags(r.tags)).catch(() => {});
+    getJanitorStatus().then(setJanitorStatus).catch(() => {});
   }, []);
+
+  const handleRunJanitor = async () => {
+    setRunningJanitor(true);
+    try {
+      await runJanitor();
+      const status = await getJanitorStatus();
+      setJanitorStatus(status);
+    } catch { /* ignore */ } finally {
+      setRunningJanitor(false);
+    }
+  };
 
   const handleExport = async () => {
     setExporting(true);
@@ -581,6 +595,41 @@ export function MemoryPanel({ health }: MemoryPanelProps) {
             )}
           </>
         )}
+      </div>
+
+      {/* Janitor section */}
+      <div className="border-t border-zinc-800 px-4 py-2 text-xs">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-zinc-500 font-medium">Janitor</span>
+          <button
+            onClick={handleRunJanitor}
+            disabled={runningJanitor}
+            className="px-2 py-0.5 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 rounded text-zinc-400 hover:text-zinc-200 transition-colors"
+          >
+            {runningJanitor ? 'Running…' : 'Run Now'}
+          </button>
+        </div>
+        <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-zinc-600">
+          <span>
+            Last run:{' '}
+            {janitorStatus?.lastRunAt
+              ? new Date(janitorStatus.lastRunAt).toLocaleString()
+              : 'never'}
+          </span>
+          <span>
+            Next run:{' '}
+            {janitorStatus?.nextRunAt
+              ? new Date(janitorStatus.nextRunAt).toLocaleString()
+              : 'scheduled at next heartbeat'}
+          </span>
+          {janitorStatus?.lastResult && (
+            <>
+              <span>Entries pruned: {janitorStatus.lastResult.memoryEntriesPruned}</span>
+              <span>Conversations pruned: {janitorStatus.lastResult.conversationsPruned}</span>
+              <span>Sessions compacted: {janitorStatus.lastResult.sessionsCompacted}</span>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="border-t border-zinc-800 px-4 py-2 flex items-center gap-2 text-xs text-zinc-600">

@@ -13,7 +13,7 @@ import { GuardEngine } from '@krythor/guard';
 import { SkillRegistry, SkillRunner } from '@krythor/skills';
 import type { SkillEvent } from '@krythor/skills';
 import { registerCommandRoute } from './routes/command.js';
-import { registerMemoryRoutes } from './routes/memory.js';
+import { registerMemoryRoutes, type JanitorStatus } from './routes/memory.js';
 import { registerModelRoutes } from './routes/models.js';
 import { registerAgentRoutes } from './routes/agents.js';
 import { registerGuardRoutes } from './routes/guard.js';
@@ -1289,12 +1289,21 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   // Late-bound heartbeat reference — filled in after HeartbeatEngine is created below.
   const heartbeatRef: HeartbeatRef = {};
 
+  // Janitor status tracker — updated whenever the memory janitor runs
+  // (via heartbeat memory_hygiene check or manual /api/memory/janitor/run trigger)
+  const janitorStatus: JanitorStatus = {
+    lastRunAt:  null,
+    nextRunAt:  null,
+    lastResult: null,
+    config:     {},
+  };
+
   // Agent message bus — in-process agent-to-agent messaging and delegation
   const agentMessageBus = new AgentMessageBus();
 
   // Register routes
   registerCommandRoute(app, core, orchestrator, broadcast, guard, convStore, devicePairingStore, approvalManager, privacyRouter);
-  registerMemoryRoutes(app, memory, models, guard, channelEmit, approvalManager);
+  registerMemoryRoutes(app, memory, models, guard, channelEmit, approvalManager, janitorStatus);
   registerModelRoutes(app, models, memory, guard, channelEmit, approvalManager);
   registerAgentRoutes(app, orchestrator, guard, accessProfileStore, approvalManager, agentMessageBus);
   registerGuardRoutes(app, guard, guardDecisionStore);
@@ -1494,6 +1503,20 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   // Start heartbeat maintenance loop.
   // Disabled in test environments to prevent timer leaks.
   const heartbeat = new HeartbeatEngine(memory, models, orchestrator, undefined, recommender, logger);
+
+  // Wrap memory.runJanitor to track last run time and result in janitorStatus.
+  // This captures both scheduled heartbeat runs and manual /api/memory/janitor/run calls.
+  const _originalRunJanitor = memory.runJanitor.bind(memory);
+  memory.runJanitor = () => {
+    const result = _originalRunJanitor();
+    const now = Date.now();
+    janitorStatus.lastRunAt  = now;
+    janitorStatus.lastResult = result;
+    // Set nextRunAt to approximately 6 hours from now (the heartbeat memory_hygiene interval)
+    janitorStatus.nextRunAt  = now + 6 * 60 * 60 * 1000;
+    return result;
+  };
+
   if (process.env['NODE_ENV'] !== 'test') {
     heartbeat.start();
     cronScheduler.start();
