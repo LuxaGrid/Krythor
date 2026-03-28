@@ -116,6 +116,7 @@ export class HeartbeatEngine {
   private config:       HeartbeatConfig;
   private lastRanAt:   Map<string, number> = new Map(); // checkId → epoch ms
   private inFlight:    boolean = false;
+  private stopped:     boolean = false;
   private timer?:      ReturnType<typeof setInterval>;
   private runHistory:  RunRecord[] = [];          // capped at 50
   private startedAt:   number = Date.now();
@@ -156,6 +157,7 @@ export class HeartbeatEngine {
 
   /** Stop the heartbeat loop cleanly. In-flight runs complete or time out. */
   stop(): void {
+    this.stopped = true;
     if (this.timer) {
       clearTimeout(this.timer as unknown as ReturnType<typeof setTimeout>);
       this.timer = undefined;
@@ -280,6 +282,7 @@ export class HeartbeatEngine {
   }
 
   private async runChecks(record: RunRecord): Promise<void> {
+    if (this.stopped) return;
     const now = Date.now();
     const ctx: CheckContext = {
       memory:       this.memory,
@@ -289,6 +292,7 @@ export class HeartbeatEngine {
     };
 
     for (const [checkId, cfg] of Object.entries(this.config.checks)) {
+      if (this.stopped) break;
       if (!cfg.enabled) continue;
       const lastRan = this.lastRanAt.get(checkId) ?? 0;
       if (now - lastRan < cfg.intervalMs) continue;
