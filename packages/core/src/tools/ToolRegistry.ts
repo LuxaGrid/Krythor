@@ -367,6 +367,72 @@ export const TOOL_REGISTRY: ToolEntry[] = [
     alwaysAllowed: false,
   },
   {
+    name: 'sessions_send',
+    description:
+      'Send a message into an active session (conversation) and optionally wait for the agent reply. ' +
+      'Identify the target by sessionKey (from sessions_list) or conversationId. ' +
+      'Set waitForReply=true to block until the agent responds (up to timeoutSeconds, default 30). ' +
+      'Add "sessions_send" to the agent\'s allowedTools to permit this tool.',
+    parameters: {
+      sessionKey: {
+        type:        'string',
+        description: 'Session key (channel:senderId format) to route the message to.',
+        maxLength:   200,
+      },
+      conversationId: {
+        type:        'string',
+        description: 'Conversation UUID to send the message to. Use instead of sessionKey when you have the ID.',
+        maxLength:   100,
+      },
+      message: {
+        type:        'string',
+        description: 'The message text to inject into the session.',
+        required:    true,
+        minLength:   1,
+        maxLength:   4000,
+      },
+      waitForReply: {
+        type:        'boolean',
+        description: 'When true, block until the agent responds. Default: false.',
+      },
+      timeoutSeconds: {
+        type:        'integer',
+        description: 'Maximum seconds to wait when waitForReply=true (1–120). Default: 30.',
+      },
+    },
+    requiresGuard: false,
+    alwaysAllowed: false,
+  },
+  {
+    name: 'sessions_spawn',
+    description:
+      'Start a new agent session with a given task and return the response. ' +
+      'Creates a fresh conversation, sends the task to the specified agent (or the default agent), ' +
+      'waits for completion, and returns the output. ' +
+      'Add "sessions_spawn" to the agent\'s allowedTools to permit this tool.',
+    parameters: {
+      agentId: {
+        type:        'string',
+        description: 'ID of the agent to run. Omit to use the gateway default agent.',
+        maxLength:   100,
+      },
+      task: {
+        type:        'string',
+        description: 'The task or message to send to the spawned session.',
+        required:    true,
+        minLength:   1,
+        maxLength:   4000,
+      },
+      workspaceDirOverride: {
+        type:        'string',
+        description: 'Override the workspace directory for this session.',
+        maxLength:   4096,
+      },
+    },
+    requiresGuard: false,
+    alwaysAllowed: false,
+  },
+  {
     name: 'generate_image',
     description:
       'Generate an image from a text prompt using a configured image provider (DALL-E or local Stable Diffusion). ' +

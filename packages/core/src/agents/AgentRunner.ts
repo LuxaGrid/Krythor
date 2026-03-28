@@ -76,7 +76,9 @@ type SessionsListCall   = { tool: 'sessions_list';     limit?: number; agentId?:
 type SessionsHistoryCall = { tool: 'sessions_history'; conversationId: string; limit?: number };
 type AgentsListCall     = { tool: 'agents_list' };
 type AgentPingCall      = { tool: 'agent_ping';        agentId: string; message: string };
-type GenerateImageCall  = { tool: 'generate_image'; prompt: string; size?: string; model?: string };
+type GenerateImageCall  = { tool: 'generate_image';    prompt: string; size?: string; model?: string };
+type SessionsSendCall   = { tool: 'sessions_send';     sessionKey?: string; conversationId?: string; message: string; waitForReply?: boolean; timeoutSeconds?: number };
+type SessionsSpawnCall  = { tool: 'sessions_spawn';    agentId?: string; task: string; workspaceDirOverride?: string };
 type AnyToolCall        = ExecCall | WebSearchCall | WebFetchCall
   | ReadFileCall | WriteFileCall | EditFileCall | ApplyPatchCall
   | GetPageTextCall
@@ -84,7 +86,8 @@ type AnyToolCall        = ExecCall | WebSearchCall | WebFetchCall
   | CustomCall | SpawnAgentCall
   | SessionsListCall | SessionsHistoryCall
   | AgentsListCall | AgentPingCall
-  | GenerateImageCall;
+  | GenerateImageCall
+  | SessionsSendCall | SessionsSpawnCall;
 
 /**
  * Attempt to extract a handoff directive from a model response.
@@ -193,6 +196,26 @@ function extractToolCall(response: string): AnyToolCall | null {
         tool: 'sessions_history',
         conversationId: parsed['conversationId'] as string,
         limit: typeof parsed['limit'] === 'number' ? parsed['limit'] : undefined,
+      };
+    }
+
+    if (tool === 'sessions_send' && typeof parsed['message'] === 'string' && parsed['message'].length > 0) {
+      return {
+        tool:            'sessions_send',
+        sessionKey:      typeof parsed['sessionKey']      === 'string' ? parsed['sessionKey']      : undefined,
+        conversationId:  typeof parsed['conversationId']  === 'string' ? parsed['conversationId']  : undefined,
+        message:         parsed['message'] as string,
+        waitForReply:    typeof parsed['waitForReply']    === 'boolean' ? parsed['waitForReply']    : undefined,
+        timeoutSeconds:  typeof parsed['timeoutSeconds']  === 'number'  ? parsed['timeoutSeconds']  : undefined,
+      };
+    }
+
+    if (tool === 'sessions_spawn' && typeof parsed['task'] === 'string' && parsed['task'].length > 0) {
+      return {
+        tool:                  'sessions_spawn',
+        agentId:               typeof parsed['agentId']               === 'string' ? parsed['agentId']               : undefined,
+        task:                  parsed['task'] as string,
+        workspaceDirOverride:  typeof parsed['workspaceDirOverride']   === 'string' ? parsed['workspaceDirOverride']  : undefined,
       };
     }
 
@@ -762,6 +785,44 @@ export class AgentRunner {
           }
         } catch (err) {
           toolResult = `Tool "sessions_history" failed: ${err instanceof Error ? err.message : String(err)}`;
+        }
+      }
+    } else if (call.tool === 'sessions_send') {
+      if (!this.customToolDispatcher) {
+        toolResult = 'Tool "sessions_send" is not available in this configuration.';
+      } else {
+        try {
+          const params = JSON.stringify({
+            sessionKey:     call.sessionKey,
+            conversationId: call.conversationId,
+            message:        call.message,
+            waitForReply:   call.waitForReply,
+            timeoutSeconds: call.timeoutSeconds,
+          });
+          const result = await this.customToolDispatcher('sessions_send', params, agentId);
+          toolResult = result !== null
+            ? `Tool result for sessions_send:\n${result}`
+            : 'Tool "sessions_send" is not available.';
+        } catch (err) {
+          toolResult = `Tool "sessions_send" failed: ${err instanceof Error ? err.message : String(err)}`;
+        }
+      }
+    } else if (call.tool === 'sessions_spawn') {
+      if (!this.customToolDispatcher) {
+        toolResult = 'Tool "sessions_spawn" is not available in this configuration.';
+      } else {
+        try {
+          const params = JSON.stringify({
+            agentId:              call.agentId,
+            task:                 call.task,
+            workspaceDirOverride: call.workspaceDirOverride,
+          });
+          const result = await this.customToolDispatcher('sessions_spawn', params, agentId);
+          toolResult = result !== null
+            ? `Tool result for sessions_spawn:\n${result}`
+            : 'Tool "sessions_spawn" is not available.';
+        } catch (err) {
+          toolResult = `Tool "sessions_spawn" failed: ${err instanceof Error ? err.message : String(err)}`;
         }
       }
     } else if (call.tool === 'agents_list') {
