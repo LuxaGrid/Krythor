@@ -24,6 +24,8 @@ export type { ValidationResult, AgentDefinitionRaw, AppConfigRaw, ProviderConfig
 export { SystemIdentityProvider } from './SystemIdentityProvider.js';
 export type { SoulMetadata } from './SystemIdentityProvider.js';
 export { AgentOrchestrator, RunQueueFullError, RunRateLimitError } from './agents/AgentOrchestrator.js';
+export { AgentMessageBus } from './agents/AgentMessageBus.js';
+export type { AgentMessage as AgentMessageBusMessage } from './agents/AgentMessageBus.js';
 export { AgentRegistry } from './agents/AgentRegistry.js';
 export { AgentRunner, NO_REPLY } from './agents/AgentRunner.js';
 export type { LearningSignal, LearningRecorder, HandoffResolver, CustomToolDispatcher, SpawnAgentResolver, GuardLike } from './agents/AgentRunner.js';

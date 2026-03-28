@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { AgentOrchestrator, CreateAgentInput, UpdateAgentInput, RunAgentInput } from '@krythor/core';
 import { RunQueueFullError, RunRateLimitError } from '@krythor/core';
+import type { AgentMessageBus } from '@krythor/core';
 import type { GuardEngine } from '@krythor/guard';
 import { validateString, MAX_NAME_LEN, MAX_DESCRIPTION_LEN, MAX_SYSTEM_PROMPT_LEN } from '../validate.js';
 import type { AccessProfileStore } from '../AccessProfileStore.js';
@@ -17,6 +18,7 @@ export function registerAgentRoutes(
   guard?: GuardEngine,
   accessProfileStore?: AccessProfileStore,
   approvalManager?: ApprovalManager,
+  messageBus?: AgentMessageBus,
 ): void {
 
   // GET /api/agents
@@ -412,6 +414,88 @@ export function registerAgentRoutes(
       const { profile } = req.body as { profile: import('../AccessProfileStore.js').AccessProfile };
       accessProfileStore.setProfile(agentId, profile);
       return reply.send({ agentId, profile });
+    });
+  }
+
+  // ── Agent message bus routes ──────────────────────────────────────────────
+  // Only registered when messageBus is available.
+
+  if (messageBus) {
+    // POST /api/agents/:id/message — send a message to an agent
+    app.post<{ Params: { id: string } }>('/api/agents/:id/message', {
+      config: { rateLimit: { max: 60, timeWindow: 60_000 } },
+      schema: {
+        body: {
+          type: 'object',
+          required: ['content'],
+          properties: {
+            content:     { type: 'string', minLength: 1, maxLength: 10000 },
+            fromAgentId: { type: 'string' },
+          },
+          additionalProperties: false,
+        },
+      },
+    }, async (req, reply) => {
+      const toAgentId = req.params.id;
+      const { content, fromAgentId = 'user' } = req.body as { content: string; fromAgentId?: string };
+
+      const agent = orchestrator.getAgent(toAgentId);
+      if (!agent) return reply.code(404).send({ error: 'Agent not found' });
+
+      const msg = messageBus.send({ fromAgentId, toAgentId, content });
+      return reply.code(201).send(msg);
+    });
+
+    // GET /api/agents/:id/messages — retrieve messages for an agent
+    app.get<{
+      Params: { id: string };
+      Querystring: { since?: string };
+    }>('/api/agents/:id/messages', async (req, reply) => {
+      const agentId = req.params.id;
+      const since = req.query.since ? parseInt(req.query.since, 10) : undefined;
+
+      const agent = orchestrator.getAgent(agentId);
+      if (!agent) return reply.code(404).send({ error: 'Agent not found' });
+
+      const messages = messageBus.getMessages(agentId, since);
+      return reply.send({ messages });
+    });
+
+    // POST /api/agents/delegate — delegate a task from one agent to another
+    app.post('/api/agents/delegate', {
+      config: { rateLimit: { max: 20, timeWindow: 60_000 } },
+      schema: {
+        body: {
+          type: 'object',
+          required: ['fromAgentId', 'toAgentId', 'input'],
+          properties: {
+            fromAgentId: { type: 'string' },
+            toAgentId:   { type: 'string' },
+            input:       { type: 'string', minLength: 1, maxLength: 10000 },
+          },
+          additionalProperties: false,
+        },
+      },
+    }, async (req, reply) => {
+      const { fromAgentId, toAgentId, input } = req.body as { fromAgentId: string; toAgentId: string; input: string };
+
+      const toAgent = orchestrator.getAgent(toAgentId);
+      if (!toAgent) return reply.code(404).send({ error: `Target agent "${toAgentId}" not found` });
+
+      try {
+        const output = await messageBus.delegate(fromAgentId, toAgentId, input, orchestrator);
+        return reply.send({ output, fromAgentId, toAgentId });
+      } catch (err) {
+        if (err instanceof RunRateLimitError) {
+          reply.header('Retry-After', '60');
+          return reply.code(429).send({ error: err.message });
+        }
+        if (err instanceof RunQueueFullError) {
+          reply.header('Retry-After', '30');
+          return reply.code(429).send({ error: err.message });
+        }
+        return reply.code(500).send({ error: err instanceof Error ? err.message : 'Delegation failed' });
+      }
     });
   }
 }

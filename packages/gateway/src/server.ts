@@ -6,7 +6,7 @@ import fastifyRateLimit from '@fastify/rate-limit';
 import { join } from 'path';
 import { existsSync, readFileSync, readdirSync, watch as fsWatch } from 'fs';
 import { homedir, networkInterfaces } from 'os';
-import { KrythorCore, AgentOrchestrator, ExecTool, CustomToolStore, WebhookTool, PluginLoader, AgentWorkspaceManager, getDefaultWorkspaceDir, AgentAuthProfileStore } from '@krythor/core';
+import { KrythorCore, AgentOrchestrator, ExecTool, CustomToolStore, WebhookTool, PluginLoader, AgentWorkspaceManager, getDefaultWorkspaceDir, AgentAuthProfileStore, AgentMessageBus } from '@krythor/core';
 import { MemoryEngine, GuardDecisionStore, OllamaEmbeddingProvider, AuditStore } from '@krythor/memory';
 import { ModelEngine, ModelRecommender, PreferenceStore } from '@krythor/models';
 import { GuardEngine } from '@krythor/guard';
@@ -1289,11 +1289,14 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   // Late-bound heartbeat reference — filled in after HeartbeatEngine is created below.
   const heartbeatRef: HeartbeatRef = {};
 
+  // Agent message bus — in-process agent-to-agent messaging and delegation
+  const agentMessageBus = new AgentMessageBus();
+
   // Register routes
   registerCommandRoute(app, core, orchestrator, broadcast, guard, convStore, devicePairingStore, approvalManager, privacyRouter);
   registerMemoryRoutes(app, memory, models, guard, channelEmit, approvalManager);
   registerModelRoutes(app, models, memory, guard, channelEmit, approvalManager);
-  registerAgentRoutes(app, orchestrator, guard, accessProfileStore, approvalManager);
+  registerAgentRoutes(app, orchestrator, guard, accessProfileStore, approvalManager, agentMessageBus);
   registerGuardRoutes(app, guard, guardDecisionStore);
   registerConfigRoute(app, join(dataDir, 'config'), guard, orchestrator, memory, heartbeatRef, approvalManager);
   registerConversationRoutes(app, convStore, guard, channelEmit, memory ?? undefined, approvalManager);
