@@ -189,6 +189,14 @@ export interface AppConfigRaw {
    * Default: [].
    */
   heartbeatResetTriggers?: string[];
+  /**
+   * Controls how the gateway responds to config file changes on disk.
+   * 'hot'     — watch providers.json only and reload without restarting (default).
+   * 'hybrid'  — watch providers.json, agents.json, and guard.json.
+   * 'restart' — do not watch; log that a restart is required for changes to take effect.
+   * 'off'     — disable all config file watching.
+   */
+  configReloadMode?: 'hot' | 'hybrid' | 'restart' | 'off';
 }
 
 export function parseAppConfig(raw: unknown): ValidationResult<AppConfigRaw> {
@@ -350,6 +358,17 @@ export function parseAppConfig(raw: unknown): ValidationResult<AppConfigRaw> {
       value.heartbeatResetTriggers = triggers;
     } else {
       errors.push(`heartbeatResetTriggers: expected array of strings`);
+    }
+  }
+
+  if ('configReloadMode' in r) {
+    const validModes = ['hot', 'hybrid', 'restart', 'off'];
+    if (r['configReloadMode'] === null || r['configReloadMode'] === undefined) {
+      // null means "cleared" — omit
+    } else if (validModes.includes(r['configReloadMode'] as string)) {
+      value.configReloadMode = r['configReloadMode'] as AppConfigRaw['configReloadMode'];
+    } else {
+      errors.push(`configReloadMode: expected one of ${validModes.join(', ')}, got ${String(r['configReloadMode'])}`);
     }
   }
 

@@ -60,6 +60,7 @@ import { WebChatPairingStore } from './WebChatPairingStore.js';
 import { registerWebChatPairingRoutes } from './routes/webchatPairing.js';
 import { registerTtsRoute } from './routes/tts.js';
 import { registerCanvasRoute } from './routes/canvas.js';
+import { registerUpdateRoute } from './routes/update.js';
 import { ApprovalManager } from './ApprovalManager.js';
 import { AuditLogger } from './AuditLogger.js';
 import { HeartbeatEngine, type HeartbeatRunRecord, type HeartbeatInsight } from './heartbeat/HeartbeatEngine.js';
@@ -676,38 +677,64 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   }
 
   // ── Hot config reload ───────────────────────────────────────────────────────
-  // Watch providers.json for changes and reload without restarting the process.
+  // Watch config files for changes and reload without restarting the process.
   // Uses fs.watch() (built-in, no extra deps). Debounced to 500ms to avoid
   // spurious double-fires from editors that write atomically (write + rename).
+  // Behavior is controlled by configReloadMode in app-config.json:
+  //   'hot'     — watch providers.json only (default)
+  //   'hybrid'  — watch providers.json, agents.json, and guard.json
+  //   'restart' — do not watch; log that restart is required
+  //   'off'     — disable all config file watching
   if (process.env['NODE_ENV'] !== 'test') {
-    const providersFile = join(dataDir, 'config', 'providers.json');
-    let reloadDebounce: ReturnType<typeof setTimeout> | undefined;
+    const startupAppConfigPath = join(dataDir, 'config', 'app-config.json');
+    let startupConfig: Record<string, unknown> = {};
     try {
-      fsWatch(join(dataDir, 'config'), (eventType, filename) => {
-        if (filename !== 'providers.json') return;
-        if (reloadDebounce) clearTimeout(reloadDebounce);
-        reloadDebounce = setTimeout(() => {
-          try {
-            models.reloadProviders();
-            const s = models.stats();
-            logger.info('Hot reload: providers.json changed — providers reloaded', {
-              providerCount: s.providerCount,
-              modelCount:    s.modelCount,
-            });
-            if (s.providerCount === 0) {
-              logger.warn('Hot reload: no providers configured after reload — inference will fail');
+      if (existsSync(startupAppConfigPath)) {
+        startupConfig = JSON.parse(readFileSync(startupAppConfigPath, 'utf-8')) as Record<string, unknown>;
+      }
+    } catch { /* ignore — defaults apply */ }
+    const reloadMode = (typeof startupConfig['configReloadMode'] === 'string'
+      ? startupConfig['configReloadMode']
+      : 'hot') as 'hot' | 'hybrid' | 'restart' | 'off';
+
+    if (reloadMode === 'off') {
+      logger.info('Config watcher disabled (configReloadMode=off) — restart required for config changes');
+    } else if (reloadMode === 'restart') {
+      logger.info('Config watcher disabled (configReloadMode=restart) — restart required for config changes');
+    } else {
+      // 'hot' watches providers.json only; 'hybrid' also watches agents.json and guard.json
+      const watchedFiles = reloadMode === 'hybrid'
+        ? new Set(['providers.json', 'agents.json', 'guard.json'])
+        : new Set(['providers.json']);
+      const providersFile = join(dataDir, 'config', 'providers.json');
+      let reloadDebounce: ReturnType<typeof setTimeout> | undefined;
+      try {
+        fsWatch(join(dataDir, 'config'), (eventType, filename) => {
+          if (!filename || !watchedFiles.has(filename)) return;
+          if (reloadDebounce) clearTimeout(reloadDebounce);
+          reloadDebounce = setTimeout(() => {
+            try {
+              models.reloadProviders();
+              const s = models.stats();
+              logger.info(`Hot reload: ${filename} changed — providers reloaded`, {
+                providerCount: s.providerCount,
+                modelCount:    s.modelCount,
+              });
+              if (s.providerCount === 0) {
+                logger.warn('Hot reload: no providers configured after reload — inference will fail');
+              }
+            } catch (err) {
+              logger.warn(`Hot reload: failed to reload after ${filename} changed`, {
+                error: err instanceof Error ? err.message : String(err),
+              });
             }
-          } catch (err) {
-            logger.warn('Hot reload: failed to reload providers.json', {
-              error: err instanceof Error ? err.message : String(err),
-            });
-          }
-        }, 500);
-      });
-      logger.info('Config watcher active', { watching: providersFile });
-    } catch {
-      // fs.watch() can fail on some platforms or in restricted environments — non-fatal
-      logger.info('Config watcher unavailable — manual restart required for config changes');
+          }, 500);
+        });
+        logger.info('Config watcher active', { watching: providersFile, mode: reloadMode });
+      } catch {
+        // fs.watch() can fail on some platforms or in restricted environments — non-fatal
+        logger.info('Config watcher unavailable — manual restart required for config changes');
+      }
     }
   }
 
@@ -1259,6 +1286,7 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
 
   registerTtsRoute(app);
   registerCanvasRoute(app, dataDir);
+  registerUpdateRoute(app);
 
   registerStreamWs(app, core, () => authCfg.token, guard, devicePairingStore, gatewayId, KRYTHOR_VERSION);
   registerDeviceRoutes(app, devicePairingStore, broadcast);

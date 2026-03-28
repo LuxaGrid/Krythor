@@ -35,6 +35,7 @@ export interface AppConfig {
   heartbeatThinkingDefault?: boolean;
   heartbeatMentionPatterns?: string[];
   heartbeatResetTriggers?: string[];
+  configReloadMode?: 'hot' | 'hybrid' | 'restart' | 'off';
   /**
    * Shared secret for inbound webhook endpoints (POST /api/hooks/wake, /api/hooks/agent).
    * Set this to a random string to enable inbound hooks.
@@ -130,6 +131,7 @@ export function registerConfigRoute(app: FastifyInstance, configDir: string, gua
           heartbeatThinkingDefault:    { type: ['boolean', 'null'] },
           heartbeatMentionPatterns:    { type: ['array', 'null'], items: { type: 'string', maxLength: 200 }, maxItems: 50 },
           heartbeatResetTriggers:      { type: ['array', 'null'], items: { type: 'string', maxLength: 200 }, maxItems: 50 },
+          configReloadMode:            { type: ['string', 'null'], enum: ['hot', 'hybrid', 'restart', 'off', null] },
           webhookToken:                { type: ['string', 'null'], maxLength: 512 },
         },
         additionalProperties: false,
@@ -205,6 +207,9 @@ export function registerConfigRoute(app: FastifyInstance, configDir: string, gua
         mentionPatterns: updated.heartbeatMentionPatterns,
         resetTriggers:   updated.heartbeatResetTriggers,
       });
+    }
+    if ('configReloadMode' in patch) {
+      updated.configReloadMode = (patch['configReloadMode'] as AppConfig['configReloadMode'] | null) ?? undefined;
     }
     if ('webhookToken' in patch) {
       updated.webhookToken = (patch['webhookToken'] as string | null) ?? undefined;
