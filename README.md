@@ -100,13 +100,28 @@ Profiles are set per agent. A file audit log is written to `~/.krythor/file-audi
 ### Model provider support
 Anthropic, OpenAI, Ollama, GGUF (llama-server), OpenRouter, Groq, Venice, Kimi (Moonshot), Mistral, Google Gemini, AWS Bedrock, Google Vertex AI, and the Claude Agent SDK. Any OpenAI-compatible API is also supported. Automatic fallback with circuit breaker and per-provider retry configuration.
 
+### Privacy routing
+The PrivacyRouter classifies prompt sensitivity using pattern matching (PII, credentials, filesystem paths) and automatically re-routes `private` or `restricted` content to a configured local provider (Ollama, GGUF, or local OpenAI-compat). Enable via `privacyRoutingEnabled: true` in app-config.json.
+
+### Workspace isolation
+Agents with a `workspaceDir` set are restricted to that directory for all file tool operations (read, write, edit, etc.) unless their access profile is `full_access`. This enforces per-agent sandboxing at the file system level.
+
+### Approvals UI
+When the guard engine raises a `require-approval` verdict, the UI displays a modal immediately via WebSocket push. Pending approvals show a badge on the Guard tab. Responses (Allow Once / Allow for Session / Deny) are sent from the UI without polling delay.
+
+### Cron job management
+Schedule agents to run automatically. Supports 5-field cron expressions (`0 7 * * *`), fixed intervals (every N milliseconds), and one-shot timestamps. The Cron Jobs tab provides job creation, enable/disable toggles, manual run-now, and last-run history with error display.
+
+### Session compaction
+POST `/api/memory/compact` manually triggers session compaction (summarizing old conversation turns to free storage). Available as a "Compact Sessions" button in the Memory tab.
+
 ### Other notable capabilities
 - Heartbeat engine — background maintenance loop: stale run detection, memory hygiene, model signal checks, config integrity checks
-- Privacy routing — classifies content sensitivity and reroutes private/restricted content to a local model
 - Canvas — agent-editable HTML/CSS/JS pages served under the gateway
 - Token spend history — ring buffer of last 1000 inferences with per-model sparklines
 - Config hot reload — providers, agents, and guard policies can reload without restart
 - LAN discovery — gateways on the same network find each other via UDP multicast
+- CLI policy commands — `krythor policy show`, `krythor policy check <op>`, `krythor audit tail`, `krythor approvals pending`
 
 ---
 
