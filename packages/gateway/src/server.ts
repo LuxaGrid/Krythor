@@ -202,9 +202,12 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
   // Use pino-pretty only in dev AND when it is resolvable as a real module.
   // In a bundled dist pino-pretty cannot be loaded as a worker thread even if
   // bundled inline — it must exist on disk. Disable it silently if absent.
+  // Also disable when running from a dist/ folder (bundled mode) since the
+  // thread-stream worker.js path resolution breaks for bundled pino transport.
   const isDev = process.env['NODE_ENV'] !== 'production';
+  const isBundle = __dirname.endsWith('dist') || __dirname.includes('/dist/') || __dirname.includes('\\dist\\');
   let usePretty = false;
-  if (isDev) {
+  if (isDev && !isBundle) {
     try { require.resolve('pino-pretty'); usePretty = true; } catch { /* not available */ }
   }
   const app = Fastify({

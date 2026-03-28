@@ -43,6 +43,10 @@ vi.mock('node:child_process', () => {
       setImmediate(() => cb(null, '', ''))
       return new EventEmitter()
     }),
+    execFile: vi.fn((_file: string, _args: unknown, _opts: unknown, cb: (err: null, stdout: string, stderr: string) => void) => {
+      setImmediate(() => cb(null, '', ''))
+      return new EventEmitter()
+    }),
   }
 })
 

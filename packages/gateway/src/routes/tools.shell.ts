@@ -2,9 +2,11 @@ import { spawn, exec } from 'node:child_process';
 import { platform } from 'node:os';
 import type { FastifyInstance } from 'fastify';
 import type { GuardEngine } from '@krythor/guard';
+import type { ApprovalManager } from '../ApprovalManager.js';
 import { sendError } from '../errors.js';
 import { logger } from '../logger.js';
 import { AccessProfileStore, makeAuditEntry } from '../AccessProfileStore.js';
+import { guardCheck } from '../guardCheck.js';
 
 // ─── Shell Tool Routes ─────────────────────────────────────────────────────────
 //
@@ -171,6 +173,7 @@ export function registerShellToolRoutes(
   app: FastifyInstance,
   guard: GuardEngine,
   accessProfileStore: AccessProfileStore,
+  approvalManager?: ApprovalManager,
 ): void {
 
   // ── POST /api/tools/shell/exec ──────────────────────────────────────────────
@@ -210,13 +213,11 @@ export function registerShellToolRoutes(
     } = body;
     const operation = 'shell:exec';
 
-    // 1. Guard check
-    const verdict = guard.check({ operation, source: 'agent', sourceId: agentId });
-    if (!verdict.allowed) {
-      const msg = verdict.reason ?? 'Guard denied operation';
-      logger.warn('Shell tool: exec denied by guard', { command, agentId });
-      accessProfileStore.logAudit(makeAuditEntry(agentId, operation, command, accessProfileStore.getProfile(agentId), false, msg));
-      return sendError(reply, 403, 'GUARD_DENIED', msg, 'Adjust your Guard policy in the Guard tab if this is unexpected.');
+    // 1. Guard check (wraps approval flow when verdict is require-approval)
+    const guardAllowed = await guardCheck({ guard, approvalManager, reply, operation, source: 'agent', sourceId: agentId, target: command });
+    if (!guardAllowed) {
+      accessProfileStore.logAudit(makeAuditEntry(agentId, operation, command, accessProfileStore.getProfile(agentId), false, 'Guard denied'));
+      return;
     }
 
     // 2. Profile check
@@ -285,12 +286,10 @@ export function registerShellToolRoutes(
     const operation = 'shell:list_processes';
 
     // 1. Guard check
-    const verdict = guard.check({ operation, source: 'agent', sourceId: agentId });
-    if (!verdict.allowed) {
-      const msg = verdict.reason ?? 'Guard denied operation';
-      logger.warn('Shell tool: list_processes denied by guard', { agentId });
-      accessProfileStore.logAudit(makeAuditEntry(agentId, operation, '', accessProfileStore.getProfile(agentId), false, msg));
-      return sendError(reply, 403, 'GUARD_DENIED', msg, 'Adjust your Guard policy in the Guard tab if this is unexpected.');
+    const guardAllowed = await guardCheck({ guard, approvalManager, reply, operation, source: 'agent', sourceId: agentId });
+    if (!guardAllowed) {
+      accessProfileStore.logAudit(makeAuditEntry(agentId, operation, '', accessProfileStore.getProfile(agentId), false, 'Guard denied'));
+      return;
     }
 
     // 2. Profile check
@@ -337,12 +336,10 @@ export function registerShellToolRoutes(
     const operation = 'shell:kill';
 
     // 1. Guard check
-    const verdict = guard.check({ operation, source: 'agent', sourceId: agentId });
-    if (!verdict.allowed) {
-      const msg = verdict.reason ?? 'Guard denied operation';
-      logger.warn('Shell tool: kill denied by guard', { pid, agentId });
-      accessProfileStore.logAudit(makeAuditEntry(agentId, operation, String(pid), accessProfileStore.getProfile(agentId), false, msg));
-      return sendError(reply, 403, 'GUARD_DENIED', msg, 'Adjust your Guard policy in the Guard tab if this is unexpected.');
+    const guardAllowed = await guardCheck({ guard, approvalManager, reply, operation, source: 'agent', sourceId: agentId, target: String(pid) });
+    if (!guardAllowed) {
+      accessProfileStore.logAudit(makeAuditEntry(agentId, operation, String(pid), accessProfileStore.getProfile(agentId), false, 'Guard denied'));
+      return;
     }
 
     // 2. Profile check — only full_access may kill processes

@@ -120,7 +120,7 @@ export function registerChatChannelRoutes(
         required: ['id', 'type'],
         properties: {
           id:          { type: 'string', minLength: 1, maxLength: 64 },
-          type:        { type: 'string', enum: ['telegram', 'discord', 'whatsapp'] },
+          type:        { type: 'string', enum: ['telegram', 'discord', 'whatsapp', 'slack', 'signal', 'mattermost', 'googlechat', 'bluebubbles', 'imessage', 'webchat'] },
           displayName: { type: 'string', maxLength: 128 },
           enabled:     { type: 'boolean' },
           credentials: { type: 'object', additionalProperties: { type: 'string' } },
@@ -135,6 +135,10 @@ export function registerChatChannelRoutes(
     const provider = registry.getProvider(id);
     if (!provider) {
       return reply.code(400).send({ error: `Unknown channel provider: ${id}` });
+    }
+
+    if (provider.type !== type) {
+      return reply.code(400).send({ error: `Type mismatch: provider '${id}' expects type '${provider.type}', got '${type}'` });
     }
 
     const config: ChatChannelConfig = {

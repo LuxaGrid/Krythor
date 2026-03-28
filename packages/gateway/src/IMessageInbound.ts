@@ -24,8 +24,8 @@
 //       This handler uses read-only SQLite access and never modifies the database.
 //
 
-import { execFile } from 'child_process';
-import { promisify } from 'util';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { homedir } from 'os';
 import { join } from 'path';
 import type { AgentOrchestrator } from '@krythor/core';

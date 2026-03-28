@@ -156,7 +156,7 @@ describe('POST /api/chat-channels', () => {
       method: 'POST',
       url: '/api/chat-channels',
       headers: { authorization: `Bearer ${authToken}`, host: HOST, 'content-type': 'application/json' },
-      payload: JSON.stringify({ id: 'slack', type: 'telegram' }),
+      payload: JSON.stringify({ id: 'nonexistent-provider', type: 'telegram' }),
     })
     expect(res.statusCode).toBe(400)
   })

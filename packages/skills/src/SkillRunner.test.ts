@@ -16,6 +16,8 @@ function makeSkill(overrides: Partial<Skill> = {}): Skill {
     systemPrompt: 'You are helpful.',
     tags: [],
     permissions: [],
+    enabled: true,
+    userInvocable: true,
     version: 1,
     runCount: 0,
     createdAt: Date.now(),
