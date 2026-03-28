@@ -14,7 +14,7 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 
-export type ChannelType = 'telegram' | 'discord' | 'whatsapp' | 'webchat';
+export type ChannelType = 'telegram' | 'discord' | 'whatsapp' | 'slack' | 'signal' | 'mattermost' | 'googlechat' | 'bluebubbles' | 'imessage' | 'webchat';
 
 export type ChannelStatus =
   | 'not_installed'
@@ -170,6 +170,203 @@ export const CHANNEL_PROVIDERS: ChannelProviderMeta[] = [
     ],
     requiresPairing: true,
     docsUrl: 'https://wwebjs.dev/',
+  },
+  {
+    id: 'bluebubbles',
+    type: 'bluebubbles',
+    displayName: 'BlueBubbles',
+    description:
+      'Chat with your agents via iMessage using a BlueBubbles server running on a Mac.',
+    installStrategy: 'env_config',
+    credentialFields: [
+      {
+        key: 'serverUrl',
+        label: 'Server URL',
+        hint: 'e.g. http://192.168.1.10:1234',
+        secret: false,
+        required: true,
+      },
+      {
+        key: 'password',
+        label: 'Server Password',
+        hint: 'Set in BlueBubbles Server settings',
+        secret: true,
+        required: true,
+      },
+      {
+        key: 'agentId',
+        label: 'Agent ID',
+        hint: 'Which Krythor agent handles messages',
+        secret: false,
+        required: false,
+      },
+    ],
+    requiresPairing: false,
+    docsUrl: 'https://bluebubbles.app',
+  },
+  {
+    id: 'imessage',
+    type: 'imessage',
+    displayName: 'iMessage (macOS)',
+    description:
+      'Direct iMessage integration on macOS by polling the Messages database. Requires Full Disk Access.',
+    installStrategy: 'env_config',
+    credentialFields: [
+      {
+        key: 'agentId',
+        label: 'Agent ID',
+        hint: 'Which Krythor agent handles messages',
+        secret: false,
+        required: false,
+      },
+      {
+        key: 'pollIntervalMs',
+        label: 'Poll Interval (ms)',
+        hint: 'How often to check for new messages. Default: 5000',
+        secret: false,
+        required: false,
+      },
+    ],
+    requiresPairing: false,
+  },
+  {
+    id: 'mattermost',
+    type: 'mattermost',
+    displayName: 'Mattermost',
+    description:
+      'Chat with your agents in Mattermost via WebSocket. Requires a bot account token.',
+    installStrategy: 'env_config',
+    credentialFields: [
+      {
+        key: 'serverUrl',
+        label: 'Server URL',
+        hint: 'e.g. https://mattermost.example.com',
+        secret: false,
+        required: true,
+      },
+      {
+        key: 'token',
+        label: 'Bot Token',
+        hint: 'Personal Access Token or Bot account token',
+        secret: true,
+        required: true,
+      },
+      {
+        key: 'agentId',
+        label: 'Agent ID',
+        hint: 'Which Krythor agent handles messages',
+        secret: false,
+        required: false,
+      },
+      {
+        key: 'channelIds',
+        label: 'Channel IDs',
+        hint: 'Comma-separated channel IDs to monitor (blank = all accessible channels)',
+        secret: false,
+        required: false,
+      },
+    ],
+    requiresPairing: false,
+    docsUrl: 'https://docs.mattermost.com/developer/bot-accounts.html',
+  },
+  {
+    id: 'googlechat',
+    type: 'googlechat',
+    displayName: 'Google Chat',
+    description:
+      'Chat with your agents via Google Chat. Requires a Google Cloud service account and webhook setup.',
+    installStrategy: 'webhook',
+    credentialFields: [
+      {
+        key: 'agentId',
+        label: 'Agent ID',
+        hint: 'Which Krythor agent handles messages',
+        secret: false,
+        required: false,
+      },
+      {
+        key: 'serviceAccountJson',
+        label: 'Service Account JSON',
+        hint: 'Path to service account key file, or paste the JSON directly',
+        secret: true,
+        required: false,
+      },
+    ],
+    requiresPairing: false,
+    docsUrl: 'https://developers.google.com/chat/how-tos/apps-develop',
+  },
+  {
+    id: 'signal',
+    type: 'signal',
+    displayName: 'Signal',
+    description:
+      'Chat with your agents via Signal. Requires signal-cli running in JSON-RPC daemon mode.',
+    installStrategy: 'env_config',
+    credentialFields: [
+      {
+        key: 'phoneNumber',
+        label: 'Phone Number',
+        hint: 'Registered Signal number, e.g. +15551234567',
+        secret: false,
+        required: true,
+      },
+      {
+        key: 'port',
+        label: 'Daemon Port',
+        hint: 'TCP port for signal-cli JSON-RPC daemon (default: 7583)',
+        secret: false,
+        required: false,
+      },
+      {
+        key: 'socketPath',
+        label: 'Socket Path',
+        hint: 'Unix socket path, e.g. /tmp/signal.sock (overrides host/port if set)',
+        secret: false,
+        required: false,
+      },
+      {
+        key: 'agentId',
+        label: 'Agent ID',
+        hint: 'Which Krythor agent handles messages',
+        secret: false,
+        required: false,
+      },
+    ],
+    requiresPairing: false,
+    docsUrl: 'https://github.com/AsamK/signal-cli',
+  },
+  {
+    id: 'slack',
+    type: 'slack',
+    displayName: 'Slack',
+    description:
+      'Chat with your agents in Slack via Socket Mode. Requires a Slack App with Bot Token and App-Level Token.',
+    installStrategy: 'npm_package',
+    credentialFields: [
+      {
+        key: 'botToken',
+        label: 'Bot Token',
+        hint: 'From OAuth & Permissions — starts with xoxb-',
+        secret: true,
+        required: true,
+      },
+      {
+        key: 'appToken',
+        label: 'App-Level Token',
+        hint: 'From Settings > Socket Mode — starts with xapp-',
+        secret: true,
+        required: true,
+      },
+      {
+        key: 'agentId',
+        label: 'Agent ID',
+        hint: 'Which Krythor agent handles messages',
+        secret: false,
+        required: false,
+      },
+    ],
+    requiresPairing: false,
+    docsUrl: 'https://api.slack.com/apps',
   },
   {
     id: 'webchat',
@@ -391,6 +588,158 @@ export class ChatChannelRegistry {
           } catch {
             const latencyMs = Date.now() - start;
             const error = 'whatsapp-web.js is not installed — run: npm install whatsapp-web.js';
+            this.recordHealthCheck(channelId, false, error);
+            return { ok: false, latencyMs, error };
+          }
+        }
+
+        case 'bluebubbles': {
+          const serverUrl = config.credentials['serverUrl'];
+          const password = config.credentials['password'];
+          if (!serverUrl || !password) {
+            return { ok: false, latencyMs: 0, error: 'serverUrl or password not set' };
+          }
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 5_000);
+          try {
+            const res = await fetch(
+              `${serverUrl}/api/v1/ping?password=${encodeURIComponent(password)}`,
+              { signal: controller.signal },
+            );
+            clearTimeout(timeout);
+            const latencyMs = Date.now() - start;
+            if (!res.ok) {
+              const error = `BlueBubbles server returned HTTP ${res.status}`;
+              this.recordHealthCheck(channelId, false, error);
+              return { ok: false, latencyMs, error };
+            }
+            this.recordHealthCheck(channelId, true);
+            return { ok: true, latencyMs };
+          } catch (err) {
+            clearTimeout(timeout);
+            const latencyMs = Date.now() - start;
+            const error = err instanceof Error ? err.message : String(err);
+            this.recordHealthCheck(channelId, false, error);
+            return { ok: false, latencyMs, error };
+          }
+        }
+
+        case 'imessage': {
+          // Check platform
+          if (process.platform !== 'darwin') {
+            const error = 'iMessage requires macOS';
+            this.recordHealthCheck(channelId, false, error);
+            return { ok: false, latencyMs: 0, error };
+          }
+          // Verify chat.db exists
+          const { existsSync } = await import('fs');
+          const { homedir } = await import('os');
+          const { join } = await import('path');
+          const dbPath = config.credentials['chatDbPath'] ??
+            join(homedir(), 'Library', 'Messages', 'chat.db');
+          const latencyMs = Date.now() - start;
+          if (!existsSync(dbPath)) {
+            const error = `chat.db not found at ${dbPath}. Ensure Full Disk Access is granted.`;
+            this.recordHealthCheck(channelId, false, error);
+            return { ok: false, latencyMs, error };
+          }
+          this.recordHealthCheck(channelId, true);
+          return { ok: true, latencyMs };
+        }
+
+        case 'mattermost': {
+          const serverUrl = config.credentials['serverUrl'];
+          if (!serverUrl) {
+            return { ok: false, latencyMs: 0, error: 'serverUrl not set' };
+          }
+          const token = config.credentials['token'];
+          if (!token) {
+            return { ok: false, latencyMs: 0, error: 'token not set' };
+          }
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 5_000);
+          try {
+            const res = await fetch(`${serverUrl}/api/v4/users/me`, {
+              headers: { Authorization: `Bearer ${token}` },
+              signal: controller.signal,
+            });
+            clearTimeout(timeout);
+            const latencyMs = Date.now() - start;
+            if (!res.ok) {
+              const error = `Mattermost API returned HTTP ${res.status}`;
+              this.recordHealthCheck(channelId, false, error);
+              return { ok: false, latencyMs, error };
+            }
+            this.recordHealthCheck(channelId, true);
+            return { ok: true, latencyMs };
+          } catch (err) {
+            clearTimeout(timeout);
+            const latencyMs = Date.now() - start;
+            const error = err instanceof Error ? err.message : String(err);
+            this.recordHealthCheck(channelId, false, error);
+            return { ok: false, latencyMs, error };
+          }
+        }
+
+        case 'googlechat': {
+          // For Google Chat, just verify the service account JSON is parseable
+          const saJson = config.credentials['serviceAccountJson'];
+          const latencyMs = Date.now() - start;
+          if (!saJson) {
+            // No service account configured — webhook-only mode, mark as ok
+            this.recordHealthCheck(channelId, true);
+            return { ok: true, latencyMs };
+          }
+          try {
+            const raw = saJson.trim();
+            if (raw.startsWith('{')) {
+              JSON.parse(raw);
+            } else {
+              const { existsSync } = await import('fs');
+              if (!existsSync(raw)) {
+                const error = `Service account file not found: ${raw}`;
+                this.recordHealthCheck(channelId, false, error);
+                return { ok: false, latencyMs, error };
+              }
+            }
+            this.recordHealthCheck(channelId, true);
+            return { ok: true, latencyMs };
+          } catch {
+            const error = 'Service account JSON is not valid JSON';
+            this.recordHealthCheck(channelId, false, error);
+            return { ok: false, latencyMs, error };
+          }
+        }
+
+        case 'signal': {
+          // Verify signal-cli is reachable by attempting a TCP connection
+          const { createConnection } = await import('net');
+          const port = config.credentials['port'] ? Number(config.credentials['port']) : 7583;
+          const host = config.credentials['host'] ?? '127.0.0.1';
+          const socketPath = config.credentials['socketPath'];
+          await new Promise<void>((resolve, reject) => {
+            const sock = socketPath
+              ? createConnection({ path: socketPath })
+              : createConnection({ host, port });
+            const t = setTimeout(() => { sock.destroy(); reject(new Error('Connection timed out')); }, 5_000);
+            sock.once('connect', () => { clearTimeout(t); sock.destroy(); resolve(); });
+            sock.once('error', (err) => { clearTimeout(t); reject(err); });
+          });
+          const latencyMs = Date.now() - start;
+          this.recordHealthCheck(channelId, true);
+          return { ok: true, latencyMs };
+        }
+
+        case 'slack': {
+          // Check whether @slack/bolt is installed in node_modules
+          try {
+            require.resolve('@slack/bolt');
+            const latencyMs = Date.now() - start;
+            this.recordHealthCheck(channelId, true);
+            return { ok: true, latencyMs };
+          } catch {
+            const latencyMs = Date.now() - start;
+            const error = '@slack/bolt is not installed — run: npm install @slack/bolt';
             this.recordHealthCheck(channelId, false, error);
             return { ok: false, latencyMs, error };
           }

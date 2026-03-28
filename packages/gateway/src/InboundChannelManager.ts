@@ -21,10 +21,16 @@ import { DmPairingStore } from './DmPairingStore.js';
 import { DiscordInbound } from './DiscordInbound.js';
 import { TelegramInbound } from './TelegramInbound.js';
 import { WhatsAppInbound } from './WhatsAppInbound.js';
+import { SlackInbound } from './SlackInbound.js';
+import { SignalInbound } from './SignalInbound.js';
+import { MattermostInbound } from './MattermostInbound.js';
+import { GoogleChatInbound } from './GoogleChatInbound.js';
+import { BlueBubblesInbound } from './BlueBubblesInbound.js';
+import { IMessageInbound } from './IMessageInbound.js';
 import type { SessionRouter } from './SessionRouter.js';
 import { logger } from './logger.js';
 
-type AnyInbound = DiscordInbound | TelegramInbound | WhatsAppInbound;
+type AnyInbound = DiscordInbound | TelegramInbound | WhatsAppInbound | SlackInbound | SignalInbound | MattermostInbound | GoogleChatInbound | BlueBubblesInbound | IMessageInbound;
 
 export class InboundChannelManager {
   private readonly registry: ChatChannelRegistry;
@@ -73,7 +79,7 @@ export class InboundChannelManager {
   stopAll(): void {
     for (const [id, instance] of this.instances) {
       try {
-        instance.stop();
+        void (instance.stop() as unknown as Promise<void> | void);
         this.log.info('[inbound] Channel stopped', { channelId: id });
       } catch (err) {
         this.log.warn('[inbound] Error stopping channel', { err: err instanceof Error ? err.message : String(err), channelId: id });
@@ -87,7 +93,7 @@ export class InboundChannelManager {
   async restartChannel(configId: string): Promise<{ ok: boolean; error?: string }> {
     const existing = this.instances.get(configId);
     if (existing) {
-      try { existing.stop(); } catch { /* ignore */ }
+      try { void (existing.stop() as unknown as Promise<void> | void); } catch { /* ignore */ }
       this.instances.delete(configId);
       this.errors.delete(configId);
       this.log.info('[inbound] Channel stopped for restart', { channelId: configId });
@@ -212,6 +218,179 @@ export class InboundChannelManager {
           break;
         }
 
+        case 'signal': {
+          const agentId = config.agentId ?? config.credentials['agentId'] ?? '';
+          const phoneNumber = config.credentials['phoneNumber'];
+          if (!agentId || !phoneNumber) {
+            const err = 'Signal channel missing required credentials (phoneNumber, agentId)';
+            this.errors.set(configId, err);
+            this.registry.recordHealthCheck(configId, false, err);
+            return { ok: false, error: err };
+          }
+          const signal = new SignalInbound(this.orchestrator, this.pairingStore, this.convStore, this.sessionRouter);
+          signal.configure({
+            phoneNumber,
+            agentId,
+            enabled: true,
+            host:            config.credentials['host'],
+            port:            config.credentials['port'] ? Number(config.credentials['port']) : undefined,
+            socketPath:      config.credentials['socketPath'],
+            dmPolicy:        config.dmPolicy,
+            groupPolicy:     config.groupPolicy,
+            allowFrom:       config.allowFrom,
+            groupAllowFrom:  config.groupAllowFrom,
+            resetTriggers:   config.resetTriggers,
+            historyLimit:    config.historyLimit,
+            textChunkLimit:  config.textChunkLimit,
+            chunkMode:       config.chunkMode,
+          });
+          instance = signal;
+          break;
+        }
+
+        case 'bluebubbles': {
+          const agentId = config.agentId ?? config.credentials['agentId'] ?? '';
+          const serverUrl = config.credentials['serverUrl'];
+          const password = config.credentials['password'];
+          if (!agentId || !serverUrl || !password) {
+            const err = 'BlueBubbles channel missing required credentials (serverUrl, password, agentId)';
+            this.errors.set(configId, err);
+            this.registry.recordHealthCheck(configId, false, err);
+            return { ok: false, error: err };
+          }
+          const bb = new BlueBubblesInbound(this.orchestrator, this.pairingStore, this.convStore, this.sessionRouter);
+          bb.configure({
+            serverUrl,
+            password,
+            agentId,
+            enabled: true,
+            dmPolicy:        config.dmPolicy,
+            groupPolicy:     config.groupPolicy,
+            allowFrom:       config.allowFrom,
+            groupAllowFrom:  config.groupAllowFrom,
+            resetTriggers:   config.resetTriggers,
+            historyLimit:    config.historyLimit,
+            textChunkLimit:  config.textChunkLimit,
+            chunkMode:       config.chunkMode,
+          });
+          instance = bb;
+          break;
+        }
+
+        case 'imessage': {
+          const agentId = config.agentId ?? config.credentials['agentId'] ?? '';
+          if (!agentId) {
+            const err = 'iMessage channel missing required agentId';
+            this.errors.set(configId, err);
+            this.registry.recordHealthCheck(configId, false, err);
+            return { ok: false, error: err };
+          }
+          const imsg = new IMessageInbound(this.orchestrator, this.pairingStore, this.convStore, this.sessionRouter);
+          imsg.configure({
+            agentId,
+            enabled: true,
+            pollIntervalMs:  config.credentials['pollIntervalMs'] ? Number(config.credentials['pollIntervalMs']) : undefined,
+            chatDbPath:      config.credentials['chatDbPath'],
+            dmPolicy:        config.dmPolicy,
+            groupPolicy:     config.groupPolicy,
+            allowFrom:       config.allowFrom,
+            groupAllowFrom:  config.groupAllowFrom,
+            resetTriggers:   config.resetTriggers,
+            historyLimit:    config.historyLimit,
+            textChunkLimit:  config.textChunkLimit,
+            chunkMode:       config.chunkMode,
+          });
+          instance = imsg;
+          break;
+        }
+
+        case 'mattermost': {
+          const serverUrl = config.credentials['serverUrl'];
+          const token = config.credentials['token'];
+          const agentId = config.agentId ?? config.credentials['agentId'] ?? '';
+          if (!serverUrl || !token || !agentId) {
+            const err = 'Mattermost channel missing required credentials (serverUrl, token, agentId)';
+            this.errors.set(configId, err);
+            this.registry.recordHealthCheck(configId, false, err);
+            return { ok: false, error: err };
+          }
+          const mattermost = new MattermostInbound(this.orchestrator, this.pairingStore, this.convStore, this.sessionRouter);
+          mattermost.configure({
+            serverUrl,
+            token,
+            agentId,
+            enabled: true,
+            channelIds:      config.credentials['channelIds']
+                               ? config.credentials['channelIds'].split(',').map(s => s.trim()).filter(Boolean)
+                               : undefined,
+            dmPolicy:        config.dmPolicy,
+            groupPolicy:     config.groupPolicy,
+            allowFrom:       config.allowFrom,
+            groupAllowFrom:  config.groupAllowFrom,
+            resetTriggers:   config.resetTriggers,
+            historyLimit:    config.historyLimit,
+            textChunkLimit:  config.textChunkLimit,
+            chunkMode:       config.chunkMode,
+          });
+          instance = mattermost;
+          break;
+        }
+
+        case 'googlechat': {
+          const agentId = config.agentId ?? config.credentials['agentId'] ?? '';
+          if (!agentId) {
+            const err = 'Google Chat channel missing required agentId';
+            this.errors.set(configId, err);
+            this.registry.recordHealthCheck(configId, false, err);
+            return { ok: false, error: err };
+          }
+          const gchat = new GoogleChatInbound(this.orchestrator, this.pairingStore, this.convStore, this.sessionRouter);
+          gchat.configure({
+            agentId,
+            enabled: true,
+            serviceAccountJson: config.credentials['serviceAccountJson'],
+            dmPolicy:        config.dmPolicy,
+            groupPolicy:     config.groupPolicy,
+            allowFrom:       config.allowFrom,
+            groupAllowFrom:  config.groupAllowFrom,
+            resetTriggers:   config.resetTriggers,
+            historyLimit:    config.historyLimit,
+            textChunkLimit:  config.textChunkLimit,
+            chunkMode:       config.chunkMode,
+          });
+          instance = gchat;
+          break;
+        }
+
+        case 'slack': {
+          const botToken = config.credentials['botToken'];
+          const appToken = config.credentials['appToken'];
+          const agentId = config.agentId ?? config.credentials['agentId'] ?? '';
+          if (!botToken || !appToken || !agentId) {
+            const err = 'Slack channel missing required credentials (botToken, appToken, agentId)';
+            this.errors.set(configId, err);
+            this.registry.recordHealthCheck(configId, false, err);
+            return { ok: false, error: err };
+          }
+          const slack = new SlackInbound(this.orchestrator, this.pairingStore, this.convStore, this.sessionRouter);
+          slack.configure({
+            botToken,
+            appToken,
+            agentId,
+            enabled: true,
+            dmPolicy:        config.dmPolicy,
+            groupPolicy:     config.groupPolicy,
+            allowFrom:       config.allowFrom,
+            groupAllowFrom:  config.groupAllowFrom,
+            resetTriggers:   config.resetTriggers,
+            historyLimit:    config.historyLimit,
+            textChunkLimit:  config.textChunkLimit,
+            chunkMode:       config.chunkMode,
+          });
+          instance = slack;
+          break;
+        }
+
         default: {
           const err = `Unknown channel type: ${(config as { type: string }).type}`;
           this.errors.set(configId, err);
@@ -248,6 +427,12 @@ export class InboundChannelManager {
     if (instance instanceof DiscordInbound) return instance.isRunning();
     if (instance instanceof TelegramInbound) return instance.isRunning();
     if (instance instanceof WhatsAppInbound) return instance.isRunning();
+    if (instance instanceof SlackInbound) return instance.isRunning();
+    if (instance instanceof SignalInbound) return instance.isRunning();
+    if (instance instanceof MattermostInbound) return instance.isRunning();
+    if (instance instanceof GoogleChatInbound) return instance.isRunning();
+    if (instance instanceof BlueBubblesInbound) return instance.isRunning();
+    if (instance instanceof IMessageInbound) return instance.isRunning();
     return false;
   }
 }
