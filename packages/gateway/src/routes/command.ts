@@ -268,28 +268,84 @@ export function registerCommandRoute(
         ...(agentId && { sourceId: agentId }),
       });
 
-      // Route require-approval verdicts through the approval manager when available
+      // Route require-approval verdicts through the approval manager.
+      // For streaming requests, open the SSE stream first so we can emit an
+      // 'approval_required' event that the UI can render as an inline prompt.
       let guardAllowed = verdict.allowed;
       if (!verdict.allowed && verdict.action === 'require-approval' && approvalManager) {
-        const response = await approvalManager.requestApproval({
-          agentId,
-          actionType: 'command:execute',
-          target: input,
-          reason: verdict.reason ?? 'Policy requires approval for this action.',
-          riskSummary: `command:execute on: ${input.slice(0, 120)}`,
-          context: { verdict: verdict as unknown as Record<string, unknown> },
-        }).catch(() => 'deny' as const);
-        guardAllowed = response !== 'deny';
-      }
-
-      if (!guardAllowed) {
-        const denyReason = verdict.reason ?? 'Guard denied operation';
         if (stream) {
+          // Open the SSE channel immediately so the UI can react
           reply.raw.writeHead(200, {
             'Content-Type': 'text/event-stream',
             'Cache-Control': 'no-cache',
             'Connection': 'keep-alive',
           });
+
+          // Build the approval request (get the id before awaiting)
+          const approvalPayload = {
+            agentId,
+            actionType: 'command:execute',
+            target: input,
+            reason: verdict.reason ?? 'Policy requires approval for this action.',
+            riskSummary: `command:execute on: ${input.slice(0, 120)}`,
+            context: { verdict: verdict as unknown as Record<string, unknown> },
+          };
+
+          // Kick off the approval (this creates the PendingApproval synchronously inside,
+          // but resolves asynchronously when the user responds).
+          const approvalPromise = approvalManager.requestApproval(approvalPayload, 30_000).catch(() => 'deny' as const);
+
+          // Retrieve the id of the just-created pending approval so the UI can respond to it
+          const pendingList = approvalManager.getPending();
+          const pendingEntry = pendingList[pendingList.length - 1];
+
+          // Emit the approval_required SSE event so the chat UI can render inline Allow/Deny
+          reply.raw.write(`data: ${JSON.stringify({
+            type: 'approval_required',
+            requestId: pendingEntry?.id ?? '',
+            operation: 'command:execute',
+            riskSummary: approvalPayload.riskSummary,
+            reason: approvalPayload.reason,
+            timeoutMs: 30_000,
+          })}\n\n`);
+
+          const response = await approvalPromise;
+          guardAllowed = response !== 'deny';
+
+          if (!guardAllowed) {
+            const denyReason = verdict.reason ?? 'Guard denied operation';
+            reply.raw.write(`data: ${JSON.stringify({ type: 'error', message: `Command denied by security policy: ${denyReason}` })}\n\n`);
+            reply.raw.end();
+            return reply;
+          }
+          // Approved — signal continuation to the client then fall through to execute
+          reply.raw.write(`data: ${JSON.stringify({ type: 'approval_granted' })}\n\n`);
+          // Stream is already open; skip the second writeHead below by marking it open
+          (req as unknown as Record<string, unknown>)['_sseAlreadyOpen'] = true;
+        } else {
+          // Non-streaming approval path (original behavior)
+          const response = await approvalManager.requestApproval({
+            agentId,
+            actionType: 'command:execute',
+            target: input,
+            reason: verdict.reason ?? 'Policy requires approval for this action.',
+            riskSummary: `command:execute on: ${input.slice(0, 120)}`,
+            context: { verdict: verdict as unknown as Record<string, unknown> },
+          }, 30_000).catch(() => 'deny' as const);
+          guardAllowed = response !== 'deny';
+        }
+      }
+
+      if (!guardAllowed) {
+        const denyReason = verdict.reason ?? 'Guard denied operation';
+        if (stream) {
+          if (!(req as unknown as Record<string, unknown>)['_sseAlreadyOpen']) {
+            reply.raw.writeHead(200, {
+              'Content-Type': 'text/event-stream',
+              'Cache-Control': 'no-cache',
+              'Connection': 'keep-alive',
+            });
+          }
           reply.raw.write(`data: ${JSON.stringify({ type: 'error', message: `Command denied by security policy: ${denyReason}` })}\n\n`);
           reply.raw.end();
           return reply;
@@ -374,11 +430,14 @@ export function registerCommandRoute(
 
         if (stream) {
           // Real SSE streaming — subscribe to orchestrator events for this run
-          reply.raw.writeHead(200, {
-            'Content-Type': 'text/event-stream',
-            'Cache-Control': 'no-cache',
-            'Connection': 'keep-alive',
-          });
+          // (Headers may already be written if we went through the approval_required flow)
+          if (!(req as unknown as Record<string, unknown>)['_sseAlreadyOpen']) {
+            reply.raw.writeHead(200, {
+              'Content-Type': 'text/event-stream',
+              'Cache-Control': 'no-cache',
+              'Connection': 'keep-alive',
+            });
+          }
 
           let streamEnded = false;
           const sendEvent = (obj: object): void => {
@@ -500,11 +559,13 @@ export function registerCommandRoute(
 
       // No agent — direct command via KrythorCore
       if (stream) {
-        reply.raw.writeHead(200, {
-          'Content-Type': 'text/event-stream',
-          'Cache-Control': 'no-cache',
-          'Connection': 'keep-alive',
-        });
+        if (!(req as unknown as Record<string, unknown>)['_sseAlreadyOpen']) {
+          reply.raw.writeHead(200, {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+          });
+        }
 
         const startTime = Date.now();
 

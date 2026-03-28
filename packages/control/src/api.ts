@@ -155,7 +155,9 @@ export type StreamEvent =
   | { type: 'delta'; content: string; runId?: string }
   | { type: 'done'; runId?: string; duration: number; output: string; modelUsed?: string; conversationId?: string; selectionReason?: string | null; fallbackOccurred?: boolean }
   | { type: 'conversation'; conversationId: string; title: string }
-  | { type: 'error'; message: string };
+  | { type: 'error'; message: string }
+  | { type: 'approval_required'; requestId: string; operation: string; riskSummary: string; reason: string; timeoutMs: number }
+  | { type: 'approval_granted' };
 
 export function streamCommand(
   input: string,
@@ -1086,3 +1088,11 @@ export const createCronJob = (input: CreateCronJobInput) => req<CronJob>('POST',
 export const updateCronJob = (id: string, patch: Partial<CreateCronJobInput>) => req<CronJob>('PATCH', `/cron/${encodeURIComponent(id)}`, patch);
 export const deleteCronJob = (id: string) => req<{ ok: boolean }>('DELETE', `/cron/${encodeURIComponent(id)}`);
 export const runCronJobNow = (id: string) => req<{ ok: boolean; runId?: string }>('POST', `/cron/${encodeURIComponent(id)}/run`);
+
+
+// ── Approvals ──────────────────────────────────────────────────────────────
+
+export type ApprovalResponse = 'allow_once' | 'allow_for_session' | 'deny';
+
+export const respondApproval = (id: string, response: ApprovalResponse) =>
+  req<{ ok: boolean }>('POST', `/approvals/${encodeURIComponent(id)}/respond`, { response });

@@ -18,6 +18,7 @@ import {
   streamCommand,
   listAgents,
   listModels,
+  respondApproval,
   type Conversation,
   type StreamEvent,
   type Health,
@@ -574,6 +575,7 @@ export function CommandPanel({ health, onTabChange, newChatRef }: Props) {
   const [showFirstRun, setShowFirstRun]       = useState(() => !localStorage.getItem(FIRST_RUN_KEY));
   const [showArchived, setShowArchived]       = useState(false);
   const [slashIdx, setSlashIdx]               = useState(0);
+  const [pendingApproval, setPendingApproval] = useState<{ requestId: string; riskSummary: string; reason: string } | null>(null);
   const abortRef                              = useRef<AbortController | null>(null);
   const bottomRef                             = useRef<HTMLDivElement>(null);
   const textareaRef                           = useRef<HTMLTextAreaElement>(null);
@@ -783,6 +785,7 @@ export function CommandPanel({ health, onTabChange, newChatRef }: Props) {
               return prev.map(c => c.id === event.conversationId ? { ...c, title: event.title } : c);
             });
           } else if (event.type === 'done') {
+            setPendingApproval(null);
             if (event.conversationId && !resolvedConvId) {
               setActiveConvId(event.conversationId);
             }
@@ -797,11 +800,16 @@ export function CommandPanel({ health, onTabChange, newChatRef }: Props) {
               listConversations().then(setConversations).catch(() => {});
             }
           } else if (event.type === 'error') {
+            setPendingApproval(null);
             setMessages(prev => prev.map((m, i) =>
               i === prev.length - 1 && m.streaming
                 ? { ...m, content: `Error: ${event.message}`, streaming: false }
                 : m
             ));
+          } else if (event.type === 'approval_required') {
+            setPendingApproval({ requestId: event.requestId, riskSummary: event.riskSummary, reason: event.reason });
+          } else if (event.type === 'approval_granted') {
+            setPendingApproval(null);
           }
         },
         controller.signal,
@@ -962,6 +970,50 @@ export function CommandPanel({ health, onTabChange, newChatRef }: Props) {
 
           <div ref={bottomRef} />
         </div>
+
+        {/* Inline approval prompt */}
+        {pendingApproval && (
+          <div className="border-t border-amber-700/50 bg-amber-950/30 px-4 py-3 shrink-0">
+            <div className="flex flex-col gap-2">
+              <div className="flex items-start gap-2">
+                <span className="text-amber-400 text-sm mt-0.5">Approval required</span>
+              </div>
+              <p className="text-zinc-300 text-xs">{pendingApproval.riskSummary}</p>
+              {pendingApproval.reason && (
+                <p className="text-zinc-500 text-xs">{pendingApproval.reason}</p>
+              )}
+              <div className="flex gap-2">
+                <button
+                  onClick={async () => {
+                    await respondApproval(pendingApproval.requestId, 'allow_once').catch(() => {});
+                    setPendingApproval(null);
+                  }}
+                  className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs rounded transition-colors"
+                >
+                  Allow
+                </button>
+                <button
+                  onClick={async () => {
+                    await respondApproval(pendingApproval.requestId, 'allow_for_session').catch(() => {});
+                    setPendingApproval(null);
+                  }}
+                  className="px-3 py-1 bg-emerald-800 hover:bg-emerald-700 text-white text-xs rounded transition-colors"
+                >
+                  Allow for session
+                </button>
+                <button
+                  onClick={async () => {
+                    await respondApproval(pendingApproval.requestId, 'deny').catch(() => {});
+                    setPendingApproval(null);
+                  }}
+                  className="px-3 py-1 bg-red-700 hover:bg-red-600 text-white text-xs rounded transition-colors"
+                >
+                  Deny
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Input area */}
         <div className="border-t border-zinc-800 px-4 py-3 shrink-0 bg-zinc-950">
