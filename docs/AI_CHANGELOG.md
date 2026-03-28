@@ -1,3 +1,32 @@
+# AI Changelog — Pass 2026-03-28 (UI Bug Fixes + Auth Hardening)
+
+**Model:** Claude Sonnet 4.6
+**Pass type:** Bug fixes — auth, UI overflow, model dropdowns, code quality
+
+---
+
+## Summary (this pass)
+
+Targeted fixes for reported UI and auth bugs, plus a simplify pass.
+
+### Fixes
+
+- **gatewayToken preservation** (`packages/gateway/src/routes/config.ts`) — `PATCH /api/config` was stripping `gatewayToken` from `app-config.json` on every UI config save because `parseAppConfig` only returns AppConfig fields. `write()` now merges onto the raw file object so auth tokens and other system fields survive. Without this, every gateway restart generated a new token while the UI's localStorage held the old one — all authenticated API calls (models, agents, etc.) silently returned 401.
+
+- **Model dropdowns empty** (`packages/control/src/components/AgentsPanel.tsx`, `packages/control/src/api.ts`) — AgentsPanel was building the model dropdown from `providers.flatMap(p => p.models)` which required a separate `listProviders` call. Replaced with `listModels()` (authoritative, already enriched with provider name by the gateway). Added `provider: string` to `ModelInfo` interface. Models are lazy-loaded when the create/edit form opens.
+
+- **About dialog clipping** (`packages/control/src/App.tsx`) — About dialog had no max-height, overflowing the viewport on smaller screens. Added `max-h-[90vh] flex flex-col` with `overflow-y-auto` on the body and `shrink-0` on header/footer.
+
+- **Model/agent picker scroll** (`packages/control/src/components/StatusBar.tsx`) — Header model and agent pickers had no max-height, rendering all 169+ models off-screen. Added `max-h-80 overflow-y-auto` with `sticky top-0` on the section header.
+
+### Code quality (simplify pass)
+
+- `config.ts`: `readRaw()` logs parse errors (ENOENT silently ignored); `read()` delegates to `readRaw()` eliminating duplicate JSON parse logic.
+- `AgentsPanel`: Restored `selected` in `load()` deps (was stale closure on auto-select); replaced `modelInfos.length` dep guard with `modelsLoadedRef` to prevent re-fire loop on empty API response; memoized `allModels` with `useMemo`.
+- TypeScript fixes from prior full-repo pass: `protocol.ts` return type narrowed, `hooks.ts` explicit Fastify types, `stream.ts` missing import.
+
+---
+
 # AI Changelog — Pass 2026-03-26 (Guardrails Stack — Phases 1–8)
 
 **Model:** Claude Sonnet 4.6
