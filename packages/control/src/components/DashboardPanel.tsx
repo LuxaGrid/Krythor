@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { getDashboard, getTokenHistory, health, type Dashboard, type InferenceRecord, type Health } from '../api.ts';
+import { getDashboard, getTokenHistory, getMetricsSeries, health, type Dashboard, type InferenceRecord, type MetricsSeries, type Health } from '../api.ts';
 import { PanelHeader } from './PanelHeader.tsx';
 
 const SPARK_CHARS = '▁▂▃▄▅▆▇█';
@@ -49,17 +49,20 @@ export function DashboardPanel() {
   const [error, setError]   = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [tokenHistory, setTokenHistory] = useState<InferenceRecord[]>([]);
+  const [metricsSeries, setMetricsSeries] = useState<MetricsSeries | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const [d, hist, h] = await Promise.all([
+      const [d, hist, h, series] = await Promise.all([
         getDashboard(),
         getTokenHistory().catch(() => ({ history: [] as InferenceRecord[], windowSize: 1000 })),
         health().catch(() => null),
+        getMetricsSeries().catch(() => null),
       ]);
       setData(d);
       setTokenHistory(hist.history);
       setHealthData(h);
+      setMetricsSeries(series);
       setError(null);
       setLastRefresh(new Date());
     } catch (err) {
@@ -150,6 +153,71 @@ export function DashboardPanel() {
               <p className="text-xs text-amber-300">{w.message ?? String(w)}</p>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Real-time request metrics trend lines */}
+      {metricsSeries && (
+        <div className="px-4 pb-4">
+          <p className="text-xs text-zinc-500 uppercase tracking-wider font-medium mb-2">
+            Request metrics (last {metricsSeries.windowMinutes} min)
+          </p>
+          <div className="bg-zinc-800/40 border border-zinc-700/50 rounded-lg px-3 py-3 space-y-3">
+            {/* Totals row */}
+            <div className="grid grid-cols-4 gap-3 text-center">
+              <div>
+                <p className="text-[10px] text-zinc-600 uppercase tracking-wide">Requests</p>
+                <p className="text-sm font-mono text-zinc-200">{metricsSeries.totals.requests}</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-zinc-600 uppercase tracking-wide">Errors</p>
+                <p className={`text-sm font-mono ${metricsSeries.totals.errors > 0 ? 'text-red-400' : 'text-zinc-500'}`}>
+                  {metricsSeries.totals.errors}
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] text-zinc-600 uppercase tracking-wide">Avg latency</p>
+                <p className="text-sm font-mono text-zinc-200">{metricsSeries.totals.avgLatencyMs}ms</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-zinc-600 uppercase tracking-wide">Error rate</p>
+                <p className={`text-sm font-mono ${metricsSeries.totals.errorRate > 0.05 ? 'text-amber-400' : 'text-zinc-500'}`}>
+                  {(metricsSeries.totals.errorRate * 100).toFixed(1)}%
+                </p>
+              </div>
+            </div>
+
+            {/* Sparklines */}
+            {metricsSeries.samples.length > 1 && (() => {
+              const reqLine  = sparkline(metricsSeries.samples.map(s => s.requests));
+              const errLine  = sparkline(metricsSeries.samples.map(s => s.errors));
+              const latLine  = sparkline(metricsSeries.samples.map(s =>
+                s.requests > 0 ? Math.round(s.latencySum / s.requests) : 0,
+              ));
+              return (
+                <div className="border-t border-zinc-700/40 pt-2 space-y-1.5">
+                  <div className="flex items-center gap-3">
+                    <span className="text-[10px] text-zinc-600 w-14 shrink-0">req/min</span>
+                    <span className="font-mono text-xs text-brand-400 tracking-widest leading-none">{reqLine}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-[10px] text-zinc-600 w-14 shrink-0">errors</span>
+                    <span className={`font-mono text-xs tracking-widest leading-none ${
+                      metricsSeries.totals.errors > 0 ? 'text-red-400' : 'text-zinc-700'
+                    }`}>{errLine}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-[10px] text-zinc-600 w-14 shrink-0">latency</span>
+                    <span className="font-mono text-xs text-amber-500/80 tracking-widest leading-none">{latLine}</span>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {metricsSeries.samples.length === 0 && (
+              <p className="text-xs text-zinc-700">No API requests recorded yet — make a request to populate trends.</p>
+            )}
+          </div>
         </div>
       )}
 

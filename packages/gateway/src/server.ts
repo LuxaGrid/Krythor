@@ -48,6 +48,8 @@ import { registerPluginRoutes } from './routes/plugins.js';
 import { registerApprovalRoutes } from './routes/approvals.js';
 import { registerAuditRoutes } from './routes/audit.js';
 import { registerHookRoutes } from './routes/hooks.js';
+import { MetricsCollector } from './MetricsCollector.js';
+import { registerMetricsRoutes } from './routes/metrics.js';
 import { CronStore } from './CronStore.js';
 import { CronScheduler } from './CronScheduler.js';
 import { registerCronRoutes } from './routes/cron.js';
@@ -1526,6 +1528,17 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   // Dashboard route is registered after heartbeat is instantiated so it can
   // reference heartbeat directly (avoids a late-binding closure or re-export).
   registerDashboardRoute(app, models, memory, orchestrator, heartbeat);
+
+  // ── Real-time request metrics (Item 9) ──────────────────────────────────────
+  const metricsCollector = new MetricsCollector(60);
+  app.addHook('onResponse', async (req, reply) => {
+    // Only track /api/* routes; skip static assets and health
+    if (!req.routeOptions.url?.startsWith('/api/')) return;
+    const latencyMs = reply.elapsedTime ?? 0;
+    metricsCollector.record(reply.statusCode, latencyMs);
+  });
+  registerMetricsRoutes(app, metricsCollector);
+
   // Patch the heartbeat into the heartbeatRef so the config route can update it at runtime.
   heartbeatRef.instance = heartbeat;
 

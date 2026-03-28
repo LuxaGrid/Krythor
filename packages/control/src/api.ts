@@ -615,6 +615,28 @@ export interface InferenceRecord {
 export const getTokenHistory = () =>
   req<{ history: InferenceRecord[]; windowSize: number }>('GET', '/stats/history');
 
+// ── Real-time metrics series ───────────────────────────────────────────────────
+export interface MetricSample {
+  ts:          number;   // epoch seconds (minute bucket)
+  requests:    number;
+  errors:      number;
+  latencySum:  number;
+}
+
+export interface MetricsSeries {
+  windowMinutes: number;
+  samples: MetricSample[];
+  totals: {
+    requests:     number;
+    errors:       number;
+    avgLatencyMs: number;
+    errorRate:    number;
+  };
+}
+
+export const getMetricsSeries = () =>
+  req<MetricsSeries>('GET', '/dashboard/metrics/series');
+
 export interface Dashboard {
   uptime: number;
   version: string;
