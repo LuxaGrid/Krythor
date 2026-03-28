@@ -282,6 +282,10 @@ export const pinMemory    = (id: string) => req<MemoryEntry>('POST', `/memory/${
 export const unpinMemory  = (id: string) => req<MemoryEntry>('POST', `/memory/${id}/unpin`);
 export const memoryStats  = () => req<MemoryStats>('GET', '/memory/stats');
 export const pruneMemory     = (maxEntries?: number) => req<{ deleted: number; totalEntries: number }>('POST', '/memory/prune', maxEntries !== undefined ? { maxEntries } : {});
+export const semanticSearchMemory = (query: string, limit?: number) => {
+  const qs = new URLSearchParams({ q: query, ...(limit ? { limit: String(limit) } : {}) });
+  return req<{ results: MemoryEntry[]; semantic: boolean; embeddingProvider: string; query: string; limit: number }>('GET', `/memory/semantic-search?${qs}`);
+};
 export const compactMemory   = () => req<{ compacted: number; rawPruned: number }>('POST', '/memory/compact', {});
 export const summarizeMemory = (scope?: string, batchSize?: number) => req<{ summarized: number; summaryEntryId?: string; totalEntries: number }>('POST', '/memory/summarize', { scope, batchSize });
 export const pruneMemoryBulk = (filters: { olderThan?: string; tag?: string; source?: string }) => {

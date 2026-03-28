@@ -489,4 +489,36 @@ export function registerMemoryRoutes(
       return sendError(reply, 500, 'JANITOR_FAILED', err instanceof Error ? err.message : 'Janitor run failed');
     }
   });
+
+  // GET /api/memory/semantic-search?q=&limit=10
+  // Returns semantic (vector) search results when an embedding provider is configured,
+  // falls back to text search otherwise. Always returns results — never fails due to
+  // missing embedding provider.
+  app.get('/api/memory/semantic-search', async (req, reply) => {
+    if (guard) {
+      const allowed = await guardCheck({ guard, approvalManager, reply, operation: 'memory:read', source: 'user' });
+      if (!allowed) return;
+    }
+    const q = req.query as Record<string, string>;
+    const query = q['q'] ?? q['query'] ?? '';
+    const limit = Math.min(Math.max(1, parseInt(q['limit'] ?? '10', 10)), 100);
+    const embeddingStatus = memory.embeddingStatus();
+    const semantic = embeddingStatus.semantic;
+
+    try {
+      const results = await memory.search(
+        { text: query, limit },
+        query,  // pass as taskText for semantic scoring
+      );
+      return reply.send({
+        results,
+        semantic,
+        embeddingProvider: embeddingStatus.providerName,
+        query,
+        limit,
+      });
+    } catch (err) {
+      return sendError(reply, 500, 'SEARCH_FAILED', err instanceof Error ? err.message : 'Search failed');
+    }
+  });
 }
