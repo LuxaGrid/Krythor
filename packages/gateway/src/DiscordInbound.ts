@@ -29,6 +29,7 @@ import type { ConversationStore } from '@krythor/memory';
 import { resolveSessionKey } from '@krythor/memory';
 import type { DmPairingStore } from './DmPairingStore.js';
 import type { SessionRouter } from './SessionRouter.js';
+import { handleSlashCommand } from './InboundSlashCommands.js';
 import { logger } from './logger.js';
 
 const DISCORD_API = 'https://discord.com/api/v10';
@@ -371,12 +372,42 @@ export class DiscordInbound {
     const isGuild = !!this.config.guildId;
     const chatType = isGuild ? 'group' : 'direct';
 
+    // ── Slash command pre-check ────────────────────────────────────────────────
+    const slashSessionKey = this.sessionRouter
+      ? resolveSessionKey({
+          agentId: this.config.agentId,
+          channel: 'discord',
+          chatType,
+          peerId: !isGuild ? authorId : undefined,
+          groupId: isGuild ? this.config.channelId : undefined,
+          dmScope: this.sessionRouter.getConfig().dmScope ?? 'main',
+        })
+      : undefined;
+    const slashEntry = slashSessionKey && this.sessionRouter
+      ? this.sessionRouter.getSessionEntry(slashSessionKey)
+      : null;
+
+    const slashResult = handleSlashCommand(msg.content, {
+      agentId: this.config.agentId,
+      channel: 'discord',
+      senderId: authorId,
+      conversationId: slashEntry?.conversationId,
+      sessionKey: slashSessionKey,
+      convStore: this.convStore,
+      sessionRouter: this.sessionRouter,
+    });
+
+    if (slashResult.isHandled && slashResult.response) {
+      await this.sendMessage(slashResult.response, msg.id).catch(() => {});
+      return;
+    }
+
     // Check for session reset triggers
-    const isReset = this.sessionRouter
+    const isReset = slashResult.isReset || (this.sessionRouter
       ? this.sessionRouter.isResetTrigger(msg.content)
       : (['/new', '/reset', ...(this.config.resetTriggers ?? [])]).some(
           t => msg.content.trim().toLowerCase() === t.toLowerCase(),
-        );
+        ));
 
     let conversationId: string | undefined;
     let contextMessages: Array<{ role: string; content: string }> = [];

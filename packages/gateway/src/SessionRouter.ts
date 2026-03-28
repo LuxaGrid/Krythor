@@ -147,6 +147,13 @@ export class SessionRouter {
   }
 
   /**
+   * Get the session entry for a session key (null if not found).
+   */
+  getSessionEntry(sessionKey: string): import('@krythor/memory').SessionEntry | null {
+    return this.sessionStore.getByKey(sessionKey) ?? null;
+  }
+
+  /**
    * Return a new SessionRouter with updated config (for hot reload).
    */
   withConfig(config: SessionConfig): SessionRouter {

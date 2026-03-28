@@ -30,6 +30,7 @@ import type { ConversationStore } from '@krythor/memory';
 import { resolveSessionKey } from '@krythor/memory';
 import type { DmPairingStore } from './DmPairingStore.js';
 import type { SessionRouter } from './SessionRouter.js';
+import { handleSlashCommand } from './InboundSlashCommands.js';
 import { logger } from './logger.js';
 
 const TELEGRAM_API = 'https://api.telegram.org';
@@ -435,12 +436,44 @@ export class TelegramInbound {
   private async runAgent(chatId: number, fromId: string, text: string, isGroup = false): Promise<void> {
     if (!this.config) return;
     try {
+      // ── Slash command pre-check ────────────────────────────────────────────
+      const chatTypeForCmd = isGroup ? 'group' : 'direct';
+      const groupIdForCmd  = isGroup ? String(chatId) : undefined;
+      const slashSessionKey = this.sessionRouter
+        ? resolveSessionKey({
+            agentId: this.config.agentId,
+            channel: 'telegram',
+            chatType: chatTypeForCmd,
+            peerId: !isGroup ? fromId : undefined,
+            groupId: groupIdForCmd,
+            dmScope: this.sessionRouter.getConfig().dmScope ?? 'main',
+          })
+        : undefined;
+      const slashEntry = slashSessionKey && this.sessionRouter
+        ? this.sessionRouter.getSessionEntry(slashSessionKey)
+        : null;
+
+      const slashResult = handleSlashCommand(text, {
+        agentId: this.config.agentId,
+        channel: 'telegram',
+        senderId: fromId,
+        conversationId: slashEntry?.conversationId,
+        sessionKey: slashSessionKey,
+        convStore: this.convStore,
+        sessionRouter: this.sessionRouter,
+      });
+
+      if (slashResult.isHandled && slashResult.response) {
+        await this.sendMessage(chatId, slashResult.response);
+        return;
+      }
+
       // Check for session reset triggers
-      const isReset = this.sessionRouter
+      const isReset = slashResult.isReset || (this.sessionRouter
         ? this.sessionRouter.isResetTrigger(text)
         : ['/new', '/reset', ...(this.config.resetTriggers ?? [])].some(
             t => text.trim().toLowerCase() === t.toLowerCase(),
-          );
+          ));
 
       let conversationId: string | undefined;
       let contextMessages: Array<{ role: string; content: string }> = [];
