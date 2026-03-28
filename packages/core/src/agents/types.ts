@@ -154,6 +154,7 @@ export type AgentEventType =
   | 'run:started'
   | 'run:turn'
   | 'run:stream:chunk'
+  | 'run:spawn_announced'
   | 'run:completed'
   | 'run:failed'
   | 'run:stopped';

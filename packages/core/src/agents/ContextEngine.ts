@@ -29,6 +29,13 @@ export interface ContextEngine {
   assemble(messages: AgentMessage[]): AgentMessage[];
 
   /**
+   * Called just before `compact()` runs. Implementors can use this hook to
+   * flush important facts to memory before old messages are dropped.
+   * Optional — callers check for existence before invoking.
+   */
+  beforeCompact?(messages: AgentMessage[]): void;
+
+  /**
    * Called when the assembled messages exceed `maxTokenBudget`. Should return
    * a shorter list that fits within the budget. The default implementation
    * keeps the system prompt + last N messages.
@@ -62,6 +69,10 @@ export class DefaultContextEngine implements ContextEngine {
   assemble(messages: AgentMessage[]): AgentMessage[] {
     // Return all messages — compaction is handled separately
     return messages;
+  }
+
+  beforeCompact(_messages: AgentMessage[]): void {
+    // No-op in the default implementation — override to flush facts to memory.
   }
 
   compact(messages: AgentMessage[], maxTokenBudget: number): AgentMessage[] {
