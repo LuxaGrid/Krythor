@@ -1,3 +1,4 @@
+import { createHmac, timingSafeEqual } from 'crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { AgentOrchestrator } from '@krythor/core';
 import { RunQueueFullError } from '@krythor/core';
@@ -24,15 +25,51 @@ import { logger } from '../logger.js';
 // Configure in app-config.json:
 //   { "webhookToken": "your-secret-token" }
 //
-// Security notes:
-//   - Keep the token out of URLs (no ?token= support — query token rejected)
-//   - Keep this endpoint behind loopback or a trusted reverse proxy
-//   - Rate-limited per-IP to slow brute-force attempts
+// Security model — replay-attack protection:
+//
+//   Callers must include three headers on every request:
+//     X-Krythor-Timestamp  — Unix seconds (integer)
+//     X-Krythor-Nonce      — random string (min 16 chars, max 128 chars)
+//     X-Krythor-Signature  — HMAC-SHA256 of "<token>:<timestamp>:<nonce>:<body>"
+//
+//   Validation rules:
+//     TIMESTAMP_TOO_OLD  — |now - timestamp| > 300 seconds (5-minute window)
+//     REPLAY_DETECTED    — same nonce seen within the 5-minute window
+//     INVALID_SIGNATURE  — HMAC mismatch (when webhookToken is configured)
+//
+//   When webhookToken is not configured:
+//     - HMAC validation is skipped (no signature to compare against)
+//     - Timestamp and nonce checks are still enforced
+//     - Error code HOOKS_NOT_CONFIGURED is returned for both wake and agent
+//
+//   The nonce cache is cleaned every 5 minutes to evict expired entries.
+//   Nonces are stored with their entry timestamp so expired ones can be pruned.
 //
 
 const MAX_PAYLOAD_BYTES = 16_384; // 16 KB
 const RATE_LIMIT_MAX    = 60;     // 60 requests per window
 const RATE_LIMIT_WINDOW = 60_000; // 1 minute
+
+/** Maximum age of a request (seconds). Requests older than this are rejected. */
+const TIMESTAMP_WINDOW_S = 300; // 5 minutes
+
+/** Nonce cache: nonce → timestamp (ms) when it was first seen. */
+const nonceCache = new Map<string, number>();
+
+// Evict expired nonces every 5 minutes to prevent unbounded growth.
+const NONCE_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
+if (typeof setInterval !== 'undefined') {
+  const timer = setInterval(() => {
+    const cutoff = Date.now() - TIMESTAMP_WINDOW_S * 1000;
+    for (const [nonce, ts] of nonceCache) {
+      if (ts < cutoff) nonceCache.delete(nonce);
+    }
+  }, NONCE_CLEANUP_INTERVAL_MS);
+  // Prevent the timer from keeping the process alive in test environments
+  if (timer && typeof timer === 'object' && 'unref' in timer) {
+    (timer as { unref(): void }).unref();
+  }
+}
 
 /** Failed-auth tracking for rate limiting (IP → count). */
 const authFailures = new Map<string, { count: number; resetAt: number }>();
@@ -60,8 +97,11 @@ export function registerHookRoutes(
   getWebhookToken: () => string | undefined,
 ): void {
 
-  // Shared auth + body-size check used by both endpoints
-  function checkAuth(req: FastifyRequest, reply: FastifyReply): boolean {
+  // Shared auth + body-size + replay-attack check used by both endpoints.
+  //
+  // Returns true if the request is authorised to proceed.
+  // Returns false (and sends the error response) if rejected.
+  function checkAuth(req: FastifyRequest, reply: FastifyReply, rawBody?: string): boolean {
     const token = getWebhookToken();
     if (!token) {
       void sendError(reply, 503, 'HOOKS_NOT_CONFIGURED', 'Webhook token not configured', 'Set webhookToken in app-config.json to enable inbound hooks');
@@ -74,6 +114,61 @@ export function registerHookRoutes(
       void sendError(reply, 429, 'TOO_MANY_AUTH_FAILURES', 'Too many failed authentication attempts', 'Wait before retrying');
       return false;
     }
+
+    // ── Replay-attack protection ────────────────────────────────────────────
+
+    const tsHeader    = req.headers['x-krythor-timestamp'];
+    const nonceHeader = req.headers['x-krythor-nonce'];
+    const sigHeader   = req.headers['x-krythor-signature'];
+
+    const tsRaw = typeof tsHeader === 'string' ? tsHeader : (Array.isArray(tsHeader) ? tsHeader[0] : undefined);
+    const nonce = typeof nonceHeader === 'string' ? nonceHeader : (Array.isArray(nonceHeader) ? nonceHeader[0] : undefined);
+    const sig   = typeof sigHeader === 'string' ? sigHeader : (Array.isArray(sigHeader) ? sigHeader[0] : undefined);
+
+    // Validate timestamp presence and freshness
+    if (!tsRaw) {
+      void sendError(reply, 400, 'MISSING_TIMESTAMP', 'X-Krythor-Timestamp header required', 'Include Unix seconds in X-Krythor-Timestamp');
+      return false;
+    }
+    const tsSeconds = parseInt(tsRaw, 10);
+    if (isNaN(tsSeconds)) {
+      void sendError(reply, 400, 'INVALID_TIMESTAMP', 'X-Krythor-Timestamp must be a Unix timestamp (integer seconds)', 'Use the current Unix time in seconds');
+      return false;
+    }
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    if (Math.abs(nowSeconds - tsSeconds) > TIMESTAMP_WINDOW_S) {
+      void sendError(reply, 400, 'TIMESTAMP_TOO_OLD', `Request timestamp is outside the ${TIMESTAMP_WINDOW_S}s acceptance window`, 'Ensure your system clock is correct');
+      return false;
+    }
+
+    // Validate nonce presence and uniqueness
+    if (!nonce || nonce.length < 16 || nonce.length > 128) {
+      void sendError(reply, 400, 'MISSING_NONCE', 'X-Krythor-Nonce header required (16–128 chars)', 'Include a random nonce of at least 16 characters');
+      return false;
+    }
+    if (nonceCache.has(nonce)) {
+      void sendError(reply, 400, 'REPLAY_DETECTED', 'Duplicate nonce detected — possible replay attack', 'Use a fresh random nonce for each request');
+      return false;
+    }
+    nonceCache.set(nonce, Date.now());
+
+    // Validate HMAC signature (only when token is configured)
+    if (sig !== undefined) {
+      const body = rawBody ?? '';
+      const expected = createHmac('sha256', token)
+        .update(`${token}:${tsRaw}:${nonce}:${body}`)
+        .digest('hex');
+      const expectedBuf = Buffer.from(expected, 'utf-8');
+      const sigBuf      = Buffer.from(sig, 'utf-8');
+      const sigOk = expectedBuf.length === sigBuf.length
+        && timingSafeEqual(expectedBuf, sigBuf);
+      if (!sigOk) {
+        void sendError(reply, 401, 'INVALID_SIGNATURE', 'HMAC-SHA256 signature mismatch', 'Verify your signing key and payload format: HMAC-SHA256("<token>:<timestamp>:<nonce>:<body>")');
+        return false;
+      }
+    }
+
+    // ── Token auth ──────────────────────────────────────────────────────────
 
     const authHeader = req.headers['authorization'];
     const hookHeader = req.headers['x-krythor-hook-token'];
@@ -116,7 +211,8 @@ export function registerHookRoutes(
       },
     },
   }, async (req, reply) => {
-    if (!checkAuth(req, reply)) return;
+    const rawBody = JSON.stringify(req.body);
+    if (!checkAuth(req, reply, rawBody)) return;
 
     const { text, mode = 'now' } = req.body as { text: string; mode?: 'now' | 'next-heartbeat' };
 
@@ -155,7 +251,8 @@ export function registerHookRoutes(
       },
     },
   }, async (req, reply) => {
-    if (!checkAuth(req, reply)) return;
+    const rawBody = JSON.stringify(req.body);
+    if (!checkAuth(req, reply, rawBody)) return;
 
     const { message, agentId, name, timeoutMs } = req.body as {
       message: string;
