@@ -92,7 +92,7 @@ describe('getProvider', () => {
     const reg = freshRegistry()
     expect(reg.getProvider('unknown')).toBeUndefined()
     expect(reg.getProvider('')).toBeUndefined()
-    expect(reg.getProvider('slack')).toBeUndefined()
+    expect(reg.getProvider('nonexistent-channel')).toBeUndefined()
   })
 })
 
@@ -289,9 +289,9 @@ describe('validateCredentials', () => {
 
   it('returns an error string for unknown channel id', () => {
     const reg = freshRegistry()
-    const result = reg.validateCredentials('slack', {})
+    const result = reg.validateCredentials('nonexistent-channel', {})
     expect(typeof result).toBe('string')
-    expect(result).toContain('slack')
+    expect(result).toContain('nonexistent-channel')
   })
 })
 

@@ -61,10 +61,9 @@ export class SystemIdentityProvider {
   // ── Private ──────────────────────────────────────────────────────────────
 
   private load(extraPaths: string[]): void {
-    const candidates = [
-      ...extraPaths,
-      join(process.cwd(), 'SOUL.md'),
-    ];
+    const candidates = extraPaths.length > 0
+      ? extraPaths
+      : [join(process.cwd(), 'SOUL.md')];
 
     for (const candidate of candidates) {
       if (!existsSync(candidate)) continue;
