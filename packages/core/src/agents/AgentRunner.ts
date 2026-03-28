@@ -76,13 +76,15 @@ type SessionsListCall   = { tool: 'sessions_list';     limit?: number; agentId?:
 type SessionsHistoryCall = { tool: 'sessions_history'; conversationId: string; limit?: number };
 type AgentsListCall     = { tool: 'agents_list' };
 type AgentPingCall      = { tool: 'agent_ping';        agentId: string; message: string };
+type GenerateImageCall  = { tool: 'generate_image'; prompt: string; size?: string; model?: string };
 type AnyToolCall        = ExecCall | WebSearchCall | WebFetchCall
   | ReadFileCall | WriteFileCall | EditFileCall | ApplyPatchCall
   | GetPageTextCall
   | ShellExecCall | ListProcessesCall
   | CustomCall | SpawnAgentCall
   | SessionsListCall | SessionsHistoryCall
-  | AgentsListCall | AgentPingCall;
+  | AgentsListCall | AgentPingCall
+  | GenerateImageCall;
 
 /**
  * Attempt to extract a handoff directive from a model response.
@@ -198,6 +200,15 @@ function extractToolCall(response: string): AnyToolCall | null {
       return { tool: 'agents_list' };
     }
 
+    if (tool === 'generate_image' && typeof parsed['prompt'] === 'string' && parsed['prompt'].length > 0) {
+      return {
+        tool:   'generate_image',
+        prompt: parsed['prompt'] as string,
+        size:   typeof parsed['size'] === 'string' ? parsed['size'] : undefined,
+        model:  typeof parsed['model'] === 'string' ? parsed['model'] : undefined,
+      };
+    }
+
     if (tool === 'agent_ping' &&
         typeof parsed['agentId'] === 'string' && parsed['agentId'].length > 0 &&
         typeof parsed['message'] === 'string') {
@@ -210,6 +221,31 @@ function extractToolCall(response: string): AnyToolCall | null {
     }
   } catch { /* malformed JSON — ignore */ }
   return null;
+}
+
+// ── Tool result trimming ──────────────────────────────────────────────────────
+
+/**
+ * Trim tool result messages that exceed 4000 chars to prevent context bloat.
+ * Returns a shallow copy of the array; only oversized tool result messages are
+ * replaced with new objects — all other messages are the same references.
+ */
+function trimLargeToolResults(messages: import('./types.js').AgentMessage[]): import('./types.js').AgentMessage[] {
+  const TOOL_RESULT_LIMIT = 4000;
+  return messages.map(m => {
+    if (
+      m.role === 'user' &&
+      m.content.startsWith('Tool ') &&
+      m.content.length > TOOL_RESULT_LIMIT
+    ) {
+      const original = m.content.length;
+      return {
+        ...m,
+        content: m.content.slice(0, TOOL_RESULT_LIMIT) + `\n[trimmed — original: ${original} chars]`,
+      };
+    }
+    return m;
+  });
 }
 
 // Singleton tool instances — read-only, stateless, safe to share
@@ -640,6 +676,13 @@ export class AgentRunner {
         toolResult = `Tool "spawn_agent" cap reached (max ${MAX_SPAWN_AGENT} spawns per run). Cannot spawn agent "${call.agentId}".`;
       } else {
         this.spawnCount++;
+        emit({
+          type: 'run:spawn_announced',
+          runId,
+          agentId,
+          payload: { agentId: call.agentId, message: call.message },
+          timestamp: Date.now(),
+        });
         try {
           const result = await this.spawnAgentResolver(call.agentId, call.message, runId);
           if (result === null) {
@@ -746,6 +789,20 @@ export class AgentRunner {
             : `Tool "agent_ping": agent "${call.agentId}" is not available.`;
         } catch (err) {
           toolResult = `Tool "agent_ping" failed: ${err instanceof Error ? err.message : String(err)}`;
+        }
+      }
+    } else if (call.tool === 'generate_image') {
+      if (!this.customToolDispatcher) {
+        toolResult = 'Tool "generate_image" is not available in this configuration.';
+      } else {
+        try {
+          const params = JSON.stringify({ prompt: call.prompt, size: call.size, model: call.model });
+          const result = await this.customToolDispatcher('generate_image', params, agentId);
+          toolResult = result !== null
+            ? `Image generated:\n${result}`
+            : 'Tool "generate_image": no image provider configured.';
+        } catch (err) {
+          toolResult = `Tool "generate_image" failed: ${err instanceof Error ? err.message : String(err)}`;
         }
       }
     } else if (call.tool === 'custom') {
@@ -879,8 +936,18 @@ export class AgentRunner {
 
         const effectiveModel = input.modelOverride ?? agent.modelId;
         const turnSignal = withTimeout(controller.signal, INFERENCE_TIMEOUT_MS);
+        // Pre-compaction flush — notify ContextEngine before compaction happens
+        if (
+          this.contextEngine?.beforeCompact &&
+          messages.reduce((s, m) => s + m.content.length / 4, 0) > 100_000
+        ) {
+          this.contextEngine.beforeCompact(messages);
+        }
+
         // Assemble context window (ContextEngine may trim or reorder messages)
-        const assembled = this.contextEngine ? this.contextEngine.assemble(messages) : messages;
+        const assembled = trimLargeToolResults(
+          this.contextEngine ? this.contextEngine.assemble(messages) : messages,
+        );
         const response = await this.models.infer(
           {
             messages: assembled.map(m => ({ role: m.role, content: m.content })),
@@ -946,7 +1013,7 @@ export class AgentRunner {
           const toolTurnSignal = withTimeout(controller.signal, INFERENCE_TIMEOUT_MS);
           const toolResponse = await this.models.infer(
             {
-              messages: messages.map(m => ({ role: m.role, content: m.content })),
+              messages: trimLargeToolResults(messages).map(m => ({ role: m.role, content: m.content })),
               model: effectiveModel,
               providerId: agent.providerId,
               temperature: agent.temperature,

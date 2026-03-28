@@ -61,6 +61,8 @@ import { registerWebChatPairingRoutes } from './routes/webchatPairing.js';
 import { registerTtsRoute } from './routes/tts.js';
 import { registerCanvasRoute } from './routes/canvas.js';
 import { registerUpdateRoute } from './routes/update.js';
+import { registerImageGenRoute, getActiveImageProvider } from './routes/imageGen.js';
+import { registerMediaRoute } from './routes/media.js';
 import { ApprovalManager } from './ApprovalManager.js';
 import { AuditLogger } from './AuditLogger.js';
 import { HeartbeatEngine, type HeartbeatRunRecord, type HeartbeatInsight } from './heartbeat/HeartbeatEngine.js';
@@ -1186,6 +1188,19 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
       }
     }
 
+    // ── Image generation ────────────────────────────────────────────────────
+    if (toolName === 'generate_image') {
+      const imgProvider = getActiveImageProvider();
+      if (!imgProvider || !imgProvider.isAvailable()) return '{"error":"No image provider configured"}';
+      try {
+        const p = JSON.parse(input) as { prompt: string; size?: string; model?: string };
+        const result = await imgProvider.generate(p.prompt, { size: p.size, model: p.model });
+        return JSON.stringify(result);
+      } catch (err) {
+        return JSON.stringify({ error: err instanceof Error ? err.message : 'Generation failed' });
+      }
+    }
+
     if (toolName === 'agent_ping') {
       try {
         const params = JSON.parse(input) as { agentId?: string; message?: string };
@@ -1287,6 +1302,8 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   registerTtsRoute(app);
   registerCanvasRoute(app, dataDir);
   registerUpdateRoute(app);
+  registerImageGenRoute(app);
+  registerMediaRoute(app);
 
   registerStreamWs(app, core, () => authCfg.token, guard, devicePairingStore, gatewayId, KRYTHOR_VERSION);
   registerDeviceRoutes(app, devicePairingStore, broadcast);

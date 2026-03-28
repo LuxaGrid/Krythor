@@ -366,6 +366,34 @@ export const TOOL_REGISTRY: ToolEntry[] = [
     requiresGuard: false,
     alwaysAllowed: false,
   },
+  {
+    name: 'generate_image',
+    description:
+      'Generate an image from a text prompt using a configured image provider (DALL-E or local Stable Diffusion). ' +
+      'Returns a URL or base64 data URI for the generated image. ' +
+      'Requires an image_provider to be configured in providers.json. ' +
+      'Add "generate_image" to the agent\'s allowedTools to permit this tool.',
+    parameters: {
+      prompt: {
+        type:        'string',
+        description: 'Text description of the image to generate.',
+        required:    true,
+        minLength:   1,
+        maxLength:   1000,
+      },
+      size: {
+        type:        'string',
+        description: 'Image size: "256x256", "512x512", "1024x1024", or "1024x1792". Default: "512x512".',
+      },
+      model: {
+        type:        'string',
+        description: 'Model override (e.g. "dall-e-3", "dall-e-2", "sd-xl"). Uses configured default if omitted.',
+        maxLength:   100,
+      },
+    },
+    requiresGuard: true,
+    alwaysAllowed: false,
+  },
 ];
 
 /** Look up a tool entry by name. Returns undefined if not registered. */
