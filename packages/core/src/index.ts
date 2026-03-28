@@ -11,6 +11,10 @@ export { WebhookTool } from './tools/WebhookTool.js';
 export type { CustomToolDefinition, HttpMethod } from './tools/WebhookTool.js';
 export { CustomToolStore } from './tools/CustomToolStore.js';
 export { PluginLoader } from './tools/PluginLoader.js';
+export { AGENT_TOOLS, getAgentTools } from './tools/AgentTools.js';
+export type { ToolDefinition, ToolCall as AgentToolCall, ToolResult as AgentToolResult } from './tools/AgentTools.js';
+export { ToolExecutor } from './tools/ToolExecutor.js';
+export type { ToolExecutorOptions, MemoryLike as ToolMemoryLike } from './tools/ToolExecutor.js';
 export type { PluginExport, LoadedPlugin, PluginLoadRecord } from './tools/PluginLoader.js';
 export { atomicWrite, atomicWriteJSON } from './config/atomicWrite.js';
 export {
