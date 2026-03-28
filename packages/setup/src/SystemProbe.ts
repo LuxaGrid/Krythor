@@ -1,5 +1,5 @@
 import { execSync } from 'child_process';
-import { existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
 import * as net from 'net';
@@ -19,10 +19,13 @@ export interface ProbeResult {
   lmStudioModels: string[];
   llamaServerDetected: boolean;
   llamaServerBaseUrl: string;
+  tailscaleDetected: boolean;
+  tailscaleSocketPath: string | undefined;
+  isWSL2: boolean;
+  defaultWorkspaceDir: string;
 }
 
 function getConfigDir(): string {
-  // If KRYTHOR_DATA_DIR is set, config lives under it.
   if (process.env['KRYTHOR_DATA_DIR']) {
     return join(process.env['KRYTHOR_DATA_DIR'], 'config');
   }
@@ -36,8 +39,6 @@ function getConfigDir(): string {
 }
 
 function getDataDir(): string {
-  // KRYTHOR_DATA_DIR allows users to relocate Krythor's data directory.
-  // Useful for backups, multi-user setups, and testing.
   if (process.env['KRYTHOR_DATA_DIR']) {
     return process.env['KRYTHOR_DATA_DIR'];
   }
@@ -70,7 +71,6 @@ async function detectOllama(): Promise<{ found: boolean; baseUrl: string }> {
   return { found: false, baseUrl: 'http://localhost:11434' };
 }
 
-/** Detect LM Studio on its default port 1234. Returns available models if found. */
 async function detectLmStudio(): Promise<{ found: boolean; baseUrl: string; models: string[] }> {
   const candidates = ['http://localhost:1234', 'http://127.0.0.1:1234'];
   for (const url of candidates) {
@@ -89,17 +89,13 @@ async function detectLmStudio(): Promise<{ found: boolean; baseUrl: string; mode
   return { found: false, baseUrl: 'http://localhost:1234', models: [] };
 }
 
-/** Detect llama-server (llama.cpp) on its default port 8080. */
 async function detectLlamaServer(): Promise<{ found: boolean; baseUrl: string }> {
-  // llama-server exposes GET /health returning {"status":"ok"}
   const candidates = ['http://localhost:8080', 'http://127.0.0.1:8080'];
   for (const url of candidates) {
     try {
       const res = await fetch(`${url}/health`, { signal: AbortSignal.timeout(1500) });
       if (res.ok) {
-        // Confirm it's llama-server by checking the response shape
         const data = await res.json() as Record<string, unknown>;
-        // llama-server returns {"status":"ok"} or {"status":"loading model"}
         if (typeof data['status'] === 'string') {
           return { found: true, baseUrl: url };
         }
@@ -109,18 +105,56 @@ async function detectLlamaServer(): Promise<{ found: boolean; baseUrl: string }>
   return { found: false, baseUrl: 'http://localhost:8080' };
 }
 
+async function detectTailscale(): Promise<{ found: boolean; socketPath: string | undefined }> {
+  // Check for tailscaled socket on Linux/macOS
+  if (process.platform !== 'win32') {
+    const sockets = [
+      '/var/run/tailscale/tailscaled.sock',
+      '/run/tailscale/tailscaled.sock',
+    ];
+    for (const s of sockets) {
+      if (existsSync(s)) return { found: true, socketPath: s };
+    }
+  }
+
+  // Try the CLI (works on all platforms)
+  try {
+    if (process.platform === 'win32') {
+      // Windows: check known install path first (faster than PATH lookup)
+      const winExe = 'C:\\Program Files\\Tailscale\\tailscale.exe';
+      const cmd = existsSync(winExe) ? `"${winExe}" status` : 'tailscale status';
+      execSync(cmd, { timeout: 2000, stdio: 'ignore' });
+    } else {
+      execSync('tailscale status --json', { timeout: 2000, stdio: 'ignore' });
+    }
+    return { found: true, socketPath: undefined };
+  } catch { /* not running or not installed */ }
+
+  return { found: false, socketPath: undefined };
+}
+
+function detectWSL2(): boolean {
+  if (process.platform !== 'linux') return false;
+  try {
+    const version = readFileSync('/proc/version', 'utf8');
+    return version.toLowerCase().includes('microsoft');
+  } catch { return false; }
+}
+
 export async function probe(): Promise<ProbeResult> {
   const nodeVersion = process.version;
   const major = parseInt(nodeVersion.slice(1), 10);
   const configDir = getConfigDir();
   const dataDir = getDataDir();
   const hasExistingConfig = existsSync(join(configDir, 'providers.json'));
-  const gatewayPortFree = await isPortFree(47200);
-  // Run all local-service detections in parallel for speed
-  const [ollama, lmStudio, llamaServer] = await Promise.all([
+  const isWSL2 = detectWSL2();
+
+  const [portFree, ollama, lmStudio, llamaServer, tailscale] = await Promise.all([
+    isPortFree(47200),
     detectOllama(),
     detectLmStudio(),
     detectLlamaServer(),
+    detectTailscale(),
   ]);
 
   return {
@@ -130,7 +164,7 @@ export async function probe(): Promise<ProbeResult> {
     dataDir,
     configDir,
     hasExistingConfig,
-    gatewayPortFree,
+    gatewayPortFree: portFree,
     ollamaDetected: ollama.found,
     ollamaBaseUrl: ollama.baseUrl,
     lmStudioDetected: lmStudio.found,
@@ -138,5 +172,9 @@ export async function probe(): Promise<ProbeResult> {
     lmStudioModels: lmStudio.models,
     llamaServerDetected: llamaServer.found,
     llamaServerBaseUrl: llamaServer.baseUrl,
+    tailscaleDetected: tailscale.found,
+    tailscaleSocketPath: tailscale.socketPath,
+    isWSL2,
+    defaultWorkspaceDir: join(dataDir, 'workspace'),
   };
 }

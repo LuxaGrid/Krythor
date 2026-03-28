@@ -594,17 +594,27 @@ if (args.includes('doctor')) {
   });
 } else {
   // ── Normal wizard mode ─────────────────────────────────────────────────────
-  // Parse --section and --reset flags passed from start.js
+  // Parse --section, --reset, --reset-scope, and --secret-input-mode flags
   const sectionIdx = args.indexOf('--section');
   const sectionArg = sectionIdx !== -1 ? args[sectionIdx + 1] : undefined;
-  const validSections = ['provider', 'gateway', 'channels', 'web-search'] as const;
+  const validSections = ['provider', 'gateway', 'channels', 'web-search', 'workspace', 'skills', 'daemon'] as const;
   type Section = typeof validSections[number];
   const section: Section | undefined = validSections.includes(sectionArg as Section)
     ? (sectionArg as Section)
     : undefined;
   const reset = args.includes('--reset');
 
-  new SetupWizard({ section, reset }).run().catch(err => {
+  const resetScopeIdx = args.indexOf('--reset-scope');
+  const resetScopeArg = resetScopeIdx !== -1 ? args[resetScopeIdx + 1] : undefined;
+  const resetScope: 'config' | 'full' | undefined =
+    resetScopeArg === 'config' || resetScopeArg === 'full' ? resetScopeArg : undefined;
+
+  const secretInputModeIdx = args.indexOf('--secret-input-mode');
+  const secretInputModeArg = secretInputModeIdx !== -1 ? args[secretInputModeIdx + 1] : undefined;
+  const secretInputMode: 'prompt' | 'ref' | undefined =
+    secretInputModeArg === 'prompt' || secretInputModeArg === 'ref' ? secretInputModeArg : undefined;
+
+  new SetupWizard({ section, reset, resetScope, secretInputMode }).run().catch(err => {
     console.error('\x1b[31mSetup failed:\x1b[0m', err instanceof Error ? err.message : err);
     process.exit(1);
   });
