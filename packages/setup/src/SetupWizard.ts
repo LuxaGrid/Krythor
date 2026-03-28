@@ -490,16 +490,19 @@ export class SetupWizard {
         anthropic: {
           endpoint:     'https://api.anthropic.com',
           keyUrl:       'https://console.anthropic.com/settings/keys',
-          defaultModel: 'claude-sonnet-4-5',
+          defaultModel: 'claude-sonnet-4-6',
           models: [
-            'claude-sonnet-4-5',         // recommended — best balance
-            'claude-opus-4-5',           // most capable
-            'claude-haiku-4-5',          // fastest / cheapest
-            'claude-sonnet-4-20250514',  // Sonnet 4 (stable)
-            'claude-3-7-sonnet-20250219', // strong reasoning
-            'claude-3-5-sonnet-20241022', // previous generation
-            'claude-3-5-haiku-20241022',
-            'claude-3-opus-20240229',    // legacy
+            'claude-sonnet-4-6',          // recommended — latest Sonnet
+            'claude-opus-4-6',            // most capable
+            'claude-haiku-4-5',           // fastest / cheapest
+            'claude-sonnet-4-5',          // Sonnet 4.5 (stable)
+            'claude-opus-4-5',            // Opus 4.5
+            'claude-sonnet-4-20250514',   // Sonnet 4 (pinned)
+            'claude-3-7-sonnet-20250219', // Claude 3.7 — strong reasoning
+            'claude-3-5-sonnet-20241022', // Claude 3.5 Sonnet
+            'claude-3-5-haiku-20241022',  // Claude 3.5 Haiku
+            'claude-3-opus-20240229',     // Claude 3 Opus (legacy)
+            'claude-3-haiku-20240307',    // Claude 3 Haiku (legacy)
           ],
         },
         openai: {
@@ -507,14 +510,20 @@ export class SetupWizard {
           keyUrl:       'https://platform.openai.com/api-keys',
           defaultModel: 'gpt-4.1-mini',
           models: [
-            'gpt-4.1-mini',   // recommended — fast + affordable
-            'gpt-4.1',        // latest flagship
-            'gpt-4.1-nano',   // smallest / cheapest
-            'gpt-4o',         // previous flagship
-            'gpt-4o-mini',    // popular cheap omni
-            'o4-mini',        // compact reasoning
-            'o3-mini',        // fast reasoning
-            'o3',             // full reasoning
+            'gpt-4.1-mini',     // recommended — fast + affordable
+            'gpt-4.1',          // latest flagship
+            'gpt-4.1-nano',     // smallest / cheapest
+            'gpt-4o',           // multimodal flagship
+            'gpt-4o-mini',      // popular cheap omni
+            'o4-mini',          // compact reasoning
+            'o3',               // full reasoning
+            'o3-mini',          // fast reasoning
+            'o1',               // original reasoning model
+            'o1-mini',          // fast reasoning (legacy)
+            'o1-preview',       // o1 preview
+            'gpt-4-turbo',      // GPT-4 Turbo
+            'gpt-4',            // GPT-4 (classic)
+            'gpt-3.5-turbo',    // fast + cheap (legacy)
           ],
         },
       };
@@ -637,8 +646,8 @@ export class SetupWizard {
       }
 
       const curatedModels = [
-        'anthropic/claude-sonnet-4-5',      // recommended
-        'anthropic/claude-opus-4-5',
+        'anthropic/claude-sonnet-4-6',      // recommended
+        'anthropic/claude-opus-4-6',
         'anthropic/claude-haiku-4-5',
         'openai/gpt-4.1',
         'openai/gpt-4.1-mini',
