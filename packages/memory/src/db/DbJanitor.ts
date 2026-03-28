@@ -46,6 +46,18 @@ export interface DbJanitorConfig {
    * Default: 0 (disabled — no count cap).
    */
   maxConversations?: number;
+  /**
+   * Maximum total message payload size in bytes across all conversations.
+   * When exceeded, oldest conversations (by updated_at) are pruned until under budget.
+   * Approximate — uses the LENGTH of message content. Default: 0 (disabled).
+   */
+  maxDiskBytes?: number;
+  /**
+   * Archive a conversation after its message count reaches this threshold.
+   * Archived conversations are excluded from the default sessions_list view.
+   * Default: 0 (disabled).
+   */
+  rotateAfterMessages?: number;
 }
 
 export class DbJanitor {
@@ -95,6 +107,18 @@ export class DbJanitor {
       result.conversationsPruned = this.pruneConversations();
     } catch (err) {
       this.log('error', '[janitor] conversations prune failed', { error: err instanceof Error ? err.message : String(err) });
+    }
+
+    try {
+      result.conversationsPruned += this.pruneByDiskBudget();
+    } catch (err) {
+      this.log('error', '[janitor] disk-budget prune failed', { error: err instanceof Error ? err.message : String(err) });
+    }
+
+    try {
+      this.archiveOverMessageLimit();
+    } catch (err) {
+      this.log('error', '[janitor] rotate-after-messages archive failed', { error: err instanceof Error ? err.message : String(err) });
     }
 
     try {
@@ -181,6 +205,54 @@ export class DbJanitor {
     }
 
     return pruned;
+  }
+
+  /**
+   * Prune oldest conversations until total message payload is within maxDiskBytes.
+   * Uses approximate byte measurement (sum of LENGTH(content) across messages).
+   */
+  private pruneByDiskBudget(): number {
+    const maxDiskBytes = this.config.maxDiskBytes ?? 0;
+    if (maxDiskBytes <= 0) return 0;
+
+    let pruned = 0;
+    for (let attempt = 0; attempt < 1000; attempt++) {
+      // Calculate approximate total message payload
+      const sizeRow = this.db.prepare(`
+        SELECT COALESCE(SUM(LENGTH(content)), 0) as total FROM messages
+      `).get({}) as { total: number };
+
+      if (sizeRow.total <= maxDiskBytes) break;
+
+      // Prune the oldest non-pinned conversation
+      const oldest = this.db.prepare(`
+        SELECT id FROM conversations ORDER BY pinned ASC, updated_at ASC LIMIT 1
+      `).get({}) as { id: string } | undefined;
+
+      if (!oldest) break;
+
+      this.db.prepare(`DELETE FROM conversations WHERE id = @id`).run({ id: oldest.id });
+      pruned++;
+    }
+    return pruned;
+  }
+
+  /**
+   * Archive conversations whose message count exceeds rotateAfterMessages.
+   * Archiving marks them as archived=1 (excluded from default list views).
+   */
+  private archiveOverMessageLimit(): void {
+    const limit = this.config.rotateAfterMessages ?? 0;
+    if (limit <= 0) return;
+
+    this.db.prepare(`
+      UPDATE conversations SET archived = 1
+      WHERE archived = 0 AND id IN (
+        SELECT conversation_id FROM messages
+        GROUP BY conversation_id
+        HAVING COUNT(*) >= @limit
+      )
+    `).run({ limit });
   }
 
   /**

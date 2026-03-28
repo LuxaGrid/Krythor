@@ -17,7 +17,7 @@ import { registerMemoryRoutes } from './routes/memory.js';
 import { registerModelRoutes } from './routes/models.js';
 import { registerAgentRoutes } from './routes/agents.js';
 import { registerGuardRoutes } from './routes/guard.js';
-import { registerConfigRoute } from './routes/config.js';
+import { registerConfigRoute, type HeartbeatRef } from './routes/config.js';
 import { registerConfigPortabilityRoutes } from './routes/config.portability.js';
 import { registerConversationRoutes } from './routes/conversations.js';
 import { registerSkillRoutes } from './routes/skills.js';
@@ -1207,13 +1207,16 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   // and to the WS stream handler. Storage path is <dataDir>/devices/devices.json.
   const devicePairingStore = new DevicePairingStore(join(dataDir, 'devices'));
 
+  // Late-bound heartbeat reference — filled in after HeartbeatEngine is created below.
+  const heartbeatRef: HeartbeatRef = {};
+
   // Register routes
   registerCommandRoute(app, core, orchestrator, broadcast, guard, convStore, devicePairingStore);
   registerMemoryRoutes(app, memory, models, guard, channelEmit);
   registerModelRoutes(app, models, memory, guard, channelEmit);
   registerAgentRoutes(app, orchestrator, guard, accessProfileStore);
   registerGuardRoutes(app, guard, guardDecisionStore);
-  registerConfigRoute(app, join(dataDir, 'config'), guard, orchestrator, memory);
+  registerConfigRoute(app, join(dataDir, 'config'), guard, orchestrator, memory, heartbeatRef);
   registerConversationRoutes(app, convStore, guard, channelEmit, memory ?? undefined);
   registerSkillRoutes(app, skillRegistry, guard, skillRunner);
   registerRecommendRoutes(app, models, recommender, guard);
@@ -1412,6 +1415,24 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   // Dashboard route is registered after heartbeat is instantiated so it can
   // reference heartbeat directly (avoids a late-binding closure or re-export).
   registerDashboardRoute(app, models, memory, orchestrator, heartbeat);
+  // Patch the heartbeat into the heartbeatRef so the config route can update it at runtime.
+  heartbeatRef.instance = heartbeat;
+
+  // Apply startup heartbeat config from app-config.json (deferred because HeartbeatEngine was
+  // created after registerConfigRoute, so the startup block in config.ts couldn't apply it).
+  try {
+    if (existsSync(appConfigPath)) {
+      const startupAppCfg = JSON.parse(readFileSync(appConfigPath, 'utf-8')) as Record<string, unknown>;
+      const hbPatch: Record<string, unknown> = {};
+      if ('heartbeatDirectPolicy' in startupAppCfg) hbPatch['directPolicy'] = startupAppCfg['heartbeatDirectPolicy'];
+      if ('heartbeatThinkingDefault' in startupAppCfg) hbPatch['thinkingDefault'] = startupAppCfg['heartbeatThinkingDefault'];
+      if ('heartbeatMentionPatterns' in startupAppCfg) hbPatch['mentionPatterns'] = startupAppCfg['heartbeatMentionPatterns'];
+      if ('heartbeatResetTriggers' in startupAppCfg) hbPatch['resetTriggers'] = startupAppCfg['heartbeatResetTriggers'];
+      if (Object.keys(hbPatch).length > 0) {
+        heartbeat.patchConfig(hbPatch as Parameters<typeof heartbeat.patchConfig>[0]);
+      }
+    }
+  } catch { /* startup heartbeat config is best-effort */ }
 
   // Chat channel registry (inbound bot channels — Telegram, Discord, WhatsApp)
   const chatChannelRegistry = new ChatChannelRegistry(join(dataDir, 'config'));

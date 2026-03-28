@@ -40,6 +40,27 @@ export interface HeartbeatConfig {
   enabled:    boolean;
   timeoutMs:  number;
   checks:     Record<string, CheckConfig>;
+  /**
+   * Controls how heartbeat handles direct/proactive initiation.
+   * 'reactive'  — heartbeat only responds when explicitly triggered (default).
+   * 'proactive' — heartbeat may send unsolicited check-in messages via the outbound channel.
+   */
+  directPolicy?: 'reactive' | 'proactive';
+  /**
+   * When true, heartbeat checks use extended thinking (if the active model supports it).
+   * Default: false.
+   */
+  thinkingDefault?: boolean;
+  /**
+   * Regex patterns (case-insensitive) that trigger a heartbeat check when matched
+   * in any incoming message. Useful for monitoring keywords like "alert" or "urgent".
+   */
+  mentionPatterns?: string[];
+  /**
+   * Exact phrases (case-insensitive) that reset the heartbeat polling timer.
+   * Prevents heartbeat from firing while the user is actively interacting.
+   */
+  resetTriggers?: string[];
 }
 
 export interface HeartbeatInsight {
@@ -140,6 +161,14 @@ export class HeartbeatEngine {
       this.timer = undefined;
       this.log('info', 'Stopped.');
     }
+  }
+
+  /**
+   * Merge partial config updates into the current config at runtime.
+   * Safe to call at any time — takes effect on the next poll cycle.
+   */
+  patchConfig(partial: Partial<HeartbeatConfig>): void {
+    this.config = { ...this.config, ...partial };
   }
 
   /** Expose recent run history (for diagnostics / API). */

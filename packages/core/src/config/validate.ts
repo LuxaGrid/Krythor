@@ -155,6 +155,40 @@ export interface AppConfigRaw {
    * Default: 0 (disabled — no count cap).
    */
   sessionMaxConversations?: number;
+  /**
+   * Maximum total disk usage for conversation storage in bytes.
+   * When exceeded, oldest conversations are pruned until under budget.
+   * Default: 0 (disabled — no disk cap).
+   */
+  sessionMaxDiskBytes?: number;
+  /**
+   * Archive a conversation after it reaches this many messages.
+   * Archived conversations are excluded from sessions_list by default.
+   * Default: 0 (disabled).
+   */
+  sessionRotateAfterMessages?: number;
+  /**
+   * Heartbeat policy for direct/proactive messages.
+   * 'reactive' — respond only when explicitly called (default).
+   * 'proactive' — heartbeat may generate unsolicited check-in messages.
+   */
+  heartbeatDirectPolicy?: 'reactive' | 'proactive';
+  /**
+   * Whether heartbeat checks use extended thinking by default (when available).
+   * Default: false.
+   */
+  heartbeatThinkingDefault?: boolean;
+  /**
+   * Patterns (regex strings) that trigger a heartbeat check when mentioned
+   * in any incoming message. Case-insensitive. Example: ["urgent", "alert"].
+   */
+  heartbeatMentionPatterns?: string[];
+  /**
+   * Phrases that reset the heartbeat timer when received (case-insensitive exact match).
+   * Prevents heartbeat from running while the user is actively interacting.
+   * Default: [].
+   */
+  heartbeatResetTriggers?: string[];
 }
 
 export function parseAppConfig(raw: unknown): ValidationResult<AppConfigRaw> {
@@ -253,6 +287,69 @@ export function parseAppConfig(raw: unknown): ValidationResult<AppConfigRaw> {
       value.sessionMaxConversations = r['sessionMaxConversations'];
     } else {
       errors.push(`sessionMaxConversations: expected non-negative number, got ${String(r['sessionMaxConversations'])}`);
+    }
+  }
+
+  if ('sessionMaxDiskBytes' in r) {
+    if (r['sessionMaxDiskBytes'] === null || r['sessionMaxDiskBytes'] === undefined) {
+      // null means "cleared" — omit
+    } else if (typeof r['sessionMaxDiskBytes'] === 'number' && r['sessionMaxDiskBytes'] >= 0) {
+      value.sessionMaxDiskBytes = r['sessionMaxDiskBytes'];
+    } else {
+      errors.push(`sessionMaxDiskBytes: expected non-negative number, got ${String(r['sessionMaxDiskBytes'])}`);
+    }
+  }
+
+  if ('sessionRotateAfterMessages' in r) {
+    if (r['sessionRotateAfterMessages'] === null || r['sessionRotateAfterMessages'] === undefined) {
+      // null means "cleared" — omit
+    } else if (typeof r['sessionRotateAfterMessages'] === 'number' && r['sessionRotateAfterMessages'] >= 0) {
+      value.sessionRotateAfterMessages = r['sessionRotateAfterMessages'];
+    } else {
+      errors.push(`sessionRotateAfterMessages: expected non-negative number, got ${String(r['sessionRotateAfterMessages'])}`);
+    }
+  }
+
+  if ('heartbeatDirectPolicy' in r) {
+    const validPolicies = ['reactive', 'proactive'];
+    if (r['heartbeatDirectPolicy'] === null || r['heartbeatDirectPolicy'] === undefined) {
+      // null means "cleared" — omit
+    } else if (validPolicies.includes(r['heartbeatDirectPolicy'] as string)) {
+      value.heartbeatDirectPolicy = r['heartbeatDirectPolicy'] as AppConfigRaw['heartbeatDirectPolicy'];
+    } else {
+      errors.push(`heartbeatDirectPolicy: expected one of ${validPolicies.join(', ')}, got ${String(r['heartbeatDirectPolicy'])}`);
+    }
+  }
+
+  if ('heartbeatThinkingDefault' in r) {
+    if (r['heartbeatThinkingDefault'] === null || r['heartbeatThinkingDefault'] === undefined) {
+      // null means "cleared" — omit
+    } else if (typeof r['heartbeatThinkingDefault'] === 'boolean') {
+      value.heartbeatThinkingDefault = r['heartbeatThinkingDefault'];
+    } else {
+      errors.push(`heartbeatThinkingDefault: expected boolean, got ${typeof r['heartbeatThinkingDefault']}`);
+    }
+  }
+
+  if ('heartbeatMentionPatterns' in r) {
+    if (r['heartbeatMentionPatterns'] === null || r['heartbeatMentionPatterns'] === undefined) {
+      // null means "cleared" — omit
+    } else if (Array.isArray(r['heartbeatMentionPatterns'])) {
+      const patterns = (r['heartbeatMentionPatterns'] as unknown[]).filter(p => typeof p === 'string') as string[];
+      value.heartbeatMentionPatterns = patterns;
+    } else {
+      errors.push(`heartbeatMentionPatterns: expected array of strings`);
+    }
+  }
+
+  if ('heartbeatResetTriggers' in r) {
+    if (r['heartbeatResetTriggers'] === null || r['heartbeatResetTriggers'] === undefined) {
+      // null means "cleared" — omit
+    } else if (Array.isArray(r['heartbeatResetTriggers'])) {
+      const triggers = (r['heartbeatResetTriggers'] as unknown[]).filter(t => typeof t === 'string') as string[];
+      value.heartbeatResetTriggers = triggers;
+    } else {
+      errors.push(`heartbeatResetTriggers: expected array of strings`);
     }
   }
 

@@ -2,6 +2,10 @@ import type { FastifyInstance } from 'fastify';
 import type { GuardEngine } from '@krythor/guard';
 import type { AgentOrchestrator } from '@krythor/core';
 import type { MemoryEngine } from '@krythor/memory';
+import type { HeartbeatEngine } from '../heartbeat/HeartbeatEngine.js';
+
+/** Late-bound reference box so config route can reach heartbeat after it's created. */
+export interface HeartbeatRef { instance?: HeartbeatEngine }
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { atomicWriteJSON, parseAppConfig } from '@krythor/core';
@@ -25,6 +29,12 @@ export interface AppConfig {
   bootstrapTruncationWarning?: 'off' | 'once' | 'always';
   sessionPruneAfterDays?: number;
   sessionMaxConversations?: number;
+  sessionMaxDiskBytes?: number;
+  sessionRotateAfterMessages?: number;
+  heartbeatDirectPolicy?: 'reactive' | 'proactive';
+  heartbeatThinkingDefault?: boolean;
+  heartbeatMentionPatterns?: string[];
+  heartbeatResetTriggers?: string[];
   /**
    * Shared secret for inbound webhook endpoints (POST /api/hooks/wake, /api/hooks/agent).
    * Set this to a random string to enable inbound hooks.
@@ -33,7 +43,7 @@ export interface AppConfig {
   webhookToken?: string;
 }
 
-export function registerConfigRoute(app: FastifyInstance, configDir: string, guard?: GuardEngine, orchestrator?: AgentOrchestrator, memory?: MemoryEngine): void {
+export function registerConfigRoute(app: FastifyInstance, configDir: string, guard?: GuardEngine, orchestrator?: AgentOrchestrator, memory?: MemoryEngine, heartbeatRef?: HeartbeatRef): void {
   const configPath = join(configDir, 'app-config.json');
 
   // Read the raw file — all fields preserved, including gatewayToken managed by auth.ts.
@@ -76,12 +86,21 @@ export function registerConfigRoute(app: FastifyInstance, configDir: string, gua
   if (orchestrator && startupCfg.bootstrapTruncationWarning) {
     orchestrator.setBootstrapTruncationWarning(startupCfg.bootstrapTruncationWarning);
   }
-  if (memory && (startupCfg.sessionPruneAfterDays !== undefined || startupCfg.sessionMaxConversations !== undefined)) {
+  if (memory && (
+    startupCfg.sessionPruneAfterDays !== undefined ||
+    startupCfg.sessionMaxConversations !== undefined ||
+    startupCfg.sessionMaxDiskBytes !== undefined ||
+    startupCfg.sessionRotateAfterMessages !== undefined
+  )) {
     memory.setJanitorConfig({
       conversationRetentionDays: startupCfg.sessionPruneAfterDays,
       maxConversations: startupCfg.sessionMaxConversations,
+      maxDiskBytes: startupCfg.sessionMaxDiskBytes,
+      rotateAfterMessages: startupCfg.sessionRotateAfterMessages,
     });
   }
+  // Note: heartbeat startup config is applied in server.ts after HeartbeatEngine is created,
+  // because HeartbeatEngine is created after registerConfigRoute() is called.
 
   // GET /api/config
   // webhookToken is omitted from the response — it is write-only for security.
@@ -105,6 +124,12 @@ export function registerConfigRoute(app: FastifyInstance, configDir: string, gua
           bootstrapTruncationWarning:  { type: ['string', 'null'], enum: ['off', 'once', 'always', null] },
           sessionPruneAfterDays:       { type: ['integer', 'null'], minimum: 1, maximum: 3650 },
           sessionMaxConversations:     { type: ['integer', 'null'], minimum: 1, maximum: 100000 },
+          sessionMaxDiskBytes:         { type: ['integer', 'null'], minimum: 0 },
+          sessionRotateAfterMessages:  { type: ['integer', 'null'], minimum: 1 },
+          heartbeatDirectPolicy:       { type: ['string', 'null'], enum: ['reactive', 'proactive', null] },
+          heartbeatThinkingDefault:    { type: ['boolean', 'null'] },
+          heartbeatMentionPatterns:    { type: ['array', 'null'], items: { type: 'string', maxLength: 200 }, maxItems: 50 },
+          heartbeatResetTriggers:      { type: ['array', 'null'], items: { type: 'string', maxLength: 200 }, maxItems: 50 },
           webhookToken:                { type: ['string', 'null'], maxLength: 512 },
         },
         additionalProperties: false,
@@ -147,10 +172,38 @@ export function registerConfigRoute(app: FastifyInstance, configDir: string, gua
     if ('sessionMaxConversations' in patch) {
       updated.sessionMaxConversations = (patch['sessionMaxConversations'] as number | null) ?? undefined;
     }
-    if (memory && ('sessionPruneAfterDays' in patch || 'sessionMaxConversations' in patch)) {
+    if ('sessionMaxDiskBytes' in patch) {
+      updated.sessionMaxDiskBytes = (patch['sessionMaxDiskBytes'] as number | null) ?? undefined;
+    }
+    if ('sessionRotateAfterMessages' in patch) {
+      updated.sessionRotateAfterMessages = (patch['sessionRotateAfterMessages'] as number | null) ?? undefined;
+    }
+    if (memory && ('sessionPruneAfterDays' in patch || 'sessionMaxConversations' in patch || 'sessionMaxDiskBytes' in patch || 'sessionRotateAfterMessages' in patch)) {
       memory.setJanitorConfig({
         conversationRetentionDays: updated.sessionPruneAfterDays,
         maxConversations: updated.sessionMaxConversations,
+        maxDiskBytes: updated.sessionMaxDiskBytes,
+        rotateAfterMessages: updated.sessionRotateAfterMessages,
+      });
+    }
+    if ('heartbeatDirectPolicy' in patch) {
+      updated.heartbeatDirectPolicy = (patch['heartbeatDirectPolicy'] as AppConfig['heartbeatDirectPolicy'] | null) ?? undefined;
+    }
+    if ('heartbeatThinkingDefault' in patch) {
+      updated.heartbeatThinkingDefault = (patch['heartbeatThinkingDefault'] as boolean | null) ?? undefined;
+    }
+    if ('heartbeatMentionPatterns' in patch) {
+      updated.heartbeatMentionPatterns = (patch['heartbeatMentionPatterns'] as string[] | null) ?? undefined;
+    }
+    if ('heartbeatResetTriggers' in patch) {
+      updated.heartbeatResetTriggers = (patch['heartbeatResetTriggers'] as string[] | null) ?? undefined;
+    }
+    if (heartbeatRef?.instance && ('heartbeatDirectPolicy' in patch || 'heartbeatThinkingDefault' in patch || 'heartbeatMentionPatterns' in patch || 'heartbeatResetTriggers' in patch)) {
+      heartbeatRef!.instance!.patchConfig({
+        directPolicy:    updated.heartbeatDirectPolicy,
+        thinkingDefault: updated.heartbeatThinkingDefault,
+        mentionPatterns: updated.heartbeatMentionPatterns,
+        resetTriggers:   updated.heartbeatResetTriggers,
       });
     }
     if ('webhookToken' in patch) {
