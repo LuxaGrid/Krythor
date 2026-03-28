@@ -2,10 +2,15 @@ import { buildServer, GATEWAY_HOST, GATEWAY_PORT, TRUSTED_PROXIES, warnIfNetwork
 import { logger } from './logger.js';
 import type { ReadinessResult } from './readiness.js';
 
-let serverInstance: Awaited<ReturnType<typeof buildServer>> | null = null;
+type ServerInstance = Awaited<ReturnType<typeof buildServer>> & {
+  checkReady?: () => Promise<ReadinessResult>;
+  waitForDrain?: (timeoutMs: number) => Promise<void>;
+};
+
+let serverInstance: ServerInstance | null = null;
 
 async function main(): Promise<void> {
-  const app = await buildServer();
+  const app = await buildServer() as ServerInstance;
   serverInstance = app;
 
   try {
@@ -25,13 +30,13 @@ async function main(): Promise<void> {
     logger.serverStart(GATEWAY_PORT, GATEWAY_HOST);
 
     // Log readiness state immediately after startup
-    const checkReady = (app as unknown as Record<string, () => Promise<ReadinessResult>>)['checkReady'];
+    const checkReady = app.checkReady;
     if (checkReady) {
       const readiness = await checkReady();
       if (readiness.ready) {
         app.log.info('Readiness check passed — server is ready to serve requests');
       } else {
-        const failing = Object.entries(readiness.checks)
+        const failing = (Object.entries(readiness.checks) as Array<[string, { ok: boolean; detail?: string }]>)
           .filter(([, v]) => !v.ok)
           .map(([k, v]) => `${k}: ${v.detail ?? 'failed'}`)
           .join(', ');
@@ -45,21 +50,23 @@ async function main(): Promise<void> {
   }
 }
 
-process.on('SIGINT', async () => {
+async function gracefulShutdown(signal: string): Promise<void> {
+  logger.info(`Received ${signal}, starting graceful shutdown`);
   logger.serverStop();
   if (serverInstance) {
+    // Stop accepting new requests
     await serverInstance.close();
+    // Wait for in-flight agent runs to complete (max 30s)
+    if (serverInstance.waitForDrain) {
+      await serverInstance.waitForDrain(30_000);
+    }
   }
+  logger.info('Graceful shutdown complete');
   process.exit(0);
-});
+}
 
-process.on('SIGTERM', async () => {
-  logger.serverStop();
-  if (serverInstance) {
-    await serverInstance.close();
-  }
-  process.exit(0);
-});
+process.on('SIGINT', () => { void gracefulShutdown('SIGINT'); });
+process.on('SIGTERM', () => { void gracefulShutdown('SIGTERM'); });
 
 main().catch((err: unknown) => {
   console.error('Fatal error starting Krythor Gateway:', err);

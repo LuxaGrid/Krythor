@@ -436,6 +436,31 @@ export class AgentOrchestrator extends EventEmitter {
     };
   }
 
+  /** Returns the number of currently executing agent runs. */
+  activeRunCount(): number {
+    return this.runner.activeRunCount();
+  }
+
+  /**
+   * Resolves when activeRunCount() reaches 0 or timeoutMs elapses.
+   * Checks every 500 ms.
+   */
+  waitForDrain(timeoutMs: number): Promise<void> {
+    return new Promise<void>((resolve) => {
+      if (this.runner.activeRunCount() === 0) {
+        resolve();
+        return;
+      }
+      const deadline = Date.now() + timeoutMs;
+      const interval = setInterval(() => {
+        if (this.runner.activeRunCount() === 0 || Date.now() >= deadline) {
+          clearInterval(interval);
+          resolve();
+        }
+      }, 500);
+    });
+  }
+
   // ── Private ────────────────────────────────────────────────────────────────
 
   /**

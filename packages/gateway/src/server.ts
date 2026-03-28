@@ -1700,5 +1700,9 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   (app as unknown as Record<string, unknown>)['checkReady'] = () =>
     checkReadiness(memory, models, guard);
 
+  // Expose waitForDrain so index.ts can drain active runs on graceful shutdown
+  (app as unknown as Record<string, unknown>)['waitForDrain'] = (timeoutMs: number) =>
+    orchestrator.waitForDrain(timeoutMs);
+
   return app;
 }
