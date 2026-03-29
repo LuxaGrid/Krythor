@@ -65,6 +65,7 @@ import { registerCanvasRoute } from './routes/canvas.js';
 import { registerUpdateRoute } from './routes/update.js';
 import { registerImageGenRoute, getActiveImageProvider } from './routes/imageGen.js';
 import { registerMediaRoute } from './routes/media.js';
+import { registerSessionMaintenanceRoutes } from './routes/sessions.maintenance.js';
 import { ApprovalManager } from './ApprovalManager.js';
 import { AuditLogger } from './AuditLogger.js';
 import { HeartbeatEngine, type HeartbeatRunRecord, type HeartbeatInsight } from './heartbeat/HeartbeatEngine.js';
@@ -1415,6 +1416,7 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   registerGuardRoutes(app, guard, guardDecisionStore);
   registerConfigRoute(app, join(dataDir, 'config'), guard, orchestrator, memory, heartbeatRef, approvalManager);
   registerConversationRoutes(app, convStore, guard, channelEmit, memory ?? undefined, approvalManager);
+  if (memory) registerSessionMaintenanceRoutes(app, memory);
   registerSkillRoutes(app, skillRegistry, guard, skillRunner, approvalManager);
   registerRecommendRoutes(app, models, recommender, guard);
   registerToolRoutes(app, guard, execTool, core);
