@@ -122,8 +122,18 @@ export interface SkillFileEntry {
   skill: Skill;
 }
 
+export interface SkillSnapshot {
+  /** ISO timestamp when the snapshot was taken. */
+  takenAt: string;
+  /** Short content hash of all loaded skill bodies (for change detection). */
+  hash: string;
+  /** Summary of each loaded skill at snapshot time. */
+  skills: Array<{ id: string; name: string; version: number; enabled: boolean }>;
+}
+
 export class SkillFileLoader {
   private readonly scanDirs: string[];
+  private _latestSnapshot: SkillSnapshot | null = null;
 
   /**
    * @param scanDirs — directories to scan for SKILL.md files. Each directory
@@ -211,6 +221,33 @@ export class SkillFileLoader {
    */
   loadSkills(): Skill[] {
     return this.load().map(e => e.skill);
+  }
+
+  /**
+   * Take a snapshot of the currently loaded skill set.
+   * Stores the result internally (accessible via latestSnapshot) and returns it.
+   */
+  takeSnapshot(): SkillSnapshot {
+    const entries = this.load();
+    const fingerprint = entries.map(e => `${e.skill.name}:${e.skill.systemPrompt}`).join('\n');
+    const hash = createHash('sha1').update(fingerprint).digest('hex').slice(0, 12);
+    const snapshot: SkillSnapshot = {
+      takenAt: new Date().toISOString(),
+      hash,
+      skills: entries.map(e => ({
+        id: e.skill.id,
+        name: e.skill.name,
+        version: e.skill.version ?? 1,
+        enabled: e.skill.enabled !== false,
+      })),
+    };
+    this._latestSnapshot = snapshot;
+    return snapshot;
+  }
+
+  /** The most recently taken snapshot, or null if none has been taken yet. */
+  get latestSnapshot(): SkillSnapshot | null {
+    return this._latestSnapshot;
   }
 
   /**

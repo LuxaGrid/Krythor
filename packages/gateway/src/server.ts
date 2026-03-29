@@ -944,8 +944,10 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   // The loader re-scans on every list request; the watcher debounces FS events
   // and emits a log line so operators can observe hot-reload activity.
   const skillFileLoader = new SkillFileLoader([workspaceDir]);
+  skillFileLoader.takeSnapshot();
   const stopSkillWatcher = skillFileLoader.watch(() => {
-    logger.info('Skill files changed — reload on next request');
+    const snap = skillFileLoader.takeSnapshot();
+    logger.info('Skill files changed — snapshot updated', { hash: snap.hash, count: snap.skills.length });
   }, 500);
 
 
