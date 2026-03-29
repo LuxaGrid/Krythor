@@ -86,25 +86,32 @@ export function registerSessionMaintenanceRoutes(
     async (req, reply) => {
       const staleDays = Math.max(1, req.body?.staleDays ?? DEFAULT_STALE_DAYS);
       const dryRun    = req.body?.dryRun ?? false;
-      const cutoffMs  = staleDays * 86_400_000;
+      const staleMs   = staleDays * 86_400_000;
       const now       = Date.now();
+      const totalSessions = memory.sessionStore.count();
 
-      const all = memory.sessionStore.list({ limit: 10_000 });
-      const stale = all.filter(e => (now - e.updatedAt) >= cutoffMs);
-
-      if (!dryRun) {
-        for (const e of stale) {
-          memory.sessionStore.delete(e.sessionKey);
-        }
+      if (dryRun) {
+        // Preview only — list sessions to show which would be deleted
+        const all = memory.sessionStore.list({ limit: 10_000 });
+        const stale = all.filter(e => (now - e.updatedAt) >= staleMs);
+        return reply.send({
+          dryRun: true,
+          staleDays,
+          totalSessions,
+          pruned: stale.length,
+          remaining: totalSessions - stale.length,
+          deletedKeys: stale.map(e => e.sessionKey),
+        });
       }
 
+      // Real prune — single SQL DELETE, no per-row round trips
+      const pruned = memory.sessionStore.prune({ staleMs });
       return reply.send({
-        dryRun,
+        dryRun: false,
         staleDays,
-        totalSessions: all.length,
-        pruned: stale.length,
-        remaining: all.length - (dryRun ? 0 : stale.length),
-        deletedKeys: stale.map(e => e.sessionKey),
+        totalSessions,
+        pruned,
+        remaining: totalSessions - pruned,
       });
     },
   );
