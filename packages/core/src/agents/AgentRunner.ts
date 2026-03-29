@@ -279,6 +279,15 @@ function trimLargeToolResults(messages: import('./types.js').AgentMessage[]): im
 // Singleton tool instances — read-only, stateless, safe to share
 const webSearchTool  = new WebSearchTool();
 const webFetchTool   = new WebFetchTool();
+
+/**
+ * Configure the module-level webFetchTool URL allowlist.
+ * Pass an empty array to disable the allowlist (allow all non-SSRF URLs).
+ * Called from server.ts after reading app-config.json.
+ */
+export function setWebFetchAllowedUrls(urls: string[]): void {
+  webFetchTool.setAllowedUrls(urls);
+}
 const filesystemTool = new FilesystemTool(); // default allowed root: process.cwd()
 
 // ── Handoff type ─────────────────────────────────────────────────────────────

@@ -31,6 +31,12 @@ export interface WebFetchResult {
   truncated:     boolean;
 }
 
+export interface UrlBlockedResult {
+  error:  'URL_NOT_ALLOWED';
+  url:    string;
+  reason: string;
+}
+
 export interface SsrfBlockedResult {
   error:  'SSRF_BLOCKED';
   url:    string;
@@ -187,6 +193,34 @@ function stripHtml(html: string): string {
 
 export class WebFetchTool {
   /**
+   * Optional URL allowlist. Each entry is a URL prefix (or exact URL).
+   * When non-empty, only URLs that start with one of the allowed prefixes
+   * are permitted. Set via setAllowedUrls() at runtime.
+   *
+   * Example: ['https://api.example.com/', 'https://docs.example.org/']
+   */
+  private allowedUrls: string[] = [];
+
+  /**
+   * Set the URL allowlist. Pass an empty array to disable (allow all).
+   * Entries are matched as URL prefixes (case-insensitive).
+   */
+  setAllowedUrls(urls: string[]): void {
+    this.allowedUrls = urls.map(u => u.toLowerCase());
+  }
+
+  /**
+   * Check if a URL is permitted by the allowlist.
+   * Returns null if allowed, or a reason string if blocked.
+   */
+  private checkAllowlist(url: string): string | null {
+    if (this.allowedUrls.length === 0) return null; // allowlist disabled
+    const lower = url.toLowerCase();
+    const allowed = this.allowedUrls.some(prefix => lower.startsWith(prefix));
+    return allowed ? null : `URL not in allowlist. Allowed prefixes: ${this.allowedUrls.slice(0, 5).join(', ')}`;
+  }
+
+  /**
    * Fetch the URL and return its plain-text content.
    *
    * @param url      The URL to fetch (http:// or https:// only).
@@ -194,10 +228,11 @@ export class WebFetchTool {
    *                 Defaults to WEB_FETCH_MAX_CHARS (10 000).
    *
    * Returns SsrfBlockedResult when the URL is blocked by SSRF checks.
+   * Returns UrlBlockedResult when the URL is not in the allowlist.
    * @throws {Error} if the scheme is not http or https (early, before SSRF check)
    * @throws {Error} on network failure or timeout
    */
-  async fetch(url: string, maxChars?: number): Promise<WebFetchResult | SsrfBlockedResult> {
+  async fetch(url: string, maxChars?: number): Promise<WebFetchResult | SsrfBlockedResult | UrlBlockedResult> {
     if (!url || typeof url !== 'string') {
       throw new Error('url must be a non-empty string');
     }
@@ -219,6 +254,12 @@ export class WebFetchTool {
     evictExpired();
     const cached = fetchCache.get(cacheKey);
     if (cached) return cached.result;
+
+    // URL allowlist check (before SSRF, to short-circuit early)
+    const allowlistReason = this.checkAllowlist(normalized);
+    if (allowlistReason) {
+      return { error: 'URL_NOT_ALLOWED', url: normalized, reason: allowlistReason };
+    }
 
     // SSRF protection — check before making any network request
     const ssrfReason = await checkSsrf(normalized);

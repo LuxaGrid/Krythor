@@ -4,7 +4,7 @@ export type { ExecOptions, ExecResult } from './tools/ExecTool.js';
 export { WebSearchTool, WEB_SEARCH_TIMEOUT_MS, WEB_SEARCH_CACHE_TTL_MS } from './tools/WebSearchTool.js';
 export type { WebSearchResult, WebSearchResponse } from './tools/WebSearchTool.js';
 export { WebFetchTool, WEB_FETCH_MAX_CHARS, WEB_FETCH_MAX_CHARS_CAP, WEB_FETCH_TIMEOUT_MS, WEB_FETCH_CACHE_TTL_MS } from './tools/WebFetchTool.js';
-export type { WebFetchResult, SsrfBlockedResult } from './tools/WebFetchTool.js';
+export type { WebFetchResult, SsrfBlockedResult, UrlBlockedResult } from './tools/WebFetchTool.js';
 export { TOOL_REGISTRY, getToolEntry, TOOL_PROFILES, resolveToolProfile } from './tools/ToolRegistry.js';
 export type { ToolEntry, ToolParameter } from './tools/ToolRegistry.js';
 export { WebhookTool } from './tools/WebhookTool.js';
@@ -35,7 +35,7 @@ export { AgentOrchestrator, RunQueueFullError, RunRateLimitError } from './agent
 export { AgentMessageBus } from './agents/AgentMessageBus.js';
 export type { AgentMessage as AgentMessageBusMessage } from './agents/AgentMessageBus.js';
 export { AgentRegistry } from './agents/AgentRegistry.js';
-export { AgentRunner, NO_REPLY } from './agents/AgentRunner.js';
+export { AgentRunner, NO_REPLY, setWebFetchAllowedUrls } from './agents/AgentRunner.js';
 export type { LearningSignal, LearningRecorder, HandoffResolver, CustomToolDispatcher, SpawnAgentResolver, GuardLike } from './agents/AgentRunner.js';
 export { SandboxNotFoundError, NotImplementedError } from './sandbox/SandboxProvider.js';
 export type { SandboxCapabilities, SandboxExecOptions, SandboxExecResult, SandboxProvider } from './sandbox/SandboxProvider.js';

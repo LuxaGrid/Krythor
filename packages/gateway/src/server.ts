@@ -6,7 +6,7 @@ import fastifyRateLimit from '@fastify/rate-limit';
 import { join } from 'path';
 import { existsSync, readFileSync, readdirSync, watch as fsWatch } from 'fs';
 import { homedir, networkInterfaces } from 'os';
-import { KrythorCore, AgentOrchestrator, ExecTool, CustomToolStore, WebhookTool, PluginLoader, AgentWorkspaceManager, getDefaultWorkspaceDir, AgentAuthProfileStore, AgentMessageBus } from '@krythor/core';
+import { KrythorCore, AgentOrchestrator, ExecTool, CustomToolStore, WebhookTool, PluginLoader, AgentWorkspaceManager, getDefaultWorkspaceDir, AgentAuthProfileStore, AgentMessageBus, setWebFetchAllowedUrls } from '@krythor/core';
 import { MemoryEngine, GuardDecisionStore, OllamaEmbeddingProvider, AuditStore, JobQueue } from '@krythor/memory';
 import { ModelEngine, ModelRecommender, PreferenceStore } from '@krythor/models';
 import { GuardEngine, ModerationEngine } from '@krythor/guard';
@@ -1778,7 +1778,7 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
     }
   } catch { /* startup heartbeat config is best-effort */ }
 
-  // Apply per-agent rate limit + sub-agent archive config from app-config.json
+  // Apply per-agent rate limit + sub-agent archive + web fetch allowlist from app-config.json
   try {
     if (existsSync(appConfigPath)) {
       const rateCfg = JSON.parse(readFileSync(appConfigPath, 'utf-8')) as Record<string, unknown>;
@@ -1789,6 +1789,11 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
       if (typeof rateCfg['subAgentArchiveMs'] === 'number') {
         orchestrator.setSubAgentArchiveMs(rateCfg['subAgentArchiveMs']);
         logger.info('Sub-agent auto-archive configured', { subAgentArchiveMs: rateCfg['subAgentArchiveMs'] });
+      }
+      if (Array.isArray(rateCfg['webFetchAllowedUrls'])) {
+        const urls = (rateCfg['webFetchAllowedUrls'] as unknown[]).filter((u): u is string => typeof u === 'string');
+        setWebFetchAllowedUrls(urls);
+        logger.info('web_fetch URL allowlist configured', { count: urls.length });
       }
     }
   } catch { /* best-effort */ }
