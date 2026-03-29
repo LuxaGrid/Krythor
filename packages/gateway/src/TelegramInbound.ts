@@ -74,6 +74,13 @@ export interface TelegramInboundConfig {
    * Default: "👀". Set to "" to disable.
    */
   ackReaction?: string;
+  /**
+   * Randomized inter-chunk delay range (ms) to simulate natural pacing when
+   * a reply is split into multiple messages. A random value between min and max
+   * is awaited between each pair of chunks.
+   * Default: { min: 800, max: 2500 }. Set max to 0 to disable.
+   */
+  humanDelay?: { min?: number; max?: number };
 }
 
 interface TelegramUpdate {
@@ -548,10 +555,16 @@ export class TelegramInbound {
         this.convStore.addMessage(conversationId, 'assistant', output, run.modelUsed);
       }
 
-      // Split long replies into chunks
+      // Split long replies into chunks and deliver with optional human-like pacing
       const chunks = splitIntoChunks(output, this.config.textChunkLimit ?? MAX_REPLY_LEN, this.config.chunkMode ?? 'length');
-      for (const chunk of chunks) {
-        await this.sendMessage(chatId, chunk);
+      const delayMin = this.config.humanDelay?.min ?? 800;
+      const delayMax = this.config.humanDelay?.max ?? 2500;
+      for (let i = 0; i < chunks.length; i++) {
+        if (i > 0 && delayMax > 0) {
+          const ms = delayMin + Math.random() * (delayMax - delayMin);
+          await this.sleep(Math.round(ms));
+        }
+        await this.sendMessage(chatId, chunks[i]!);
       }
     } catch (err) {
       logger.error('[telegram] Agent run failed', { err: err instanceof Error ? err.message : String(err), chatId });

@@ -75,6 +75,11 @@ export interface ChatChannelConfig {
    * Set to "" to disable. Default: "👀".
    */
   ackReaction?: string;
+  /**
+   * Randomized delay range (ms) between multi-bubble reply chunks to simulate
+   * natural pacing. Default: { min: 800, max: 2500 }. Set max to 0 to disable.
+   */
+  humanDelay?: { min?: number; max?: number };
 }
 
 export interface ChannelProviderMeta {

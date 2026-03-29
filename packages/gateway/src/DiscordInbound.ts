@@ -70,6 +70,11 @@ export interface DiscordInboundConfig {
   textChunkLimit?: number;
   /** Split strategy: 'length' (default) or 'newline' (paragraph boundaries first). */
   chunkMode?: 'length' | 'newline';
+  /**
+   * Randomized inter-chunk delay range (ms) for natural multi-bubble pacing.
+   * Default: { min: 800, max: 2500 }. Set max to 0 to disable.
+   */
+  humanDelay?: { min?: number; max?: number };
 }
 
 interface DiscordMessage {
@@ -480,13 +485,17 @@ export class DiscordInbound {
 
       await typingPromise;
 
-      // Split long replies into chunks
+      // Split long replies into chunks and deliver with optional human-like pacing
       const chunks = splitIntoChunks(output, this.config.textChunkLimit ?? MAX_REPLY_LEN, this.config.chunkMode ?? 'length');
-      let firstChunk = true;
-      for (const chunk of chunks) {
+      const delayMin = this.config.humanDelay?.min ?? 800;
+      const delayMax = this.config.humanDelay?.max ?? 2500;
+      for (let i = 0; i < chunks.length; i++) {
+        if (i > 0 && delayMax > 0) {
+          const ms = delayMin + Math.random() * (delayMax - delayMin);
+          await new Promise<void>(r => setTimeout(r, Math.round(ms)));
+        }
         // Only reply-thread on the first chunk to avoid a chain of replies
-        await this.sendMessage(chunk, firstChunk ? msg.id : undefined);
-        firstChunk = false;
+        await this.sendMessage(chunks[i]!, i === 0 ? msg.id : undefined);
       }
     } catch (err) {
       logger.error('[discord] Agent run failed', { err: err instanceof Error ? err.message : String(err), msgId: msg.id });
