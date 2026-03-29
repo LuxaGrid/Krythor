@@ -20,3 +20,6 @@ export type {
 } from './types.js';
 
 export { SCOPE_TO_RISK, OPERATION_RISK, RISK_ORDER } from './types.js';
+
+export { ModerationEngine } from './ModerationEngine.js';
+export type { ModerationPattern, ModerationResult, ModerationDirection, ModerationCategory } from './ModerationEngine.js';

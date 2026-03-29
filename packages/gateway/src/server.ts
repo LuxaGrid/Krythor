@@ -9,7 +9,7 @@ import { homedir, networkInterfaces } from 'os';
 import { KrythorCore, AgentOrchestrator, ExecTool, CustomToolStore, WebhookTool, PluginLoader, AgentWorkspaceManager, getDefaultWorkspaceDir, AgentAuthProfileStore, AgentMessageBus } from '@krythor/core';
 import { MemoryEngine, GuardDecisionStore, OllamaEmbeddingProvider, AuditStore, JobQueue } from '@krythor/memory';
 import { ModelEngine, ModelRecommender, PreferenceStore } from '@krythor/models';
-import { GuardEngine } from '@krythor/guard';
+import { GuardEngine, ModerationEngine } from '@krythor/guard';
 import { SkillRegistry, SkillRunner } from '@krythor/skills';
 import type { SkillEvent } from '@krythor/skills';
 import { registerCommandRoute } from './routes/command.js';
@@ -74,6 +74,7 @@ import { loadOrCreateToken, verifyToken } from './auth.js';
 import { ApiKeyStore } from './ApiKeyStore.js';
 import { ApiKeyRateLimiter } from './ApiKeyRateLimiter.js';
 import { TokenBudgetStore } from './TokenBudgetStore.js';
+import { registerModerationRoutes } from './routes/moderation.js';
 import { registerApiKeyRoutes } from './routes/apiKeys.js';
 import { registerJobRoutes } from './routes/jobs.js';
 import { registerErrorHandler } from './errors.js';
@@ -729,6 +730,9 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
 
   // Initialise guard (loads/creates policy.json on first run)
   const guard = new GuardEngine(join(dataDir, 'config'), dataDir);
+
+  // Content moderation engine — regex-based PII/credential/injection scanning
+  const moderation = new ModerationEngine();
 
   // Approval manager — handles require-approval guard decisions
   const approvalManager = new ApprovalManager();
@@ -1418,6 +1422,7 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   registerModelRoutes(app, models, memory, guard, channelEmit, approvalManager);
   registerAgentRoutes(app, orchestrator, guard, accessProfileStore, approvalManager, agentMessageBus, metricsCollector, tokenBudgetStore);
   registerGuardRoutes(app, guard, guardDecisionStore);
+  registerModerationRoutes(app, moderation);
   registerConfigRoute(app, join(dataDir, 'config'), guard, orchestrator, memory, heartbeatRef, approvalManager);
   registerConversationRoutes(app, convStore, guard, channelEmit, memory ?? undefined, approvalManager);
   if (memory) registerSessionMaintenanceRoutes(app, memory);
