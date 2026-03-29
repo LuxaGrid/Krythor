@@ -29,7 +29,7 @@
  * deletes are not supported through the API.
  */
 
-import { readdirSync, readFileSync, statSync, existsSync } from 'fs';
+import { readdirSync, readFileSync, statSync, existsSync, watch as fsWatch } from 'fs';
 import { join, basename } from 'path';
 import { createHash } from 'crypto';
 import type { Skill, SkillPermission } from './types.js';
@@ -211,5 +211,45 @@ export class SkillFileLoader {
    */
   loadSkills(): Skill[] {
     return this.load().map(e => e.skill);
+  }
+
+  /**
+   * Watch all configured scan directories for SKILL.md changes. Calls
+   * `callback` (debounced by `debounceMs`) whenever any SKILL.md is added,
+   * removed, or modified. Returns a stop function that closes all watchers.
+   *
+   * Directories that don't exist at call time are silently skipped —
+   * they won't be watched even if created later.
+   */
+  watch(callback: () => void, debounceMs = 500): () => void {
+    const watchers: ReturnType<typeof fsWatch>[] = [];
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const trigger = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(callback, debounceMs);
+    };
+
+    for (const dir of this.scanDirs) {
+      if (!existsSync(dir)) continue;
+      try {
+        watchers.push(
+          fsWatch(dir, { recursive: true }, (_event, filename) => {
+            if (filename && (filename === 'SKILL.md' || filename.endsWith('/SKILL.md') || filename.endsWith('\\SKILL.md'))) {
+              trigger();
+            }
+          }),
+        );
+      } catch {
+        // Directory not watchable (permissions, unsupported fs) — skip.
+      }
+    }
+
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      for (const w of watchers) {
+        try { w.close(); } catch { /* ignore */ }
+      }
+    };
   }
 }
