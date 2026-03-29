@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import type { SkillRegistry, SkillRunner, CreateSkillInput, UpdateSkillInput } from '@krythor/skills';
+import type { SkillRegistry, SkillRunner, SkillFileLoader, CreateSkillInput, UpdateSkillInput } from '@krythor/skills';
 import { SkillConcurrencyError, SkillPermissionError, SkillTimeoutError, BUILTIN_SKILLS } from '@krythor/skills';
 import type { GuardEngine } from '@krythor/guard';
 import { sendError } from '../errors.js';
@@ -7,7 +7,14 @@ import { logger } from '../logger.js';
 import type { ApprovalManager } from '../ApprovalManager.js';
 import { guardCheck } from '../guardCheck.js';
 
-export function registerSkillRoutes(app: FastifyInstance, skills: SkillRegistry, guard: GuardEngine, runner: SkillRunner, approvalManager?: ApprovalManager): void {
+export function registerSkillRoutes(
+  app: FastifyInstance,
+  skills: SkillRegistry,
+  guard: GuardEngine,
+  runner: SkillRunner,
+  approvalManager?: ApprovalManager,
+  fileLoader?: SkillFileLoader,
+): void {
 
   // GET /api/skills/builtins — list built-in skill templates (no user data required)
   app.get('/api/skills/builtins', async (_req, reply) => {
@@ -16,11 +23,26 @@ export function registerSkillRoutes(app: FastifyInstance, skills: SkillRegistry,
 
   // GET /api/skills — list skills, optionally filtered by tags
   // ?includeDisabled=true includes disabled skills (excluded by default)
+  // ?includeFileBacked=true includes file-backed skills from SKILL.md files (default: true)
   app.get('/api/skills', async (req, reply) => {
     const q = req.query as Record<string, string>;
     const tags = q.tags ? q.tags.split(',').map(t => t.trim()).filter(Boolean) : undefined;
-    const includeDisabled = q['includeDisabled'] === 'true';
-    return reply.send(skills.list(tags, includeDisabled));
+    const includeDisabled   = q['includeDisabled']   === 'true';
+    const includeFileBacked = q['includeFileBacked']  !== 'false'; // default true
+
+    let result = skills.list(tags, includeDisabled);
+
+    if (includeFileBacked && fileLoader) {
+      const fileSkills = fileLoader.loadSkills().filter(s => includeDisabled || s.enabled !== false);
+      // Only include file-backed skills whose name doesn't collide with a DB skill
+      const existingNames = new Set(result.map(s => s.name));
+      const newFileSkills = tags
+        ? fileSkills.filter(s => tags.every(t => s.tags.includes(t)) && !existingNames.has(s.name))
+        : fileSkills.filter(s => !existingNames.has(s.name));
+      result = [...result, ...newFileSkills];
+    }
+
+    return reply.send(result);
   });
 
   // GET /api/skills/status — active skill run counts (visibility/monitoring)
@@ -30,7 +52,9 @@ export function registerSkillRoutes(app: FastifyInstance, skills: SkillRegistry,
 
   // GET /api/skills/:id
   app.get<{ Params: { id: string } }>('/api/skills/:id', async (req, reply) => {
-    const skill = skills.getById(req.params.id);
+    const skill = skills.getById(req.params.id)
+      ?? fileLoader?.loadSkills().find(s => s.id === req.params.id)
+      ?? null;
     if (!skill) return sendError(reply, 404, 'SKILL_NOT_FOUND', 'Skill not found');
     return reply.send(skill);
   });

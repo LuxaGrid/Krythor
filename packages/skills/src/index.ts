@@ -1,4 +1,6 @@
 export { SkillRegistry } from './SkillRegistry.js';
+export { SkillFileLoader } from './SkillFileLoader.js';
+export type { SkillFileEntry } from './SkillFileLoader.js';
 export { SkillRunner } from './SkillRunner.js';
 export type { Skill, CreateSkillInput, UpdateSkillInput, SkillPermission, SkillEvent, SkillTaskProfile } from './types.js';
 export type { SkillRunInput, SkillRunResult, InferFn, SkillEventEmitter, PermissionChecker } from './SkillRunner.js';
