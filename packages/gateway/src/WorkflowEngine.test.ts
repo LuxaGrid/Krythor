@@ -11,7 +11,7 @@ function makeOrchestrator(handler: (agentId: string, input: string) => string): 
   return {
     runAgent: async (agentId: string, opts: { input: string }) => {
       const output = handler(agentId, opts.input)
-      return { output, agentId, runId: 'r1' } as AgentRun
+      return { output, agentId, runId: 'r1' } as unknown as AgentRun
     },
   } as unknown as AgentOrchestrator
 }
