@@ -8,6 +8,7 @@ import type { AccessProfileStore } from '../AccessProfileStore.js';
 import type { ApprovalManager } from '../ApprovalManager.js';
 import { guardCheck } from '../guardCheck.js';
 import type { MetricsCollector } from '../MetricsCollector.js';
+import type { TokenBudgetStore } from '../TokenBudgetStore.js';
 
 interface ParallelJob { agentId: string; input: RunAgentInput }
 interface ParallelBody { jobs: ParallelJob[] }
@@ -21,6 +22,7 @@ export function registerAgentRoutes(
   approvalManager?: ApprovalManager,
   messageBus?: AgentMessageBus,
   metricsCollector?: MetricsCollector,
+  tokenBudgetStore?: TokenBudgetStore,
 ): void {
 
   // GET /api/agents
@@ -290,16 +292,20 @@ export function registerAgentRoutes(
       if (!allowed) return;
     }
 
+    // Token budget check
+    if (tokenBudgetStore) {
+      const budgetResult = tokenBudgetStore.check(agent.id);
+      if (!budgetResult.allowed) {
+        return reply.code(429).send({ error: budgetResult.reason ?? 'Token budget exceeded', budgetResult });
+      }
+    }
+
     const runStart = Date.now();
     try {
       const run = await orchestrator.runAgent(req.params.id, req.body as RunAgentInput);
-      metricsCollector?.recordAgentRun(
-        agent.id,
-        agent.name,
-        Date.now() - runStart,
-        true,
-        (run as unknown as Record<string, unknown>)['tokensUsed'] as number | undefined ?? 0,
-      );
+      const tokensUsed = (run as unknown as Record<string, unknown>)['tokensUsed'] as number | undefined ?? 0;
+      metricsCollector?.recordAgentRun(agent.id, agent.name, Date.now() - runStart, true, tokensUsed);
+      if (tokensUsed > 0) tokenBudgetStore?.record(agent.id, tokensUsed);
       return reply.send(run);
     } catch (err) {
       metricsCollector?.recordAgentRun(agent.id, agent.name, Date.now() - runStart, false);
@@ -507,6 +513,46 @@ export function registerAgentRoutes(
         }
         return reply.code(500).send({ error: err instanceof Error ? err.message : 'Delegation failed' });
       }
+    });
+  }
+
+  // ── Token budget routes ────────────────────────────────────────────────────
+
+  if (tokenBudgetStore) {
+    // GET /api/agents/:id/budget
+    app.get<{ Params: { id: string } }>('/api/agents/:id/budget', async (req, reply) => {
+      const agent = orchestrator.getAgent(req.params.id);
+      if (!agent) return reply.code(404).send({ error: 'Agent not found' });
+      const usage = tokenBudgetStore.usage(agent.id);
+      return reply.send(usage);
+    });
+
+    // PUT /api/agents/:id/budget
+    app.put<{ Params: { id: string } }>('/api/agents/:id/budget', {
+      schema: {
+        body: {
+          type: 'object',
+          properties: {
+            dailyLimit:   { type: ['number', 'null'], minimum: 1 },
+            sessionLimit: { type: ['number', 'null'], minimum: 1 },
+          },
+          additionalProperties: false,
+        },
+      },
+    }, async (req, reply) => {
+      const agent = orchestrator.getAgent(req.params.id);
+      if (!agent) return reply.code(404).send({ error: 'Agent not found' });
+      const { dailyLimit, sessionLimit } = req.body as { dailyLimit?: number | null; sessionLimit?: number | null };
+      const budget = tokenBudgetStore.upsert(agent.id, { dailyLimit, sessionLimit });
+      return reply.send(budget);
+    });
+
+    // DELETE /api/agents/:id/budget
+    app.delete<{ Params: { id: string } }>('/api/agents/:id/budget', async (req, reply) => {
+      const agent = orchestrator.getAgent(req.params.id);
+      if (!agent) return reply.code(404).send({ error: 'Agent not found' });
+      tokenBudgetStore.remove(agent.id);
+      return reply.send({ ok: true });
     });
   }
 }

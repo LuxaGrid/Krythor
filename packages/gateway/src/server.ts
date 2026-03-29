@@ -73,6 +73,7 @@ import { logger } from './logger.js';
 import { loadOrCreateToken, verifyToken } from './auth.js';
 import { ApiKeyStore } from './ApiKeyStore.js';
 import { ApiKeyRateLimiter } from './ApiKeyRateLimiter.js';
+import { TokenBudgetStore } from './TokenBudgetStore.js';
 import { registerApiKeyRoutes } from './routes/apiKeys.js';
 import { registerJobRoutes } from './routes/jobs.js';
 import { registerErrorHandler } from './errors.js';
@@ -1400,6 +1401,9 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   // Agent message bus — in-process agent-to-agent messaging and delegation
   const agentMessageBus = new AgentMessageBus();
 
+  // ── Token budget store ────────────────────────────────────────────────────
+  const tokenBudgetStore = new TokenBudgetStore(join(dataDir, 'config'));
+
   // ── Real-time request metrics — created early so agent routes can use it ────
   const metricsCollector = new MetricsCollector(60);
   app.addHook('onResponse', async (req, reply) => {
@@ -1412,7 +1416,7 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   registerCommandRoute(app, core, orchestrator, broadcast, guard, convStore, devicePairingStore, approvalManager, privacyRouter);
   registerMemoryRoutes(app, memory, models, guard, channelEmit, approvalManager, janitorStatus);
   registerModelRoutes(app, models, memory, guard, channelEmit, approvalManager);
-  registerAgentRoutes(app, orchestrator, guard, accessProfileStore, approvalManager, agentMessageBus, metricsCollector);
+  registerAgentRoutes(app, orchestrator, guard, accessProfileStore, approvalManager, agentMessageBus, metricsCollector, tokenBudgetStore);
   registerGuardRoutes(app, guard, guardDecisionStore);
   registerConfigRoute(app, join(dataDir, 'config'), guard, orchestrator, memory, heartbeatRef, approvalManager);
   registerConversationRoutes(app, convStore, guard, channelEmit, memory ?? undefined, approvalManager);
