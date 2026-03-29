@@ -30,6 +30,7 @@ import { DevicesPanel } from './components/DevicesPanel.tsx';
 import { CronPanel } from './components/CronPanel.tsx';
 import { StandingOrdersPanel } from './components/StandingOrdersPanel.tsx';
 import { PeersPanel } from './components/PeersPanel.tsx';
+import { TokenCostPanel } from './components/TokenCostPanel.tsx';
 
 // ── App Config Context ─────────────────────────────────────────────────────
 interface AppConfigCtx {
@@ -43,7 +44,7 @@ export const AppConfigContext = createContext<AppConfigCtx>({
 export const useAppConfig = () => useContext(AppConfigContext);
 
 // ── Tabs ──────────────────────────────────────────────────────────────────
-type Tab = 'command' | 'agents' | 'skills' | 'memory' | 'models' | 'guard' | 'events' | 'mission' | 'command-center' | 'workflow' | 'dashboard' | 'settings' | 'logs' | 'config-editor' | 'custom-tools' | 'channels' | 'chat-channels' | 'file-browser' | 'audit' | 'workspace' | 'devices' | 'cron' | 'standing-orders' | 'peers';
+type Tab = 'command' | 'agents' | 'skills' | 'memory' | 'models' | 'guard' | 'events' | 'mission' | 'command-center' | 'workflow' | 'dashboard' | 'settings' | 'logs' | 'config-editor' | 'custom-tools' | 'channels' | 'chat-channels' | 'file-browser' | 'audit' | 'workspace' | 'devices' | 'cron' | 'standing-orders' | 'peers' | 'token-cost';
 
 // Primary tabs — always visible
 const PRIMARY_TABS: { id: Tab; label: string; hint: string }[] = [
@@ -53,6 +54,7 @@ const PRIMARY_TABS: { id: Tab; label: string; hint: string }[] = [
   { id: 'models',         label: 'Models',         hint: 'Connect AI providers' },
   { id: 'command-center', label: 'Command Center', hint: 'Live animated agent operations view' },
   { id: 'dashboard',      label: 'Dashboard',      hint: 'System stats and health' },
+  { id: 'token-cost',     label: 'Token Cost',     hint: 'Live token usage and cost feed across all LLM sessions' },
   { id: 'settings',       label: 'Settings',       hint: 'Configuration and info' },
 ];
 
@@ -864,6 +866,7 @@ function AppInner({ onTokenReady }: { onTokenReady: (token: string) => void }) {
           <div className={`h-full ${tab === 'cron'             ? 'block' : 'hidden'}`}><CronPanel /></div>
           <div className={`h-full ${tab === 'standing-orders'  ? 'block' : 'hidden'}`}><StandingOrdersPanel /></div>
           <div className={`h-full ${tab === 'peers'            ? 'block' : 'hidden'}`}><PeersPanel /></div>
+          <div className={`h-full ${tab === 'token-cost'      ? 'block' : 'hidden'}`}><TokenCostPanel /></div>
         </div>
       </div>
     </AppConfigContext.Provider>

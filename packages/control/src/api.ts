@@ -519,6 +519,24 @@ export interface AgentRun {
 }
 export interface AgentStats { agentCount: number; activeRuns: number; totalRuns: number }
 
+// ── Token budgets ──────────────────────────────────────────────────────────────
+export interface TokenBudget {
+  agentId:       string;
+  dailyLimit?:   number;
+  sessionLimit?: number;
+  createdAt:     number;
+  updatedAt:     number;
+}
+export interface TokenBudgetUsage {
+  sessionUsed: number;
+  dailyUsed:   number;
+  budget:      TokenBudget | null;
+}
+export const getAgentBudget    = (id: string) => req<TokenBudgetUsage>('GET', `/agents/${id}/budget`);
+export const setAgentBudget    = (id: string, limits: { dailyLimit?: number | null; sessionLimit?: number | null }) =>
+  req<TokenBudget>('PUT', `/agents/${id}/budget`, limits);
+export const deleteAgentBudget = (id: string) => req<{ ok: boolean }>('DELETE', `/agents/${id}/budget`);
+
 export async function getAgentAccessProfile(id: string): Promise<{ agentId: string; profile: string }> {
   const r = await fetch(`${_baseUrl}/agents/${id}/access-profile`, {
     headers: _gatewayToken ? { Authorization: `Bearer ${_gatewayToken}` } : {},
