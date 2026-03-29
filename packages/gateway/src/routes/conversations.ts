@@ -35,6 +35,25 @@ export function registerConversationRoutes(app: FastifyInstance, store: Conversa
     return reply.send(store.listConversations(includeArchived).map(withIdleStatus));
   });
 
+  // GET /api/conversations/search — search messages by content
+  app.get<{ Querystring: { q: string; agentId?: string; role?: string; limit?: string } }>(
+    '/api/conversations/search',
+    async (req, reply) => {
+      if (guard) {
+        const allowed = await guardCheck({ guard, approvalManager, reply, operation: 'conversation:read', source: 'user' });
+        if (!allowed) return;
+      }
+      const { q, agentId, role, limit } = req.query;
+      if (!q || q.trim().length === 0) {
+        return reply.code(400).send({ error: 'Query parameter "q" is required' });
+      }
+      const parsedLimit = limit ? Math.min(parseInt(limit, 10) || 20, 200) : 20;
+      const validRole = role === 'user' || role === 'assistant' || role === 'system' ? role : undefined;
+      const results = store.searchMessages(q, { agentId, role: validRole, limit: parsedLimit });
+      return reply.send({ query: q, results, count: results.length });
+    },
+  );
+
   // POST /api/conversations — create new
   app.post('/api/conversations', {
     schema: {

@@ -228,4 +228,78 @@ export class ConversationStore {
     if (!row) return false;
     return this.deleteMessage(row.id);
   }
+
+  /**
+   * Search messages by content using case-insensitive LIKE.
+   * Returns matching messages with their conversation metadata.
+   */
+  searchMessages(query: string, opts: {
+    agentId?: string;
+    role?: 'user' | 'assistant' | 'system';
+    limit?: number;
+  } = {}): Array<Message & { conversation: Conversation }> {
+    const limit = Math.min(opts.limit ?? 20, 200);
+    const q = `%${query}%`;
+
+    let sql: string;
+    const params: Record<string, unknown> = { q, limit };
+
+    if (opts.agentId && opts.role) {
+      sql = `
+        SELECT m.*, c.* FROM messages m
+        JOIN conversations c ON c.id = m.conversation_id
+        WHERE m.content LIKE @q AND c.agent_id = @agentId AND m.role = @role
+        ORDER BY m.created_at DESC LIMIT @limit
+      `;
+      params['agentId'] = opts.agentId;
+      params['role'] = opts.role;
+    } else if (opts.agentId) {
+      sql = `
+        SELECT m.*, c.* FROM messages m
+        JOIN conversations c ON c.id = m.conversation_id
+        WHERE m.content LIKE @q AND c.agent_id = @agentId
+        ORDER BY m.created_at DESC LIMIT @limit
+      `;
+      params['agentId'] = opts.agentId;
+    } else if (opts.role) {
+      sql = `
+        SELECT m.*, c.* FROM messages m
+        JOIN conversations c ON c.id = m.conversation_id
+        WHERE m.content LIKE @q AND m.role = @role
+        ORDER BY m.created_at DESC LIMIT @limit
+      `;
+      params['role'] = opts.role;
+    } else {
+      sql = `
+        SELECT m.*, c.* FROM messages m
+        JOIN conversations c ON c.id = m.conversation_id
+        WHERE m.content LIKE @q
+        ORDER BY m.created_at DESC LIMIT @limit
+      `;
+    }
+
+    const rows = this.db.prepare(sql).all(params) as Array<MessageRow & {
+      title: string; name?: string | null; pinned: number; archived: number; agent_id: string | null; created_at: number; updated_at: number;
+    }>;
+
+    return rows.map(row => ({
+      id:             row.id,
+      conversationId: row.conversation_id,
+      role:           row.role as Message['role'],
+      content:        row.content,
+      modelId:        row.model_id,
+      providerId:     row.provider_id,
+      createdAt:      row.created_at,
+      conversation:   rowToConversation({
+        id:         row.conversation_id,
+        title:      row.title,
+        name:       row.name,
+        pinned:     row.pinned,
+        archived:   row.archived,
+        agent_id:   row.agent_id,
+        created_at: row.updated_at,
+        updated_at: row.updated_at,
+      }),
+    }));
+  }
 }
