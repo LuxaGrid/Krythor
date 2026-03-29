@@ -82,6 +82,7 @@ import { ApiKeyPool } from './ApiKeyPool.js';
 import { registerKeyPoolRoutes } from './routes/keyPool.js';
 import { SessionDirectiveStore } from './SessionDirectiveStore.js';
 import { gatewayEvents } from './GatewayEventBus.js';
+import { BootstrapRunner } from './BootstrapRunner.js';
 import { registerApiKeyRoutes } from './routes/apiKeys.js';
 import { registerJobRoutes } from './routes/jobs.js';
 import { registerErrorHandler } from './errors.js';
@@ -922,6 +923,7 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   orchestrator.setWorkspaceDir(workspaceDir);
   logger.system('workspace_init', { dir: workspaceDir });
 
+
   // Session transcript storage — one JSONL file per run at:
   //   <dataDir>/agents/<agentId>/sessions/<runId>.jsonl
   orchestrator.setSessionsDir(dataDir);
@@ -938,6 +940,10 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   core.attachMemory(memory);
   core.attachModels(models);
   core.attachOrchestrator(orchestrator);
+
+  // Register BOOT.md runner — executes once on gateway:startup if BOOT.md exists in workspace
+  const bootstrapRunner = new BootstrapRunner(workspaceDir, orchestrator, core);
+  gatewayEvents.on('gateway:startup', () => { bootstrapRunner.run(); });
   logger.system('soul_load', {
     loaded: core.identity.isLoaded,
     path:   core.identity.meta.loadedFrom,
