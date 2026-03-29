@@ -15,7 +15,7 @@
 //
 
 import { execSync } from 'child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, cpSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, cpSync, rmSync } from 'fs';
 import { join } from 'path';
 
 const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
@@ -30,6 +30,9 @@ if (!existsSync(distDir)) {
 const debDir = 'deb-build';
 const installDir = join(debDir, 'usr', 'lib', 'krythor');
 const debianDir = join(debDir, 'DEBIAN');
+
+// Clean any stale deb-build dir to avoid cpSync ENOTDIR on re-runs
+if (existsSync(debDir)) rmSync(debDir, { recursive: true, force: true });
 
 mkdirSync(installDir, { recursive: true });
 mkdirSync(debianDir, { recursive: true });
