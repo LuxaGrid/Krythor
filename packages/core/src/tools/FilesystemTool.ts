@@ -19,19 +19,20 @@
 //   apply_patch:  { "tool": "apply_patch",  "path": "<path>", "patch": "<unified-diff>" }
 //
 
-import { readFileSync, writeFileSync, existsSync, statSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, statSync, unlinkSync } from 'fs';
 import { resolve, isAbsolute, relative, dirname } from 'path';
 import { mkdirSync } from 'fs';
 
 export const FS_MAX_BYTES = 512 * 1024; // 512 KB
 
-export type FsToolName = 'read_file' | 'write_file' | 'edit_file' | 'apply_patch';
+export type FsToolName = 'read_file' | 'write_file' | 'edit_file' | 'apply_patch' | 'apply_multifile_patch';
 
-export interface FsReadCall   { tool: 'read_file';   path: string }
-export interface FsWriteCall  { tool: 'write_file';  path: string; content: string }
-export interface FsEditCall   { tool: 'edit_file';   path: string; old: string; new: string }
-export interface FsPatchCall  { tool: 'apply_patch'; path: string; patch: string }
-export type FsCall = FsReadCall | FsWriteCall | FsEditCall | FsPatchCall;
+export interface FsReadCall         { tool: 'read_file';             path: string }
+export interface FsWriteCall        { tool: 'write_file';            path: string; content: string }
+export interface FsEditCall         { tool: 'edit_file';             path: string; old: string; new: string }
+export interface FsPatchCall        { tool: 'apply_patch';           path: string; patch: string }
+export interface FsMultiPatchCall   { tool: 'apply_multifile_patch'; patch: string }
+export type FsCall = FsReadCall | FsWriteCall | FsEditCall | FsPatchCall | FsMultiPatchCall;
 
 export interface FsResult {
   ok: boolean;
@@ -146,12 +147,31 @@ export class FilesystemTool {
     }
   }
 
+  applyMultiFilePatch(patch: string): FsResult {
+    const result = applyMultiFilePatch(patch, (p) => this.resolveSafe(p));
+    if (!result.ok || result.errors.length > 0) {
+      const summary = [
+        ...(result.filesAdded   > 0 ? [`added ${result.filesAdded}`]   : []),
+        ...(result.filesUpdated > 0 ? [`updated ${result.filesUpdated}`] : []),
+        ...(result.filesDeleted > 0 ? [`deleted ${result.filesDeleted}`] : []),
+      ].join(', ') || 'no changes';
+      return { ok: result.ok, output: `apply_multifile_patch: ${summary}. Errors: ${result.errors.join('; ')}` };
+    }
+    const summary = [
+      ...(result.filesAdded   > 0 ? [`added ${result.filesAdded}`]   : []),
+      ...(result.filesUpdated > 0 ? [`updated ${result.filesUpdated}`] : []),
+      ...(result.filesDeleted > 0 ? [`deleted ${result.filesDeleted}`] : []),
+    ].join(', ') || 'no changes';
+    return { ok: true, output: `apply_multifile_patch: ${summary}` };
+  }
+
   dispatch(call: FsCall): FsResult {
     switch (call.tool) {
-      case 'read_file':   return this.read(call.path);
-      case 'write_file':  return this.write(call.path, call.content);
-      case 'edit_file':   return this.edit(call.path, call.old, call.new);
-      case 'apply_patch': return this.applyPatch(call.path, call.patch);
+      case 'read_file':             return this.read(call.path);
+      case 'write_file':            return this.write(call.path, call.content);
+      case 'edit_file':             return this.edit(call.path, call.old, call.new);
+      case 'apply_patch':           return this.applyPatch(call.path, call.patch);
+      case 'apply_multifile_patch': return this.applyMultiFilePatch(call.patch);
     }
   }
 }
@@ -221,4 +241,190 @@ function applyUnifiedPatch(original: string, patch: string): PatchResult {
 
   if (hunksApplied === 0) return { ok: false, error: 'no valid hunks found in patch' };
   return { ok: true, content: output.join('\n'), hunks: hunksApplied };
+}
+
+// ── Multi-file structured patch applier ───────────────────────────────────────
+//
+// Applies a structured multi-file patch with the following format:
+//
+//   *** Begin Patch
+//   *** Add File: path/to/new-file.txt
+//   +line 1
+//   +line 2
+//   *** Update File: src/app.ts
+//   @@
+//   -old line
+//   +new line
+//   *** Move to: src/renamed.ts   (optional rename within an Update File block)
+//   *** Delete File: obsolete.txt
+//   *** End Patch
+//
+
+interface MultiFilePatchResult {
+  ok: boolean;
+  filesAdded:   number;
+  filesUpdated: number;
+  filesDeleted: number;
+  errors:       string[];
+}
+
+type FileAction = 'add' | 'update' | 'delete';
+
+interface FilePatchBlock {
+  action:  FileAction;
+  path:    string;
+  moveTo?: string;  // for *** Move to: within an Update File block
+  content: string;  // raw lines (for add: +lines, for update: hunk content)
+}
+
+function parseMultiFilePatch(patch: string): FilePatchBlock[] {
+  const lines = patch.split('\n');
+  const blocks: FilePatchBlock[] = [];
+  let i = 0;
+
+  // Seek *** Begin Patch
+  while (i < lines.length && lines[i]?.trim() !== '*** Begin Patch') i++;
+  if (i >= lines.length) return blocks;
+  i++;
+
+  let current: FilePatchBlock | null = null;
+  const contentLines: string[] = [];
+
+  const flushCurrent = (): void => {
+    if (current) {
+      blocks.push({ ...current, content: contentLines.join('\n') });
+      contentLines.length = 0;
+      current = null;
+    }
+  };
+
+  while (i < lines.length) {
+    const line = lines[i]!;
+    if (line.trim() === '*** End Patch') { flushCurrent(); break; }
+
+    if (line.startsWith('*** Add File: ')) {
+      flushCurrent();
+      current = { action: 'add', path: line.slice('*** Add File: '.length).trim(), content: '' };
+      i++; continue;
+    }
+    if (line.startsWith('*** Update File: ')) {
+      flushCurrent();
+      current = { action: 'update', path: line.slice('*** Update File: '.length).trim(), content: '' };
+      i++; continue;
+    }
+    if (line.startsWith('*** Delete File: ')) {
+      flushCurrent();
+      current = { action: 'delete', path: line.slice('*** Delete File: '.length).trim(), content: '' };
+      i++; continue;
+    }
+    if (line.startsWith('*** Move to: ') && current?.action === 'update') {
+      current.moveTo = line.slice('*** Move to: '.length).trim();
+      i++; continue;
+    }
+
+    contentLines.push(line);
+    i++;
+  }
+
+  return blocks;
+}
+
+/**
+ * Apply a structured multi-file patch.
+ * @param patchInput  Full patch string (*** Begin Patch ... *** End Patch)
+ * @param resolveSafe Callback that validates and resolves a path. Returns null if denied.
+ */
+export function applyMultiFilePatch(
+  patchInput: string,
+  resolveSafe: (path: string) => string | null,
+): MultiFilePatchResult {
+  const result: MultiFilePatchResult = {
+    ok: true, filesAdded: 0, filesUpdated: 0, filesDeleted: 0, errors: [],
+  };
+
+  const blocks = parseMultiFilePatch(patchInput);
+  if (blocks.length === 0) {
+    result.ok = false;
+    result.errors.push('No valid patch blocks found. Ensure patch starts with *** Begin Patch.');
+    return result;
+  }
+
+  for (const block of blocks) {
+    const abs = resolveSafe(block.path);
+    if (!abs) {
+      result.errors.push(`Path denied: ${block.path}`);
+      result.ok = false;
+      continue;
+    }
+
+    if (block.action === 'delete') {
+      if (!existsSync(abs)) {
+        result.errors.push(`delete: file not found: ${block.path}`);
+        result.ok = false;
+        continue;
+      }
+      try {
+        unlinkSync(abs);
+        result.filesDeleted++;
+      } catch (err) {
+        result.errors.push(`delete failed: ${block.path}: ${err instanceof Error ? err.message : String(err)}`);
+        result.ok = false;
+      }
+      continue;
+    }
+
+    if (block.action === 'add') {
+      // Content is +prefixed lines; strip the + prefix
+      const newContent = block.content
+        .split('\n')
+        .map(l => l.startsWith('+') ? l.slice(1) : l)
+        .join('\n');
+      try {
+        mkdirSync(dirname(abs), { recursive: true });
+        writeFileSync(abs, newContent, 'utf-8');
+        result.filesAdded++;
+      } catch (err) {
+        result.errors.push(`add failed: ${block.path}: ${err instanceof Error ? err.message : String(err)}`);
+        result.ok = false;
+      }
+      continue;
+    }
+
+    if (block.action === 'update') {
+      if (!existsSync(abs)) {
+        result.errors.push(`update: file not found: ${block.path}`);
+        result.ok = false;
+        continue;
+      }
+      try {
+        const stat = statSync(abs);
+        if (stat.size > FS_MAX_BYTES) {
+          result.errors.push(`update: file too large: ${block.path}`);
+          result.ok = false;
+          continue;
+        }
+        const original = readFileSync(abs, 'utf-8');
+        const patchResult = applyUnifiedPatch(original, block.content);
+        if (!patchResult.ok) {
+          result.errors.push(`update patch failed: ${block.path}: ${patchResult.error}`);
+          result.ok = false;
+          continue;
+        }
+        // Write to moveTo path if specified, otherwise overwrite in place
+        const destAbs = block.moveTo ? (resolveSafe(block.moveTo) ?? abs) : abs;
+        if (block.moveTo && destAbs !== abs) {
+          mkdirSync(dirname(destAbs), { recursive: true });
+          unlinkSync(abs);
+        }
+        writeFileSync(destAbs, patchResult.content!, 'utf-8');
+        result.filesUpdated++;
+      } catch (err) {
+        result.errors.push(`update failed: ${block.path}: ${err instanceof Error ? err.message : String(err)}`);
+        result.ok = false;
+      }
+      continue;
+    }
+  }
+
+  return result;
 }

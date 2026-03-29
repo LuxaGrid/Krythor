@@ -97,6 +97,8 @@ export function registerCommandRoute(
 
       if (cmd === '/new') {
         // Start a new conversation — create a fresh conversation record and signal the client
+        // Clear directives for the old conversation (new one gets a blank slate).
+        if (conversationId && sessionDirectives) sessionDirectives.clear(conversationId);
         let newConvId: string | undefined;
         if (convStore) {
           const conv = convStore.createConversation(agentId);
@@ -140,10 +142,23 @@ export function registerCommandRoute(
 
       if (cmd === '/model') {
         if (!arg) {
+          const sessionModel = conversationId ? sessionDirectives?.get(conversationId)?.modelId : undefined;
           const modelList = models?.listModels().map(m => `${m.id} (${m.providerId})`).join(', ') ?? '(no models)';
-          return slashReply({ output: `Available models: ${modelList}. Use /model <id> to switch.`, command: 'model:list' });
+          return slashReply({
+            output: `Active model: ${sessionModel ?? 'default'}\nAvailable: ${modelList}\nUse /model <id> to switch.`,
+            command: 'model:list',
+            activeModel: sessionModel ?? null,
+          });
         }
-        return slashReply({ output: `Model switched to: ${arg}. This will be used for your next message.`, command: 'model:switch', modelId: arg });
+        if (conversationId && sessionDirectives) {
+          sessionDirectives.set(conversationId, { modelId: arg });
+        }
+        return slashReply({
+          output: `Model switched to: ${arg}. Active for this session.`,
+          command: 'model:switch',
+          modelId: arg,
+          persisted: !!conversationId,
+        });
       }
 
       if (cmd === '/agent') {
@@ -505,12 +520,18 @@ export function registerCommandRoute(
       }
     }
 
+    // Merge session directives — per-session settings (/think, /fast, /model, etc.)
+    // Request-level params take precedence over session state.
+    const sessionState = conversationId && sessionDirectives ? sessionDirectives.get(conversationId) : {};
+    // If no explicit modelId in this request, fall back to session-stored model
+    const effectiveModelId = modelId ?? sessionState.modelId;
+
     // Resolve model routing aliases (claude, gpt4, local, fast, best)
     // before passing modelId downstream.  Unknown names pass through unchanged.
-    let resolvedModelId = modelId;
+    let resolvedModelId = effectiveModelId;
     let resolvedProviderId: string | undefined;
-    if (models && modelId) {
-      const aliasResult = models.resolveModelAlias(modelId);
+    if (models && effectiveModelId) {
+      const aliasResult = models.resolveModelAlias(effectiveModelId);
       if (aliasResult) {
         resolvedModelId = aliasResult.modelId;
         resolvedProviderId = aliasResult.providerId;

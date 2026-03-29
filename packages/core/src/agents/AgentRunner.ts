@@ -66,7 +66,8 @@ type WebFetchCall       = { tool: 'web_fetch';         url: string; maxChars?: n
 type ReadFileCall       = { tool: 'read_file';         path: string };
 type WriteFileCall      = { tool: 'write_file';        path: string; content: string };
 type EditFileCall       = { tool: 'edit_file';         path: string; old: string; new: string };
-type ApplyPatchCall     = { tool: 'apply_patch';       path: string; patch: string };
+type ApplyPatchCall          = { tool: 'apply_patch';            path: string; patch: string };
+type ApplyMultiFilePatchCall = { tool: 'apply_multifile_patch'; patch: string };
 type GetPageTextCall    = { tool: 'get_page_text';     url: string };
 type ShellExecCall      = { tool: 'shell_exec';        command: string; args?: string[]; cwd?: string; timeoutMs?: number };
 type ListProcessesCall  = { tool: 'list_processes' };
@@ -80,7 +81,7 @@ type GenerateImageCall  = { tool: 'generate_image';    prompt: string; size?: st
 type SessionsSendCall   = { tool: 'sessions_send';     sessionKey?: string; conversationId?: string; message: string; waitForReply?: boolean; timeoutSeconds?: number };
 type SessionsSpawnCall  = { tool: 'sessions_spawn';    agentId?: string; task: string; workspaceDirOverride?: string };
 type AnyToolCall        = ExecCall | WebSearchCall | WebFetchCall
-  | ReadFileCall | WriteFileCall | EditFileCall | ApplyPatchCall
+  | ReadFileCall | WriteFileCall | EditFileCall | ApplyPatchCall | ApplyMultiFilePatchCall
   | GetPageTextCall
   | ShellExecCall | ListProcessesCall
   | CustomCall | SpawnAgentCall
@@ -163,6 +164,10 @@ function extractToolCall(response: string): AnyToolCall | null {
     if (tool === 'apply_patch' && typeof parsed['path'] === 'string' && parsed['path'].length > 0 &&
         typeof parsed['patch'] === 'string') {
       return { tool: 'apply_patch', path: parsed['path'] as string, patch: parsed['patch'] as string };
+    }
+
+    if (tool === 'apply_multifile_patch' && typeof parsed['patch'] === 'string') {
+      return { tool: 'apply_multifile_patch', patch: parsed['patch'] as string };
     }
 
     if (tool === 'get_page_text' && typeof parsed['url'] === 'string' && parsed['url'].length > 0) {
@@ -684,7 +689,7 @@ export class AgentRunner {
       } catch (err) {
         toolResult = `Tool get_page_text failed: ${err instanceof Error ? err.message : String(err)}`;
       }
-    } else if (call.tool === 'read_file' || call.tool === 'write_file' || call.tool === 'edit_file' || call.tool === 'apply_patch') {
+    } else if (call.tool === 'read_file' || call.tool === 'write_file' || call.tool === 'edit_file' || call.tool === 'apply_patch' || call.tool === 'apply_multifile_patch') {
       const fsResult = filesystemTool.dispatch(call as import('../tools/FilesystemTool.js').FsCall);
       toolResult = fsResult.ok
         ? `Tool ${call.tool} succeeded:\n${fsResult.output}`
