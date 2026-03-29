@@ -47,6 +47,7 @@ export function registerChannelRoutes(app: FastifyInstance, channels: ChannelMan
       events?: ChannelEvent[];
       secret?: string;
       headers?: Record<string, string>;
+      retryPolicy?: import('../ChannelManager.js').ChannelRetryPolicy;
       isEnabled?: boolean;
     };
   }>('/api/channels', {
@@ -58,15 +59,25 @@ export function registerChannelRoutes(app: FastifyInstance, channels: ChannelMan
           name:      { type: 'string', minLength: 1, maxLength: 128 },
           url:       { type: 'string', minLength: 1, maxLength: 2048 },
           events:    { type: 'array', items: { type: 'string' }, maxItems: 20 },
-          secret:    { type: 'string', maxLength: 256 },
-          headers:   { type: 'object', additionalProperties: { type: 'string' } },
+          secret:      { type: 'string', maxLength: 256 },
+          headers:     { type: 'object', additionalProperties: { type: 'string' } },
+          retryPolicy: {
+            type: 'object',
+            properties: {
+              maxRetries: { type: 'integer', minimum: 0, maximum: 10 },
+              minDelayMs: { type: 'integer', minimum: 100, maximum: 60_000 },
+              maxDelayMs: { type: 'integer', minimum: 100, maximum: 300_000 },
+              jitter:     { type: 'boolean' },
+            },
+            additionalProperties: false,
+          },
           isEnabled: { type: 'boolean' },
         },
         additionalProperties: false,
       },
     },
   }, async (req, reply) => {
-    const { name, url, events = [], secret, headers, isEnabled = true } = req.body;
+    const { name, url, events = [], secret, headers, retryPolicy, isEnabled = true } = req.body;
 
     // Validate URL scheme — only http/https
     try {
@@ -84,7 +95,7 @@ export function registerChannelRoutes(app: FastifyInstance, channels: ChannelMan
       return reply.code(400).send({ error: `Unknown event types: ${invalid.join(', ')}. Valid: ${ALL_CHANNEL_EVENTS.join(', ')}` });
     }
 
-    const channel = channels.add({ name, url, events: events as ChannelEvent[], secret, headers, isEnabled });
+    const channel = channels.add({ name, url, events: events as ChannelEvent[], secret, headers, retryPolicy, isEnabled });
     return reply.code(201).send({
       id:        channel.id,
       name:      channel.name,
@@ -137,8 +148,18 @@ export function registerChannelRoutes(app: FastifyInstance, channels: ChannelMan
           name:      { type: 'string', minLength: 1, maxLength: 128 },
           url:       { type: 'string', minLength: 1, maxLength: 2048 },
           events:    { type: 'array', items: { type: 'string' }, maxItems: 20 },
-          secret:    { type: 'string', maxLength: 256 },
-          headers:   { type: 'object', additionalProperties: { type: 'string' } },
+          secret:      { type: 'string', maxLength: 256 },
+          headers:     { type: 'object', additionalProperties: { type: 'string' } },
+          retryPolicy: {
+            type: 'object',
+            properties: {
+              maxRetries: { type: 'integer', minimum: 0, maximum: 10 },
+              minDelayMs: { type: 'integer', minimum: 100, maximum: 60_000 },
+              maxDelayMs: { type: 'integer', minimum: 100, maximum: 300_000 },
+              jitter:     { type: 'boolean' },
+            },
+            additionalProperties: false,
+          },
           isEnabled: { type: 'boolean' },
         },
         additionalProperties: false,

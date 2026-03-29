@@ -30,6 +30,18 @@ export const ALL_CHANNEL_EVENTS: ChannelEvent[] = [
   'custom',
 ];
 
+/** Retry policy for channel delivery. */
+export interface ChannelRetryPolicy {
+  /** Maximum number of retry attempts after the first failure (default: 3). */
+  maxRetries?: number;
+  /** Initial delay in ms before the first retry (default: 1000). */
+  minDelayMs?: number;
+  /** Maximum delay cap in ms (default: 30000). */
+  maxDelayMs?: number;
+  /** Whether to add random jitter to retry delays (default: true). */
+  jitter?: boolean;
+}
+
 export interface Channel {
   id: string;
   name: string;
@@ -41,6 +53,8 @@ export interface Channel {
   secret?: string;
   /** Custom headers to include in every outgoing request */
   headers?: Record<string, string>;
+  /** Retry policy for failed deliveries. */
+  retryPolicy?: ChannelRetryPolicy;
   isEnabled: boolean;
   createdAt: string;
   updatedAt: string;
@@ -49,6 +63,8 @@ export interface Channel {
   lastDeliveryStatus?: 'ok' | 'failed';
   lastDeliveryStatusCode?: number;
   failureCount: number;
+  /** Total number of retried deliveries */
+  retryCount?: number;
 }
 
 export interface ChannelEvent_Payload {
@@ -146,37 +162,79 @@ export class ChannelManager {
       headers['X-Krythor-Signature'] = `sha256=${sig}`;
     }
 
-    const now = new Date().toISOString();
-    try {
-      const resp = await fetch(channel.url, {
-        method: 'POST',
-        headers,
-        body,
-        signal: AbortSignal.timeout(10_000),
-      });
+    const policy = channel.retryPolicy ?? {};
+    const maxRetries = Math.min(policy.maxRetries ?? 3, 10);
+    const minDelay   = policy.minDelayMs ?? 1_000;
+    const maxDelay   = policy.maxDelayMs ?? 30_000;
+    const useJitter  = policy.jitter !== false;
 
-      const ok = resp.ok;
-      this.channels.set(channel.id, {
-        ...channel,
-        lastDeliveryAt: now,
-        lastDeliveryStatus: ok ? 'ok' : 'failed',
-        lastDeliveryStatusCode: resp.status,
-        failureCount: ok ? 0 : channel.failureCount + 1,
-      });
-      this.save();
+    let attempt = 0;
+    let totalRetries = channel.retryCount ?? 0;
+    let lastStatus: number | undefined;
 
-      if (!ok) {
-        logger.warn('Channel delivery failed', { channelId: channel.id, event: payload.event, status: resp.status });
+    while (attempt <= maxRetries) {
+      const now = new Date().toISOString();
+      try {
+        const resp = await fetch(channel.url, {
+          method: 'POST',
+          headers,
+          body,
+          signal: AbortSignal.timeout(10_000),
+        });
+        lastStatus = resp.status;
+
+        if (resp.ok) {
+          this.channels.set(channel.id, {
+            ...channel,
+            lastDeliveryAt: now,
+            lastDeliveryStatus: 'ok',
+            lastDeliveryStatusCode: resp.status,
+            failureCount: 0,
+            retryCount: totalRetries,
+          });
+          this.save();
+          return;
+        }
+
+        // Non-2xx: retry unless rate-limited (429) or server error (5xx) on last attempt
+        logger.warn('Channel delivery failed', { channelId: channel.id, event: payload.event, status: resp.status, attempt, maxRetries });
+
+        if (attempt === maxRetries) {
+          this.channels.set(channel.id, {
+            ...channel,
+            lastDeliveryAt: now,
+            lastDeliveryStatus: 'failed',
+            lastDeliveryStatusCode: resp.status,
+            failureCount: channel.failureCount + 1,
+            retryCount: totalRetries,
+          });
+          this.save();
+          return;
+        }
+      } catch (err) {
+        logger.warn('Channel delivery error', { channelId: channel.id, event: payload.event, error: String(err), attempt, maxRetries });
+
+        if (attempt === maxRetries) {
+          const now2 = new Date().toISOString();
+          this.channels.set(channel.id, {
+            ...channel,
+            lastDeliveryAt: now2,
+            lastDeliveryStatus: 'failed',
+            lastDeliveryStatusCode: lastStatus,
+            failureCount: channel.failureCount + 1,
+            retryCount: totalRetries,
+          });
+          this.save();
+          return;
+        }
       }
-    } catch (err) {
-      this.channels.set(channel.id, {
-        ...channel,
-        lastDeliveryAt: now,
-        lastDeliveryStatus: 'failed',
-        failureCount: channel.failureCount + 1,
-      });
-      this.save();
-      logger.warn('Channel delivery error', { channelId: channel.id, event: payload.event, error: String(err) });
+
+      // Exponential backoff: minDelay * 2^attempt, capped at maxDelay, with optional jitter
+      attempt++;
+      totalRetries++;
+      let delay = Math.min(minDelay * Math.pow(2, attempt - 1), maxDelay);
+      if (useJitter) delay = delay * (0.5 + Math.random() * 0.5);
+      await new Promise(r => setTimeout(r, delay));
     }
   }
 
