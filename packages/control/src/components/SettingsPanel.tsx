@@ -477,9 +477,6 @@ export function SettingsPanel() {
         <Row label="Port" value="47200 (fixed)" />
         <Row label="Data dir" value={healthData?.dataDir ?? '—'} />
         <Row label="Config dir" value={healthData?.configDir ?? '—'} />
-        {process.env['KRYTHOR_DATA_DIR'] && (
-          <Row label="KRYTHOR_DATA_DIR" value={process.env['KRYTHOR_DATA_DIR']} />
-        )}
       </Section>
 
       {/* Auth */}
