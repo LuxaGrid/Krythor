@@ -845,12 +845,17 @@ function drawStationConsole(
     ctx.globalAlpha = 1;
   }
 
-  // Zone label below console
+  // Zone label below console — fit text to panel width with ellipsis
   ctx.font = `${PX * 2}px "JetBrains Mono", monospace`;
   ctx.textAlign = 'center';
   ctx.fillStyle = color;
   ctx.globalAlpha = 0.5;
-  ctx.fillText(label.toUpperCase(), cx, cy2 + ch + PX * 2.5);
+  const maxLabelW = cw + PX * 2;
+  let labelText = label.toUpperCase();
+  while (labelText.length > 3 && ctx.measureText(labelText).width > maxLabelW) {
+    labelText = labelText.slice(0, -2) + '…';
+  }
+  ctx.fillText(labelText, cx, cy2 + ch + PX * 2.5);
   ctx.globalAlpha = 1;
 }
 

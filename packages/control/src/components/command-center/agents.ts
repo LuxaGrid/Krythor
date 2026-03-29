@@ -82,7 +82,7 @@ export const DEFAULT_AGENTS: CommandCenterAgent[] = [
 export const SCENE_ZONES: SceneZone[] = [
   {
     id: 'crown',
-    label: 'Crown Platform',
+    label: 'Crown',
     description: 'Orchestration hub',
     position: { x: 50, y: 28 },
     width: 24,
@@ -93,7 +93,7 @@ export const SCENE_ZONES: SceneZone[] = [
   },
   {
     id: 'forge',
-    label: 'Forge Console',
+    label: 'Forge',
     description: 'Execution engine',
     position: { x: 20, y: 55 },
     width: 22,
@@ -104,7 +104,7 @@ export const SCENE_ZONES: SceneZone[] = [
   },
   {
     id: 'archive',
-    label: 'Archive Pillar',
+    label: 'Archive',
     description: 'Research & knowledge',
     position: { x: 80, y: 55 },
     width: 22,
@@ -115,7 +115,7 @@ export const SCENE_ZONES: SceneZone[] = [
   },
   {
     id: 'memory',
-    label: 'Memory Core',
+    label: 'Memory',
     description: 'Long-term memory store',
     position: { x: 65, y: 80 },
     width: 22,
@@ -126,7 +126,7 @@ export const SCENE_ZONES: SceneZone[] = [
   },
   {
     id: 'monitor',
-    label: 'Monitor Node',
+    label: 'Monitor',
     description: 'System watch & logs',
     position: { x: 34, y: 80 },
     width: 22,

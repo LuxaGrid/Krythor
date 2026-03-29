@@ -72,20 +72,14 @@ export function SceneZone({ zone, isActive, agentState }: SceneZoneProps): React
 
         {/* Top label banner */}
         <div
-          className="flex-shrink-0 flex items-center justify-between px-2 py-1"
+          className="flex-shrink-0 flex items-center gap-1 px-2 py-1 min-w-0"
           style={{
             borderBottom: `1px solid ${isActive2 ? `${zone.accentColor}60` : 'rgba(255,255,255,0.05)'}`,
             background: isActive2 ? `${zone.glowColor}` : 'transparent',
             transition: 'all 0.7s ease',
           }}
         >
-          <span
-            className="text-[8px] font-mono tracking-[0.18em] uppercase font-semibold leading-none"
-            style={{ color: isActive2 ? zone.accentColor : 'rgba(255,255,255,0.2)', transition: 'color 0.7s' }}
-          >
-            {zone.label}
-          </span>
-          {/* Active pulse indicator */}
+          {/* Active pulse indicator — left-anchored so it never squishes the label */}
           {isActive2 && (
             <span
               className="block w-1 h-1 rounded-full flex-shrink-0"
@@ -96,6 +90,12 @@ export function SceneZone({ zone, isActive, agentState }: SceneZoneProps): React
               }}
             />
           )}
+          <span
+            className="text-[8px] font-mono tracking-[0.08em] uppercase font-semibold leading-none truncate min-w-0"
+            style={{ color: isActive2 ? zone.accentColor : 'rgba(255,255,255,0.2)', transition: 'color 0.7s' }}
+          >
+            {zone.label}
+          </span>
         </div>
 
         {/* Inner content area — agent body floats here via AgentLayer */}
