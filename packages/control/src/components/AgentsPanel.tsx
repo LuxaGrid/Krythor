@@ -90,6 +90,20 @@ function RunRow({ run }: { run: AgentRun }) {
             {run.memoryUsed !== undefined && run.memoryUsed > 0 && (
               <span title={`${run.memoryUsed} memory entries used`} className="text-zinc-700">mem:{run.memoryUsed}</span>
             )}
+            {(run.promptTokens !== undefined || run.completionTokens !== undefined) && (
+              <span title={`Tokens — ${run.promptTokens ?? 0} prompt / ${run.completionTokens ?? 0} completion`} className="text-zinc-700">
+                tokens: <span className="font-mono text-zinc-600">{run.promptTokens ?? 0}</span>
+                <span className="opacity-50">↑</span>
+                <span className="font-mono text-zinc-600">{run.completionTokens ?? 0}</span>
+                <span className="opacity-50">↓</span>
+              </span>
+            )}
+            {run.retryCount !== undefined && run.retryCount > 0 && (
+              <span title={`${run.retryCount} inference retry attempt(s)`} className="text-amber-800">retries:{run.retryCount}</span>
+            )}
+            {run.spawnDepth !== undefined && run.spawnDepth > 0 && (
+              <span title={`Spawn depth ${run.spawnDepth}`} className="text-zinc-700">depth:{run.spawnDepth}</span>
+            )}
             {durationMs !== null && (
               <span title="Total run duration">duration: {durationLabel}</span>
             )}

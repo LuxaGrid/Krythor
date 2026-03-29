@@ -1757,13 +1757,17 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
     }
   } catch { /* startup heartbeat config is best-effort */ }
 
-  // Apply per-agent rate limit from app-config.json
+  // Apply per-agent rate limit + sub-agent archive config from app-config.json
   try {
     if (existsSync(appConfigPath)) {
       const rateCfg = JSON.parse(readFileSync(appConfigPath, 'utf-8')) as Record<string, unknown>;
       if (typeof rateCfg['agentMaxRunsPerMinute'] === 'number') {
         orchestrator.setMaxRunsPerMinute(rateCfg['agentMaxRunsPerMinute']);
         logger.info('Per-agent rate limit configured', { agentMaxRunsPerMinute: rateCfg['agentMaxRunsPerMinute'] });
+      }
+      if (typeof rateCfg['subAgentArchiveMs'] === 'number') {
+        orchestrator.setSubAgentArchiveMs(rateCfg['subAgentArchiveMs']);
+        logger.info('Sub-agent auto-archive configured', { subAgentArchiveMs: rateCfg['subAgentArchiveMs'] });
       }
     }
   } catch { /* best-effort */ }

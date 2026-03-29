@@ -97,6 +97,9 @@ export class AgentOrchestrator extends EventEmitter {
   // Background janitor — stops runs that exceed their agent's idleTimeoutMs
   private janitorTimer: ReturnType<typeof setInterval> | null = null;
 
+  // Auto-archive sub-agent runs after this duration (ms). 0 = disabled.
+  private subAgentArchiveMs = 0;
+
   private handoffResolver: HandoffResolver | null = null;
   private customToolDispatcher: CustomToolDispatcher | null = null;
   private spawnAgentResolver: SpawnAgentResolver | null = null;
@@ -191,6 +194,14 @@ export class AgentOrchestrator extends EventEmitter {
 
   // ── Idle-timeout janitor ──────────────────────────────────────────────────
 
+  /**
+   * Configure how long completed sub-agent runs are retained before auto-archive.
+   * Pass 0 to disable (default). Example: 5 * 60 * 1000 (5 minutes).
+   */
+  setSubAgentArchiveMs(ms: number): void {
+    this.subAgentArchiveMs = Math.max(0, ms);
+  }
+
   private startJanitor(): void {
     this.janitorTimer = setInterval(() => {
       const now = Date.now();
@@ -208,6 +219,17 @@ export class AgentOrchestrator extends EventEmitter {
             timestamp: now,
           });
         }
+      }
+      // Auto-archive completed sub-agent runs from in-memory history
+      if (this.subAgentArchiveMs > 0) {
+        const cutoff = now - this.subAgentArchiveMs;
+        for (const [runId, run] of this.runHistory) {
+          if (run.parentRunId && run.status !== 'running' && (run.completedAt ?? run.startedAt) < cutoff) {
+            this.runHistory.delete(runId);
+          }
+        }
+        // Also prune from DB if memory engine is available
+        this.memory?.agentRunStore.pruneSubAgentRuns(this.subAgentArchiveMs);
       }
     }, JANITOR_INTERVAL_MS);
     // unref so the timer doesn't keep the process alive unnecessarily

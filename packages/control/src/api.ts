@@ -486,6 +486,9 @@ export interface AgentRun {
   output?: string; modelUsed?: string; startedAt: number; completedAt?: number;
   errorMessage?: string; selectionReason?: string; fallbackOccurred?: boolean;
   memoryUsed?: number; memoryIdsUsed?: string[];
+  promptTokens?: number; completionTokens?: number;
+  parentRunId?: string; spawnDepth?: number;
+  retryCount?: number;
 }
 export interface AgentStats { agentCount: number; activeRuns: number; totalRuns: number }
 

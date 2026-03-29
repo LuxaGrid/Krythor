@@ -179,6 +179,22 @@ export class AgentRunStore {
     return result.changes;
   }
 
+  /**
+   * Delete completed sub-agent runs (those with a parent_run_id) that completed
+   * more than `maxAgeMs` milliseconds ago. Returns the number of rows deleted.
+   * Used by the orchestrator janitor to keep the run history lean.
+   */
+  pruneSubAgentRuns(maxAgeMs: number): number {
+    const cutoff = Date.now() - maxAgeMs;
+    const result = this.db.prepare(`
+      DELETE FROM agent_runs
+      WHERE parent_run_id IS NOT NULL
+        AND status IN ('completed', 'failed', 'stopped')
+        AND completed_at < ?
+    `).run(cutoff);
+    return result.changes;
+  }
+
   private prune(): void {
     const cutoff = Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000;
     this.db.prepare('DELETE FROM agent_runs WHERE started_at < ?').run(cutoff);
