@@ -20,6 +20,8 @@
  *   agent:run:completed   — An agent run completed
  *   agent:run:failed      — An agent run failed
  *
+ *   message:received      — An inbound message arrived on a chat channel
+ *
  * Handlers receive a typed payload and a context object.
  * Multiple handlers can be registered for the same event.
  * Handlers are called in registration order.
@@ -34,7 +36,8 @@ export type GatewayEventName =
   | 'command:completed'
   | 'agent:run:started'
   | 'agent:run:completed'
-  | 'agent:run:failed';
+  | 'agent:run:failed'
+  | 'message:received';
 
 export interface GatewayEventPayload {
   'gateway:startup':      { version: string; dataDir: string; host: string; port: number };
@@ -46,6 +49,7 @@ export interface GatewayEventPayload {
   'agent:run:started':    { runId: string; agentId: string };
   'agent:run:completed':  { runId: string; agentId: string; durationMs: number; modelUsed?: string };
   'agent:run:failed':     { runId: string; agentId: string; error: string };
+  'message:received':     { channel: string; senderId: string; text: string; isGroup: boolean };
 }
 
 export type GatewayEventHandler<E extends GatewayEventName> =

@@ -662,11 +662,13 @@ export function registerCommandRoute(
                 convStore.addMessage(convIdForRun, 'assistant', output, p?.modelUsed);
               }
 
+              eventBus?.emit('agent:run:completed', { runId, agentId, durationMs: Date.now() - runStartedAt, modelUsed: p?.modelUsed });
               sendEvent({ type: 'done', output, runId, requestId: req.id, conversationId: convIdForRun, modelUsed: p?.modelUsed, selectionReason: p?.selectionReason ?? null, fallbackOccurred: p?.fallbackOccurred ?? false });
               endStream();
             } else if (event.type === 'run:failed') {
               coalescer.flush();
               const p = event.payload as { error?: string } | undefined;
+              eventBus?.emit('agent:run:failed', { runId, agentId, error: p?.error ?? 'Run failed' });
               sendEvent({ type: 'error', message: p?.error ?? 'Run failed' });
               endStream();
             } else if (event.type === 'run:stopped') {
@@ -681,9 +683,12 @@ export function registerCommandRoute(
           reply.raw.on('close', () => { coalescer.destroy(); endStream(); });
 
           // Start the run — don't await, events drive the response
+          const runStartedAt = Date.now();
+          eventBus?.emit('agent:run:started', { runId, agentId });
           const runInput = { input, ...(resolvedModelId && { modelOverride: resolvedModelId }), ...(resolvedProviderId && { providerOverride: resolvedProviderId }), requestId: String(req.id) };
           orchestrator.runAgentStream(agentId, runInput, { contextMessages, runId }).catch(err => {
             const structured = classifyError(err);
+            eventBus?.emit('agent:run:failed', { runId, agentId, error: structured.message });
             sendEvent({ type: 'error', message: structured.hint || structured.message });
             endStream();
           });
@@ -697,6 +702,7 @@ export function registerCommandRoute(
         const { randomUUID: genNonStreamId } = await import('crypto');
         const nonStreamRunId = genNonStreamId();
         registerRunRequestId(app, nonStreamRunId, String(req.id));
+        eventBus?.emit('agent:run:started', { runId: nonStreamRunId, agentId });
         const nonStreamRunInput = { input, ...(resolvedModelId && { modelOverride: resolvedModelId }), ...(resolvedProviderId && { providerOverride: resolvedProviderId }), requestId: String(req.id), runId: nonStreamRunId };
         const run = await orchestrator.runAgent(agentId, nonStreamRunInput, { contextMessages });
         const output = run.output ?? '(no response)';
@@ -715,7 +721,13 @@ export function registerCommandRoute(
           convStore.addMessage(activeConvId, 'assistant', output, run.modelUsed);
         }
 
-        eventBus?.emit('command:completed', { input, agentId, conversationId: activeConvId, modelUsed: run.modelUsed, durationMs: run.completedAt ? run.completedAt - run.startedAt : Date.now() - startTime });
+        const nonStreamDuration = run.completedAt ? run.completedAt - run.startedAt : Date.now() - startTime;
+        if (run.status === 'failed') {
+          eventBus?.emit('agent:run:failed', { runId: nonStreamRunId, agentId, error: run.errorMessage ?? 'Run failed' });
+        } else {
+          eventBus?.emit('agent:run:completed', { runId: nonStreamRunId, agentId, durationMs: nonStreamDuration, modelUsed: run.modelUsed });
+        }
+        eventBus?.emit('command:completed', { input, agentId, conversationId: activeConvId, modelUsed: run.modelUsed, durationMs: nonStreamDuration });
         return reply.send({
           input,
           output,
