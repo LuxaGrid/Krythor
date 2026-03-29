@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build && node scripts/deploy-dist.js",
+    "build": "tsc --noEmit && vite build && node scripts/deploy-dist.js && node -e \"const s=require('fs').readFileSync('dist/sw.js','utf8');if(s.includes('__KRYTHOR_CACHE_VERSION__')){console.error('ERROR: sw.js still has placeholder — deploy-dist.js failed');process.exit(1);}\"",
     "preview": "vite preview",
     "clean": "rimraf dist"
   },

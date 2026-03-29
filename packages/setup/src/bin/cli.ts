@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFileSync, existsSync, cpSync, readdirSync, rmSync } from 'fs';
+import { readFileSync, existsSync, cpSync, readdirSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
 import { spawnSync } from 'child_process';
@@ -177,11 +177,35 @@ async function cmdUpdate(channel?: string): Promise<void> {
  * Useful when developing from the repo and wanting the install to reflect
  * latest changes without a full GitHub release cycle.
  */
-function cmdSync(): void {
-  // This cli.js lives at: <repo>/packages/setup/dist/bin/cli.js
-  // The monorepo root is 4 levels up.
-  const repoRoot = join(__dirname, '..', '..', '..', '..');
+function cmdSync(fromArg?: string): void {
+  // This cli.js lives at: <repo>/packages/setup/dist/bin/cli.js (dev) or
+  // ~/.krythor/packages/setup/dist/bin/cli.js (installed).
+  // Resolve monorepo root: use --from=<path> if provided, otherwise 4 levels up,
+  // but validate it has pnpm-workspace.yaml so we don't accidentally use installRoot.
   const installRoot = join(homedir(), '.krythor');
+  let repoRoot = fromArg ?? join(__dirname, '..', '..', '..', '..');
+
+  if (!existsSync(join(repoRoot, 'pnpm-workspace.yaml'))) {
+    // Fallback: check common dev locations
+    const candidates = ['C:/Krythor', join(homedir(), 'Krythor'), join(homedir(), 'krythor')];
+    const found = candidates.find(c => existsSync(join(c, 'pnpm-workspace.yaml')));
+    if (found) {
+      repoRoot = found;
+    } else {
+      console.error('Cannot locate monorepo root. Run from the repo or pass --from=<repo-path>.');
+      console.error('  Example: krythor sync --from=C:/Krythor');
+      process.exit(1);
+    }
+  }
+
+  // Guard: src and dst must differ
+  const repoReal = repoRoot.replace(/\\/g, '/').toLowerCase();
+  const installReal = installRoot.replace(/\\/g, '/').toLowerCase();
+  if (repoReal === installReal) {
+    console.error(`Monorepo root and install root are the same directory (${installRoot}).`);
+    console.error('Nothing to sync — you are already running from the install location.');
+    process.exit(1);
+  }
 
   if (!existsSync(join(installRoot, 'package.json'))) {
     console.error(`No installation found at ${installRoot}`);
@@ -212,6 +236,29 @@ function cmdSync(): void {
         }
       }
       cpSync(srcDist, dstDist, { recursive: true, force: true });
+
+      // Inject cache-busting version into sw.js after copy.
+      // Always stamp a fresh timestamp so every sync forces the browser to
+      // evict old cached assets — even if deploy-dist.js already ran.
+      if (pkg === 'control') {
+        const swPath = join(dstDist, 'sw.js');
+        if (existsSync(swPath)) {
+          const controlPkgPath = join(srcDist, '..', 'package.json');
+          let version = 'dev';
+          if (existsSync(controlPkgPath)) {
+            try { version = (JSON.parse(readFileSync(controlPkgPath, 'utf-8')) as Record<string, string>)['version'] ?? 'dev'; } catch { /* ignore */ }
+          }
+          const cacheName = `krythor-${version}-${Date.now()}`;
+          const sw = readFileSync(swPath, 'utf-8');
+          // Replace placeholder OR re-stamp an already-injected version line
+          const patched = sw
+            .replace('__KRYTHOR_CACHE_VERSION__', cacheName)
+            .replace(/krythor-[\d.]+-(?:build|\d+)/, cacheName);
+          writeFileSync(swPath, patched, 'utf-8');
+          console.log(`  sw    cache version: ${cacheName}`);
+        }
+      }
+
       console.log(`  ok    ${pkg}`);
       synced++;
     } catch (err) {
@@ -274,7 +321,11 @@ const [,, cmd, ...rest] = process.argv;
     case 'models':   await cmdModels(); break;
     case 'call':     await cmdCall(rest.join(' ')); break;
     case 'update':   await cmdUpdate(rest[0]); break;
-    case 'sync':     cmdSync(); break;
+    case 'sync': {
+      const fromFlag = rest.find(a => a.startsWith('--from='));
+      cmdSync(fromFlag ? fromFlag.replace('--from=', '') : undefined);
+      break;
+    }
     case 'doctor':   cmdDoctor(rest); break;
     default:
       console.log('Usage: krythor <command>');
