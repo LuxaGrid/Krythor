@@ -9,10 +9,15 @@ const args = process.argv.slice(2);
 if (args.includes('doctor')) {
   // ── Doctor mode ────────────────────────────────────────────────────────────
   // Checks config, DB, providers, and port health; prints a human-readable
-  // diagnostic report. Does not start any processes or modify any files.
+  // diagnostic report.
   //
-  // Usage: krythor-setup doctor
+  // Usage: krythor-setup doctor [--fix]
+  //   --fix  Attempt safe auto-repairs:
+  //            • Create providers.json (empty) if missing
+  //            • Create agents.json with default agent if missing
+  //            • Create policy.json (default allow) if missing
   //
+  const FIX_MODE = args.includes('--fix');
   (async () => {
     console.log(fmt.head('Krythor Doctor'));
     console.log(fmt.dim('  Running diagnostics — this may take a moment…\n'));
@@ -382,6 +387,9 @@ if (args.includes('doctor')) {
     } else if (warnings > 0) {
       console.log('');
       console.log(fmt.warn(`${warnings} warning(s) found — see above for details.`));
+      if (!FIX_MODE) {
+        console.log(fmt.dim('  Tip: run "krythor doctor --fix" to auto-repair safe issues.'));
+      }
       process.exit(0); // Warnings do not block startup
     } else {
       console.log(fmt.ok('Krythor appears healthy.'));
@@ -393,6 +401,62 @@ if (args.includes('doctor')) {
       }
     }
     console.log('');
+
+    // ── Auto-fix ────────────────────────────────────────────────────────────
+    if (FIX_MODE) {
+      const { existsSync: ef, mkdirSync: mf, writeFileSync: wf } = await import('fs');
+      const { join: jf } = await import('path');
+      const configDir = sys.configDir;
+      let fixCount = 0;
+
+      mf(configDir, { recursive: true });
+
+      // 1. providers.json — empty file if missing
+      const providersPath = jf(configDir, 'providers.json');
+      if (!ef(providersPath)) {
+        wf(providersPath, JSON.stringify({ version: '1', providers: [] }, null, 2), 'utf8');
+        console.log(fmt.ok('  [fix] Created providers.json (empty — add a provider via the Models tab)'));
+        fixCount++;
+      }
+
+      // 2. agents.json — default agent if missing
+      const agentsPath = jf(configDir, 'agents.json');
+      if (!ef(agentsPath)) {
+        const now = Date.now();
+        const defaultAgent = [{
+          id: 'krythor-default',
+          name: 'Krythor',
+          description: 'General-purpose AI assistant',
+          systemPrompt: 'You are Krythor, a helpful local-first AI assistant. You are concise, accurate, and practical.',
+          memoryScope: 'session',
+          maxTurns: 10,
+          temperature: 0.7,
+          tags: ['default'],
+          createdAt: now,
+          updatedAt: now,
+        }];
+        wf(agentsPath, JSON.stringify(defaultAgent, null, 2), 'utf8');
+        console.log(fmt.ok('  [fix] Created agents.json with default agent'));
+        fixCount++;
+      }
+
+      // 3. policy.json — default allow-all if missing
+      const policyPath = jf(configDir, 'policy.json');
+      if (!ef(policyPath)) {
+        const defaultPolicy = { version: '1', rules: [], default: 'allow' };
+        wf(policyPath, JSON.stringify(defaultPolicy, null, 2), 'utf8');
+        console.log(fmt.ok('  [fix] Created policy.json (default: allow all)'));
+        fixCount++;
+      }
+
+      if (fixCount > 0) {
+        console.log('');
+        console.log(fmt.ok(`Auto-fix complete: ${fixCount} file(s) created.`));
+      } else {
+        console.log(fmt.dim('  Nothing to fix — all config files are present.'));
+      }
+      console.log('');
+    }
   })().catch(err => {
     console.error(fmt.err('Doctor failed: ' + (err instanceof Error ? err.message : String(err))));
     process.exit(1);
