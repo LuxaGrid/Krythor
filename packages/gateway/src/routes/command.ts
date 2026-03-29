@@ -399,6 +399,39 @@ export function registerCommandRoute(
         });
       }
 
+      if (cmd === '/btw') {
+        // /btw <question>  — one-shot question using current conversation as read-only background context.
+        // Does NOT add anything to the conversation store; the session is unaffected.
+        if (!arg) {
+          return slashReply({ output: 'Usage: /btw <question>\nAsks the model a one-off question using the current conversation as context, without modifying the session.', command: 'btw:help' });
+        }
+        if (!models || models.stats().providerCount === 0) {
+          return slashReply({ output: 'No AI provider configured. Open the Models tab to add one.', command: 'btw:error' });
+        }
+
+        // Load current conversation as background context (read-only)
+        const btwHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+        if (conversationId && convStore) {
+          const msgs = convStore.getMessages(conversationId);
+          for (const m of msgs) {
+            if (m.role === 'user' || m.role === 'assistant') {
+              btwHistory.push({ role: m.role, content: m.content });
+            }
+          }
+        }
+        btwHistory.push({ role: 'user', content: arg });
+
+        try {
+          const btwSessionState = conversationId && sessionDirectives ? sessionDirectives.get(conversationId) : {};
+          const effectiveModel = (modelId ?? btwSessionState?.modelId) as string | undefined;
+          const btwResp = await models.infer({ messages: btwHistory, ...(effectiveModel && { model: effectiveModel }) });
+          const btwOutput = btwResp.content ?? '(no response)';
+          return slashReply({ output: btwOutput, command: 'btw', question: arg });
+        } catch (err) {
+          return slashReply({ output: `Error: ${err instanceof Error ? err.message : String(err)}`, command: 'btw:error' });
+        }
+      }
+
       if (cmd === '/help' || cmd === '/commands') {
         const helpText = [
           'Available commands:',
@@ -413,6 +446,7 @@ export function registerCommandRoute(
           '  /reasoning [on|off|stream] — control reasoning block visibility',
           '  /subagents [list|kill|log] — manage agent runs',
           '  /devices [list|pending|approve|deny] — manage paired devices',
+          '  /btw <question>           — one-shot question using session as context (does not modify history)',
           '  /help                     — show this list',
         ].join('\n');
         return slashReply({ output: helpText, command: 'help' });
