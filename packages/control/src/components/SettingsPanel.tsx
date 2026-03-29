@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { health, getGatewayInfo, getHeartbeatHistory, getDiscordConfig, setDiscordConfig, stopDiscord, listPlugins, exportProviderConfig, importProviderConfig, exportFullConfig, importFullConfig, listWebChatPairings, createWebChatPairing, revokeWebChatPairing, listApiKeys, createApiKey, revokeApiKey, getAppConfig, patchAppConfig } from '../api.ts';
-import type { Health, GatewayInfo, ProviderHealthEntry, DiscordConfig, Plugin, WebChatPairingEntry, WebChatPairingCreated, ApiKeySafe, ApiKeyPermission } from '../api.ts';
+import { health, getGatewayInfo, getHeartbeatHistory, getDiscordConfig, setDiscordConfig, stopDiscord, listPlugins, exportProviderConfig, importProviderConfig, exportFullConfig, importFullConfig, listWebChatPairings, createWebChatPairing, revokeWebChatPairing, listApiKeys, createApiKey, revokeApiKey, getAppConfig, patchAppConfig, checkForUpdate } from '../api.ts';
+import type { Health, GatewayInfo, ProviderHealthEntry, DiscordConfig, Plugin, WebChatPairingEntry, WebChatPairingCreated, ApiKeySafe, ApiKeyPermission, UpdateInfo } from '../api.ts';
 import { PanelHeader } from './PanelHeader.tsx';
 import { useLocale } from '../i18n/index.js';
 
@@ -110,6 +110,11 @@ export function SettingsPanel() {
   const [tlsSelfSigned, setTlsSelfSigned]     = useState(true);
   const [tlsSaving, setTlsSaving]             = useState(false);
   const [tlsMsg, setTlsMsg]                   = useState<string | null>(null);
+
+  // Update check state
+  const [updateInfo, setUpdateInfo]           = useState<UpdateInfo | null>(null);
+  const [updateChecking, setUpdateChecking]   = useState(false);
+  const [updateChannel, setUpdateChannel]     = useState<'stable' | 'beta'>('stable');
 
   // API Key management state
   const [apiKeys, setApiKeys]                 = useState<ApiKeySafe[]>([]);
@@ -380,6 +385,15 @@ export function SettingsPanel() {
       setChatPairNew(prev => prev?.id === id ? null : prev);
       await loadChatPairings();
     } catch { /* non-fatal */ }
+  }
+
+  async function handleCheckUpdate() {
+    setUpdateChecking(true);
+    try {
+      const info = await checkForUpdate(updateChannel);
+      setUpdateInfo(info);
+    } catch { /* non-fatal — gateway may be offline */ }
+    finally { setUpdateChecking(false); }
   }
 
   // Compute uptime from startTime in gateway info
@@ -790,6 +804,86 @@ export function SettingsPanel() {
             className="text-xs px-3 py-1.5 bg-sky-700 hover:bg-sky-600 disabled:opacity-50 text-white rounded transition-colors">
             {apiKeyBusy ? 'Creating…' : 'Create API Key'}
           </button>
+        </div>
+      </Section>
+
+      {/* Updates */}
+      <Section title="Updates">
+        <div className="py-2 space-y-3">
+          <p className="text-zinc-600 text-xs">
+            Check GitHub Releases for a newer version of Krythor. Your settings and memory are always preserved when updating.
+          </p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <select
+              value={updateChannel}
+              onChange={e => setUpdateChannel(e.target.value as 'stable' | 'beta')}
+              className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:border-zinc-500"
+            >
+              <option value="stable">Stable</option>
+              <option value="beta">Beta / Pre-release</option>
+            </select>
+            <button
+              onClick={() => void handleCheckUpdate()}
+              disabled={updateChecking}
+              className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-zinc-300 text-xs rounded-lg transition-colors"
+            >
+              {updateChecking ? 'Checking…' : 'Check for updates'}
+            </button>
+          </div>
+
+          {updateInfo && (
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <span className="text-zinc-500 text-xs w-28 shrink-0">Current version</span>
+                <span className="text-zinc-200 text-xs font-mono">{updateInfo.currentVersion}</span>
+              </div>
+              {updateInfo.latestVersion && (
+                <div className="flex items-center gap-2">
+                  <span className="text-zinc-500 text-xs w-28 shrink-0">Latest version</span>
+                  <span className={`text-xs font-mono font-semibold ${updateInfo.updateAvailable ? 'text-sky-400' : 'text-green-400'}`}>
+                    {updateInfo.latestVersion}
+                  </span>
+                  {updateInfo.publishedAt && (
+                    <span className="text-zinc-600 text-xs">
+                      · {new Date(updateInfo.publishedAt).toLocaleDateString()}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {updateInfo.updateAvailable ? (
+                <div className="bg-sky-950/30 border border-sky-800/40 rounded-lg p-3 space-y-2">
+                  <p className="text-sky-300 text-xs font-semibold">
+                    Update available: v{updateInfo.latestVersion}
+                  </p>
+                  {updateInfo.releaseNotes && (
+                    <p className="text-zinc-400 text-xs line-clamp-4 whitespace-pre-wrap">
+                      {updateInfo.releaseNotes.slice(0, 400)}{updateInfo.releaseNotes.length > 400 ? '…' : ''}
+                    </p>
+                  )}
+                  {updateInfo.releaseUrl && (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <a
+                        href={updateInfo.releaseUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs px-3 py-1.5 bg-sky-700 hover:bg-sky-600 text-white rounded-lg transition-colors inline-block"
+                      >
+                        View release &amp; download ↗
+                      </a>
+                      <span className="text-zinc-600 text-xs">
+                        Or run <code className="bg-zinc-800 px-1 rounded">krythor update</code> to update in-place
+                      </span>
+                    </div>
+                  )}
+                </div>
+              ) : updateInfo.latestVersion ? (
+                <p className="text-green-400 text-xs">You are up to date.</p>
+              ) : (
+                <p className="text-zinc-500 text-xs">Could not reach GitHub to check for updates.</p>
+              )}
+            </div>
+          )}
         </div>
       </Section>
 

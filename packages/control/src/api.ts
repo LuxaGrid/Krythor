@@ -1228,3 +1228,20 @@ export const listJobs = (opts?: { status?: string; agentId?: string; limit?: num
 
 export const cancelJob = (id: string) =>
   req<void>('DELETE', `/jobs/${encodeURIComponent(id)}`);
+
+// ── Update Check ─────────────────────────────────────────────────────────────
+
+export interface UpdateInfo {
+  currentVersion: string;
+  channel: 'stable' | 'beta' | 'dev';
+  latestVersion: string | null;
+  updateAvailable: boolean;
+  releaseNotes: string | null;
+  publishedAt: string | null;
+  releaseUrl: string | null;
+}
+
+export const checkForUpdate = (channel?: 'stable' | 'beta' | 'dev') => {
+  const qs = channel && channel !== 'stable' ? `?channel=${channel}` : '';
+  return req<UpdateInfo>('GET', `/update/check${qs}`);
+};

@@ -1,5 +1,8 @@
 services:
   krythor:
+    # Use the pre-built image from GitHub Container Registry (recommended):
+    #   image: ghcr.io/luxagrid/krythor:latest
+    # Or build from source (default for development):
     build: .
     ports:
       - "47200:47200"

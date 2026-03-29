@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  packages: write
 
 jobs:
   build:
@@ -252,14 +253,37 @@ jobs:
           path: Krythor-Setup-*.exe
 
   docker:
-    name: Docker build verification
+    name: Docker build and publish
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build Docker image (verify only — no push)
-        run: docker build --tag krythor:ci-verify .
+      - name: Extract version from tag
+        shell: bash
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ghcr.io/luxagrid/krythor:latest
+            ghcr.io/luxagrid/krythor:${{ env.VERSION }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   release:
     name: Publish Release
