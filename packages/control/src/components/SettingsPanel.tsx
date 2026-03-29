@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { health, getGatewayInfo, getHeartbeatHistory, getDiscordConfig, setDiscordConfig, stopDiscord, listPlugins, exportProviderConfig, importProviderConfig, exportFullConfig, importFullConfig, listWebChatPairings, createWebChatPairing, revokeWebChatPairing, listApiKeys, createApiKey, revokeApiKey, getAppConfig, patchAppConfig, checkForUpdate } from '../api.ts';
+import { health, getGatewayInfo, getHeartbeatHistory, getDiscordConfig, setDiscordConfig, stopDiscord, listPlugins, exportProviderConfig, importProviderConfig, exportFullConfig, importFullConfig, listWebChatPairings, createWebChatPairing, revokeWebChatPairing, listApiKeys, createApiKey, revokeApiKey, getAppConfig, patchAppConfig, checkForUpdate, setGatewayBaseUrl, getGatewayBaseUrl, setGatewayToken } from '../api.ts';
 import type { Health, GatewayInfo, ProviderHealthEntry, DiscordConfig, Plugin, WebChatPairingEntry, WebChatPairingCreated, ApiKeySafe, ApiKeyPermission, UpdateInfo } from '../api.ts';
 import { PanelHeader } from './PanelHeader.tsx';
 import { useLocale } from '../i18n/index.js';
@@ -82,6 +82,13 @@ export function SettingsPanel() {
   const [theme, setTheme]               = useState<Theme>(getStoredTheme());
   const { locale, localeCode, setLocale, localeNames, localeCodes } = useLocale();
   const [loading, setLoading]           = useState(true);
+
+  // Remote gateway connection state
+  const [remoteUrl, setRemoteUrl]       = useState(getGatewayBaseUrl() === '/api' ? '' : getGatewayBaseUrl().replace(/\/api$/, ''));
+  const [remoteToken, setRemoteToken]   = useState('');
+  const [remoteStatus, setRemoteStatus] = useState<'idle' | 'connecting' | 'connected' | 'error'>('idle');
+  const [remoteError, setRemoteError]   = useState<string | null>(null);
+  const isRemote = getGatewayBaseUrl() !== '/api';
 
   // Plugin state
   const [plugins, setPlugins]           = useState<Plugin[]>([]);
@@ -433,6 +440,67 @@ export function SettingsPanel() {
             </span>
           }
         />
+      </Section>
+
+      {/* Remote Connection */}
+      <Section title="Remote Connection">
+        {isRemote && (
+          <div className="flex items-center gap-2 py-1.5 border-b border-zinc-800 mb-2">
+            <span className="text-emerald-400 text-xs">Connected to remote gateway</span>
+            <button
+              className="ml-auto text-[10px] text-zinc-500 hover:text-red-400 transition-colors px-2 py-0.5 rounded border border-zinc-700 hover:border-red-700"
+              onClick={() => { setGatewayBaseUrl(undefined); setGatewayToken(undefined); window.location.reload(); }}
+            >disconnect</button>
+          </div>
+        )}
+        <div className="space-y-2 py-1.5">
+          <p className="text-zinc-600 text-xs mb-2">Connect this UI to a Krythor gateway running on a remote machine or Tailscale node.</p>
+          <div>
+            <label className="text-xs text-zinc-500 block mb-1">Gateway URL <span className="text-zinc-700">(e.g. https://my-gateway.ts.net)</span></label>
+            <input
+              value={remoteUrl}
+              onChange={e => { setRemoteUrl(e.target.value); setRemoteStatus('idle'); setRemoteError(null); }}
+              placeholder="https://gateway.example.com"
+              className={INPUT_CLS}
+            />
+          </div>
+          <div>
+            <label className="text-xs text-zinc-500 block mb-1">Bearer token</label>
+            <input
+              type="password"
+              value={remoteToken}
+              onChange={e => { setRemoteToken(e.target.value); setRemoteStatus('idle'); setRemoteError(null); }}
+              placeholder="Paste gateway token"
+              className={INPUT_CLS}
+            />
+          </div>
+          {remoteError && <p className="text-red-400 text-xs">{remoteError}</p>}
+          <button
+            disabled={!remoteUrl || !remoteToken || remoteStatus === 'connecting'}
+            className="px-3 py-1.5 bg-brand-600 hover:bg-brand-500 disabled:opacity-40 text-white text-xs rounded-lg transition-colors"
+            onClick={async () => {
+              const url = remoteUrl.replace(/\/$/, '');
+              setRemoteStatus('connecting');
+              setRemoteError(null);
+              try {
+                const res = await fetch(`${url}/api/health`, {
+                  headers: { Authorization: `Bearer ${remoteToken}` },
+                  signal: AbortSignal.timeout(5000),
+                });
+                if (!res.ok) throw new Error(`Gateway returned ${res.status}`);
+                setGatewayBaseUrl(`${url}/api`);
+                setGatewayToken(remoteToken);
+                setRemoteStatus('connected');
+                setTimeout(() => window.location.reload(), 800);
+              } catch (err) {
+                setRemoteStatus('error');
+                setRemoteError(err instanceof Error ? err.message : 'Connection failed');
+              }
+            }}
+          >
+            {remoteStatus === 'connecting' ? 'Connecting…' : remoteStatus === 'connected' ? 'Connected — reloading…' : 'Connect'}
+          </button>
+        </div>
       </Section>
 
       {/* Appearance */}

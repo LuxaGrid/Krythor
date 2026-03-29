@@ -1,4 +1,31 @@
-const BASE = '/api';
+const DEFAULT_BASE = '/api';
+
+// ── Remote base URL ──────────────────────────────────────────────────────────
+// When the UI is served from a remote Krythor instance (or the user wants to
+// connect to a different gateway), setGatewayBaseUrl() overrides the BASE used
+// for all API calls. Persisted to localStorage so it survives page refresh.
+let _baseUrl: string = (() => {
+  // Check for remote URL injected at serve time (e.g. Electron/native app)
+  const injectedBase = (window as unknown as Record<string, unknown>)['__KRYTHOR_BASE_URL__'];
+  if (typeof injectedBase === 'string' && injectedBase.length > 0) return injectedBase;
+  try {
+    const stored = localStorage.getItem('krythor_base_url');
+    if (stored) return stored;
+  } catch { /* private browsing */ }
+  return DEFAULT_BASE;
+})();
+
+export function setGatewayBaseUrl(url: string | undefined): void {
+  _baseUrl = url ?? DEFAULT_BASE;
+  try {
+    if (url && url !== DEFAULT_BASE) localStorage.setItem('krythor_base_url', url);
+    else localStorage.removeItem('krythor_base_url');
+  } catch { /* private browsing */ }
+}
+
+export function getGatewayBaseUrl(): string {
+  return _baseUrl;
+}
 
 // ── Auth token ──────────────────────────────────────────────────────────────
 // The gateway injects the token into index.html at serve time as
@@ -33,7 +60,7 @@ export function getGatewayToken(): string | undefined {
 }
 
 async function req<T>(method: string, path: string, body?: unknown, baseOverride?: string): Promise<T> {
-  const base = baseOverride ?? BASE;
+  const base = baseOverride ?? _baseUrl;
   const headers: Record<string, string> = {};
   if (body) headers['Content-Type'] = 'application/json';
   if (_gatewayToken && base !== '') headers['Authorization'] = `Bearer ${_gatewayToken}`;
@@ -178,7 +205,7 @@ export function streamCommand(
 ): Promise<void> {
   const streamHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
   if (_gatewayToken) streamHeaders['Authorization'] = `Bearer ${_gatewayToken}`;
-  return fetch('/api/command', {
+  return fetch(`${_baseUrl}/command`, {
     method: 'POST',
     headers: streamHeaders,
     body: JSON.stringify({
@@ -248,7 +275,7 @@ export const deleteLastAssistantMessage = (id: string) => req<void>('DELETE', `/
 export const getConversationTokenStats = (id: string) =>
   req<{ totalInputTokens: number | null; totalOutputTokens: number | null; messageCount: number }>('GET', `/conversations/${id}/token-stats`);
 export const exportConversation = async (id: string, format: 'json' | 'markdown', title: string): Promise<void> => {
-  const res = await fetch(`${BASE}/conversations/${id}/export?format=${format}`, {
+  const res = await fetch(`${_baseUrl}/conversations/${id}/export?format=${format}`, {
     headers: _gatewayToken ? { Authorization: `Bearer ${_gatewayToken}` } : {},
   });
   if (!res.ok) throw new Error(`Export failed: ${res.status}`);
@@ -299,7 +326,7 @@ export const pruneMemoryBulk = (filters: { olderThan?: string; tag?: string; sou
   return req<{ deleted: number }>('DELETE', `/memory?${qs.toString()}`);
 };
 export const exportMemory = async (): Promise<void> => {
-  const res = await fetch(`${BASE}/memory/export`, {
+  const res = await fetch(`${_baseUrl}/memory/export`, {
     headers: _gatewayToken ? { Authorization: `Bearer ${_gatewayToken}` } : {},
   });
   if (!res.ok) throw new Error(`Export failed: ${res.status}`);
@@ -455,7 +482,7 @@ export const listRuns    = (agentId?: string) => {
 };
 export const importAgent = (config: Record<string, unknown>) => req<Agent>('POST', '/agents/import', config);
 export const exportAgent = async (agent: Agent): Promise<void> => {
-  const res = await fetch(`${BASE}/agents/${agent.id}/export`, {
+  const res = await fetch(`${_baseUrl}/agents/${agent.id}/export`, {
     headers: _gatewayToken ? { Authorization: `Bearer ${_gatewayToken}` } : {},
   });
   if (!res.ok) throw new Error(`Export failed: ${res.status}`);
@@ -493,7 +520,7 @@ export interface AgentRun {
 export interface AgentStats { agentCount: number; activeRuns: number; totalRuns: number }
 
 export async function getAgentAccessProfile(id: string): Promise<{ agentId: string; profile: string }> {
-  const r = await fetch(`${BASE}/agents/${id}/access-profile`, {
+  const r = await fetch(`${_baseUrl}/agents/${id}/access-profile`, {
     headers: _gatewayToken ? { Authorization: `Bearer ${_gatewayToken}` } : {},
   });
   if (!r.ok) throw new Error(await r.text());
@@ -501,7 +528,7 @@ export async function getAgentAccessProfile(id: string): Promise<{ agentId: stri
 }
 
 export async function setAgentAccessProfile(id: string, profile: string): Promise<void> {
-  const r = await fetch(`${BASE}/agents/${id}/access-profile`, {
+  const r = await fetch(`${_baseUrl}/agents/${id}/access-profile`, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
@@ -952,7 +979,7 @@ export async function shellExec(payload: {
   timeoutMs?: number;
   agentId?: string;
 }): Promise<ShellExecResult> {
-  const r = await fetch(`${BASE}/tools/shell/exec`, {
+  const r = await fetch(`${_baseUrl}/tools/shell/exec`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -966,7 +993,7 @@ export async function shellExec(payload: {
 
 export async function listProcesses(agentId?: string): Promise<{ processes: ProcessInfo[] }> {
   const qs = agentId ? `?agentId=${encodeURIComponent(agentId)}` : '';
-  const r = await fetch(`${BASE}/tools/shell/processes${qs}`, {
+  const r = await fetch(`${_baseUrl}/tools/shell/processes${qs}`, {
     headers: _gatewayToken ? { Authorization: `Bearer ${_gatewayToken}` } : {},
   });
   if (!r.ok) throw new Error(await r.text());
@@ -974,7 +1001,7 @@ export async function listProcesses(agentId?: string): Promise<{ processes: Proc
 }
 
 export async function killProcess(pid: number, signal?: string, agentId?: string): Promise<{ ok: boolean; pid: number; signal: string }> {
-  const r = await fetch(`${BASE}/tools/shell/kill`, {
+  const r = await fetch(`${_baseUrl}/tools/shell/kill`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
