@@ -1477,7 +1477,7 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   });
 
   // Register routes
-  registerCommandRoute(app, core, orchestrator, broadcast, guard, convStore, devicePairingStore, approvalManager, privacyRouter, sessionDirectiveStore, gatewayEvents);
+  registerCommandRoute(app, core, orchestrator, broadcast, guard, convStore, devicePairingStore, approvalManager, privacyRouter, sessionDirectiveStore, gatewayEvents, tokenBudgetStore);
   registerMemoryRoutes(app, memory, models, guard, channelEmit, approvalManager, janitorStatus);
   registerModelRoutes(app, models, memory, guard, channelEmit, approvalManager);
   registerAgentRoutes(app, orchestrator, guard, accessProfileStore, approvalManager, agentMessageBus, metricsCollector, tokenBudgetStore);

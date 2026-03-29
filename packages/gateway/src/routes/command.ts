@@ -8,7 +8,8 @@ import type { ApprovalManager } from '../ApprovalManager.js';
 import type { PrivacyRouter } from '@krythor/models';
 import type { SessionDirectiveStore } from '../SessionDirectiveStore.js';
 import type { GatewayEventBus } from '../GatewayEventBus.js';
-import { classifyError } from '../errors.js';
+import type { TokenBudgetStore } from '../TokenBudgetStore.js';
+import { classifyError, sendError } from '../errors.js';
 import { StreamCoalescer } from '../StreamCoalescer.js';
 
 /** Register a requestId→runId mapping on the app instance (set in server.ts). */
@@ -29,6 +30,7 @@ export function registerCommandRoute(
   privacyRouter?: PrivacyRouter,
   sessionDirectives?: SessionDirectiveStore,
   eventBus?: GatewayEventBus,
+  tokenBudgetStore?: TokenBudgetStore,
 ): void {
   app.post('/api/command', {
     config: {
@@ -630,6 +632,20 @@ export function registerCommandRoute(
             timestamp: new Date().toISOString(),
             processingTimeMs: 0,
           });
+        }
+
+        // Token budget check — reject before opening the stream
+        if (tokenBudgetStore) {
+          const budgetResult = tokenBudgetStore.check(agent.id);
+          if (!budgetResult.allowed) {
+            if (stream) {
+              reply.raw.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' });
+              reply.raw.write(`data: ${JSON.stringify({ type: 'error', code: 'BUDGET_EXCEEDED', message: budgetResult.reason ?? 'Token budget exceeded for this agent' })}\n\n`);
+              reply.raw.end();
+              return reply;
+            }
+            return sendError(reply, 429, 'BUDGET_EXCEEDED', budgetResult.reason ?? 'Token budget exceeded for this agent', 'Increase or remove the token budget in the Token Cost tab, or wait until the daily limit resets.');
+          }
         }
 
         if (stream) {

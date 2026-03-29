@@ -7,6 +7,7 @@ import { validateString, MAX_NAME_LEN, MAX_DESCRIPTION_LEN, MAX_SYSTEM_PROMPT_LE
 import type { AccessProfileStore } from '../AccessProfileStore.js';
 import type { ApprovalManager } from '../ApprovalManager.js';
 import { guardCheck } from '../guardCheck.js';
+import { sendError } from '../errors.js';
 import type { MetricsCollector } from '../MetricsCollector.js';
 import type { TokenBudgetStore } from '../TokenBudgetStore.js';
 
@@ -258,11 +259,11 @@ export function registerAgentRoutes(
     } catch (err) {
       if (err instanceof RunRateLimitError) {
         reply.header('Retry-After', '60');
-        return reply.code(429).send({ error: err.message });
+        return sendError(reply, 429, 'RATE_LIMITED', err.message, 'This agent has hit its per-minute run limit. Wait a moment and try again.');
       }
       if (err instanceof RunQueueFullError) {
         reply.header('Retry-After', '30');
-        return reply.code(429).send({ error: err.message });
+        return sendError(reply, 429, 'QUEUE_FULL', err.message, 'Too many runs are queued. Wait a moment and try again.');
       }
       return reply.code(500).send({ error: err instanceof Error ? err.message : 'Run failed' });
     }
@@ -301,7 +302,7 @@ export function registerAgentRoutes(
     if (tokenBudgetStore) {
       const budgetResult = tokenBudgetStore.check(agent.id);
       if (!budgetResult.allowed) {
-        return reply.code(429).send({ error: budgetResult.reason ?? 'Token budget exceeded', budgetResult });
+        return sendError(reply, 429, 'BUDGET_EXCEEDED', budgetResult.reason ?? 'Token budget exceeded for this agent', 'Increase or remove the token budget in the Token Cost tab, or wait until the daily limit resets.');
       }
     }
 
@@ -316,13 +317,13 @@ export function registerAgentRoutes(
       metricsCollector?.recordAgentRun(agent.id, agent.name, Date.now() - runStart, false);
       if (err instanceof RunRateLimitError) {
         reply.header('Retry-After', '60');
-        return reply.code(429).send({ error: err.message });
+        return sendError(reply, 429, 'RATE_LIMITED', err.message, 'This agent has hit its per-minute run limit. Wait a moment and try again.');
       }
       if (err instanceof RunQueueFullError) {
         reply.header('Retry-After', '30');
-        return reply.code(429).send({ error: err.message });
+        return sendError(reply, 429, 'QUEUE_FULL', err.message, 'Too many runs are queued. Wait a moment and try again.');
       }
-      return reply.code(500).send({ error: err instanceof Error ? err.message : 'Run failed' });
+      return sendError(reply, 500, 'RUN_FAILED', err instanceof Error ? err.message : 'Run failed');
     }
   });
 
@@ -356,7 +357,7 @@ export function registerAgentRoutes(
       const runs = await orchestrator.runAgentsParallel(jobs);
       return reply.send(runs);
     } catch (err) {
-      return reply.code(500).send({ error: err instanceof Error ? err.message : 'Parallel run failed' });
+      return sendError(reply, 500, 'RUN_FAILED', err instanceof Error ? err.message : 'Parallel run failed');
     }
   });
 
@@ -382,7 +383,7 @@ export function registerAgentRoutes(
       const runs = await orchestrator.runAgentsSequential(agentIds, input);
       return reply.send(runs);
     } catch (err) {
-      return reply.code(500).send({ error: err instanceof Error ? err.message : 'Sequential run failed' });
+      return sendError(reply, 500, 'RUN_FAILED', err instanceof Error ? err.message : 'Sequential run failed');
     }
   });
 
@@ -557,13 +558,13 @@ export function registerAgentRoutes(
       } catch (err) {
         if (err instanceof RunRateLimitError) {
           reply.header('Retry-After', '60');
-          return reply.code(429).send({ error: err.message });
+          return sendError(reply, 429, 'RATE_LIMITED', err.message, 'This agent has hit its per-minute run limit. Wait a moment and try again.');
         }
         if (err instanceof RunQueueFullError) {
           reply.header('Retry-After', '30');
-          return reply.code(429).send({ error: err.message });
+          return sendError(reply, 429, 'QUEUE_FULL', err.message, 'Too many runs are queued. Wait a moment and try again.');
         }
-        return reply.code(500).send({ error: err instanceof Error ? err.message : 'Delegation failed' });
+        return sendError(reply, 500, 'RUN_FAILED', err instanceof Error ? err.message : 'Delegation failed');
       }
     });
   }

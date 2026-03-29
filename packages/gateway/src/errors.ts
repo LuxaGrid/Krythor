@@ -52,6 +52,9 @@ export function classifyError(err: unknown): { code: string; message: string; hi
   if (msg.toLowerCase().includes('guard') || msg.toLowerCase().includes('denied')) {
     return { code: 'GUARD_DENIED', message: 'Action denied by security policy', hint: 'Adjust your Guard policy in the Guard tab if this is unexpected.' };
   }
+  if (msg.toLowerCase().includes('budget') || msg.toLowerCase().includes('token limit') || msg.toLowerCase().includes('daily limit') || msg.toLowerCase().includes('session limit')) {
+    return { code: 'BUDGET_EXCEEDED', message: 'Token budget exceeded for this agent', hint: 'Increase or remove the token budget in the Token Cost tab, or wait until the daily limit resets.' };
+  }
   return { code: 'INTERNAL_ERROR', message: 'Something went wrong', hint: msg };
 }
 

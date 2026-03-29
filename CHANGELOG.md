@@ -11,6 +11,13 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+#### Safety and error consistency improvements (2026-03-29)
+
+- **Token budget enforcement in `/api/command`**: the main chat command route now enforces per-agent token budgets. Previously budget limits only applied to `/api/agents/:id/run`; direct chat bypassed them entirely. Budget exceeded responses surface cleanly in both streaming (SSE `error` event) and non-streaming paths
+- **`BUDGET_EXCEEDED` error code**: `classifyError()` now recognises budget/token-limit messages and returns a structured `BUDGET_EXCEEDED` code with a clear hint pointing to the Token Cost tab — no longer falls through as `INTERNAL_ERROR`
+- **Consistent `ApiError` envelope across agent routes**: all error responses in `agents.ts` (budget exceeded, rate limit, queue full, run failed) now use `sendError()` and return the standard `{ code, message, hint, requestId }` shape; previously some returned bare `{ error: "..." }` objects that clients couldn't distinguish from each other
+- **`RATE_LIMITED` and `QUEUE_FULL` error codes**: agent run rate-limit and queue-full errors now carry specific codes and actionable hints instead of the generic 429 body
+
 #### Token Cost Feed tab (2026-03-29)
 
 - **Token Cost Feed UI tab** — new "Token Cost" tab between Dashboard and Settings showing a live table of every LLM inference call with columns: TIME, AGENT, SESSION, MODEL, TOKENS (↑ prompt / ↓ completion), estimated USD COST, and ACTIVITY status badge
