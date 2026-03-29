@@ -645,13 +645,18 @@ export function registerCommandRoute(
           // Buffers up to 300 chars (or 50 ms idle) to reduce single-token frames.
           const coalescer = new StreamCoalescer(sendEvent, { idleMs: 50, maxChars: 300, meta: { runId } });
 
+          // Accumulates all deltas so partial output is available on run:stopped
+          let streamedOutput = '';
+
           // Listen for stream events from this specific run
           const onChunk = (event: AgentEvent): void => {
             if (event.runId !== runId) return;
 
             if (event.type === 'run:stream:chunk') {
               const p = event.payload as { delta?: string; done?: boolean } | undefined;
-              coalescer.push(p?.delta ?? '');
+              const delta = p?.delta ?? '';
+              streamedOutput += delta;
+              coalescer.push(delta);
             } else if (event.type === 'run:completed') {
               coalescer.flush(); // ensure all buffered content is sent before completion
               const p = event.payload as { output?: string; modelUsed?: string; selectionReason?: string; fallbackOccurred?: boolean } | undefined;
@@ -673,7 +678,10 @@ export function registerCommandRoute(
               endStream();
             } else if (event.type === 'run:stopped') {
               coalescer.flush();
-              sendEvent({ type: 'done', output: '', runId, conversationId: convIdForRun });
+              if (convStore && convIdForRun && streamedOutput) {
+                convStore.addMessage(convIdForRun, 'assistant', streamedOutput + ' [stopped]');
+              }
+              sendEvent({ type: 'done', output: streamedOutput, runId, conversationId: convIdForRun, aborted: true });
               endStream();
             }
           };
