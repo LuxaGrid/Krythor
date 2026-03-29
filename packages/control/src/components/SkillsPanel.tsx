@@ -298,7 +298,6 @@ function RunSkillDialog({ skill, onClose }: RunSkillDialogProps) {
   const isBuiltin = !('id' in skill) || !('version' in skill);
 
   const handleRun = async () => {
-    if (!input.trim()) return;
     setRunning(true);
     setResult(null);
     setError(null);
@@ -325,18 +324,21 @@ function RunSkillDialog({ skill, onClose }: RunSkillDialogProps) {
           <button onClick={onClose} className="text-zinc-600 hover:text-zinc-300 text-lg leading-none transition-colors">×</button>
         </div>
         <div className="px-5 py-4 space-y-3">
-          <textarea
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleRun(); }}
-            placeholder="Input for this skill…"
-            rows={3}
-            className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 placeholder-zinc-600 outline-none focus:border-brand-600 focus:ring-1 focus:ring-brand-600/30 transition-colors resize-none"
-          />
+          <div>
+            <p className="text-xs text-zinc-400 mb-1.5">Additional context <span className="text-zinc-600">(optional)</span></p>
+            <textarea
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleRun(); }}
+              placeholder="Leave blank to run the skill as-is, or add extra context to focus it — e.g. a topic, a URL, or a date range."
+              rows={3}
+              className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 placeholder-zinc-600 outline-none focus:border-brand-600 focus:ring-1 focus:ring-brand-600/30 transition-colors resize-none"
+            />
+          </div>
           <div className="flex gap-2">
             <button
               onClick={handleRun}
-              disabled={running || !input.trim()}
+              disabled={running}
               className="px-3 py-1.5 text-xs bg-brand-600 hover:bg-brand-500 disabled:opacity-50 text-white rounded-lg transition-colors"
             >
               {running ? 'Running…' : 'Run'}
