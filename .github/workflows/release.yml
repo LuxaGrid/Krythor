@@ -2,6 +2,8 @@ name: Release
 
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
 
@@ -10,8 +12,45 @@ permissions:
   packages: write
 
 jobs:
+  # ── Compute version ──────────────────────────────────────────────────────────
+  # On branch push: auto-increment patch from latest tag.
+  # On tag push:    use the tag directly.
+  version:
+    name: Compute version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.compute.outputs.version }}
+      tag:     ${{ steps.compute.outputs.tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute version
+        id: compute
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            # Triggered by a tag push — use it directly
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            # Triggered by a branch push — auto-increment patch
+            LATEST=$(git tag --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
+            if [ -z "$LATEST" ]; then LATEST="v0.0.0"; fi
+            MAJOR=$(echo "${LATEST#v}" | cut -d. -f1)
+            MINOR=$(echo "${LATEST#v}" | cut -d. -f2)
+            PATCH=$(echo "${LATEST#v}" | cut -d. -f3)
+            VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION"    >> "$GITHUB_OUTPUT"
+          echo "Building version: v$VERSION"
+
+  # ── Platform builds ──────────────────────────────────────────────────────────
   build:
     name: Build (${{ matrix.target }})
+    needs: version
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -52,9 +91,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Extract version from tag
+      - name: Set VERSION
         shell: bash
-        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+        run: echo "VERSION=${{ needs.version.outputs.version }}" >> "$GITHUB_ENV"
 
       - name: Patch version in package.json
         shell: bash
@@ -104,7 +143,6 @@ jobs:
           RUNTIME="$(pwd)/$DIST/runtime/node"
           chmod +x "$RUNTIME"
           SQLITE_DIR="$(pwd)/$DIST/node_modules/better-sqlite3"
-          # Resolve node-gyp's JS entry point via the system node (not the shim script)
           NODEGYP_JS="$(node -e "console.log(require.resolve('node-gyp/bin/node-gyp.js'))")"
           echo "Rebuilding better-sqlite3 against bundled Node $("$RUNTIME" --version)..."
           cd "$SQLITE_DIR"
@@ -119,7 +157,6 @@ jobs:
           $dist    = "$root\krythor-dist-win"
           $runtime = "$dist\runtime\node.exe"
           $sqlite  = "$dist\node_modules\better-sqlite3"
-          # Resolve node-gyp's JS entry point via the system node (not the shim script)
           $nodegypJs = node -e "console.log(require.resolve('node-gyp/bin/node-gyp.js'))"
           $nodeVer = & $runtime --version
           Write-Host "Rebuilding better-sqlite3 against bundled Node $nodeVer..."
@@ -191,7 +228,6 @@ jobs:
         if: matrix.platform == 'linux'
         shell: bash
         run: |
-          # Symlink so build-deb.js finds the renamed dir
           ln -s krythor-${{ matrix.target }} krythor-dist-linux
           node build-deb.js
 
@@ -252,16 +288,14 @@ jobs:
           retention-days: 1
           path: Krythor-Setup-*.exe
 
+  # ── Docker ───────────────────────────────────────────────────────────────────
   docker:
     name: Docker build and publish
+    needs: version
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Extract version from tag
-        shell: bash
-        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -281,22 +315,19 @@ jobs:
           platforms: linux/amd64
           tags: |
             ghcr.io/luxagrid/krythor:latest
-            ghcr.io/luxagrid/krythor:${{ env.VERSION }}
+            ghcr.io/luxagrid/krythor:${{ needs.version.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  # ── Publish release ──────────────────────────────────────────────────────────
   release:
     name: Publish Release
-    needs: [build, docker]
+    needs: [version, build, docker]
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Extract version from tag
-        shell: bash
-        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
 
       - name: Download all build artifacts
         uses: actions/download-artifact@v4
@@ -311,8 +342,8 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: "Krythor v${{ env.VERSION }}"
-          tag_name: ${{ github.ref_name }}
+          name: "Krythor v${{ needs.version.outputs.version }}"
+          tag_name: ${{ needs.version.outputs.tag }}
           draft: false
           prerelease: false
           generate_release_notes: true
@@ -321,13 +352,14 @@ jobs:
             dist-artifacts/krythor-linux-x64.zip
             dist-artifacts/krythor-macos-arm64.zip
             dist-artifacts/krythor-macos-x64.zip
-            dist-artifacts/Krythor-Setup-${{ env.VERSION }}.exe
+            dist-artifacts/Krythor-Setup-${{ needs.version.outputs.version }}.exe
             dist-artifacts/krythor-*.deb
             dist-artifacts/krythor-*.pkg
 
+  # ── npm publish ──────────────────────────────────────────────────────────────
   npm-publish:
     name: Publish to npm
-    needs: [release]
+    needs: [version, release]
     runs-on: ubuntu-latest
 
     steps:
@@ -349,13 +381,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Extract version from tag
-        shell: bash
-        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
-
       - name: Patch version in package.json
         shell: bash
         run: |
+          VERSION="${{ needs.version.outputs.version }}"
           node -e "
             const fs = require('fs');
             const pkg = JSON.parse(fs.readFileSync('package.json','utf-8'));
