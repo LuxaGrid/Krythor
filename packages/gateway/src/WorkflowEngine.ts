@@ -160,11 +160,24 @@ export class WorkflowEngine {
     }
   }
 
-  async run(workflowId: string, initialInput: string): Promise<WorkflowRunResult> {
+  async run(
+    workflowId: string,
+    initialInput: string,
+    opts: {
+      timeoutMs?: number;
+      onStepStarted?:   (stepIndex: number, agentId: string, parallel?: string) => void;
+      onStepCompleted?: (stepIndex: number, agentId: string, output: string, parallel?: string) => void;
+      onStepFailed?:    (stepIndex: number, agentId: string, error: string, parallel?: string) => void;
+      onStepSkipped?:   (stepIndex: number, agentId: string) => void;
+    } = {},
+  ): Promise<WorkflowRunResult> {
     const wf = this.get(workflowId);
     if (!wf) throw new Error(`Workflow "${workflowId}" not found`);
 
+    const { timeoutMs, onStepStarted, onStepCompleted, onStepFailed, onStepSkipped } = opts;
     const start = Date.now();
+    const deadline = timeoutMs ? start + timeoutMs : null;
+
     const stepResults: WorkflowStepResult[] = [];
     let previousOutput = initialInput;
     let status: WorkflowRunResult['status'] = 'completed';
@@ -173,6 +186,12 @@ export class WorkflowEngine {
     // Walk steps, grouping consecutive parallel-labelled steps together.
     let i = 0;
     while (i < wf.steps.length && !aborted) {
+      // Enforce per-workflow timeout
+      if (deadline && Date.now() >= deadline) {
+        status = 'failed';
+        break;
+      }
+
       const step = wf.steps[i]!;
 
       if (!step.parallel) {
@@ -181,20 +200,24 @@ export class WorkflowEngine {
           const regex = new RegExp(step.condition, 'i');
           if (!regex.test(previousOutput)) {
             stepResults.push({ stepIndex: i, agentId: step.agentId, skipped: true });
+            onStepSkipped?.(i, step.agentId);
             i++;
             continue;
           }
         }
 
         const stepInput = this.buildStepInput(step, i, initialInput, previousOutput);
+        onStepStarted?.(i, step.agentId);
         try {
-          const run = await this.orchestrator.runAgent(step.agentId, { input: stepInput });
+          const run = await this.orchestrator.runAgent(step.agentId, { input: stepInput, ...(timeoutMs && { timeoutMs }) });
           const output = run.output ?? '';
           stepResults.push({ stepIndex: i, agentId: step.agentId, skipped: false, run, output });
+          onStepCompleted?.(i, step.agentId, output);
           previousOutput = output;
         } catch (err) {
           const error = err instanceof Error ? err.message : 'Step failed';
           stepResults.push({ stepIndex: i, agentId: step.agentId, skipped: false, error });
+          onStepFailed?.(i, step.agentId, error);
           if (step.stopOnFailure !== false) {
             status = 'failed';
             aborted = true;
@@ -217,10 +240,12 @@ export class WorkflowEngine {
 
         // Run all group steps concurrently; each sees the same previousOutput.
         const parallelInput = previousOutput;
+        groupSteps.forEach(({ step: gs, idx }) => onStepStarted?.(idx, gs.agentId, groupLabel));
+
         const settled = await Promise.allSettled(
           groupSteps.map(({ step: gs, idx }) => {
             const stepInput = this.buildStepInput(gs, groupStart, initialInput, parallelInput);
-            return this.orchestrator.runAgent(gs.agentId, { input: stepInput }).then(run => ({
+            return this.orchestrator.runAgent(gs.agentId, { input: stepInput, ...(timeoutMs && { timeoutMs }) }).then(run => ({
               idx,
               agentId: gs.agentId,
               run,
@@ -239,6 +264,7 @@ export class WorkflowEngine {
             const { idx, agentId, run, output } = result.value;
             stepResults.push({ stepIndex: idx, agentId, skipped: false, run, output, parallel: groupLabel });
             groupOutputs.push(output);
+            onStepCompleted?.(idx, agentId, output, groupLabel);
           } else {
             // Find which step this corresponds to (settled preserves order)
             const settledIdx = settled.indexOf(result);
@@ -247,6 +273,7 @@ export class WorkflowEngine {
             stepResults.push({ stepIndex: gs.idx, agentId: gs.step.agentId, skipped: false, error, parallel: groupLabel });
             groupFailed = true;
             if (gs.step.stopOnFailure !== false) groupStopOnFailure = true;
+            onStepFailed?.(gs.idx, gs.step.agentId, error, groupLabel);
           }
         }
 

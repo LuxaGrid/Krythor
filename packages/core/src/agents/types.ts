@@ -126,6 +126,7 @@ export interface AgentRun {
   completionTokens?: number;   // total completion/output tokens across all inference turns
   parentRunId?: string;        // run ID of the parent that spawned or handed off to this run
   spawnDepth?: number;         // nesting depth (0 = top-level, 1 = spawned by top-level, etc.)
+  timeoutMs?: number;          // per-run timeout override (from RunAgentInput.timeoutMs)
 }
 
 // ─── Input types ──────────────────────────────────────────────────────────────
@@ -201,6 +202,12 @@ export interface RunAgentInput {
    * Merged with agent.toolLoop — these values take precedence.
    */
   toolLoopOverride?: ToolLoopConfig;
+  /**
+   * Per-run idle timeout in milliseconds.
+   * Overrides the agent's `idleTimeoutMs` for this run only.
+   * The background janitor will stop the run if it runs longer than this.
+   */
+  timeoutMs?: number;
 }
 
 // ─── Events (for streaming to UI via WebSocket) ───────────────────────────────

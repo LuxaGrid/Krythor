@@ -107,6 +107,12 @@ export function registerWorkflowRoutes(
   });
 
   // POST /api/workflows/:id/run
+  // Supports SSE streaming with `stream=true`:
+  //   type: 'step:started'    — { stepIndex, agentId, parallel? }
+  //   type: 'step:completed'  — { stepIndex, agentId, output, parallel? }
+  //   type: 'step:failed'     — { stepIndex, agentId, error, parallel? }
+  //   type: 'step:skipped'    — { stepIndex, agentId }
+  //   type: 'done'            — WorkflowRunResult
   app.post<{ Params: { id: string } }>('/api/workflows/:id/run', {
     config: { rateLimit: { max: 10, timeWindow: 60_000 } },
     schema: {
@@ -114,20 +120,64 @@ export function registerWorkflowRoutes(
         type: 'object',
         required: ['input'],
         properties: {
-          input: { type: 'string', minLength: 1, maxLength: 100000 },
+          input:     { type: 'string', minLength: 1, maxLength: 100000 },
+          stream:    { type: 'boolean' },
+          timeoutMs: { type: 'integer', minimum: 1000, maximum: 3_600_000 },
         },
         additionalProperties: false,
       },
     },
   }, async (req, reply) => {
-    const { input } = req.body as { input: string };
+    const { input, stream = false, timeoutMs } = req.body as { input: string; stream?: boolean; timeoutMs?: number };
+
+    if (!workflowEngine.get(req.params.id)) {
+      return reply.code(404).send({ error: `Workflow "${req.params.id}" not found` });
+    }
+
+    if (!stream) {
+      try {
+        const result = await workflowEngine.run(req.params.id, input, { timeoutMs });
+        return reply.send(result);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Workflow execution failed';
+        if (msg.includes('not found')) return reply.code(404).send({ error: msg });
+        return reply.code(500).send({ error: msg });
+      }
+    }
+
+    // ── Streaming mode ────────────────────────────────────────────────────────
+    reply.raw.writeHead(200, {
+      'Content-Type':  'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection':    'keep-alive',
+    });
+
+    const sendEvent = (data: unknown): void => {
+      reply.raw.write(`data: ${JSON.stringify(data)}\n\n`);
+    };
+
     try {
-      const result = await workflowEngine.run(req.params.id, input);
-      return reply.send(result);
+      const result = await workflowEngine.run(req.params.id, input, {
+        timeoutMs,
+        onStepStarted: (stepIndex, agentId, parallel) => {
+          sendEvent({ type: 'step:started', stepIndex, agentId, ...(parallel && { parallel }) });
+        },
+        onStepCompleted: (stepIndex, agentId, output, parallel) => {
+          sendEvent({ type: 'step:completed', stepIndex, agentId, output, ...(parallel && { parallel }) });
+        },
+        onStepFailed: (stepIndex, agentId, error, parallel) => {
+          sendEvent({ type: 'step:failed', stepIndex, agentId, error, ...(parallel && { parallel }) });
+        },
+        onStepSkipped: (stepIndex, agentId) => {
+          sendEvent({ type: 'step:skipped', stepIndex, agentId });
+        },
+      });
+      sendEvent({ type: 'done', ...result });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Workflow execution failed';
-      if (msg.includes('not found')) return reply.code(404).send({ error: msg });
-      return reply.code(500).send({ error: msg });
+      sendEvent({ type: 'error', error: msg });
+    } finally {
+      reply.raw.end();
     }
   });
 }

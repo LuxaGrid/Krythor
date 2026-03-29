@@ -998,6 +998,7 @@ export class AgentRunner {
       ...(input.requestId   && { requestId:   input.requestId }),
       ...(input.parentRunId && { parentRunId: input.parentRunId }),
       ...(input.spawnDepth  !== undefined && { spawnDepth: input.spawnDepth }),
+      ...(input.timeoutMs   !== undefined && { timeoutMs:  input.timeoutMs }),
     };
 
     this.activeRuns.set(runId, { run, stop: stopFn, controller });
@@ -1248,6 +1249,7 @@ export class AgentRunner {
       ...(input.requestId   && { requestId:   input.requestId }),
       ...(input.parentRunId && { parentRunId: input.parentRunId }),
       ...(input.spawnDepth  !== undefined && { spawnDepth: input.spawnDepth }),
+      ...(input.timeoutMs   !== undefined && { timeoutMs:  input.timeoutMs }),
     };
 
     this.activeRuns.set(runId, { run, stop: stopFn, controller });

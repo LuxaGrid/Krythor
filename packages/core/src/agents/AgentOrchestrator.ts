@@ -208,14 +208,16 @@ export class AgentOrchestrator extends EventEmitter {
       for (const [runId, run] of this.runHistory) {
         if (run.status !== 'running') continue;
         const agent = this.registry.getById(run.agentId);
-        if (!agent?.idleTimeoutMs) continue;
-        if (now - run.startedAt > agent.idleTimeoutMs) {
+        // Per-run timeout takes precedence over agent-level idleTimeoutMs
+        const effectiveTimeoutMs = run.timeoutMs ?? agent?.idleTimeoutMs;
+        if (!effectiveTimeoutMs) continue;
+        if (now - run.startedAt > effectiveTimeoutMs) {
           this.runner.stopRun(runId);
           this.emit('agent:event', {
             type:      'run:stopped',
             runId,
             agentId:   run.agentId,
-            payload:   { reason: 'idle_timeout', idleTimeoutMs: agent.idleTimeoutMs },
+            payload:   { reason: 'idle_timeout', idleTimeoutMs: effectiveTimeoutMs },
             timestamp: now,
           });
         }

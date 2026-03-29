@@ -281,6 +281,7 @@ export function registerAgentRoutes(
           input:           { type: 'string', minLength: 1, maxLength: 10000 },
           taskId:          { type: 'string' },
           contextOverride: { type: 'string', maxLength: 10000 },
+          timeoutMs:       { type: 'integer', minimum: 1000, maximum: 3_600_000 },
         },
         additionalProperties: false,
       },
