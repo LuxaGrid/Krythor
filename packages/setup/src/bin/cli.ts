@@ -2,6 +2,7 @@
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
+import { spawnSync } from 'child_process';
 
 // ── Config resolution ──────────────────────────────────────────────────────────
 
@@ -129,6 +130,58 @@ async function cmdAuditTail(n: number): Promise<void> {
   }
 }
 
+async function cmdUpdate(channel?: string): Promise<void> {
+  const ch = (channel === 'beta' || channel === 'dev') ? channel : 'stable';
+  let info: Record<string, unknown>;
+  try {
+    info = await apiFetch(`/api/update/check${ch !== 'stable' ? `?channel=${ch}` : ''}`) as Record<string, unknown>;
+  } catch (err) {
+    console.error(`Could not reach gateway: ${err instanceof Error ? err.message : String(err)}`);
+    console.log('Tip: start the gateway first with `krythor-setup start`, then run `krythor update`.');
+    process.exit(1);
+    return;
+  }
+
+  const current = info['currentVersion'] as string ?? '?';
+  const latest  = info['latestVersion'] as string | null ?? null;
+  const available = info['updateAvailable'] as boolean ?? false;
+  const notes   = info['releaseNotes'] as string | null ?? null;
+  const url     = info['releaseUrl'] as string | null ?? null;
+
+  console.log(`Current version: v${current}`);
+  if (!latest) {
+    console.log('Could not reach GitHub to check for updates.');
+    return;
+  }
+
+  if (!available) {
+    console.log(`Latest version:  v${latest}`);
+    console.log('You are up to date.');
+    return;
+  }
+
+  console.log(`Latest version:  v${latest}  ← update available`);
+  if (notes) {
+    console.log('\nRelease notes:');
+    console.log(notes.slice(0, 600) + (notes.length > 600 ? '\n…' : ''));
+  }
+  if (url) console.log(`\nRelease:  ${url}`);
+  console.log('\nTo update, run:');
+  console.log('  npm install -g krythor');
+  console.log('  # or, if installed locally:');
+  console.log('  npm install krythor@latest');
+}
+
+function cmdDoctor(extraArgs: string[]): void {
+  // Delegate to krythor-setup (same package, different bin entry point)
+  const setupBin = join(__dirname, 'setup.js');
+  const result = spawnSync(process.execPath, [setupBin, 'doctor', ...extraArgs], {
+    stdio: 'inherit',
+    env: process.env,
+  });
+  process.exit(result.status ?? 0);
+}
+
 async function cmdApprovalsPending(): Promise<void> {
   const data = await apiFetch('/api/approvals') as { approvals?: Array<Record<string, unknown>>; count?: number };
   const approvals = data.approvals ?? [];
@@ -169,12 +222,16 @@ const [,, cmd, ...rest] = process.argv;
     case 'sessions': await cmdSessions(); break;
     case 'models':   await cmdModels(); break;
     case 'call':     await cmdCall(rest.join(' ')); break;
+    case 'update':   await cmdUpdate(rest[0]); break;
+    case 'doctor':   cmdDoctor(rest); break;
     default:
       console.log('Usage: krythor <command>');
       console.log('  status               — check gateway health and agent/model counts');
       console.log('  sessions             — list recent sessions');
       console.log('  models               — list configured providers and models');
       console.log('  call <text>          — send a one-shot message to the default agent');
+      console.log('  update [beta|dev]    — check for and show update instructions');
+      console.log('  doctor [--fix]       — full diagnostics report; --fix auto-repairs safe issues');
       console.log('  policy show          — print current guard policy rules');
       console.log('  policy check <op>    — evaluate a guard check and show verdict');
       console.log('  audit tail [--n=20]  — show last N audit log entries');
