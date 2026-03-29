@@ -60,12 +60,18 @@ export class AnthropicProvider extends BaseProvider {
       systemText = systemText ? `${systemText}\n\n${jsonInstruction}` : jsonInstruction;
     }
 
+    // Extended thinking: when enabled, temperature must be 1 (Anthropic requirement)
+    const thinkingEnabled = request.thinking?.enabled === true;
+    const thinkingBudget = request.thinking?.budgetTokens ?? 10_000;
+
     const body: Record<string, unknown> = {
       model,
-      max_tokens: request.maxTokens ?? 1024,
+      max_tokens: request.maxTokens ?? (thinkingEnabled ? thinkingBudget + 1024 : 1024),
       messages: userMsgs.map(m => ({ role: m.role, content: m.content })),
       ...(systemText && { system: systemText }),
-      ...(request.temperature !== undefined && { temperature: request.temperature }),
+      ...(thinkingEnabled
+        ? { thinking: { type: 'enabled', budget_tokens: thinkingBudget }, temperature: 1 }
+        : request.temperature !== undefined && { temperature: request.temperature }),
     };
 
     const data = await this.httpPost(
@@ -74,7 +80,7 @@ export class AnthropicProvider extends BaseProvider {
       this.headers,
       signal,
     ) as {
-      content?: Array<{ type: string; text?: string }>;
+      content?: Array<{ type: string; text?: string; thinking?: string }>;
       usage?: { input_tokens?: number; output_tokens?: number };
     };
 
@@ -82,6 +88,10 @@ export class AnthropicProvider extends BaseProvider {
       ?.filter(b => b.type === 'text')
       .map(b => b.text ?? '')
       .join('') ?? '';
+
+    const thinkingContent = thinkingEnabled
+      ? data.content?.filter(b => b.type === 'thinking').map(b => b.thinking ?? '').join('') || undefined
+      : undefined;
 
     // Validate structured output if requested
     if (request.responseFormat) {
@@ -95,6 +105,7 @@ export class AnthropicProvider extends BaseProvider {
       promptTokens: data.usage?.input_tokens,
       completionTokens: data.usage?.output_tokens,
       durationMs: Date.now() - start,
+      ...(thinkingContent !== undefined && { thinkingContent }),
     };
   }
 
@@ -105,15 +116,21 @@ export class AnthropicProvider extends BaseProvider {
     const systemMsg = request.messages.find((m: Message) => m.role === 'system');
     const userMsgs = request.messages.filter((m: Message) => m.role !== 'system');
 
+    const thinkingEnabled = request.thinking?.enabled === true;
+    const thinkingBudget = request.thinking?.budgetTokens ?? 10_000;
+
     const res = await fetch(`${this.config.endpoint}/v1/messages`, {
       method: 'POST',
       headers: this.headers,
       body: JSON.stringify({
         model,
-        max_tokens: request.maxTokens ?? 1024,
+        max_tokens: request.maxTokens ?? (thinkingEnabled ? thinkingBudget + 1024 : 1024),
         messages: userMsgs,
         ...(systemMsg && { system: systemMsg.content }),
         stream: true,
+        ...(thinkingEnabled
+          ? { thinking: { type: 'enabled', budget_tokens: thinkingBudget }, temperature: 1 }
+          : request.temperature !== undefined && { temperature: request.temperature }),
       }),
       signal,
     });
@@ -125,6 +142,8 @@ export class AnthropicProvider extends BaseProvider {
     let buf = '';
     let promptTokens: number | undefined;
     let completionTokens: number | undefined;
+    // Track which block type is currently streaming
+    let currentBlockType: string | undefined;
 
     while (true) {
       const { done, value } = await reader.read();
@@ -141,20 +160,31 @@ export class AnthropicProvider extends BaseProvider {
           try {
             const event = JSON.parse(json) as {
               type: string;
-              delta?: { type?: string; text?: string };
+              index?: number;
+              content_block?: { type?: string };
+              delta?: { type?: string; text?: string; thinking?: string };
               usage?: { input_tokens?: number; output_tokens?: number };
               message?: { usage?: { input_tokens?: number; output_tokens?: number } };
             };
-            // message_start carries input token count
             if (event.type === 'message_start' && event.message?.usage?.input_tokens !== undefined) {
               promptTokens = event.message.usage.input_tokens;
             }
-            // message_delta carries output token count
             if (event.type === 'message_delta' && event.usage?.output_tokens !== undefined) {
               completionTokens = event.usage.output_tokens;
             }
-            if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
-              yield { delta: event.delta.text ?? '', done: false, model };
+            // Track which content block type is streaming
+            if (event.type === 'content_block_start' && event.content_block?.type) {
+              currentBlockType = event.content_block.type;
+            }
+            if (event.type === 'content_block_delta') {
+              if (event.delta?.type === 'text_delta') {
+                yield { delta: event.delta.text ?? '', done: false, model };
+              } else if (event.delta?.type === 'thinking_delta' && thinkingEnabled) {
+                yield { delta: '', thinkingDelta: event.delta.thinking ?? '', done: false, model };
+              }
+            }
+            if (event.type === 'content_block_stop') {
+              currentBlockType = undefined;
             }
             if (event.type === 'message_stop') {
               yield { delta: '', done: true, model, promptTokens, completionTokens };
@@ -165,6 +195,8 @@ export class AnthropicProvider extends BaseProvider {
       }
     }
 
+    // suppress unused variable warning
+    void currentBlockType;
     yield { delta: '', done: true, model, promptTokens, completionTokens };
   }
 }

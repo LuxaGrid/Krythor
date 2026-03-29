@@ -32,6 +32,8 @@ export interface OpenAIChatRequest {
   stream?: boolean;
   temperature?: number;
   max_tokens?: number;
+  /** Krythor extension: enable extended thinking (Anthropic models only). */
+  thinking?: { enabled: boolean; budget_tokens?: number };
 }
 
 export interface OpenAIUsage {
@@ -160,6 +162,9 @@ export function registerOpenAICompatRoutes(
       temperature: typeof body.temperature === 'number' ? body.temperature : undefined,
       maxTokens:   typeof body.max_tokens  === 'number' ? body.max_tokens  : undefined,
       stream:      body.stream === true,
+      ...(body.thinking?.enabled && {
+        thinking: { enabled: true, budgetTokens: body.thinking.budget_tokens },
+      }),
     };
 
     const completionId = `chatcmpl-${randomUUID().replace(/-/g, '').slice(0, 28)}`;

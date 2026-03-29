@@ -435,6 +435,14 @@ export function registerModelRoutes(
             },
             required: ['type'],
           },
+          thinking: {
+            type: 'object',
+            properties: {
+              enabled:      { type: 'boolean' },
+              budgetTokens: { type: 'number', minimum: 1024 },
+            },
+            required: ['enabled'],
+          },
         },
         additionalProperties: false,
       },

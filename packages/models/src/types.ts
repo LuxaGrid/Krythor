@@ -108,6 +108,22 @@ export interface ResponseFormat {
   name?: string;
 }
 
+/**
+ * Extended thinking configuration for supported models (e.g. Claude claude-sonnet-4-6+).
+ * When enabled, the model reasons through the problem before generating its final response.
+ * Thinking tokens are billed separately and returned in thinkingContent.
+ */
+export interface ThinkingConfig {
+  /** Enable extended thinking. */
+  enabled: boolean;
+  /**
+   * Token budget for the thinking process.
+   * Minimum 1024. Higher budgets allow deeper reasoning.
+   * Default: 10000.
+   */
+  budgetTokens?: number;
+}
+
 export interface InferenceRequest {
   messages: Message[];
   model?: string;            // override specific model ID
@@ -117,6 +133,8 @@ export interface InferenceRequest {
   stream?: boolean;
   /** Optional structured output / JSON mode configuration. */
   responseFormat?: ResponseFormat;
+  /** Optional extended thinking configuration (Anthropic models only). */
+  thinking?: ThinkingConfig;
 }
 
 export interface InferenceResponse {
@@ -130,6 +148,8 @@ export interface InferenceResponse {
   retryCount?: number;         // number of retry attempts (0 = first attempt succeeded)
   selectionReason?: string;    // why this provider/model was chosen
   fallbackOccurred?: boolean;  // true when a fallback provider was used
+  /** Extended thinking content, if thinking was requested and the model returned it. */
+  thinkingContent?: string;
 }
 
 export interface StreamChunk {
@@ -144,6 +164,8 @@ export interface StreamChunk {
   // Token counts — populated on the final chunk when the provider reports them
   promptTokens?: number;
   completionTokens?: number;
+  /** Incremental thinking delta — emitted before the answer delta when thinking is enabled. */
+  thinkingDelta?: string;
 }
 
 // ─── Routing context ─────────────────────────────────────────────────────────
