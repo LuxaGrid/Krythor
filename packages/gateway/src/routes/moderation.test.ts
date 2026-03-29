@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { buildServer, GATEWAY_PORT } from '../server.js'
 import { loadOrCreateToken } from '../auth.js'
 import { join } from 'path'
@@ -23,6 +23,10 @@ beforeAll(async () => {
   await app.ready()
   const cfg = loadOrCreateToken(join(getDataDir(), 'config'))
   authToken = cfg.token ?? ''
+})
+
+afterAll(async () => {
+  await app.close()
 })
 
 describe('GET /api/moderation/patterns', () => {
@@ -125,5 +129,119 @@ describe('POST /api/moderation/scan', () => {
       headers: { host: HOST },
     })
     expect(res.statusCode).toBe(401)
+  })
+})
+
+describe('Custom pattern CRUD', () => {
+  const customId = `test-custom-${Date.now()}`
+
+  it('POST /api/moderation/patterns — creates a custom pattern', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/moderation/patterns',
+      headers: { authorization: `Bearer ${authToken}`, host: HOST },
+      payload: {
+        id: customId,
+        name: 'Test Custom Pattern',
+        category: 'custom',
+        pattern: '\\btest-secret-token\\b',
+        action: 'warn',
+        enabled: true,
+      },
+    })
+    expect(res.statusCode).toBe(201)
+    const body = JSON.parse(res.body) as { id: string; name: string }
+    expect(body.id).toBe(customId)
+    expect(body.name).toBe('Test Custom Pattern')
+  })
+
+  it('POST /api/moderation/patterns — rejects invalid regex', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/moderation/patterns',
+      headers: { authorization: `Bearer ${authToken}`, host: HOST },
+      payload: {
+        id: 'bad-regex',
+        name: 'Bad',
+        category: 'custom',
+        pattern: '[invalid(regex',
+        action: 'warn',
+        enabled: true,
+      },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('GET /api/moderation/patterns/custom — lists custom patterns', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/moderation/patterns/custom',
+      headers: { authorization: `Bearer ${authToken}`, host: HOST },
+    })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body) as Array<{ id: string }>
+    expect(body.some(p => p.id === customId)).toBe(true)
+  })
+
+  it('created pattern is active in scan', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/moderation/scan',
+      headers: { authorization: `Bearer ${authToken}`, host: HOST },
+      payload: { content: 'the value is test-secret-token here' },
+    })
+    const body = JSON.parse(res.body) as { matched: Array<{ id: string }> }
+    expect(body.matched.some(m => m.id === customId)).toBe(true)
+  })
+
+  it('PATCH /api/moderation/patterns/:id — updates the pattern name', async () => {
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/api/moderation/patterns/${customId}`,
+      headers: { authorization: `Bearer ${authToken}`, host: HOST },
+      payload: { name: 'Updated Pattern Name' },
+    })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body) as { name: string }
+    expect(body.name).toBe('Updated Pattern Name')
+  })
+
+  it('PATCH /api/moderation/patterns/:id — returns 404 for unknown id', async () => {
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/moderation/patterns/nonexistent-xyz-999',
+      headers: { authorization: `Bearer ${authToken}`, host: HOST },
+      payload: { name: 'x' },
+    })
+    expect(res.statusCode).toBe(404)
+  })
+
+  it('DELETE /api/moderation/patterns/:id — deletes the custom pattern', async () => {
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/api/moderation/patterns/${customId}`,
+      headers: { authorization: `Bearer ${authToken}`, host: HOST },
+    })
+    expect(res.statusCode).toBe(204)
+  })
+
+  it('pattern no longer active in scan after deletion', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/moderation/scan',
+      headers: { authorization: `Bearer ${authToken}`, host: HOST },
+      payload: { content: 'the value is test-secret-token here' },
+    })
+    const body = JSON.parse(res.body) as { matched: Array<{ id: string }> }
+    expect(body.matched.some(m => m.id === customId)).toBe(false)
+  })
+
+  it('DELETE builtin pattern returns 400', async () => {
+    const res = await app.inject({
+      method: 'DELETE',
+      url: '/api/moderation/patterns/pii-ssn',
+      headers: { authorization: `Bearer ${authToken}`, host: HOST },
+    })
+    expect(res.statusCode).toBe(400)
   })
 })

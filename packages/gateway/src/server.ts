@@ -756,7 +756,8 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   const guard = new GuardEngine(join(dataDir, 'config'), dataDir);
 
   // Content moderation engine — regex-based PII/credential/injection scanning
-  const moderation = new ModerationEngine();
+  // Pass dataDir so custom patterns are persisted to moderation-custom.json.
+  const moderation = new ModerationEngine([], dataDir);
 
   // Approval manager — handles require-approval guard decisions
   const approvalManager = new ApprovalManager();

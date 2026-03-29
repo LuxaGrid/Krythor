@@ -134,25 +134,120 @@ const BUILTIN_PATTERNS: ModerationPattern[] = [
 ];
 
 export class ModerationEngine {
-  private readonly patterns: ModerationPattern[];
+  private readonly builtinIds: Set<string>;
+  private customPatterns: ModerationPattern[];
+  private allPatterns: ModerationPattern[];
   private readonly compiled: Map<string, RegExp> = new Map();
+  private readonly customFile: string | null;
 
-  constructor(customPatterns: ModerationPattern[] = []) {
-    // Custom patterns are appended after builtins; they can override by matching id
-    const mergedMap = new Map<string, ModerationPattern>();
-    for (const p of BUILTIN_PATTERNS) mergedMap.set(p.id, p);
-    for (const p of customPatterns) mergedMap.set(p.id, p);
-    this.patterns = [...mergedMap.values()];
+  constructor(customPatterns: ModerationPattern[] = [], configDir?: string) {
+    this.builtinIds = new Set(BUILTIN_PATTERNS.map(p => p.id));
+    this.customFile = configDir ? require('path').join(configDir, 'moderation-custom.json') : null;
 
-    for (const p of this.patterns) {
+    // Load persisted custom patterns if a configDir was provided
+    if (this.customFile) {
+      const persisted = this._loadFile();
+      // Merge constructor-supplied patterns on top of persisted ones
+      const merged = new Map<string, ModerationPattern>();
+      for (const p of persisted) merged.set(p.id, p);
+      for (const p of customPatterns) merged.set(p.id, p);
+      this.customPatterns = [...merged.values()];
+    } else {
+      this.customPatterns = [...customPatterns];
+    }
+
+    this.allPatterns = this._buildAll();
+    this._compileAll();
+  }
+
+  private _buildAll(): ModerationPattern[] {
+    const map = new Map<string, ModerationPattern>();
+    for (const p of BUILTIN_PATTERNS) map.set(p.id, p);
+    for (const p of this.customPatterns) map.set(p.id, p);
+    return [...map.values()];
+  }
+
+  private _compileAll(): void {
+    this.compiled.clear();
+    for (const p of this.allPatterns) {
       if (p.enabled) {
         try {
           this.compiled.set(p.id, new RegExp(p.pattern, 'i'));
         } catch {
-          // Invalid regex in custom pattern — skip silently
+          // Invalid regex — skip silently
         }
       }
     }
+  }
+
+  private _loadFile(): ModerationPattern[] {
+    if (!this.customFile) return [];
+    try {
+      const { existsSync, readFileSync } = require('fs') as typeof import('fs');
+      if (!existsSync(this.customFile)) return [];
+      return JSON.parse(readFileSync(this.customFile, 'utf8')) as ModerationPattern[];
+    } catch {
+      return [];
+    }
+  }
+
+  private _saveFile(): void {
+    if (!this.customFile) return;
+    try {
+      const { writeFileSync, mkdirSync } = require('fs') as typeof import('fs');
+      const path = require('path') as typeof import('path');
+      mkdirSync(path.dirname(this.customFile), { recursive: true });
+      writeFileSync(this.customFile, JSON.stringify(this.customPatterns, null, 2), 'utf8');
+    } catch {
+      // Best-effort persistence — don't throw on save failure
+    }
+  }
+
+  private _refresh(): void {
+    this.allPatterns = this._buildAll();
+    this._compileAll();
+  }
+
+  // ── Runtime CRUD ────────────────────────────────────────────────────────────
+
+  /**
+   * Add or replace a custom pattern at runtime.
+   * Builtin patterns can be overridden (e.g. to change action or disable them).
+   */
+  upsertPattern(pattern: ModerationPattern): ModerationPattern {
+    const idx = this.customPatterns.findIndex(p => p.id === pattern.id);
+    if (idx >= 0) {
+      this.customPatterns[idx] = pattern;
+    } else {
+      this.customPatterns.push(pattern);
+    }
+    this._refresh();
+    this._saveFile();
+    return pattern;
+  }
+
+  /**
+   * Delete a custom pattern by id.
+   * Returns true if found and removed, false if not found or if id is a builtin
+   * that hasn't been overridden in custom patterns (builtins are immutable).
+   */
+  deletePattern(id: string): boolean {
+    const idx = this.customPatterns.findIndex(p => p.id === id);
+    if (idx < 0) return false;
+    this.customPatterns.splice(idx, 1);
+    this._refresh();
+    this._saveFile();
+    return true;
+  }
+
+  /** Return only custom (non-builtin) patterns, including builtin overrides. */
+  listCustomPatterns(): ModerationPattern[] {
+    return [...this.customPatterns];
+  }
+
+  /** True if this id belongs to a builtin pattern that has NOT been overridden. */
+  isBuiltinOnly(id: string): boolean {
+    return this.builtinIds.has(id) && !this.customPatterns.some(p => p.id === id);
   }
 
   /**
@@ -165,7 +260,7 @@ export class ModerationEngine {
     const warnings: string[] = [];
     const matched: ModerationResult['matched'] = [];
 
-    for (const pattern of this.patterns) {
+    for (const pattern of this.allPatterns) {
       if (!pattern.enabled) continue;
       if (pattern.directions && !pattern.directions.includes(direction)) continue;
 
@@ -191,9 +286,9 @@ export class ModerationEngine {
     return { allowed: true, warnings, matched };
   }
 
-  /** List all patterns (enabled and disabled). */
+  /** List all patterns (enabled and disabled), including builtin and custom. */
   listPatterns(): ModerationPattern[] {
-    return [...this.patterns];
+    return [...this.allPatterns];
   }
 
   /** Return built-in patterns only. */
