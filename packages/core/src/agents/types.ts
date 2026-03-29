@@ -69,6 +69,16 @@ export interface AgentDefinition {
    */
   idleTimeoutMs?: number;
   /**
+   * Maximum number of concurrent child (spawned) sub-agent runs for this agent
+   * within a single parent run. Default: unlimited. Set to 0 to disable spawning.
+   */
+  maxChildrenPerRun?: number;
+  /**
+   * Maximum spawn depth this agent may reach when spawned as a sub-agent.
+   * Default: 5. Prevents runaway recursive spawning.
+   */
+  maxSpawnDepth?: number;
+  /**
    * Optional workspace directory for this agent.
    * When set, bootstrap files are loaded from this directory and injected into
    * the system prompt. When unset, the global workspace is used (if configured).
@@ -115,6 +125,7 @@ export interface AgentRun {
   promptTokens?: number;       // total prompt/input tokens across all inference turns
   completionTokens?: number;   // total completion/output tokens across all inference turns
   parentRunId?: string;        // run ID of the parent that spawned or handed off to this run
+  spawnDepth?: number;         // nesting depth (0 = top-level, 1 = spawned by top-level, etc.)
 }
 
 // ─── Input types ──────────────────────────────────────────────────────────────
@@ -134,6 +145,8 @@ export interface CreateAgentInput {
   deniedTools?: string[];
   allowedAgentTargets?: string[];
   idleTimeoutMs?: number;
+  maxChildrenPerRun?: number;
+  maxSpawnDepth?: number;
   workspaceDir?: string;
   skipBootstrap?: boolean;
   toolLoop?: ToolLoopConfig;
@@ -154,6 +167,8 @@ export interface UpdateAgentInput {
   deniedTools?: string[] | null;
   allowedAgentTargets?: string[] | null;
   idleTimeoutMs?: number | null;
+  maxChildrenPerRun?: number | null;
+  maxSpawnDepth?: number | null;
   workspaceDir?: string | null;
   skipBootstrap?: boolean;
   toolLoop?: ToolLoopConfig | null;
@@ -168,6 +183,7 @@ export interface RunAgentInput {
   runId?: string;          // pre-specified run ID for SSE correlation
   requestId?: string;      // HTTP requestId for end-to-end log correlation
   parentRunId?: string;    // run ID of the spawning parent (set by orchestrator on spawn/handoff)
+  spawnDepth?: number;     // nesting depth passed through from orchestrator
   /**
    * Controls which system prompt sections and bootstrap files are injected.
    * 'full'    — all sections + all workspace files (default)

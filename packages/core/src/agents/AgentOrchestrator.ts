@@ -88,6 +88,12 @@ export class AgentOrchestrator extends EventEmitter {
   // Queue of resolve functions waiting for a run slot
   private readonly waitQueue: Array<{ resolve: () => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }> = [];
 
+  // Per-parent-run child spawn counter: parentRunId → count of active children
+  private readonly childCounts = new Map<string, number>();
+
+  // Global maximum spawn depth (agents may override with maxSpawnDepth)
+  static readonly GLOBAL_MAX_SPAWN_DEPTH = 5;
+
   // Background janitor — stops runs that exceed their agent's idleTimeoutMs
   private janitorTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -130,8 +136,43 @@ export class AgentOrchestrator extends EventEmitter {
     this.spawnAgentResolver = async (targetAgentId: string, message: string, parentRunId?: string): Promise<string | null> => {
       const agent = this.registry.getById(targetAgentId);
       if (!agent) return null;
+
+      // Resolve parent depth from run history
+      const parentDepth = parentRunId ? (this.runHistory.get(parentRunId)?.spawnDepth ?? 0) : 0;
+      const childDepth = parentDepth + 1;
+      const maxDepth = agent.maxSpawnDepth ?? AgentOrchestrator.GLOBAL_MAX_SPAWN_DEPTH;
+      if (childDepth > maxDepth) {
+        return `[spawn blocked: max spawn depth ${maxDepth} reached at depth ${parentDepth}]`;
+      }
+
+      // Enforce maxChildrenPerRun on the parent agent
+      if (parentRunId) {
+        const parentRun = this.runHistory.get(parentRunId);
+        const parentAgent = parentRun ? this.registry.getById(parentRun.agentId) : null;
+        const maxChildren = parentAgent?.maxChildrenPerRun;
+        if (maxChildren !== undefined) {
+          const currentCount = this.childCounts.get(parentRunId) ?? 0;
+          if (currentCount >= maxChildren) {
+            return `[spawn blocked: parent run ${parentRunId} has reached maxChildrenPerRun (${maxChildren})]`;
+          }
+          this.childCounts.set(parentRunId, currentCount + 1);
+        }
+      }
+
       const spawnStart = Date.now();
-      const run = await this.runner.run(agent, { input: message, ...(parentRunId && { parentRunId }) }, (evt) => this.emit('agent:event', evt));
+      const run = await this.runner.run(agent, {
+        input: message,
+        ...(parentRunId && { parentRunId }),
+        spawnDepth: childDepth,
+      }, (evt) => this.emit('agent:event', evt));
+
+      // Decrement child count after run
+      if (parentRunId) {
+        const c = this.childCounts.get(parentRunId);
+        if (c !== undefined && c > 0) this.childCounts.set(parentRunId, c - 1);
+        else this.childCounts.delete(parentRunId);
+      }
+
       const latencyMs = Date.now() - spawnStart;
       const stats = [
         run.modelUsed ? `model: ${run.modelUsed}` : null,
@@ -140,6 +181,7 @@ export class AgentOrchestrator extends EventEmitter {
           : null,
         `latency: ${latencyMs}ms`,
         `status: ${run.status}`,
+        childDepth > 1 ? `depth: ${childDepth}` : null,
       ].filter(Boolean).join(', ');
       return `${run.output ?? ''}${stats ? `\n\n[spawn stats: ${stats}]` : ''}`;
     };

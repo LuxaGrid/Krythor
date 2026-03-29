@@ -986,8 +986,9 @@ export class AgentRunner {
       startedAt: now,
       memoryIdsUsed: [],
       memoryIdsWritten: [],
-      ...(input.requestId  && { requestId:  input.requestId }),
+      ...(input.requestId   && { requestId:   input.requestId }),
       ...(input.parentRunId && { parentRunId: input.parentRunId }),
+      ...(input.spawnDepth  !== undefined && { spawnDepth: input.spawnDepth }),
     };
 
     this.activeRuns.set(runId, { run, stop: stopFn, controller });
@@ -1235,8 +1236,9 @@ export class AgentRunner {
       startedAt: now,
       memoryIdsUsed: [],
       memoryIdsWritten: [],
-      ...(input.requestId  && { requestId:  input.requestId }),
+      ...(input.requestId   && { requestId:   input.requestId }),
       ...(input.parentRunId && { parentRunId: input.parentRunId }),
+      ...(input.spawnDepth  !== undefined && { spawnDepth: input.spawnDepth }),
     };
 
     this.activeRuns.set(runId, { run, stop: stopFn, controller });
