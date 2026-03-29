@@ -7,6 +7,7 @@ import type { DevicePairingStore } from '../ws/DevicePairingStore.js';
 import type { ApprovalManager } from '../ApprovalManager.js';
 import type { PrivacyRouter } from '@krythor/models';
 import type { SessionDirectiveStore } from '../SessionDirectiveStore.js';
+import type { GatewayEventBus } from '../GatewayEventBus.js';
 import { classifyError } from '../errors.js';
 
 /** Register a requestId→runId mapping on the app instance (set in server.ts). */
@@ -26,6 +27,7 @@ export function registerCommandRoute(
   approvalManager?: ApprovalManager,
   privacyRouter?: PrivacyRouter,
   sessionDirectives?: SessionDirectiveStore,
+  eventBus?: GatewayEventBus,
 ): void {
   app.post('/api/command', {
     config: {
@@ -520,6 +522,8 @@ export function registerCommandRoute(
       }
     }
 
+    eventBus?.emit('command:received', { input, agentId, conversationId, stream: stream ?? false });
+
     // Merge session directives — per-session settings (/think, /fast, /model, etc.)
     // Request-level params take precedence over session state.
     const sessionState = conversationId && sessionDirectives ? sessionDirectives.get(conversationId) : {};
@@ -703,6 +707,7 @@ export function registerCommandRoute(
           convStore.addMessage(activeConvId, 'assistant', output, run.modelUsed);
         }
 
+        eventBus?.emit('command:completed', { input, agentId, conversationId: activeConvId, modelUsed: run.modelUsed, durationMs: run.completedAt ? run.completedAt - run.startedAt : Date.now() - startTime });
         return reply.send({
           input,
           output,

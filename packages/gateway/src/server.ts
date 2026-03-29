@@ -81,6 +81,7 @@ import { registerKnowledgeRoutes } from './routes/knowledge.js';
 import { ApiKeyPool } from './ApiKeyPool.js';
 import { registerKeyPoolRoutes } from './routes/keyPool.js';
 import { SessionDirectiveStore } from './SessionDirectiveStore.js';
+import { gatewayEvents } from './GatewayEventBus.js';
 import { registerApiKeyRoutes } from './routes/apiKeys.js';
 import { registerJobRoutes } from './routes/jobs.js';
 import { registerErrorHandler } from './errors.js';
@@ -1432,7 +1433,7 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   });
 
   // Register routes
-  registerCommandRoute(app, core, orchestrator, broadcast, guard, convStore, devicePairingStore, approvalManager, privacyRouter, sessionDirectiveStore);
+  registerCommandRoute(app, core, orchestrator, broadcast, guard, convStore, devicePairingStore, approvalManager, privacyRouter, sessionDirectiveStore, gatewayEvents);
   registerMemoryRoutes(app, memory, models, guard, channelEmit, approvalManager, janitorStatus);
   registerModelRoutes(app, models, memory, guard, channelEmit, approvalManager);
   registerAgentRoutes(app, orchestrator, guard, accessProfileStore, approvalManager, agentMessageBus, metricsCollector, tokenBudgetStore);
@@ -1880,6 +1881,16 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
     heartbeat.stop();
     // memory.close() closes the shared SQLite connection used by both stores
     memory.close();
+    gatewayEvents.emit('gateway:shutdown', {});
+  });
+
+  app.addHook('onReady', () => {
+    gatewayEvents.emit('gateway:startup', {
+      version: KRYTHOR_VERSION,
+      dataDir,
+      host: GATEWAY_HOST,
+      port: GATEWAY_PORT,
+    });
   });
 
   // Expose a checkReady helper so index.ts can log readiness after listen()
