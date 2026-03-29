@@ -80,6 +80,7 @@ import { registerWorkflowRoutes } from './routes/workflows.js';
 import { registerKnowledgeRoutes } from './routes/knowledge.js';
 import { ApiKeyPool } from './ApiKeyPool.js';
 import { registerKeyPoolRoutes } from './routes/keyPool.js';
+import { SessionDirectiveStore } from './SessionDirectiveStore.js';
 import { registerApiKeyRoutes } from './routes/apiKeys.js';
 import { registerJobRoutes } from './routes/jobs.js';
 import { registerErrorHandler } from './errors.js';
@@ -1419,6 +1420,9 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   // ── API key pool — per-provider round-robin key rotation ─────────────────
   const apiKeyPool = new ApiKeyPool(join(dataDir, 'config'));
 
+  // ── Session directive store — per-conversation directive overrides ────────
+  const sessionDirectiveStore = new SessionDirectiveStore();
+
   // ── Real-time request metrics — created early so agent routes can use it ────
   const metricsCollector = new MetricsCollector(60);
   app.addHook('onResponse', async (req, reply) => {
@@ -1428,7 +1432,7 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   });
 
   // Register routes
-  registerCommandRoute(app, core, orchestrator, broadcast, guard, convStore, devicePairingStore, approvalManager, privacyRouter);
+  registerCommandRoute(app, core, orchestrator, broadcast, guard, convStore, devicePairingStore, approvalManager, privacyRouter, sessionDirectiveStore);
   registerMemoryRoutes(app, memory, models, guard, channelEmit, approvalManager, janitorStatus);
   registerModelRoutes(app, models, memory, guard, channelEmit, approvalManager);
   registerAgentRoutes(app, orchestrator, guard, accessProfileStore, approvalManager, agentMessageBus, metricsCollector, tokenBudgetStore);

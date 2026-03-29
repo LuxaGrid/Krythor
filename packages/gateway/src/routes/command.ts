@@ -6,6 +6,7 @@ import type { ConversationStore } from '@krythor/memory';
 import type { DevicePairingStore } from '../ws/DevicePairingStore.js';
 import type { ApprovalManager } from '../ApprovalManager.js';
 import type { PrivacyRouter } from '@krythor/models';
+import type { SessionDirectiveStore } from '../SessionDirectiveStore.js';
 import { classifyError } from '../errors.js';
 
 /** Register a requestId→runId mapping on the app instance (set in server.ts). */
@@ -24,6 +25,7 @@ export function registerCommandRoute(
   deviceStore?: DevicePairingStore,
   approvalManager?: ApprovalManager,
   privacyRouter?: PrivacyRouter,
+  sessionDirectives?: SessionDirectiveStore,
 ): void {
   app.post('/api/command', {
     config: {
@@ -271,10 +273,12 @@ export function registerCommandRoute(
         // Levels: off | minimal | low | medium | high | xhigh | adaptive
         const VALID_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'adaptive'];
         if (!arg) {
+          const current = conversationId ? sessionDirectives?.get(conversationId)?.thinkingLevel : undefined;
           return slashReply({
-            output: `Usage: /think <level>\nLevels: ${VALID_LEVELS.join(' | ')}\n\nSet extended thinking depth. Higher levels use more tokens but reason more deeply.`,
+            output: `Thinking level: ${current ?? 'not set (default off)'}\nUsage: /think <level>\nLevels: ${VALID_LEVELS.join(' | ')}`,
             command: 'think:help',
             validLevels: VALID_LEVELS,
+            current: current ?? null,
           });
         }
         const level = arg.toLowerCase();
@@ -289,49 +293,109 @@ export function registerCommandRoute(
           high: 10000, xhigh: 20000, adaptive: 8000,
         };
         const budget = budgetMap[level];
+        // Persist to session
+        if (conversationId && sessionDirectives) {
+          sessionDirectives.set(conversationId, { thinkingLevel: level === 'off' ? undefined : level as import('@krythor/models').ThinkingLevel });
+        }
         return slashReply({
           output: level === 'off'
-            ? 'Extended thinking disabled.'
-            : `Thinking level set to "${level}" (${budget?.toLocaleString()} token budget). Include thinking: { enabled: true, level: "${level}" } in your next /api/command or /api/models/infer request.`,
+            ? 'Extended thinking disabled for this session.'
+            : `Thinking level set to "${level}" (${budget?.toLocaleString()} token budget). Active for this session.`,
           command: 'think:set',
           thinkingLevel: level,
           thinkingBudget: budget,
+          persisted: !!conversationId,
         });
       }
 
       if (cmd === '/fast') {
         // /fast [on|off]  — toggle fast model routing preference
         const state = arg?.toLowerCase();
-        if (!state || state === 'on') {
+        const fastOn = !state || state === 'on';
+        const fastOff = state === 'off';
+        if (!fastOff && !fastOn) {
+          return slashReply({ output: 'Usage: /fast [on|off]', command: 'fast:help' });
+        }
+        if (conversationId && sessionDirectives) {
+          sessionDirectives.set(conversationId, { fastMode: fastOn });
+        }
+        return slashReply({
+          output: fastOn
+            ? 'Fast mode on: model routing will prefer lower-latency options for this session.'
+            : 'Fast mode off: standard model routing restored.',
+          command: fastOn ? 'fast:on' : 'fast:off',
+          fastMode: fastOn,
+          persisted: !!conversationId,
+        });
+      }
+
+      if (cmd === '/verbose' || cmd === '/v') {
+        // /verbose [on|full|off]  — control tool-call forwarding verbosity
+        const VALID = ['on', 'full', 'off'];
+        const state = arg?.toLowerCase();
+        if (!state) {
+          const current = conversationId ? sessionDirectives?.get(conversationId)?.verbose : undefined;
           return slashReply({
-            output: 'Fast mode on: model routing will prefer lower-latency options. Set modelId to a fast model or use the cost_tier="budget" preference in /api/models/recommend.',
-            command: 'fast:on',
-            fastMode: true,
+            output: `Verbose level: ${current ?? 'off (default)'}\nUsage: /verbose [on|full|off]\n  on   — tool calls forwarded as messages\n  full — tool calls + outputs forwarded\n  off  — silent (default)`,
+            command: 'verbose:status',
+            current: current ?? 'off',
           });
         }
-        if (state === 'off') {
+        if (!VALID.includes(state)) {
+          return slashReply({ output: `Valid levels: ${VALID.join(', ')}`, command: 'verbose:invalid' });
+        }
+        if (conversationId && sessionDirectives) {
+          sessionDirectives.set(conversationId, { verbose: state as import('../SessionDirectiveStore.js').VerboseLevel });
+        }
+        return slashReply({
+          output: `Verbose mode set to "${state}".`,
+          command: `verbose:${state}`,
+          verboseLevel: state,
+          persisted: !!conversationId,
+        });
+      }
+
+      if (cmd === '/reasoning') {
+        // /reasoning [on|off|stream]  — control reasoning/thinking block visibility in chat
+        const VALID = ['on', 'off', 'stream'];
+        const state = arg?.toLowerCase();
+        if (!state) {
+          const current = conversationId ? sessionDirectives?.get(conversationId)?.reasoning : undefined;
           return slashReply({
-            output: 'Fast mode off: standard model routing restored.',
-            command: 'fast:off',
-            fastMode: false,
+            output: `Reasoning visibility: ${current ?? 'off (default)'}\nUsage: /reasoning [on|off|stream]\n  on     — thinking blocks forwarded as separate messages\n  stream — stream thinking into a draft before reply (where supported)\n  off    — hide thinking blocks (default)`,
+            command: 'reasoning:status',
+            current: current ?? 'off',
           });
         }
-        return slashReply({ output: 'Usage: /fast [on|off]', command: 'fast:help' });
+        if (!VALID.includes(state)) {
+          return slashReply({ output: `Valid modes: ${VALID.join(', ')}`, command: 'reasoning:invalid' });
+        }
+        if (conversationId && sessionDirectives) {
+          sessionDirectives.set(conversationId, { reasoning: state as import('../SessionDirectiveStore.js').ReasoningVisibility });
+        }
+        return slashReply({
+          output: `Reasoning visibility set to "${state}".`,
+          command: `reasoning:${state}`,
+          reasoning: state,
+          persisted: !!conversationId,
+        });
       }
 
       if (cmd === '/help' || cmd === '/commands') {
         const helpText = [
           'Available commands:',
-          '  /new                     — start a new conversation',
-          '  /compact                 — trim old messages from context',
-          '  /clear                   — clear displayed chat history',
-          '  /model [id]              — list models or switch active model',
-          '  /agent [id]              — show active agent or switch agent',
-          '  /think <level>           — set thinking depth (off|minimal|low|medium|high|xhigh|adaptive)',
-          '  /fast [on|off]           — toggle fast model routing',
+          '  /new                      — start a new conversation',
+          '  /compact                  — trim old messages from context',
+          '  /clear                    — clear displayed chat history',
+          '  /model [id]               — list models or switch active model',
+          '  /agent [id]               — show active agent or switch agent',
+          '  /think <level>            — set thinking depth (off|minimal|low|medium|high|xhigh|adaptive)',
+          '  /fast [on|off]            — toggle fast model routing',
+          '  /verbose [on|full|off]    — control tool-call forwarding in chat',
+          '  /reasoning [on|off|stream] — control reasoning block visibility',
           '  /subagents [list|kill|log] — manage agent runs',
           '  /devices [list|pending|approve|deny] — manage paired devices',
-          '  /help                    — show this list',
+          '  /help                     — show this list',
         ].join('\n');
         return slashReply({ output: helpText, command: 'help' });
       }
