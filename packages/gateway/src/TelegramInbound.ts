@@ -31,6 +31,7 @@ import { resolveSessionKey } from '@krythor/memory';
 import type { DmPairingStore } from './DmPairingStore.js';
 import type { SessionRouter } from './SessionRouter.js';
 import { handleSlashCommand } from './InboundSlashCommands.js';
+import { SenderRateLimiter } from './SenderRateLimiter.js';
 import { logger } from './logger.js';
 
 const TELEGRAM_API = 'https://api.telegram.org';
@@ -81,6 +82,12 @@ export interface TelegramInboundConfig {
    * Default: { min: 800, max: 2500 }. Set max to 0 to disable.
    */
   humanDelay?: { min?: number; max?: number };
+  /**
+   * Per-sender rate limiting. Senders exceeding the quota within the rolling
+   * window receive a rate-limit reply and the message is dropped.
+   * Default: 20 messages per 60 s window.
+   */
+  senderRateLimit?: { maxMessages?: number; windowMs?: number };
 }
 
 interface TelegramUpdate {
@@ -203,6 +210,7 @@ export class TelegramInbound {
    * Bounded at DEDUP_CACHE_MAX entries; oldest are evicted when full.
    */
   private readonly seenUpdateIds = new Set<number>();
+  private rateLimiter: SenderRateLimiter | null = null;
 
   constructor(
     orchestrator: AgentOrchestrator,
@@ -220,6 +228,10 @@ export class TelegramInbound {
 
   configure(cfg: TelegramInboundConfig): void {
     this.config = cfg;
+    this.rateLimiter?.destroy();
+    this.rateLimiter = cfg.senderRateLimit !== undefined
+      ? new SenderRateLimiter(cfg.senderRateLimit)
+      : new SenderRateLimiter();
   }
 
   getConfig(): TelegramInboundConfig | null {
@@ -283,6 +295,8 @@ export class TelegramInbound {
       this.abortController = null;
       logger.info('[telegram] Long-polling stopped');
     }
+    this.rateLimiter?.destroy();
+    this.rateLimiter = null;
   }
 
   // ── Polling loop ───────────────────────────────────────────────────────────
@@ -344,6 +358,13 @@ export class TelegramInbound {
     const isGroup  = chatId < 0;
 
     logger.info('[telegram] Received message', { chatId, fromId, isGroup });
+
+    // ── Sender rate limiting ────────────────────────────────────────────────
+    if (this.rateLimiter && !this.rateLimiter.allowed(this.channelId, fromId)) {
+      logger.info('[telegram] Sender rate-limited', { fromId });
+      await this.sendMessage(chatId, 'You are sending messages too quickly. Please wait a moment.').catch(() => {});
+      return;
+    }
 
     if (isGroup) {
       // ── Group policy enforcement ────────────────────────────────────────────

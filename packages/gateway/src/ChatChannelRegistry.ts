@@ -80,6 +80,12 @@ export interface ChatChannelConfig {
    * natural pacing. Default: { min: 800, max: 2500 }. Set max to 0 to disable.
    */
   humanDelay?: { min?: number; max?: number };
+  /**
+   * Per-sender rate limiting. Senders that exceed the quota receive a
+   * rate-limit reply and the message is dropped.
+   * Default: 20 messages per 60 s window.
+   */
+  senderRateLimit?: { maxMessages?: number; windowMs?: number };
 }
 
 export interface ChannelProviderMeta {

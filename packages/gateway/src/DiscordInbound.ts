@@ -30,6 +30,7 @@ import { resolveSessionKey } from '@krythor/memory';
 import type { DmPairingStore } from './DmPairingStore.js';
 import type { SessionRouter } from './SessionRouter.js';
 import { handleSlashCommand } from './InboundSlashCommands.js';
+import { SenderRateLimiter } from './SenderRateLimiter.js';
 import { logger } from './logger.js';
 
 const DISCORD_API = 'https://discord.com/api/v10';
@@ -75,6 +76,12 @@ export interface DiscordInboundConfig {
    * Default: { min: 800, max: 2500 }. Set max to 0 to disable.
    */
   humanDelay?: { min?: number; max?: number };
+  /**
+   * Per-sender rate limiting. Senders exceeding the quota within the rolling
+   * window receive a rate-limit reply and the message is dropped.
+   * Default: 20 messages per 60 s window.
+   */
+  senderRateLimit?: { maxMessages?: number; windowMs?: number };
 }
 
 interface DiscordMessage {
@@ -179,6 +186,7 @@ export class DiscordInbound {
    * Bounded at DEDUP_CACHE_MAX entries; oldest evicted when full.
    */
   private readonly seenMessageIds = new Set<string>();
+  private rateLimiter: SenderRateLimiter | null = null;
 
   constructor(
     orchestrator: AgentOrchestrator,
@@ -198,6 +206,10 @@ export class DiscordInbound {
     this.config = cfg;
     // Use channelId as the pairing store key to keep keys unique per channel
     this.channelId = `discord-${cfg.channelId}`;
+    this.rateLimiter?.destroy();
+    this.rateLimiter = cfg.senderRateLimit !== undefined
+      ? new SenderRateLimiter(cfg.senderRateLimit)
+      : new SenderRateLimiter();
   }
 
   getConfig(): DiscordInboundConfig | null {
@@ -248,6 +260,8 @@ export class DiscordInbound {
       this.timer = null;
       logger.info('[discord] Polling stopped');
     }
+    this.rateLimiter?.destroy();
+    this.rateLimiter = null;
   }
 
   // ── Polling loop ───────────────────────────────────────────────────────────
@@ -286,6 +300,13 @@ export class DiscordInbound {
 
     const isDM = !this.config.guildId;
     const authorId = msg.author.id;
+
+    // ── Sender rate limiting ────────────────────────────────────────────────
+    if (this.rateLimiter && !this.rateLimiter.allowed(this.channelId, authorId)) {
+      logger.info('[discord] Sender rate-limited', { authorId });
+      await this.sendMessage('You are sending messages too quickly. Please wait a moment.', msg.id).catch(() => {});
+      return;
+    }
 
     if (isDM) {
       // ── DM policy enforcement ─────────────────────────────────────────────
