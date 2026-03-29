@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import type { AgentOrchestrator, CreateAgentInput, UpdateAgentInput, RunAgentInput } from '@krythor/core';
+import type { AgentOrchestrator, CreateAgentInput, UpdateAgentInput, RunAgentInput, AgentEvent } from '@krythor/core';
 import { RunQueueFullError, RunRateLimitError } from '@krythor/core';
 import type { AgentMessageBus } from '@krythor/core';
 import type { GuardEngine } from '@krythor/guard';
@@ -398,6 +398,53 @@ export function registerAgentRoutes(
     const run = orchestrator.getRun(req.params.runId);
     if (!run) return reply.code(404).send({ error: 'Run not found' });
     return reply.send(run);
+  });
+
+  // GET /api/agents/runs/:runId/stream — SSE stream for a specific run
+  // Emits agent:event messages until the run completes or fails.
+  app.get<{ Params: { runId: string } }>('/api/agents/runs/:runId/stream', async (req, reply) => {
+    const { runId } = req.params;
+
+    // Check if run exists (may already be completed)
+    const existingRun = orchestrator.getRun(runId);
+    if (!existingRun) return reply.code(404).send({ error: 'Run not found' });
+
+    // If run is already complete, return a single done event
+    if (existingRun.status === 'completed' || existingRun.status === 'failed' || existingRun.status === 'stopped') {
+      reply.raw.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no',
+      });
+      reply.raw.write(`data: ${JSON.stringify({ type: existingRun.status, runId, payload: existingRun })}\n\n`);
+      reply.raw.end();
+      return reply;
+    }
+
+    reply.raw.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+
+    const onEvent = (event: AgentEvent): void => {
+      if (event.runId !== runId) return;
+      reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
+      if (event.type === 'run:completed' || event.type === 'run:failed' || event.type === 'run:stopped') {
+        orchestrator.off('agent:event', onEvent);
+        reply.raw.end();
+      }
+    };
+
+    orchestrator.on('agent:event', onEvent);
+
+    req.socket.on('close', () => {
+      orchestrator.off('agent:event', onEvent);
+    });
+
+    return reply;
   });
 
   // ── Access profile routes (require accessProfileStore) ─────────────────────
