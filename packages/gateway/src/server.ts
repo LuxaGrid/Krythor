@@ -382,15 +382,21 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
   // Auth preHandler — protects /api/* and /ws/* routes.
   // /health is public (UI polls it before token is loaded).
   //
-  // Three auth paths (in priority order):
+  // Auth paths (in priority order):
   //   1. authDisabled — all routes open (dev/trusted-network mode)
   //   2. Trusted proxy — request from a KRYTHOR_TRUSTED_PROXY IP with a non-empty
   //      X-Forwarded-User or X-Remote-User header is accepted without a token.
   //      Only enable this when Krythor is behind a TLS-terminating reverse proxy.
-  //   3. Bearer token — Authorization: Bearer <token> or ?token= query param.
+  //   3. Tailscale Serve identity — when allowTailscale: true in app-config.json,
+  //      requests bearing a Tailscale-User-Login header are accepted without a token.
+  //      Only enable when the gateway is exclusively reachable via Tailscale Serve.
+  //   4. Bearer token — Authorization: Bearer <token> or ?token= query param.
   if (!authCfg.authDisabled) {
     if (TRUSTED_PROXIES.size > 0) {
       logger.info('Trusted proxy auth active', { trustedProxies: [...TRUSTED_PROXIES] });
+    }
+    if (authCfg.allowTailscale) {
+      logger.info('Tailscale identity auth active');
     }
     app.addHook('preHandler', async (req, reply) => {
       const url = req.url ?? '';
@@ -413,6 +419,12 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
             return;
           }
         }
+      }
+
+      // Tailscale Serve identity auth — Tailscale injects Tailscale-User-Login on Serve requests.
+      if (authCfg.allowTailscale) {
+        const tsUser = req.headers['tailscale-user-login'];
+        if (tsUser && String(tsUser).trim().length > 0) return;
       }
 
       const authHeader = req.headers['authorization'] ?? '';

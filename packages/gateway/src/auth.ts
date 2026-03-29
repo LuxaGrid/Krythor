@@ -20,6 +20,13 @@ export interface AuthConfig {
   token: string;
   /** When true the user has opted out of auth entirely (not recommended). */
   authDisabled?: boolean;
+  /**
+   * When true, requests that carry a `Tailscale-User-Login` header (injected by
+   * Tailscale Serve / tailscaled) are accepted without a bearer token.
+   * Only enable this when the gateway is exclusively reachable via Tailscale Serve,
+   * otherwise the header could be spoofed by any direct HTTP client.
+   */
+  allowTailscale?: boolean;
 }
 
 /** Load or generate the gateway auth token.
@@ -50,14 +57,17 @@ export function loadOrCreateToken(configDir: string): AuthConfig {
     return { token: '', authDisabled: true };
   }
 
+  const authSub = cfg['auth'] as Record<string, unknown> | undefined;
+  const allowTailscale = cfg['allowTailscale'] === true || authSub?.['allowTailscale'] === true;
+
   // KRYTHOR_GATEWAY_TOKEN env var — highest priority (does not persist to disk)
   const envToken = process.env['KRYTHOR_GATEWAY_TOKEN'];
   if (typeof envToken === 'string' && envToken.length >= 32) {
-    return { token: envToken };
+    return { token: envToken, ...(allowTailscale && { allowTailscale }) };
   }
 
   if (typeof cfg['gatewayToken'] === 'string' && cfg['gatewayToken'].length >= 32) {
-    return { token: cfg['gatewayToken'] as string };
+    return { token: cfg['gatewayToken'] as string, ...(allowTailscale && { allowTailscale }) };
   }
 
   // First start — generate and persist a new token.
@@ -65,7 +75,7 @@ export function loadOrCreateToken(configDir: string): AuthConfig {
   cfg['gatewayToken'] = token;
   mkdirSync(configDir, { recursive: true });
   writeFileSync(path, JSON.stringify(cfg, null, 2), 'utf8');
-  return { token, firstRun: true } as AuthConfig & { firstRun?: boolean };
+  return { token, firstRun: true, allowTailscale } as AuthConfig & { firstRun?: boolean };
 }
 
 /** Verify a bearer token string against the expected value. */
