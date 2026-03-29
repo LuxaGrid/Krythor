@@ -31,6 +31,7 @@ import { resolveSessionKey } from '@krythor/memory';
 import type { DmPairingStore } from './DmPairingStore.js';
 import type { SessionRouter } from './SessionRouter.js';
 import { handleSlashCommand } from './InboundSlashCommands.js';
+import { MessageDebouncer } from './MessageDebouncer.js';
 import { SenderRateLimiter } from './SenderRateLimiter.js';
 import { logger } from './logger.js';
 
@@ -88,6 +89,12 @@ export interface TelegramInboundConfig {
    * Default: 20 messages per 60 s window.
    */
   senderRateLimit?: { maxMessages?: number; windowMs?: number };
+  /**
+   * Inbound message debouncing. Rapid consecutive messages from the same
+   * conversation are coalesced into a single agent turn.
+   * Default: disabled (idleMs: 0). Media messages always bypass debounce.
+   */
+  debounce?: { idleMs?: number; maxMs?: number };
 }
 
 interface TelegramUpdate {
@@ -211,6 +218,9 @@ export class TelegramInbound {
    */
   private readonly seenUpdateIds = new Set<number>();
   private rateLimiter: SenderRateLimiter | null = null;
+  private debouncer: MessageDebouncer | null = null;
+  /** Per conversation-key pending context for the debouncer. */
+  private readonly debouncePending = new Map<string, { chatId: number; fromId: string; isGroup: boolean }>();
 
   constructor(
     orchestrator: AgentOrchestrator,
@@ -232,6 +242,19 @@ export class TelegramInbound {
     this.rateLimiter = cfg.senderRateLimit !== undefined
       ? new SenderRateLimiter(cfg.senderRateLimit)
       : new SenderRateLimiter();
+
+    this.debouncer?.flushAll();
+    this.debouncePending.clear();
+    if (cfg.debounce?.idleMs && cfg.debounce.idleMs > 0) {
+      this.debouncer = new MessageDebouncer(msg => {
+        const ctx = this.debouncePending.get(msg.conversationKey);
+        if (!ctx) return;
+        this.debouncePending.delete(msg.conversationKey);
+        void this.runAgent(ctx.chatId, ctx.fromId, msg.text, ctx.isGroup);
+      }, { idleMs: cfg.debounce.idleMs, maxMs: cfg.debounce.maxMs });
+    } else {
+      this.debouncer = null;
+    }
   }
 
   getConfig(): TelegramInboundConfig | null {
@@ -297,6 +320,8 @@ export class TelegramInbound {
     }
     this.rateLimiter?.destroy();
     this.rateLimiter = null;
+    this.debouncer?.flushAll();
+    this.debouncePending.clear();
   }
 
   // ── Polling loop ───────────────────────────────────────────────────────────
@@ -404,7 +429,7 @@ export class TelegramInbound {
       // groupPolicy === 'open' or group is in allowlist: fall through to agent
       void this.sendChatAction(chatId, 'typing').catch(() => {});
       await this.sendAckReaction(chatId, message.message_id).catch(() => {});
-      await this.runAgent(chatId, fromId, message.text!);
+      this.dispatchOrDebounce(chatId, fromId, message.text!, true);
 
     } else {
       // ── DM policy enforcement ───────────────────────────────────────────────
@@ -417,7 +442,7 @@ export class TelegramInbound {
       if (dmPolicy === 'open') {
         void this.sendChatAction(chatId, 'typing').catch(() => {});
         await this.sendAckReaction(chatId, message.message_id).catch(() => {});
-        await this.runAgent(chatId, fromId, message.text!);
+        this.dispatchOrDebounce(chatId, fromId, message.text!, false);
         return;
       }
 
@@ -433,7 +458,7 @@ export class TelegramInbound {
 
         void this.sendChatAction(chatId, 'typing').catch(() => {});
         await this.sendAckReaction(chatId, message.message_id).catch(() => {});
-        await this.runAgent(chatId, fromId, message.text!);
+        this.dispatchOrDebounce(chatId, fromId, message.text!, false);
         return;
       }
 
@@ -441,7 +466,7 @@ export class TelegramInbound {
       if (this.pairingStore.isAllowed(this.channelId, fromId)) {
         void this.sendChatAction(chatId, 'typing').catch(() => {});
         await this.sendAckReaction(chatId, message.message_id).catch(() => {});
-        await this.runAgent(chatId, fromId, message.text!);
+        this.dispatchOrDebounce(chatId, fromId, message.text!, false);
         return;
       }
 
@@ -458,6 +483,16 @@ export class TelegramInbound {
           'A pairing request is already pending. Please wait for the owner to respond.',
         ).catch(() => {});
       }
+    }
+  }
+
+  private dispatchOrDebounce(chatId: number, fromId: string, text: string, isGroup: boolean): void {
+    if (this.debouncer) {
+      const key = String(chatId);
+      this.debouncePending.set(key, { chatId, fromId, isGroup });
+      this.debouncer.push(key, text);
+    } else {
+      void this.runAgent(chatId, fromId, text, isGroup);
     }
   }
 

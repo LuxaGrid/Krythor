@@ -30,6 +30,7 @@ import { resolveSessionKey } from '@krythor/memory';
 import type { DmPairingStore } from './DmPairingStore.js';
 import type { SessionRouter } from './SessionRouter.js';
 import { handleSlashCommand } from './InboundSlashCommands.js';
+import { MessageDebouncer } from './MessageDebouncer.js';
 import { SenderRateLimiter } from './SenderRateLimiter.js';
 import { logger } from './logger.js';
 
@@ -82,6 +83,12 @@ export interface DiscordInboundConfig {
    * Default: 20 messages per 60 s window.
    */
   senderRateLimit?: { maxMessages?: number; windowMs?: number };
+  /**
+   * Inbound message debouncing. Rapid consecutive messages from the same
+   * conversation are coalesced into a single agent turn.
+   * Default: disabled (idleMs: 0). Media messages always bypass debounce.
+   */
+  debounce?: { idleMs?: number; maxMs?: number };
 }
 
 interface DiscordMessage {
@@ -187,6 +194,8 @@ export class DiscordInbound {
    */
   private readonly seenMessageIds = new Set<string>();
   private rateLimiter: SenderRateLimiter | null = null;
+  private debouncer: MessageDebouncer | null = null;
+  private readonly debouncePending = new Map<string, DiscordMessage>();
 
   constructor(
     orchestrator: AgentOrchestrator,
@@ -210,6 +219,20 @@ export class DiscordInbound {
     this.rateLimiter = cfg.senderRateLimit !== undefined
       ? new SenderRateLimiter(cfg.senderRateLimit)
       : new SenderRateLimiter();
+
+    this.debouncer?.flushAll();
+    this.debouncePending.clear();
+    if (cfg.debounce?.idleMs && cfg.debounce.idleMs > 0) {
+      this.debouncer = new MessageDebouncer(msg => {
+        const pending = this.debouncePending.get(msg.conversationKey);
+        if (!pending) return;
+        this.debouncePending.delete(msg.conversationKey);
+        // Build a synthetic message with coalesced content
+        void this.processMessage({ ...pending, content: msg.text });
+      }, { idleMs: cfg.debounce.idleMs, maxMs: cfg.debounce.maxMs });
+    } else {
+      this.debouncer = null;
+    }
   }
 
   getConfig(): DiscordInboundConfig | null {
@@ -262,6 +285,8 @@ export class DiscordInbound {
     }
     this.rateLimiter?.destroy();
     this.rateLimiter = null;
+    this.debouncer?.flushAll();
+    this.debouncePending.clear();
   }
 
   // ── Polling loop ───────────────────────────────────────────────────────────
@@ -318,7 +343,7 @@ export class DiscordInbound {
 
       if (dmPolicy === 'open') {
         logger.info('[discord] DM received (open)', { msgId: msg.id, author: authorId });
-        await this.processMessage(msg);
+        this.dispatchOrDebounce(msg);
         return;
       }
 
@@ -334,14 +359,14 @@ export class DiscordInbound {
         }
 
         logger.info('[discord] DM received (allowlist approved)', { msgId: msg.id, author: authorId });
-        await this.processMessage(msg);
+        this.dispatchOrDebounce(msg);
         return;
       }
 
       // dmPolicy === 'pairing' (default)
       if (this.pairingStore.isAllowed(this.channelId, authorId)) {
         logger.info('[discord] DM received (pairing approved)', { msgId: msg.id, author: authorId });
-        await this.processMessage(msg);
+        this.dispatchOrDebounce(msg);
         return;
       }
 
@@ -386,7 +411,17 @@ export class DiscordInbound {
         guildId: this.config.guildId,
         channelId: this.config.channelId,
       });
-      await this.processMessage(msg);
+      this.dispatchOrDebounce(msg);
+    }
+  }
+
+  private dispatchOrDebounce(msg: DiscordMessage): void {
+    if (this.debouncer) {
+      const key = msg.author.id; // per-sender key (Discord DMs are user-specific)
+      this.debouncePending.set(key, msg);
+      this.debouncer.push(key, msg.content);
+    } else {
+      void this.processMessage(msg);
     }
   }
 

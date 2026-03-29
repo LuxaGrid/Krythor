@@ -86,6 +86,12 @@ export interface ChatChannelConfig {
    * Default: 20 messages per 60 s window.
    */
   senderRateLimit?: { maxMessages?: number; windowMs?: number };
+  /**
+   * Inbound message debouncing. Rapid consecutive messages from the same
+   * conversation are coalesced into a single agent turn.
+   * Default: disabled (idleMs: 0).
+   */
+  debounce?: { idleMs?: number; maxMs?: number };
 }
 
 export interface ChannelProviderMeta {

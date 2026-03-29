@@ -168,6 +168,7 @@ export class InboundChannelManager {
             chunkMode:        config.chunkMode,
             humanDelay:       config.humanDelay,
             senderRateLimit:  config.senderRateLimit,
+            debounce:         config.debounce,
           });
           instance = discord;
           break;
@@ -199,6 +200,7 @@ export class InboundChannelManager {
             ackReaction:      config.ackReaction,
             humanDelay:       config.humanDelay,
             senderRateLimit:  config.senderRateLimit,
+            debounce:         config.debounce,
           });
           instance = telegram;
           break;
