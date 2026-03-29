@@ -9,6 +9,7 @@ import type { PrivacyRouter } from '@krythor/models';
 import type { SessionDirectiveStore } from '../SessionDirectiveStore.js';
 import type { GatewayEventBus } from '../GatewayEventBus.js';
 import { classifyError } from '../errors.js';
+import { StreamCoalescer } from '../StreamCoalescer.js';
 
 /** Register a requestId→runId mapping on the app instance (set in server.ts). */
 function registerRunRequestId(app: FastifyInstance, runId: string, requestId: string): void {
@@ -640,14 +641,19 @@ export function registerCommandRoute(
 
           const convIdForRun = activeConvId;
 
+          // Coalesce small delta chunks before forwarding to the SSE client.
+          // Buffers up to 300 chars (or 50 ms idle) to reduce single-token frames.
+          const coalescer = new StreamCoalescer(sendEvent, { idleMs: 50, maxChars: 300, meta: { runId } });
+
           // Listen for stream events from this specific run
           const onChunk = (event: AgentEvent): void => {
             if (event.runId !== runId) return;
 
             if (event.type === 'run:stream:chunk') {
               const p = event.payload as { delta?: string; done?: boolean } | undefined;
-              sendEvent({ type: 'delta', content: p?.delta ?? '', runId });
+              coalescer.push(p?.delta ?? '');
             } else if (event.type === 'run:completed') {
+              coalescer.flush(); // ensure all buffered content is sent before completion
               const p = event.payload as { output?: string; modelUsed?: string; selectionReason?: string; fallbackOccurred?: boolean } | undefined;
               const output = p?.output ?? '';
 
@@ -659,18 +665,20 @@ export function registerCommandRoute(
               sendEvent({ type: 'done', output, runId, requestId: req.id, conversationId: convIdForRun, modelUsed: p?.modelUsed, selectionReason: p?.selectionReason ?? null, fallbackOccurred: p?.fallbackOccurred ?? false });
               endStream();
             } else if (event.type === 'run:failed') {
+              coalescer.flush();
               const p = event.payload as { error?: string } | undefined;
               sendEvent({ type: 'error', message: p?.error ?? 'Run failed' });
               endStream();
             } else if (event.type === 'run:stopped') {
+              coalescer.flush();
               sendEvent({ type: 'done', output: '', runId, conversationId: convIdForRun });
               endStream();
             }
           };
 
           orchestrator.on('agent:event', onChunk);
-          // Clean up listener if client disconnects before the run finishes
-          reply.raw.on('close', endStream);
+          // Clean up coalescer and listener if client disconnects before the run finishes
+          reply.raw.on('close', () => { coalescer.destroy(); endStream(); });
 
           // Start the run — don't await, events drive the response
           const runInput = { input, ...(resolvedModelId && { modelOverride: resolvedModelId }), ...(resolvedProviderId && { providerOverride: resolvedProviderId }), requestId: String(req.id) };
