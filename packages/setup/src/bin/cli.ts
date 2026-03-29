@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync, existsSync, cpSync, readdirSync, rmSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
 import { spawnSync } from 'child_process';
@@ -172,6 +172,57 @@ async function cmdUpdate(channel?: string): Promise<void> {
   console.log('  npm install krythor@latest');
 }
 
+/**
+ * Sync local monorepo dist builds into the installed ~/.krythor location.
+ * Useful when developing from the repo and wanting the install to reflect
+ * latest changes without a full GitHub release cycle.
+ */
+function cmdSync(): void {
+  // This cli.js lives at: <repo>/packages/setup/dist/bin/cli.js
+  // The monorepo root is 4 levels up.
+  const repoRoot = join(__dirname, '..', '..', '..', '..');
+  const installRoot = join(homedir(), '.krythor');
+
+  if (!existsSync(join(installRoot, 'package.json'))) {
+    console.error(`No installation found at ${installRoot}`);
+    console.error('Run the setup wizard first: krythor-setup');
+    process.exit(1);
+  }
+
+  const pkgs = ['control', 'gateway', 'core', 'guard', 'setup', 'memory', 'models', 'skills'];
+  let synced = 0;
+
+  for (const pkg of pkgs) {
+    const srcDist = join(repoRoot, 'packages', pkg, 'dist');
+    const dstDist = join(installRoot, 'packages', pkg, 'dist');
+    if (!existsSync(srcDist)) {
+      console.log(`  skip  ${pkg} (no dist — run pnpm build first)`);
+      continue;
+    }
+    if (!existsSync(dstDist)) {
+      console.log(`  skip  ${pkg} (not installed at ${dstDist})`);
+      continue;
+    }
+    try {
+      // For control: remove old hashed assets so stale files don't pile up
+      if (pkg === 'control') {
+        const assetsDir = join(dstDist, 'assets');
+        if (existsSync(assetsDir)) {
+          readdirSync(assetsDir).forEach(f => rmSync(join(assetsDir, f)));
+        }
+      }
+      cpSync(srcDist, dstDist, { recursive: true, force: true });
+      console.log(`  ok    ${pkg}`);
+      synced++;
+    } catch (err) {
+      console.error(`  fail  ${pkg}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  console.log(`\nSynced ${synced}/${pkgs.length} packages.`);
+  console.log('Restart the gateway for changes to take effect: Krythor.bat (or start.js)');
+}
+
 function cmdDoctor(extraArgs: string[]): void {
   // Delegate to krythor-setup (same package, different bin entry point)
   const setupBin = join(__dirname, 'setup.js');
@@ -223,6 +274,7 @@ const [,, cmd, ...rest] = process.argv;
     case 'models':   await cmdModels(); break;
     case 'call':     await cmdCall(rest.join(' ')); break;
     case 'update':   await cmdUpdate(rest[0]); break;
+    case 'sync':     cmdSync(); break;
     case 'doctor':   cmdDoctor(rest); break;
     default:
       console.log('Usage: krythor <command>');
@@ -231,6 +283,7 @@ const [,, cmd, ...rest] = process.argv;
       console.log('  models               — list configured providers and models');
       console.log('  call <text>          — send a one-shot message to the default agent');
       console.log('  update [beta|dev]    — check for and show update instructions');
+      console.log('  sync                 — copy monorepo dist builds into ~/.krythor (dev workflow)');
       console.log('  doctor [--fix]       — full diagnostics report; --fix auto-repairs safe issues');
       console.log('  policy show          — print current guard policy rules');
       console.log('  policy check <op>    — evaluate a guard check and show verdict');
