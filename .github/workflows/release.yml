@@ -23,7 +23,7 @@ jobs:
       tag:     ${{ steps.compute.outputs.tag }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.2
         with:
           fetch-depth: 0
 
@@ -75,15 +75,15 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.2
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v4.1.0
         with:
           version: 9.15.4
 
       - name: Set up Node.js 20
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v4.4.0
         with:
           node-version: '20'
           cache: pnpm
@@ -258,7 +258,7 @@ jobs:
           zip -r ../krythor-${{ matrix.target }}.zip .
 
       - name: Upload zip artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v4.6.2
         with:
           name: krythor-${{ matrix.target }}
           retention-days: 1
@@ -266,7 +266,7 @@ jobs:
 
       - name: Upload .deb artifact (Linux only)
         if: matrix.platform == 'linux'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v4.6.2
         with:
           name: krythor-linux-deb
           retention-days: 1
@@ -274,7 +274,7 @@ jobs:
 
       - name: Upload .pkg artifact (macOS only)
         if: matrix.platform == 'mac'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v4.6.2
         with:
           name: krythor-${{ matrix.target }}-pkg
           retention-days: 1
@@ -282,7 +282,7 @@ jobs:
 
       - name: Upload installer artifact (Windows only)
         if: matrix.os == 'windows-latest'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v4.6.2
         with:
           name: krythor-win-installer
           retention-days: 1
@@ -295,20 +295,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.2
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v3.10.0
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v3.4.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6.15.0
         with:
           context: .
           push: true
@@ -327,10 +327,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.2
 
       - name: Download all build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v4.3.0
         with:
           pattern: krythor-*
           merge-multiple: true
@@ -340,7 +340,7 @@ jobs:
         run: ls -lh dist-artifacts/
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v2.3.2
         with:
           name: "Krythor v${{ needs.version.outputs.version }}"
           tag_name: ${{ needs.version.outputs.tag }}
@@ -364,15 +364,15 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.2
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v4.1.0
         with:
           version: 9.15.4
 
       - name: Set up Node.js 20
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v4.4.0
         with:
           node-version: '20'
           cache: pnpm

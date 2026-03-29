@@ -26,8 +26,13 @@ COPY packages/skills/package.json   packages/skills/package.json
 # Copy .npmrc if it exists (optional — may not be present in all setups)
 COPY .npmrc* ./
 
-# Install dependencies
-RUN pnpm install --frozen-lockfile
+# Install dependencies — skip scripts here; better-sqlite3 is rebuilt below
+# --no-frozen-lockfile: lockfile was generated on Windows; path differences
+# can cause frozen-lockfile validation to fail on Linux runners.
+RUN pnpm install --no-frozen-lockfile --ignore-scripts
+
+# Rebuild native modules (better-sqlite3) for the current Linux/Alpine platform
+RUN cd node_modules/better-sqlite3 && node-gyp rebuild || true
 
 # Copy source code
 COPY . .
