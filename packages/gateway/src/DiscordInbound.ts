@@ -32,6 +32,8 @@ import type { SessionRouter } from './SessionRouter.js';
 import { handleSlashCommand } from './InboundSlashCommands.js';
 import { MessageDebouncer } from './MessageDebouncer.js';
 import { SenderRateLimiter } from './SenderRateLimiter.js';
+import { ConversationQueue } from './ConversationQueue.js';
+import type { QueueMode } from './ConversationQueue.js';
 import { logger } from './logger.js';
 
 const DISCORD_API = 'https://discord.com/api/v10';
@@ -89,6 +91,11 @@ export interface DiscordInboundConfig {
    * Default: disabled (idleMs: 0). Media messages always bypass debounce.
    */
   debounce?: { idleMs?: number; maxMs?: number };
+  /**
+   * How to handle new messages that arrive while a run is active for the
+   * same conversation. Default: 'collect'.
+   */
+  queueMode?: QueueMode;
 }
 
 interface DiscordMessage {
@@ -196,6 +203,8 @@ export class DiscordInbound {
   private rateLimiter: SenderRateLimiter | null = null;
   private debouncer: MessageDebouncer | null = null;
   private readonly debouncePending = new Map<string, DiscordMessage>();
+  private conversationQueue: ConversationQueue;
+  private readonly queueContext = new Map<string, DiscordMessage>();
 
   constructor(
     orchestrator: AgentOrchestrator,
@@ -207,6 +216,7 @@ export class DiscordInbound {
     this.pairingStore = pairingStore;
     this.convStore = convStore;
     this.sessionRouter = sessionRouter;
+    this.conversationQueue = this.buildQueue('collect');
   }
 
   // ── Configuration ──────────────────────────────────────────────────────────
@@ -227,12 +237,29 @@ export class DiscordInbound {
         const pending = this.debouncePending.get(msg.conversationKey);
         if (!pending) return;
         this.debouncePending.delete(msg.conversationKey);
-        // Build a synthetic message with coalesced content
-        void this.processMessage({ ...pending, content: msg.text });
+        this.enqueueToConversation({ ...pending, content: msg.text });
       }, { idleMs: cfg.debounce.idleMs, maxMs: cfg.debounce.maxMs });
     } else {
       this.debouncer = null;
     }
+
+    // Rebuild queue with updated mode
+    this.queueContext.clear();
+    this.conversationQueue = this.buildQueue(cfg.queueMode ?? 'collect');
+  }
+
+  private buildQueue(defaultMode: QueueMode): ConversationQueue {
+    return new ConversationQueue(async (item) => {
+      const msg = this.queueContext.get(item.conversationId);
+      if (!msg) return;
+      await this.processMessage({ ...msg, content: item.text });
+    }, defaultMode);
+  }
+
+  private enqueueToConversation(msg: DiscordMessage): void {
+    const convId = msg.author.id; // per-sender key for DMs; guild channels use same key
+    this.queueContext.set(convId, msg);
+    this.conversationQueue.enqueue({ conversationId: convId, text: msg.content, enqueuedAt: Date.now() });
   }
 
   getConfig(): DiscordInboundConfig | null {
@@ -421,7 +448,7 @@ export class DiscordInbound {
       this.debouncePending.set(key, msg);
       this.debouncer.push(key, msg.content);
     } else {
-      void this.processMessage(msg);
+      this.enqueueToConversation(msg);
     }
   }
 

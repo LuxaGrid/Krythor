@@ -92,6 +92,15 @@ export interface ChatChannelConfig {
    * Default: disabled (idleMs: 0).
    */
   debounce?: { idleMs?: number; maxMs?: number };
+  /**
+   * How to handle new messages while a run is active for the same conversation.
+   * Default: 'collect'.
+   *   steer     — replace pending with latest
+   *   followup  — enqueue after active run
+   *   collect   — coalesce into one followup turn
+   *   interrupt — abort active run, start fresh
+   */
+  queueMode?: 'steer' | 'followup' | 'collect' | 'interrupt';
 }
 
 export interface ChannelProviderMeta {

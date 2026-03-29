@@ -187,6 +187,7 @@ export class InboundChannelManager {
             humanDelay:       config.humanDelay,
             senderRateLimit:  config.senderRateLimit,
             debounce:         config.debounce,
+            queueMode:        config.queueMode,
           });
           instance = discord;
           break;
@@ -219,6 +220,7 @@ export class InboundChannelManager {
             humanDelay:       config.humanDelay,
             senderRateLimit:  config.senderRateLimit,
             debounce:         config.debounce,
+            queueMode:        config.queueMode,
           });
           instance = telegram;
           break;

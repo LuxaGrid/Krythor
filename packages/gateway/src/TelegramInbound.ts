@@ -33,6 +33,8 @@ import type { SessionRouter } from './SessionRouter.js';
 import { handleSlashCommand } from './InboundSlashCommands.js';
 import { MessageDebouncer } from './MessageDebouncer.js';
 import { SenderRateLimiter } from './SenderRateLimiter.js';
+import { ConversationQueue } from './ConversationQueue.js';
+import type { QueueMode } from './ConversationQueue.js';
 import { logger } from './logger.js';
 
 const TELEGRAM_API = 'https://api.telegram.org';
@@ -95,6 +97,15 @@ export interface TelegramInboundConfig {
    * Default: disabled (idleMs: 0). Media messages always bypass debounce.
    */
   debounce?: { idleMs?: number; maxMs?: number };
+  /**
+   * How to handle new messages that arrive while a run is already active
+   * for the same conversation. Default: 'collect'.
+   *   steer     — replace pending message with the latest
+   *   followup  — enqueue after the active run
+   *   collect   — coalesce all queued text into one followup turn
+   *   interrupt — abort the active run, start fresh with latest message
+   */
+  queueMode?: QueueMode;
 }
 
 interface TelegramUpdate {
@@ -221,6 +232,9 @@ export class TelegramInbound {
   private debouncer: MessageDebouncer | null = null;
   /** Per conversation-key pending context for the debouncer. */
   private readonly debouncePending = new Map<string, { chatId: number; fromId: string; isGroup: boolean }>();
+  private conversationQueue: ConversationQueue;
+  /** Metadata for queued items keyed by conversationId (chatId as string). */
+  private readonly queueContext = new Map<string, { chatId: number; fromId: string; isGroup: boolean }>();
 
   constructor(
     orchestrator: AgentOrchestrator,
@@ -232,6 +246,7 @@ export class TelegramInbound {
     this.pairingStore = pairingStore;
     this.convStore = convStore;
     this.sessionRouter = sessionRouter;
+    this.conversationQueue = this.buildQueue('collect');
   }
 
   // ── Configuration ──────────────────────────────────────────────────────────
@@ -250,11 +265,30 @@ export class TelegramInbound {
         const ctx = this.debouncePending.get(msg.conversationKey);
         if (!ctx) return;
         this.debouncePending.delete(msg.conversationKey);
-        void this.runAgent(ctx.chatId, ctx.fromId, msg.text, ctx.isGroup);
+        this.enqueueToConversation(ctx.chatId, ctx.fromId, msg.text, ctx.isGroup);
       }, { idleMs: cfg.debounce.idleMs, maxMs: cfg.debounce.maxMs });
     } else {
       this.debouncer = null;
     }
+
+    // Rebuild queue with updated mode
+    this.queueContext.clear();
+    this.conversationQueue = this.buildQueue(cfg.queueMode ?? 'collect');
+  }
+
+  private buildQueue(defaultMode: QueueMode): ConversationQueue {
+    return new ConversationQueue(async (item) => {
+      const ctx = this.queueContext.get(item.conversationId);
+      if (!ctx) return;
+      await this.runAgent(ctx.chatId, ctx.fromId, item.text, ctx.isGroup);
+    }, defaultMode);
+  }
+
+  private enqueueToConversation(chatId: number, fromId: string, text: string, isGroup: boolean): void {
+    const convId = String(chatId);
+    // Store/update context for this conversation (latest fromId wins for group messages)
+    this.queueContext.set(convId, { chatId, fromId, isGroup });
+    this.conversationQueue.enqueue({ conversationId: convId, text, enqueuedAt: Date.now() });
   }
 
   getConfig(): TelegramInboundConfig | null {
@@ -492,7 +526,7 @@ export class TelegramInbound {
       this.debouncePending.set(key, { chatId, fromId, isGroup });
       this.debouncer.push(key, text);
     } else {
-      void this.runAgent(chatId, fromId, text, isGroup);
+      this.enqueueToConversation(chatId, fromId, text, isGroup);
     }
   }
 
