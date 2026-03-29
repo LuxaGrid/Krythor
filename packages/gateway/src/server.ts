@@ -75,6 +75,8 @@ import { ApiKeyStore } from './ApiKeyStore.js';
 import { ApiKeyRateLimiter } from './ApiKeyRateLimiter.js';
 import { TokenBudgetStore } from './TokenBudgetStore.js';
 import { registerModerationRoutes } from './routes/moderation.js';
+import { WorkflowEngine } from './WorkflowEngine.js';
+import { registerWorkflowRoutes } from './routes/workflows.js';
 import { registerApiKeyRoutes } from './routes/apiKeys.js';
 import { registerJobRoutes } from './routes/jobs.js';
 import { registerErrorHandler } from './errors.js';
@@ -918,6 +920,9 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   // Session transcript storage — one JSONL file per run at:
   //   <dataDir>/agents/<agentId>/sessions/<runId>.jsonl
   orchestrator.setSessionsDir(dataDir);
+
+  // Workflow engine — named multi-agent pipelines with conditional steps
+  const workflowEngine = new WorkflowEngine(join(dataDir, 'config'), orchestrator);
   logger.info('Session transcript storage configured', { dir: dataDir });
 
   // Per-agent auth profile store — credentials for external services per agent.
@@ -1423,6 +1428,7 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   registerAgentRoutes(app, orchestrator, guard, accessProfileStore, approvalManager, agentMessageBus, metricsCollector, tokenBudgetStore);
   registerGuardRoutes(app, guard, guardDecisionStore);
   registerModerationRoutes(app, moderation);
+  registerWorkflowRoutes(app, workflowEngine);
   registerConfigRoute(app, join(dataDir, 'config'), guard, orchestrator, memory, heartbeatRef, approvalManager);
   registerConversationRoutes(app, convStore, guard, channelEmit, memory ?? undefined, approvalManager);
   if (memory) registerSessionMaintenanceRoutes(app, memory);
