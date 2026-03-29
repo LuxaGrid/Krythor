@@ -32,6 +32,7 @@ import { registerProviderRoutes } from './routes/providers.js';
 import { registerOAuthRoutes } from './routes/oauth.js';
 import { registerLocalModelsRoute } from './routes/local-models.js';
 import { registerStreamWs, getActiveWsConnections } from './ws/stream.js';
+import { PresenceStore } from './PresenceStore.js';
 import { DevicePairingStore } from './ws/DevicePairingStore.js';
 import { registerDashboardRoute } from './routes/dashboard.js';
 import { registerGatewayRoutes, loadOrCreateGatewayId } from './routes/gateway.js';
@@ -1430,6 +1431,9 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   // and to the WS stream handler. Storage path is <dataDir>/devices/devices.json.
   const devicePairingStore = new DevicePairingStore(join(dataDir, 'devices'));
 
+  // Presence store — tracks connected clients, nodes, and the gateway itself.
+  const presenceStore = new PresenceStore({ ttlMs: 5 * 60_000, maxEntries: 200 });
+
   // Late-bound heartbeat reference — filled in after HeartbeatEngine is created below.
   const heartbeatRef: HeartbeatRef = {};
 
@@ -1602,6 +1606,7 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
       firstRun: modelStats.providerCount === 0 && agentStats.agentCount === 0,
       totalTokens: models.tokenTracker.totalTokens(),
       wsConnections: getActiveWsConnections(),
+      presence: presenceStore.list(),
       nodes: nodeRegistry.list().length,
       devices: (() => {
         const allDevices = devicePairingStore.listAll();
@@ -1638,6 +1643,44 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   app.get('/readyz', async (_req, reply) => {
     const result = await checkReadiness(memory, models, guard);
     reply.code(result.ready ? 200 : 503).send(result);
+  });
+
+  // GET /api/presence — list connected clients and nodes.
+  app.get('/api/presence', async () => {
+    return { entries: presenceStore.list(), count: presenceStore.list().length };
+  });
+
+  // POST /api/presence/beacon — client heartbeat to refresh presence.
+  app.post('/api/presence/beacon', {
+    schema: {
+      body: {
+        type: 'object',
+        properties: {
+          instanceId:      { type: 'string' },
+          host:            { type: 'string' },
+          version:         { type: 'string' },
+          deviceFamily:    { type: 'string' },
+          modelIdentifier: { type: 'string' },
+          mode:            { type: 'string', enum: ['control', 'cli', 'node', 'device', 'gateway'] },
+          lastInputSeconds: { type: 'number' },
+          reason:          { type: 'string' },
+        },
+      },
+    },
+  }, async (req, reply) => {
+    const body = req.body as Record<string, unknown>;
+    const instanceId = typeof body['instanceId'] === 'string' ? body['instanceId'] : undefined;
+    if (!instanceId) return reply.code(400).send({ error: 'instanceId required' });
+    presenceStore.upsert(instanceId, {
+      host:             typeof body['host'] === 'string' ? body['host'] : undefined,
+      version:          typeof body['version'] === 'string' ? body['version'] : undefined,
+      deviceFamily:     typeof body['deviceFamily'] === 'string' ? body['deviceFamily'] : undefined,
+      modelIdentifier:  typeof body['modelIdentifier'] === 'string' ? body['modelIdentifier'] : undefined,
+      mode:             typeof body['mode'] === 'string' ? body['mode'] as import('./PresenceStore.js').PresenceMode : undefined,
+      lastInputSeconds: typeof body['lastInputSeconds'] === 'number' ? body['lastInputSeconds'] : undefined,
+      reason:           typeof body['reason'] === 'string' ? body['reason'] : undefined,
+    });
+    return { ok: true };
   });
 
   // GET /api/heartbeat/history — per-provider rolling health history (auth required).
@@ -1946,6 +1989,12 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   });
 
   app.addHook('onReady', () => {
+    // Register the gateway itself in the presence store
+    presenceStore.upsert(gatewayId, {
+      mode: 'gateway',
+      version: KRYTHOR_VERSION,
+      host: GATEWAY_HOST,
+    });
     gatewayEvents.emit('gateway:startup', {
       version: KRYTHOR_VERSION,
       dataDir,
