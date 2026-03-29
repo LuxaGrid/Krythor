@@ -17,7 +17,9 @@ export { AGENT_TOOLS, getAgentTools } from './tools/AgentTools.js';
 export type { ToolDefinition, ToolCall as AgentToolCall, ToolResult as AgentToolResult } from './tools/AgentTools.js';
 export { ToolExecutor } from './tools/ToolExecutor.js';
 export type { ToolExecutorOptions, MemoryLike as ToolMemoryLike } from './tools/ToolExecutor.js';
-export type { PluginExport, LoadedPlugin, PluginLoadRecord } from './tools/PluginLoader.js';
+export type { PluginExport, LoadedPlugin, PluginLoadRecord, LoadedPluginEntry } from './tools/PluginLoader.js';
+export { definePluginEntry, isPluginEntry, PluginAPI } from './tools/PluginSDK.js';
+export type { PluginEntry, PluginEntryDefinition, PluginToolDefinition, PluginChannelDefinition, PluginServiceDefinition, PluginHookName, PluginHookHandler, PluginRegistrations } from './tools/PluginSDK.js';
 export { atomicWrite, atomicWriteJSON } from './config/atomicWrite.js';
 export {
   parseAgentList,

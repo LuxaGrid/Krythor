@@ -3,6 +3,8 @@ import { join } from 'path';
 import { TOOL_REGISTRY } from './ToolRegistry.js';
 import type { ToolEntry } from './ToolRegistry.js';
 import { PluginSandbox } from './PluginSandbox.js';
+import { isPluginEntry, PluginAPI } from './PluginSDK.js';
+import type { PluginEntry, PluginToolDefinition, PluginChannelDefinition, PluginServiceDefinition } from './PluginSDK.js';
 
 // ─── PluginLoader ─────────────────────────────────────────────────────────────
 //
@@ -30,12 +32,32 @@ export interface LoadedPlugin {
   run: (input: string) => Promise<string>;
 }
 
+/** A plugin loaded via the definePluginEntry SDK format. */
+export interface LoadedPluginEntry {
+  /** Plugin id from the entry definition. */
+  id: string;
+  /** Plugin name from the entry definition. */
+  name: string;
+  version?: string;
+  description?: string;
+  file: string;
+  /** Tools registered by this plugin (already in TOOL_REGISTRY). */
+  tools: PluginToolDefinition[];
+  /** Channels registered by this plugin. */
+  channels: PluginChannelDefinition[];
+  /** Services registered by this plugin. */
+  services: PluginServiceDefinition[];
+}
+
 /** Status of each plugin file scanned during a load() pass. */
 export interface PluginLoadRecord {
   file: string;
   status: 'loaded' | 'error' | 'skipped';
+  /** For legacy plugins: the tool name. For SDK plugins: the plugin id. */
   name?: string;
   description?: string;
+  /** 'legacy' = old { name, description, run } format; 'sdk' = definePluginEntry format. */
+  format?: 'legacy' | 'sdk';
   /** Human-readable reason for 'error' or 'skipped' status. */
   reason?: string;
 }
@@ -64,6 +86,7 @@ function validatePluginExport(value: unknown, file: string): string | null {
 export class PluginLoader {
   private readonly pluginsDir: string;
   private loaded: LoadedPlugin[] = [];
+  private loadedEntries: LoadedPluginEntry[] = [];
   private records: PluginLoadRecord[] = [];
   private readonly sandbox: PluginSandbox;
 
@@ -84,6 +107,7 @@ export class PluginLoader {
    */
   load(): LoadedPlugin[] {
     this.loaded = [];
+    this.loadedEntries = [];
     this.records = [];
 
     if (!existsSync(this.pluginsDir)) {
@@ -117,6 +141,13 @@ export class PluginLoader {
         continue;
       }
 
+      // ── SDK format: definePluginEntry({ id, name, register(api) }) ──────────
+      if (isPluginEntry(exported)) {
+        void this.loadSdkPlugin(exported as PluginEntry, file, filePath, registeredNames);
+        continue;
+      }
+
+      // ── Legacy format: { name, description, run } ────────────────────────────
       const validationError = validatePluginExport(exported, file);
       if (validationError) {
         const reason = `Invalid export: ${validationError}`;
@@ -152,22 +183,95 @@ export class PluginLoader {
       TOOL_REGISTRY.push(entry);
       registeredNames.add(name);
 
-      const filePath2 = join(this.pluginsDir, file);
       const loadedPlugin: LoadedPlugin = {
         name,
         description: plugin.description.trim(),
         file,
         // Run via sandbox: forks a child process for each invocation so plugin
         // crashes and memory leaks are isolated from the gateway process.
-        run: (input: string) => this.sandbox.run(filePath2, input),
+        run: (input: string) => this.sandbox.run(filePath, input),
       };
       this.loaded.push(loadedPlugin);
-      this.records.push({ file, status: 'loaded', name, description: loadedPlugin.description });
+      this.records.push({ file, status: 'loaded', name, description: loadedPlugin.description, format: 'legacy' });
 
       console.info(`[PluginLoader] Loaded plugin "${name}" from ${file}`);
     }
 
     return this.loaded;
+  }
+
+  /**
+   * Load a plugin using the definePluginEntry SDK format.
+   * Calls register(api), then wires all registered tools into TOOL_REGISTRY.
+   * Errors in register() are caught so a bad plugin cannot crash the gateway.
+   */
+  private async loadSdkPlugin(
+    entry: PluginEntry,
+    file: string,
+    filePath: string,
+    registeredNames: Set<string>,
+  ): Promise<void> {
+    const api = new PluginAPI();
+    try {
+      await entry.register(api);
+    } catch (err) {
+      const reason = `register() threw: ${err instanceof Error ? err.message : String(err)}`;
+      console.warn(`[PluginLoader] SDK plugin ${file} failed — ${reason}`);
+      this.records.push({ file, status: 'error', name: entry.id, reason, format: 'sdk' });
+      return;
+    }
+
+    const { tools, channels, services } = api.registrations;
+    let toolsRegistered = 0;
+
+    for (const toolDef of tools) {
+      const name = toolDef.name.trim();
+      if (registeredNames.has(name)) {
+        console.warn(`[PluginLoader] SDK plugin ${file}: tool "${name}" is already registered — skipping`);
+        continue;
+      }
+      const toolEntry: ToolEntry = {
+        name,
+        description: toolDef.description.trim(),
+        parameters: toolDef.parameters ?? {
+          input: { type: 'string', description: 'Input string for the tool.', required: true },
+        },
+        requiresGuard: toolDef.requiresGuard ?? false,
+        alwaysAllowed: false,
+      };
+      TOOL_REGISTRY.push(toolEntry);
+      registeredNames.add(name);
+
+      // Register as a legacy LoadedPlugin for backwards-compat with get(name) and list()
+      this.loaded.push({
+        name,
+        description: toolDef.description.trim(),
+        file,
+        run: toolDef.run,
+      });
+      toolsRegistered++;
+    }
+
+    const loadedEntry: LoadedPluginEntry = {
+      id: entry.id,
+      name: entry.name,
+      version: entry.version,
+      description: entry.description,
+      file,
+      tools,
+      channels,
+      services,
+    };
+    this.loadedEntries.push(loadedEntry);
+    this.records.push({
+      file,
+      status: 'loaded',
+      name: entry.id,
+      description: entry.description,
+      format: 'sdk',
+    });
+
+    console.info(`[PluginLoader] Loaded SDK plugin "${entry.id}" from ${file} (${toolsRegistered} tools, ${channels.length} channels, ${services.length} services)`);
   }
 
   /** Returns all currently loaded plugins (without reloading). */
@@ -181,6 +285,14 @@ export class PluginLoader {
    */
   listRecords(): PluginLoadRecord[] {
     return this.records;
+  }
+
+  /**
+   * Returns all plugins loaded via the definePluginEntry SDK format.
+   * Includes multi-tool plugins with their full registration record.
+   */
+  listEntries(): LoadedPluginEntry[] {
+    return this.loadedEntries;
   }
 
   /** Look up a loaded plugin by name. Returns null if not found. */
