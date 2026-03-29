@@ -1,4 +1,4 @@
-import { existsSync, readdirSync } from 'fs';
+import { existsSync, readdirSync, watch as fsWatch } from 'fs';
 import { join } from 'path';
 import { TOOL_REGISTRY } from './ToolRegistry.js';
 import type { ToolEntry } from './ToolRegistry.js';
@@ -89,6 +89,8 @@ export class PluginLoader {
   private loadedEntries: LoadedPluginEntry[] = [];
   private records: PluginLoadRecord[] = [];
   private readonly sandbox: PluginSandbox;
+  /** Names of tools registered by this loader instance (for clean reload). */
+  private ownedToolNames = new Set<string>();
 
   constructor(dataDir: string) {
     this.pluginsDir = join(dataDir, 'plugins');
@@ -106,6 +108,16 @@ export class PluginLoader {
    * Returns the list of successfully loaded plugins.
    */
   load(): LoadedPlugin[] {
+    // Remove tools from previous load() calls so hot-reload produces a clean slate.
+    if (this.ownedToolNames.size > 0) {
+      for (let i = TOOL_REGISTRY.length - 1; i >= 0; i--) {
+        if (this.ownedToolNames.has(TOOL_REGISTRY[i]!.name)) {
+          TOOL_REGISTRY.splice(i, 1);
+        }
+      }
+      this.ownedToolNames.clear();
+    }
+
     this.loaded = [];
     this.loadedEntries = [];
     this.records = [];
@@ -182,6 +194,7 @@ export class PluginLoader {
       };
       TOOL_REGISTRY.push(entry);
       registeredNames.add(name);
+      this.ownedToolNames.add(name);
 
       const loadedPlugin: LoadedPlugin = {
         name,
@@ -241,6 +254,7 @@ export class PluginLoader {
       };
       TOOL_REGISTRY.push(toolEntry);
       registeredNames.add(name);
+      this.ownedToolNames.add(name);
 
       // Register as a legacy LoadedPlugin for backwards-compat with get(name) and list()
       this.loaded.push({
@@ -298,5 +312,38 @@ export class PluginLoader {
   /** Look up a loaded plugin by name. Returns null if not found. */
   get(name: string): LoadedPlugin | null {
     return this.loaded.find(p => p.name === name) ?? null;
+  }
+
+  /**
+   * Watch the plugins directory for .js file changes. Debounces events and
+   * calls `callback` after `debounceMs` (default 500 ms). Returns a stop
+   * function that closes the watcher.
+   *
+   * If the plugins directory does not exist at call time it is silently
+   * skipped — the watcher will not fire even if the directory is created later.
+   */
+  watch(callback: () => void, debounceMs = 500): () => void {
+    if (!existsSync(this.pluginsDir)) return () => { /* nothing to close */ };
+
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const trigger = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(callback, debounceMs);
+    };
+
+    let watcher: ReturnType<typeof fsWatch> | null = null;
+    try {
+      watcher = fsWatch(this.pluginsDir, { recursive: false }, (_event, filename) => {
+        if (filename && filename.endsWith('.js')) trigger();
+      });
+    } catch {
+      // Directory not watchable — skip silently.
+      return () => { /* nothing to close */ };
+    }
+
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      try { watcher?.close(); } catch { /* ignore */ }
+    };
   }
 }

@@ -1422,6 +1422,10 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   // via the custom tool dispatcher (plugin names take priority over webhook tools).
   const pluginLoader = new PluginLoader(dataDir);
   pluginLoader.load();
+  const stopPluginWatcher = pluginLoader.watch(() => {
+    pluginLoader.load();
+    logger.info('Plugins reloaded', { count: pluginLoader.list().length });
+  }, 500);
 
   // Channels (outbound webhooks) — #16
   // Created here so emit() is available to route handlers below.
@@ -2022,6 +2026,7 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
 
   // Stop skill file watcher on server close
   app.addHook('onClose', async () => { stopSkillWatcher(); });
+  app.addHook('onClose', async () => { stopPluginWatcher(); });
 
   return app;
 }
