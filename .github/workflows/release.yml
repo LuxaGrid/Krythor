@@ -384,18 +384,19 @@ jobs:
       - name: Patch version in package.json
         shell: bash
         run: |
-          VERSION="${{ needs.version.outputs.version }}"
           node -e "
             const fs = require('fs');
             const pkg = JSON.parse(fs.readFileSync('package.json','utf-8'));
-            pkg.version = process.env.VERSION;
+            pkg.version = '${{ needs.version.outputs.version }}';
             fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
           "
+          echo "Patched package.json to version ${{ needs.version.outputs.version }}"
 
       - name: Build all packages
         run: pnpm build
 
       - name: Publish to npm
+        if: ${{ secrets.NPM_TOKEN != '' }}
         run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
