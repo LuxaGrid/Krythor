@@ -28,6 +28,7 @@ import { AuditPanel } from './components/AuditPanel.tsx';
 import { WorkspacePanel } from './components/WorkspacePanel.tsx';
 import { DevicesPanel } from './components/DevicesPanel.tsx';
 import { CronPanel } from './components/CronPanel.tsx';
+import { StandingOrdersPanel } from './components/StandingOrdersPanel.tsx';
 
 // ── App Config Context ─────────────────────────────────────────────────────
 interface AppConfigCtx {
@@ -41,7 +42,7 @@ export const AppConfigContext = createContext<AppConfigCtx>({
 export const useAppConfig = () => useContext(AppConfigContext);
 
 // ── Tabs ──────────────────────────────────────────────────────────────────
-type Tab = 'command' | 'agents' | 'skills' | 'memory' | 'models' | 'guard' | 'events' | 'mission' | 'command-center' | 'workflow' | 'dashboard' | 'settings' | 'logs' | 'config-editor' | 'custom-tools' | 'channels' | 'chat-channels' | 'file-browser' | 'audit' | 'workspace' | 'devices' | 'cron';
+type Tab = 'command' | 'agents' | 'skills' | 'memory' | 'models' | 'guard' | 'events' | 'mission' | 'command-center' | 'workflow' | 'dashboard' | 'settings' | 'logs' | 'config-editor' | 'custom-tools' | 'channels' | 'chat-channels' | 'file-browser' | 'audit' | 'workspace' | 'devices' | 'cron' | 'standing-orders';
 
 // Primary tabs — always visible
 const PRIMARY_TABS: { id: Tab; label: string; hint: string }[] = [
@@ -69,8 +70,9 @@ const ADVANCED_TABS: { id: Tab; label: string; hint: string }[] = [
   { id: 'file-browser',  label: 'File Browser',   hint: 'Browse and edit files on the gateway host' },
   { id: 'audit',         label: 'Audit Log',       hint: 'Structured audit event history' },
   { id: 'workspace',     label: 'Workspace',       hint: 'Bootstrap files injected into every agent run' },
-  { id: 'devices',       label: 'Devices',         hint: 'Paired WS devices — approve or deny connection requests' },
-  { id: 'cron',          label: 'Cron Jobs',       hint: 'Schedule agents to run automatically on a time-based schedule' },
+  { id: 'devices',         label: 'Devices',          hint: 'Paired WS devices — approve or deny connection requests' },
+  { id: 'cron',            label: 'Cron Jobs',        hint: 'Schedule agents to run automatically on a time-based schedule' },
+  { id: 'standing-orders', label: 'Standing Orders',  hint: 'Persistent agent authorization programs and structured instruction injection' },
 ];
 
 const ALL_TABS = [...PRIMARY_TABS, ...ADVANCED_TABS];
@@ -856,8 +858,9 @@ function AppInner({ onTokenReady }: { onTokenReady: (token: string) => void }) {
           <div className={`h-full ${tab === 'file-browser'  ? 'block' : 'hidden'}`}><FileBrowserPanel /></div>
           <div className={`h-full ${tab === 'audit'          ? 'block' : 'hidden'}`}><AuditPanel /></div>
           <div className={`h-full ${tab === 'workspace'      ? 'block' : 'hidden'}`}><WorkspacePanel /></div>
-          <div className={`h-full ${tab === 'devices'        ? 'block' : 'hidden'}`}><DevicesPanel /></div>
-          <div className={`h-full ${tab === 'cron'           ? 'block' : 'hidden'}`}><CronPanel /></div>
+          <div className={`h-full ${tab === 'devices'          ? 'block' : 'hidden'}`}><DevicesPanel /></div>
+          <div className={`h-full ${tab === 'cron'             ? 'block' : 'hidden'}`}><CronPanel /></div>
+          <div className={`h-full ${tab === 'standing-orders'  ? 'block' : 'hidden'}`}><StandingOrdersPanel /></div>
         </div>
       </div>
     </AppConfigContext.Provider>

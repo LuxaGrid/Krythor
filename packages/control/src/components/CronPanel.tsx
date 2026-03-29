@@ -64,6 +64,8 @@ function CreateForm({ onCreated, onCancel }: CreateFormProps) {
   const [everyMs, setEveryMs] = useState('3600000');
   const [atTime, setAtTime] = useState('');
   const [enabled, setEnabled] = useState(true);
+  const [webhookUrl, setWebhookUrl] = useState('');
+  const [webhookSecret, setWebhookSecret] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -91,6 +93,8 @@ function CreateForm({ onCreated, onCancel }: CreateFormProps) {
         schedule,
         enabled,
         ...(agentId.trim() && { agentId: agentId.trim() }),
+        ...(webhookUrl.trim() && { webhookUrl: webhookUrl.trim() }),
+        ...(webhookSecret.trim() && { webhookSecret: webhookSecret.trim() }),
       };
       await createCronJob(input);
       onCreated();
@@ -178,6 +182,28 @@ function CreateForm({ onCreated, onCancel }: CreateFormProps) {
             className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-200 outline-none focus:border-brand-600"
           />
         )}
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="flex flex-col gap-1">
+          <label className="text-[11px] text-zinc-600">Webhook URL (optional)</label>
+          <input
+            value={webhookUrl}
+            onChange={e => setWebhookUrl(e.target.value)}
+            placeholder="https://…"
+            className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-200 placeholder-zinc-600 outline-none focus:border-brand-600"
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-[11px] text-zinc-600">Webhook secret (optional)</label>
+          <input
+            type="password"
+            value={webhookSecret}
+            onChange={e => setWebhookSecret(e.target.value)}
+            placeholder="HMAC signing key"
+            className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-200 placeholder-zinc-600 outline-none focus:border-brand-600"
+          />
+        </div>
       </div>
 
       <div className="flex items-center gap-2">
@@ -386,6 +412,15 @@ export function CronPanel() {
                 </div>
               )}
             </div>
+
+            {/* Webhook indicator */}
+            {job.webhookUrl && (
+              <div className="text-[10px] text-zinc-500 flex items-center gap-1">
+                <span className="text-zinc-600">webhook:</span>
+                <span className="font-mono truncate text-zinc-400">{job.webhookUrl}</span>
+                {job.webhookSecret && <span className="text-emerald-700">· signed</span>}
+              </div>
+            )}
 
             {/* Message preview */}
             <div className="text-[11px] text-zinc-600 bg-zinc-950/60 rounded px-2 py-1 font-mono truncate">

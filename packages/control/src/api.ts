@@ -1028,11 +1028,14 @@ export interface PairedDevice {
   deviceFamily: string;
   role: 'client' | 'node';
   caps?: string[];
-  status: 'approved' | 'pending' | 'denied';
+  status: 'approved' | 'pending' | 'denied' | 'revoked';
   label?: string;
   requestedAt: number;
   approvedAt?: number;
   deniedAt?: number;
+  revokedAt?: number;
+  connectionCount?: number;
+  gracePeriodExpiresAt?: number;
   lastSeenAt?: number;
 }
 
@@ -1058,6 +1061,14 @@ export async function removeDevice(id: string): Promise<{ ok: boolean }> {
 
 export async function updateDeviceLabel(id: string, label: string): Promise<{ ok: boolean; device: PairedDevice }> {
   return req('PATCH', `/devices/${encodeURIComponent(id)}`, { label });
+}
+
+export async function revokeDevice(id: string): Promise<{ ok: boolean; device: PairedDevice }> {
+  return req('POST', `/devices/${encodeURIComponent(id)}/revoke`);
+}
+
+export async function setDeviceGracePeriod(id: string, durationMs?: number): Promise<{ ok: boolean; device: PairedDevice }> {
+  return req('POST', `/devices/${encodeURIComponent(id)}/grace`, durationMs !== undefined ? { durationMs } : {});
 }
 
 // ── Nodes ───────────────────────────────────────────────────────────────────
@@ -1127,6 +1138,8 @@ export interface CronJob {
   message: string;
   enabled: boolean;
   deleteAfterRun?: boolean;
+  webhookUrl?: string;
+  webhookSecret?: string;
   lastRunAt?: string;
   lastFailedAt?: string;
   lastError?: string;
@@ -1144,6 +1157,8 @@ export interface CreateCronJobInput {
   message: string;
   enabled?: boolean;
   deleteAfterRun?: boolean;
+  webhookUrl?: string;
+  webhookSecret?: string;
 }
 
 export const listCronJobs = () => req<CronJob[]>('GET', '/cron');
@@ -1245,3 +1260,46 @@ export const checkForUpdate = (channel?: 'stable' | 'beta' | 'dev') => {
   const qs = channel && channel !== 'stable' ? `?channel=${channel}` : '';
   return req<UpdateInfo>('GET', `/update/check${qs}`);
 };
+
+// ── Standing Orders ───────────────────────────────────────────────────────────
+
+export interface StandingOrder {
+  id: string;
+  name: string;
+  description?: string;
+  scope: string;
+  triggers: string[];
+  approvalGates?: string[];
+  escalation?: string;
+  executionSteps?: string[];
+  cronJobId?: string;
+  enabled: boolean;
+  runCount: number;
+  failureCount: number;
+  lastRunAt?: string;
+  lastFailedAt?: string;
+  lastError?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateStandingOrderInput {
+  name: string;
+  description?: string;
+  scope: string;
+  triggers: string[];
+  approvalGates?: string[];
+  escalation?: string;
+  executionSteps?: string[];
+  cronJobId?: string;
+  enabled?: boolean;
+}
+
+export const listStandingOrders = () => req<{ orders: StandingOrder[] }>('GET', '/standing-orders');
+export const getStandingOrder = (id: string) => req<StandingOrder>('GET', `/standing-orders/${encodeURIComponent(id)}`);
+export const createStandingOrder = (input: CreateStandingOrderInput) => req<StandingOrder>('POST', '/standing-orders', input);
+export const updateStandingOrder = (id: string, patch: Partial<CreateStandingOrderInput> & { enabled?: boolean }) =>
+  req<StandingOrder>('PATCH', `/standing-orders/${encodeURIComponent(id)}`, patch);
+export const deleteStandingOrder = (id: string) => req<{ ok: boolean }>('DELETE', `/standing-orders/${encodeURIComponent(id)}`);
+export const runStandingOrderNow = (id: string) => req<{ ok: boolean; runId?: string }>('POST', `/standing-orders/${encodeURIComponent(id)}/run`);
+export const getStandingOrderPrompt = (id: string) => req<{ prompt: string }>('GET', `/standing-orders/${encodeURIComponent(id)}/prompt`);

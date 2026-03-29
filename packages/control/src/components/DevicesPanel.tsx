@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { listDevices, approveDevice, denyDevice, removeDevice, updateDeviceLabel, listNodes } from '../api.ts';
+import { listDevices, approveDevice, denyDevice, removeDevice, updateDeviceLabel, revokeDevice, setDeviceGracePeriod, listNodes } from '../api.ts';
 import type { PairedDevice, ConnectedNode } from '../api.ts';
 import { PanelHeader } from './PanelHeader.tsx';
 
@@ -23,6 +23,8 @@ function statusBadge(status: PairedDevice['status']): React.ReactNode {
       return <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-900/40 text-amber-400 border border-amber-800/30 animate-pulse">pending</span>;
     case 'denied':
       return <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-900/40 text-red-400 border border-red-800/30">denied</span>;
+    case 'revoked':
+      return <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-900/40 text-orange-400 border border-orange-800/30">revoked</span>;
     default:
       return null;
   }
@@ -93,6 +95,8 @@ function DeviceRow({
   isLive,
   onApprove,
   onDeny,
+  onRevoke,
+  onGrace,
   onRemove,
   onRename,
 }: {
@@ -100,13 +104,18 @@ function DeviceRow({
   isLive: boolean;
   onApprove: () => void;
   onDeny: () => void;
+  onRevoke: () => void;
+  onGrace: () => void;
   onRemove: () => void;
   onRename: () => void;
 }) {
   const displayName = device.label ?? device.deviceFamily ?? device.deviceId;
+  const borderColor = device.status === 'pending' ? 'border-amber-700/50 bg-amber-950/10'
+    : device.status === 'revoked' ? 'border-orange-800/40 bg-orange-950/10'
+    : 'border-zinc-800 bg-zinc-900/50';
 
   return (
-    <div className={`rounded-lg border p-3 flex flex-col gap-2 ${device.status === 'pending' ? 'border-amber-700/50 bg-amber-950/10' : 'border-zinc-800 bg-zinc-900/50'}`}>
+    <div className={`rounded-lg border p-3 flex flex-col gap-2 ${borderColor}`}>
       <div className="flex items-start justify-between gap-2">
         <div className="flex flex-col gap-0.5 min-w-0">
           <div className="flex items-center gap-2">
@@ -118,13 +127,20 @@ function DeviceRow({
           </div>
           <span className="text-[10px] text-zinc-600 font-mono truncate">{device.deviceId}</span>
         </div>
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex items-center gap-1 shrink-0 flex-wrap justify-end">
           {device.status === 'approved' && (
-            <button
-              className="text-[10px] px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
-              onClick={onRename}
-              title="Rename"
-            >rename</button>
+            <>
+              <button
+                className="text-[10px] px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
+                onClick={onRename}
+                title="Rename"
+              >rename</button>
+              <button
+                className="text-[10px] px-2 py-0.5 rounded bg-orange-900/40 text-orange-400 hover:bg-orange-800/50 border border-orange-800/30"
+                onClick={onRevoke}
+                title="Revoke access"
+              >revoke</button>
+            </>
           )}
           {device.status === 'pending' && (
             <>
@@ -133,16 +149,21 @@ function DeviceRow({
                 onClick={onApprove}
               >Approve</button>
               <button
+                className="text-[10px] px-2 py-0.5 rounded bg-zinc-700/60 text-zinc-300 hover:bg-zinc-600/60 border border-zinc-700/40"
+                onClick={onGrace}
+                title="Grant 5-minute provisional access"
+              >grace</button>
+              <button
                 className="text-[10px] px-2 py-0.5 rounded bg-red-900/50 text-red-400 hover:bg-red-800/50 border border-red-800/40"
                 onClick={onDeny}
               >Deny</button>
             </>
           )}
-          {device.status === 'denied' && (
+          {(device.status === 'denied' || device.status === 'revoked') && (
             <button
               className="text-[10px] px-2 py-0.5 rounded bg-emerald-700/60 text-emerald-300 hover:bg-emerald-600/60 border border-emerald-700/40"
               onClick={onApprove}
-            >Approve</button>
+            >Re-approve</button>
           )}
           <button
             className="text-[10px] px-2 py-0.5 rounded bg-zinc-800 text-zinc-500 hover:bg-red-900/40 hover:text-red-400"
@@ -156,6 +177,9 @@ function DeviceRow({
         <span className="text-[10px] text-zinc-500">role: <span className="text-zinc-400">{device.role}</span></span>
         {device.caps && device.caps.length > 0 && (
           <span className="text-[10px] text-zinc-500">caps: <span className="text-zinc-400">{device.caps.join(', ')}</span></span>
+        )}
+        {device.connectionCount != null && device.connectionCount > 0 && (
+          <span className="text-[10px] text-zinc-500">connections: <span className="text-zinc-400">{device.connectionCount}</span></span>
         )}
         <span className="text-[10px] text-zinc-500">requested: <span className="text-zinc-400">{fmtTime(device.requestedAt)}</span></span>
         {device.approvedAt && (
@@ -175,7 +199,7 @@ export function DevicesPanel() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   const [renaming, setRenaming] = useState<PairedDevice | null>(null);
-  const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'denied'>('all');
+  const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'denied' | 'revoked'>('all');
 
   const load = useCallback(async () => {
     try {
@@ -225,6 +249,24 @@ export function DevicesPanel() {
     }
   };
 
+  const handleRevoke = async (id: string) => {
+    try {
+      await revokeDevice(id);
+      await load();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const handleGrace = async (id: string) => {
+    try {
+      await setDeviceGracePeriod(id);
+      await load();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    }
+  };
+
   const handleRename = async (id: string, label: string) => {
     await updateDeviceLabel(id, label);
     await load();
@@ -255,7 +297,7 @@ export function DevicesPanel() {
       )}
 
       <div className="flex gap-1 px-3 pt-2">
-        {(['all', 'pending', 'approved', 'denied'] as const).map(f => (
+        {(['all', 'pending', 'approved', 'denied', 'revoked'] as const).map(f => (
           <button
             key={f}
             className={`text-[11px] px-2.5 py-0.5 rounded capitalize ${filter === f ? 'bg-zinc-700 text-zinc-200' : 'bg-zinc-800/60 text-zinc-500 hover:text-zinc-300'}`}
@@ -279,6 +321,8 @@ export function DevicesPanel() {
             isLive={connectedNodeIds.has(d.deviceId)}
             onApprove={() => void handleApprove(d.deviceId)}
             onDeny={() => void handleDeny(d.deviceId)}
+            onRevoke={() => void handleRevoke(d.deviceId)}
+            onGrace={() => void handleGrace(d.deviceId)}
             onRemove={() => void handleRemove(d.deviceId)}
             onRename={() => setRenaming(d)}
           />
