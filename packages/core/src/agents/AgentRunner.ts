@@ -551,6 +551,7 @@ export class AgentRunner {
     allowedTools?: string[],
     deniedTools?: string[],
     allowedAgentTargets?: string[],
+    maxSpawnLimit: number = MAX_SPAWN_AGENT,
   ): Promise<boolean> {
     const call = extractToolCall(response);
     if (!call) return false;
@@ -695,8 +696,8 @@ export class AgentRunner {
         toolResult = `spawn_agent: agent "${call.agentId}" is not in this agent's allowed delegation targets.`;
       } else if (!this.spawnAgentResolver) {
         toolResult = `Tool "spawn_agent" called but no spawn resolver is configured.`;
-      } else if (this.spawnCount >= MAX_SPAWN_AGENT) {
-        toolResult = `Tool "spawn_agent" cap reached (max ${MAX_SPAWN_AGENT} spawns per run). Cannot spawn agent "${call.agentId}".`;
+      } else if (this.spawnCount >= maxSpawnLimit) {
+        toolResult = `Tool "spawn_agent" cap reached (max ${maxSpawnLimit} spawns per run). Cannot spawn agent "${call.agentId}".`;
       } else {
         this.spawnCount++;
         emit({
@@ -953,6 +954,15 @@ export class AgentRunner {
     // Reset per-run spawn counter at the start of every top-level run.
     this.spawnCount = 0;
     const runId = input.runId ?? randomUUID();
+
+    // Resolve effective tool-loop limits: per-run override > agent config > defaults.
+    const loopCfg = { ...agent.toolLoop, ...input.toolLoopOverride };
+    const loopEnabled      = loopCfg.enabled !== false; // default true
+    const maxToolIter      = loopEnabled
+      ? Math.min(Math.max(loopCfg.maxIterations  ?? MAX_TOOL_CALL_ITERATIONS, 1), 20)
+      : 0;
+    const maxHandoffLimit  = Math.min(Math.max(loopCfg.maxHandoffs ?? MAX_HANDOFFS, 0), 10);
+    const maxSpawnLimit    = Math.min(Math.max(loopCfg.maxSpawns   ?? MAX_SPAWN_AGENT, 0), 5);
     const now = Date.now();
     const controller = new AbortController();
 
@@ -1055,7 +1065,7 @@ export class AgentRunner {
         // (capped at MAX_TOOL_CALL_ITERATIONS to prevent runaway loops),
         // then call the model again with the tool result injected.
         let toolIteration = 0;
-        while (toolIteration < MAX_TOOL_CALL_ITERATIONS && !stopped) {
+        while (toolIteration < maxToolIter && !stopped) {
           const lastMsg = messages[messages.length - 1];
           if (!lastMsg || lastMsg.role !== 'assistant') break;
           const handled = await this.handleToolCall(
@@ -1067,6 +1077,7 @@ export class AgentRunner {
             agent.allowedTools,
             agent.deniedTools,
             agent.allowedAgentTargets,
+            maxSpawnLimit,
           );
           if (!handled) break;
 
@@ -1111,7 +1122,7 @@ export class AgentRunner {
         // response as the final output.  Capped at MAX_HANDOFFS per run.
         let handoffCount = 0;
         let currentOutput = run.output ?? response.content;
-        while (handoffCount < MAX_HANDOFFS && this.handoffResolver && !stopped) {
+        while (handoffCount < maxHandoffLimit && this.handoffResolver && !stopped) {
           const handoff = extractHandoff(currentOutput);
           if (!handoff) break;
           // Enforce allowedAgentTargets for handoffs

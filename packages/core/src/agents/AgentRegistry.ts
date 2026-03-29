@@ -37,6 +37,7 @@ export class AgentRegistry {
       ...(input.idleTimeoutMs !== undefined && { idleTimeoutMs: input.idleTimeoutMs }),
       ...(input.workspaceDir !== undefined && { workspaceDir: input.workspaceDir }),
       ...(input.skipBootstrap !== undefined && { skipBootstrap: input.skipBootstrap }),
+      ...(input.toolLoop !== undefined && { toolLoop: input.toolLoop }),
       createdAt: now,
       updatedAt: now,
     };
@@ -67,6 +68,7 @@ export class AgentRegistry {
       ...(input.idleTimeoutMs !== undefined && { idleTimeoutMs: input.idleTimeoutMs === null ? undefined : input.idleTimeoutMs }),
       ...(input.workspaceDir !== undefined && { workspaceDir: input.workspaceDir === null ? undefined : input.workspaceDir }),
       ...(input.skipBootstrap !== undefined && { skipBootstrap: input.skipBootstrap }),
+      ...(input.toolLoop !== undefined && { toolLoop: input.toolLoop === null ? undefined : input.toolLoop }),
       updatedAt: Date.now(),
     };
 

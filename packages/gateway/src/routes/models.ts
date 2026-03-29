@@ -439,6 +439,7 @@ export function registerModelRoutes(
             type: 'object',
             properties: {
               enabled:      { type: 'boolean' },
+              level:        { type: 'string', enum: ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'adaptive'] },
               budgetTokens: { type: 'number', minimum: 1024 },
             },
             required: ['enabled'],

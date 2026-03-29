@@ -109,6 +109,31 @@ export interface ResponseFormat {
 }
 
 /**
+ * Thinking depth levels — map to pre-defined token budgets.
+ *
+ * | Level    | Budget tokens | Use case                          |
+ * |----------|--------------|-----------------------------------|
+ * | off      | disabled     | Standard generation (no thinking) |
+ * | minimal  | 1,024        | Quick sanity checks               |
+ * | low      | 2,000        | Simple reasoning steps            |
+ * | medium   | 5,000        | General-purpose reasoning         |
+ * | high     | 10,000       | Complex multi-step problems       |
+ * | xhigh    | 20,000       | Deep research, long derivations   |
+ * | adaptive | 8,000        | Balanced — model chooses depth    |
+ */
+export type ThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'adaptive';
+
+/** Token budget (minimum 1024) mapped to each thinking level. */
+export const THINKING_LEVEL_BUDGETS: Record<Exclude<ThinkingLevel, 'off'>, number> = {
+  minimal:  1_024,
+  low:      2_000,
+  medium:   5_000,
+  high:    10_000,
+  xhigh:   20_000,
+  adaptive: 8_000,
+};
+
+/**
  * Extended thinking configuration for supported models (e.g. Claude claude-sonnet-4-6+).
  * When enabled, the model reasons through the problem before generating its final response.
  * Thinking tokens are billed separately and returned in thinkingContent.
@@ -117,8 +142,14 @@ export interface ThinkingConfig {
   /** Enable extended thinking. */
   enabled: boolean;
   /**
-   * Token budget for the thinking process.
-   * Minimum 1024. Higher budgets allow deeper reasoning.
+   * Thinking depth level — maps to a pre-defined token budget.
+   * When set, overrides budgetTokens.
+   * Default: 'high' (10 000 tokens).
+   */
+  level?: ThinkingLevel;
+  /**
+   * Explicit token budget for the thinking process.
+   * Minimum 1024. Ignored when `level` is set.
    * Default: 10000.
    */
   budgetTokens?: number;

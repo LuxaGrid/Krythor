@@ -41,4 +41,6 @@ export type {
   RoutingContext,
   ResponseFormat,
   ThinkingConfig,
+  ThinkingLevel,
 } from './types.js';
+export { THINKING_LEVEL_BUDGETS } from './types.js';

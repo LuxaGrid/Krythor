@@ -1,5 +1,6 @@
 import { BaseProvider } from './BaseProvider.js';
 import type { InferenceRequest, InferenceResponse, StreamChunk, Message } from '../types.js';
+import { THINKING_LEVEL_BUDGETS } from '../types.js';
 import { validateStructuredOutput } from '../StructuredOutputValidator.js';
 
 export class AnthropicProvider extends BaseProvider {
@@ -60,9 +61,13 @@ export class AnthropicProvider extends BaseProvider {
       systemText = systemText ? `${systemText}\n\n${jsonInstruction}` : jsonInstruction;
     }
 
-    // Extended thinking: when enabled, temperature must be 1 (Anthropic requirement)
+    // Extended thinking: when enabled, temperature must be 1 (Anthropic requirement).
+    // Level takes precedence over explicit budgetTokens.
     const thinkingEnabled = request.thinking?.enabled === true;
-    const thinkingBudget = request.thinking?.budgetTokens ?? 10_000;
+    const thinkingLevel = request.thinking?.level;
+    const thinkingBudget = thinkingLevel && thinkingLevel !== 'off'
+      ? THINKING_LEVEL_BUDGETS[thinkingLevel]
+      : (request.thinking?.budgetTokens ?? 10_000);
 
     const body: Record<string, unknown> = {
       model,
@@ -117,7 +122,10 @@ export class AnthropicProvider extends BaseProvider {
     const userMsgs = request.messages.filter((m: Message) => m.role !== 'system');
 
     const thinkingEnabled = request.thinking?.enabled === true;
-    const thinkingBudget = request.thinking?.budgetTokens ?? 10_000;
+    const thinkingLevelStream = request.thinking?.level;
+    const thinkingBudget = thinkingLevelStream && thinkingLevelStream !== 'off'
+      ? THINKING_LEVEL_BUDGETS[thinkingLevelStream]
+      : (request.thinking?.budgetTokens ?? 10_000);
 
     const res = await fetch(`${this.config.endpoint}/v1/messages`, {
       method: 'POST',

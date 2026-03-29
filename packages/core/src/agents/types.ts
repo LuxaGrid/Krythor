@@ -2,6 +2,33 @@
 
 export type AgentStatus = 'idle' | 'running' | 'completed' | 'failed' | 'stopped';
 
+/**
+ * Configuration for tool-loop detection within an agent run.
+ * Prevents agents from getting stuck repeating the same tool calls.
+ */
+export interface ToolLoopConfig {
+  /**
+   * Whether loop detection is enabled.
+   * Default: true.
+   */
+  enabled?: boolean;
+  /**
+   * Maximum number of tool-call iteration rounds before forcing a final response.
+   * Default: 3. Minimum: 1. Maximum: 20.
+   */
+  maxIterations?: number;
+  /**
+   * Maximum number of agent handoffs (delegation to another agent) per run.
+   * Default: 3.
+   */
+  maxHandoffs?: number;
+  /**
+   * Maximum number of sub-agent spawns per run.
+   * Default: 2.
+   */
+  maxSpawns?: number;
+}
+
 export interface AgentDefinition {
   id: string;
   name: string;
@@ -51,6 +78,11 @@ export interface AgentDefinition {
    * When true, skip creating BOOTSTRAP.md for a new workspace (pre-seeded workspaces).
    */
   skipBootstrap?: boolean;
+  /**
+   * Optional tool-loop detection configuration.
+   * Controls how aggressively the runner limits repeated tool calls.
+   */
+  toolLoop?: ToolLoopConfig;
   createdAt: number;
   updatedAt: number;
 }
@@ -104,6 +136,7 @@ export interface CreateAgentInput {
   idleTimeoutMs?: number;
   workspaceDir?: string;
   skipBootstrap?: boolean;
+  toolLoop?: ToolLoopConfig;
 }
 
 export interface UpdateAgentInput {
@@ -123,6 +156,7 @@ export interface UpdateAgentInput {
   idleTimeoutMs?: number | null;
   workspaceDir?: string | null;
   skipBootstrap?: boolean;
+  toolLoop?: ToolLoopConfig | null;
 }
 
 export interface RunAgentInput {
@@ -146,6 +180,11 @@ export interface RunAgentInput {
    * Falls back to agent.workspaceDir, then the global workspace.
    */
   workspaceDirOverride?: string;
+  /**
+   * Per-run tool-loop detection override.
+   * Merged with agent.toolLoop — these values take precedence.
+   */
+  toolLoopOverride?: ToolLoopConfig;
 }
 
 // ─── Events (for streaming to UI via WebSocket) ───────────────────────────────

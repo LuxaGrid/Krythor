@@ -266,6 +266,76 @@ export function registerCommandRoute(
         });
       }
 
+      if (cmd === '/think' || cmd === '/thinking' || cmd === '/t') {
+        // /think <level>  — set thinking level for the session
+        // Levels: off | minimal | low | medium | high | xhigh | adaptive
+        const VALID_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'adaptive'];
+        if (!arg) {
+          return slashReply({
+            output: `Usage: /think <level>\nLevels: ${VALID_LEVELS.join(' | ')}\n\nSet extended thinking depth. Higher levels use more tokens but reason more deeply.`,
+            command: 'think:help',
+            validLevels: VALID_LEVELS,
+          });
+        }
+        const level = arg.toLowerCase();
+        if (!VALID_LEVELS.includes(level)) {
+          return slashReply({
+            output: `Unknown thinking level "${arg}". Valid levels: ${VALID_LEVELS.join(', ')}`,
+            command: 'think:invalid',
+          });
+        }
+        const budgetMap: Record<string, number | undefined> = {
+          off: undefined, minimal: 1024, low: 2000, medium: 5000,
+          high: 10000, xhigh: 20000, adaptive: 8000,
+        };
+        const budget = budgetMap[level];
+        return slashReply({
+          output: level === 'off'
+            ? 'Extended thinking disabled.'
+            : `Thinking level set to "${level}" (${budget?.toLocaleString()} token budget). Include thinking: { enabled: true, level: "${level}" } in your next /api/command or /api/models/infer request.`,
+          command: 'think:set',
+          thinkingLevel: level,
+          thinkingBudget: budget,
+        });
+      }
+
+      if (cmd === '/fast') {
+        // /fast [on|off]  — toggle fast model routing preference
+        const state = arg?.toLowerCase();
+        if (!state || state === 'on') {
+          return slashReply({
+            output: 'Fast mode on: model routing will prefer lower-latency options. Set modelId to a fast model or use the cost_tier="budget" preference in /api/models/recommend.',
+            command: 'fast:on',
+            fastMode: true,
+          });
+        }
+        if (state === 'off') {
+          return slashReply({
+            output: 'Fast mode off: standard model routing restored.',
+            command: 'fast:off',
+            fastMode: false,
+          });
+        }
+        return slashReply({ output: 'Usage: /fast [on|off]', command: 'fast:help' });
+      }
+
+      if (cmd === '/help' || cmd === '/commands') {
+        const helpText = [
+          'Available commands:',
+          '  /new                     — start a new conversation',
+          '  /compact                 — trim old messages from context',
+          '  /clear                   — clear displayed chat history',
+          '  /model [id]              — list models or switch active model',
+          '  /agent [id]              — show active agent or switch agent',
+          '  /think <level>           — set thinking depth (off|minimal|low|medium|high|xhigh|adaptive)',
+          '  /fast [on|off]           — toggle fast model routing',
+          '  /subagents [list|kill|log] — manage agent runs',
+          '  /devices [list|pending|approve|deny] — manage paired devices',
+          '  /help                    — show this list',
+        ].join('\n');
+        return slashReply({ output: helpText, command: 'help' });
+      }
+
       // Unknown slash command — fall through to inference so plugins/agents can handle it
     }
 

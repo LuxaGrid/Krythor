@@ -51,6 +51,7 @@ export type {
   CreateAgentInput,
   UpdateAgentInput,
   RunAgentInput,
+  ToolLoopConfig,
 } from './agents/types.js';
 
 export { WorkspaceBootstrapLoader, BOOTSTRAP_MAX_CHARS, BOOTSTRAP_TOTAL_MAX_CHARS, BOOTSTRAP_FILES_FULL, BOOTSTRAP_FILES_MINIMAL } from './workspace/WorkspaceBootstrapLoader.js';
