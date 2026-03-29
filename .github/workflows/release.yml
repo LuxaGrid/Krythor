@@ -278,7 +278,7 @@ jobs:
         with:
           context: .
           push: true
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           tags: |
             ghcr.io/luxagrid/krythor:latest
             ghcr.io/luxagrid/krythor:${{ env.VERSION }}
