@@ -36,11 +36,11 @@ describe('MigrationRunner — user_version', () => {
     const db = new Database(dbPath);
     const runner = new MigrationRunner(db);
     const result = runner.run(dbPath);
-    // We have 12 migration files (001–012)
-    expect(result.total).toBe(12);
-    expect(result.applied).toBe(12);
-    expect(result.userVersion).toBe(12);
-    expect(runner.getUserVersion()).toBe(12);
+    // We have 14 migration files (001–014)
+    expect(result.total).toBe(14);
+    expect(result.applied).toBe(14);
+    expect(result.userVersion).toBe(14);
+    expect(runner.getUserVersion()).toBe(14);
     db.close();
   });
 
@@ -50,7 +50,7 @@ describe('MigrationRunner — user_version', () => {
     const db = new Database(dbPath);
     const runner = new MigrationRunner(db);
     runner.run(dbPath);
-    expect(runner.getAppliedVersions().size).toBe(12);
+    expect(runner.getAppliedVersions().size).toBe(14);
     db.close();
   });
 
@@ -62,7 +62,7 @@ describe('MigrationRunner — user_version', () => {
     runner.run(dbPath);
     const second = runner.run(dbPath);
     expect(second.applied).toBe(0);
-    expect(second.userVersion).toBe(12);
+    expect(second.userVersion).toBe(14);
     db.close();
   });
 

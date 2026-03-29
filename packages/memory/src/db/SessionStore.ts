@@ -301,6 +301,41 @@ export class SessionStore {
     ).run({ sessionKey, kind, now });
   }
 
+  // ── Pruning ───────────────────────────────────────────────────────────────
+
+  /**
+   * Delete sessions that have not been active for longer than `staleMs`.
+   * Optionally restrict deletion to specific session kinds.
+   * Returns the number of rows deleted.
+   */
+  prune(opts: {
+    staleMs: number;
+    kinds?: SessionKind[];
+  }): number {
+    const { staleMs, kinds } = opts;
+    const cutoff = Date.now() - staleMs;
+    const params: Record<string, unknown> = { cutoff };
+
+    let kindClause = '';
+    if (kinds && kinds.length > 0) {
+      const placeholders = kinds.map((_, i) => `@k${i}`).join(', ');
+      kinds.forEach((k, i) => { params[`k${i}`] = k; });
+      kindClause = ` AND kind IN (${placeholders})`;
+    }
+
+    const result = this.db.prepare(
+      `DELETE FROM sessions WHERE updated_at < @cutoff${kindClause}`
+    ).run(params);
+
+    return result.changes;
+  }
+
+  /** Total number of sessions in the store. */
+  count(): number {
+    const row = this.db.prepare('SELECT COUNT(*) as n FROM sessions').get() as { n: number };
+    return row.n;
+  }
+
   // ── Send policy evaluation ─────────────────────────────────────────────────
 
   /**

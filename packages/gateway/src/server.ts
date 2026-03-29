@@ -1963,6 +1963,16 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
           error: err instanceof Error ? err.message : String(err),
         });
       }
+      try {
+        const pruned = sessionRouter.pruneStale();
+        if (pruned > 0) {
+          logger.info('Session cleanup: pruned stale sessions', { count: pruned });
+        }
+      } catch (err) {
+        logger.warn('Session cleanup: pruneStale failed', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     }, IDLE_CLEANUP_INTERVAL_MS);
   }
 

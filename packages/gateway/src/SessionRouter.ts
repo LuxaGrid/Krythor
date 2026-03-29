@@ -23,13 +23,27 @@ import {
   type ChatType,
   type SendPolicyConfig,
   type SessionEntry,
+  type SessionKind,
 } from '@krythor/memory';
+
+export interface SessionPruneConfig {
+  /**
+   * Delete sessions inactive for longer than this many milliseconds.
+   * Default: 30 days (2_592_000_000 ms).
+   */
+  staleMs?: number;
+  /**
+   * Only prune sessions of these kinds. Default: all kinds.
+   */
+  kinds?: SessionKind[];
+}
 
 export interface SessionConfig {
   dmScope?: DmScope;
   identityLinks?: Record<string, string[]>;
   resetTriggers?: string[];
   sendPolicy?: SendPolicyConfig;
+  prune?: SessionPruneConfig;
 }
 
 export interface ResolvedSession {
@@ -137,6 +151,16 @@ export class SessionRouter {
    */
   setSendPolicy(sessionKey: string, policy: 'allow' | 'deny' | null): void {
     this.sessionStore.setSendPolicy(sessionKey, policy);
+  }
+
+  /**
+   * Prune stale sessions using the policy from config.prune.
+   * Returns the number of rows deleted.
+   */
+  pruneStale(): number {
+    const { prune } = this.config;
+    const staleMs = prune?.staleMs ?? 30 * 24 * 60 * 60_000; // 30 days
+    return this.sessionStore.prune({ staleMs, kinds: prune?.kinds });
   }
 
   /**
