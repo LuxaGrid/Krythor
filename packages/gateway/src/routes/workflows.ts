@@ -23,6 +23,7 @@ const STEP_SCHEMA = {
     template:       { type: 'string' },
     condition:      { type: 'string' },
     stopOnFailure:  { type: 'boolean' },
+    parallel:       { type: 'string', minLength: 1, maxLength: 64 },
   },
   additionalProperties: false,
 };

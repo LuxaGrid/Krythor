@@ -10,6 +10,9 @@
  *       'template'    — static string (optionally with {{input}} and {{previous}} tokens)
  *   - condition: optional regex; step is skipped if previous output does NOT match
  *   - stopOnFailure: if true, abort the whole workflow on step failure (default true)
+ *   - parallel: optional group label; steps sharing the same label run concurrently.
+ *       All parallel steps receive the same input (the preceding serial output).
+ *       Their outputs are joined with "\n\n---\n\n" and become the next step's input.
  *
  * Workflows are persisted to JSON under configDir/workflows.json.
  *
@@ -36,6 +39,13 @@ export interface WorkflowStep {
   condition?: string;
   /** Abort workflow if this step fails. Default: true. */
   stopOnFailure?: boolean;
+  /**
+   * Parallel group label. Steps sharing the same label run concurrently using
+   * Promise.allSettled(). All receive the same input (the preceding step's output).
+   * Their outputs are joined with "\n\n---\n\n" to form the next step's input.
+   * Steps without a group label run sequentially (the default).
+   */
+  parallel?: string;
 }
 
 export interface WorkflowDefinition {
@@ -54,6 +64,8 @@ export interface WorkflowStepResult {
   run?: AgentRun;
   output?: string;
   error?: string;
+  /** True when this step was part of a parallel group. */
+  parallel?: string;
 }
 
 export interface WorkflowRunResult {
@@ -124,6 +136,30 @@ export class WorkflowEngine {
 
   // ── Execution ─────────────────────────────────────────────────────────────────
 
+  /** Build the input string for a single step given the current pipeline state. */
+  private buildStepInput(
+    step: WorkflowStep,
+    stepIndex: number,
+    initialInput: string,
+    previousOutput: string,
+  ): string {
+    const mode = step.inputMode ?? (stepIndex === 0 ? 'initial' : 'previous');
+    switch (mode) {
+      case 'initial':
+        return initialInput;
+      case 'previous':
+        return previousOutput;
+      case 'concat':
+        return step.template ? `${previousOutput}\n\n${step.template}` : previousOutput;
+      case 'template':
+        return (step.template ?? '{{previous}}')
+          .replace('{{input}}', initialInput)
+          .replace('{{previous}}', previousOutput);
+      default:
+        return previousOutput;
+    }
+  }
+
   async run(workflowId: string, initialInput: string): Promise<WorkflowRunResult> {
     const wf = this.get(workflowId);
     if (!wf) throw new Error(`Workflow "${workflowId}" not found`);
@@ -132,56 +168,100 @@ export class WorkflowEngine {
     const stepResults: WorkflowStepResult[] = [];
     let previousOutput = initialInput;
     let status: WorkflowRunResult['status'] = 'completed';
+    let aborted = false;
 
-    for (let i = 0; i < wf.steps.length; i++) {
+    // Walk steps, grouping consecutive parallel-labelled steps together.
+    let i = 0;
+    while (i < wf.steps.length && !aborted) {
       const step = wf.steps[i]!;
-      const stopOnFailure = step.stopOnFailure !== false;
 
-      // Evaluate condition
-      if (step.condition) {
-        const regex = new RegExp(step.condition, 'i');
-        if (!regex.test(previousOutput)) {
-          stepResults.push({ stepIndex: i, agentId: step.agentId, skipped: true });
-          continue;
+      if (!step.parallel) {
+        // ── Serial step ────────────────────────────────────────────────────────
+        if (step.condition) {
+          const regex = new RegExp(step.condition, 'i');
+          if (!regex.test(previousOutput)) {
+            stepResults.push({ stepIndex: i, agentId: step.agentId, skipped: true });
+            i++;
+            continue;
+          }
         }
-      }
 
-      // Build input
-      const mode = step.inputMode ?? (i === 0 ? 'initial' : 'previous');
-      let stepInput: string;
-      switch (mode) {
-        case 'initial':
-          stepInput = initialInput;
-          break;
-        case 'previous':
-          stepInput = previousOutput;
-          break;
-        case 'concat':
-          stepInput = step.template
-            ? `${previousOutput}\n\n${step.template}`
-            : previousOutput;
-          break;
-        case 'template':
-          stepInput = (step.template ?? '{{previous}}')
-            .replace('{{input}}', initialInput)
-            .replace('{{previous}}', previousOutput);
-          break;
-        default:
-          stepInput = previousOutput;
-      }
+        const stepInput = this.buildStepInput(step, i, initialInput, previousOutput);
+        try {
+          const run = await this.orchestrator.runAgent(step.agentId, { input: stepInput });
+          const output = run.output ?? '';
+          stepResults.push({ stepIndex: i, agentId: step.agentId, skipped: false, run, output });
+          previousOutput = output;
+        } catch (err) {
+          const error = err instanceof Error ? err.message : 'Step failed';
+          stepResults.push({ stepIndex: i, agentId: step.agentId, skipped: false, error });
+          if (step.stopOnFailure !== false) {
+            status = 'failed';
+            aborted = true;
+          } else {
+            status = 'partial';
+          }
+        }
+        i++;
 
-      // Execute step
-      try {
-        const run = await this.orchestrator.runAgent(step.agentId, { input: stepInput });
-        const output = run.output ?? '';
-        stepResults.push({ stepIndex: i, agentId: step.agentId, skipped: false, run, output });
-        previousOutput = output;
-      } catch (err) {
-        const error = err instanceof Error ? err.message : 'Step failed';
-        stepResults.push({ stepIndex: i, agentId: step.agentId, skipped: false, error });
-        status = 'failed';
-        if (stopOnFailure) break;
-        status = 'partial';
+      } else {
+        // ── Parallel group ────────────────────────────────────────────────────
+        // Collect all consecutive steps that share this parallel label.
+        const groupLabel = step.parallel;
+        const groupStart = i;
+        const groupSteps: Array<{ step: WorkflowStep; idx: number }> = [];
+        while (i < wf.steps.length && wf.steps[i]?.parallel === groupLabel) {
+          groupSteps.push({ step: wf.steps[i]!, idx: i });
+          i++;
+        }
+
+        // Run all group steps concurrently; each sees the same previousOutput.
+        const parallelInput = previousOutput;
+        const settled = await Promise.allSettled(
+          groupSteps.map(({ step: gs, idx }) => {
+            const stepInput = this.buildStepInput(gs, groupStart, initialInput, parallelInput);
+            return this.orchestrator.runAgent(gs.agentId, { input: stepInput }).then(run => ({
+              idx,
+              agentId: gs.agentId,
+              run,
+              output: run.output ?? '',
+              stopOnFailure: gs.stopOnFailure !== false,
+            }));
+          }),
+        );
+
+        const groupOutputs: string[] = [];
+        let groupFailed = false;
+        let groupStopOnFailure = false;
+
+        for (const result of settled) {
+          if (result.status === 'fulfilled') {
+            const { idx, agentId, run, output } = result.value;
+            stepResults.push({ stepIndex: idx, agentId, skipped: false, run, output, parallel: groupLabel });
+            groupOutputs.push(output);
+          } else {
+            // Find which step this corresponds to (settled preserves order)
+            const settledIdx = settled.indexOf(result);
+            const gs = groupSteps[settledIdx]!;
+            const error = result.reason instanceof Error ? result.reason.message : 'Step failed';
+            stepResults.push({ stepIndex: gs.idx, agentId: gs.step.agentId, skipped: false, error, parallel: groupLabel });
+            groupFailed = true;
+            if (gs.step.stopOnFailure !== false) groupStopOnFailure = true;
+          }
+        }
+
+        if (groupOutputs.length > 0) {
+          previousOutput = groupOutputs.join('\n\n---\n\n');
+        }
+
+        if (groupFailed) {
+          if (groupStopOnFailure) {
+            status = 'failed';
+            aborted = true;
+          } else {
+            status = 'partial';
+          }
+        }
       }
     }
 
