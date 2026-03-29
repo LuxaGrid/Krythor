@@ -28,6 +28,8 @@ import { GoogleChatInbound } from './GoogleChatInbound.js';
 import { BlueBubblesInbound } from './BlueBubblesInbound.js';
 import { IMessageInbound } from './IMessageInbound.js';
 import type { SessionRouter } from './SessionRouter.js';
+import { AgentBindingRouter } from './AgentBindingRouter.js';
+import type { AgentBinding } from './AgentBindingRouter.js';
 import { logger } from './logger.js';
 
 type AnyInbound = DiscordInbound | TelegramInbound | WhatsAppInbound | SlackInbound | SignalInbound | MattermostInbound | GoogleChatInbound | BlueBubblesInbound | IMessageInbound;
@@ -42,6 +44,7 @@ export class InboundChannelManager {
   private readonly pairingStore: DmPairingStore;
   private readonly convStore: ConversationStore | null;
   private readonly sessionRouter: SessionRouter | null;
+  private bindingRouter: AgentBindingRouter | null = null;
 
   constructor(
     registry: ChatChannelRegistry,
@@ -65,6 +68,21 @@ export class InboundChannelManager {
   /** Expose the pairing store so routes can access pending/allowlist state. */
   getPairingStore(): DmPairingStore {
     return this.pairingStore;
+  }
+
+  /**
+   * Configure agent binding rules for per-message routing.
+   * When set, the binding router can override the channel-level agentId
+   * based on channel, peerId, accountId, and guildId.
+   */
+  setBindings(bindings: AgentBinding[], defaultAgentId?: string): void {
+    this.bindingRouter = bindings.length > 0
+      ? new AgentBindingRouter(bindings, { defaultAgentId })
+      : null;
+  }
+
+  getBindingRouter(): AgentBindingRouter | null {
+    return this.bindingRouter;
   }
 
   /** Start all enabled channels from the registry. */

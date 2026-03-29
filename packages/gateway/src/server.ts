@@ -42,6 +42,7 @@ import { ChatChannelRegistry } from './ChatChannelRegistry.js';
 import { DiscordInbound } from './DiscordInbound.js';
 import { DmPairingStore } from './DmPairingStore.js';
 import { InboundChannelManager } from './InboundChannelManager.js';
+import type { AgentBinding } from './AgentBindingRouter.js';
 import { PeerRegistry } from './PeerRegistry.js';
 import { registerOpenAICompatRoutes } from './routes/openai.compat.js';
 import { registerPluginRoutes } from './routes/plugins.js';
@@ -1798,6 +1799,8 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
     }
   } catch { /* best-effort */ }
 
+  // Deferred: agent bindings are applied after inboundMgr is created below
+
   // Chat channel registry (inbound bot channels — Telegram, Discord, WhatsApp)
   const chatChannelRegistry = new ChatChannelRegistry(join(dataDir, 'config'));
 
@@ -1818,6 +1821,22 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
 
   // Inbound channel manager — manages Telegram, Discord, WhatsApp from registry
   const inboundMgr = new InboundChannelManager(chatChannelRegistry, orchestrator, dataDir, logger, convStore, sessionRouter);
+
+  // Agent binding rules — load from app-config.json if present
+  try {
+    if (existsSync(appConfigPath)) {
+      const bindCfg = JSON.parse(readFileSync(appConfigPath, 'utf-8')) as Record<string, unknown>;
+      if (Array.isArray(bindCfg['agentBindings'])) {
+        const bindings = (bindCfg['agentBindings'] as unknown[]).filter(
+          (b): b is AgentBinding => typeof b === 'object' && b !== null && typeof (b as AgentBinding).agentId === 'string',
+        );
+        const defaultAgentId = typeof bindCfg['defaultAgentId'] === 'string' ? bindCfg['defaultAgentId'] : undefined;
+        inboundMgr.setBindings(bindings, defaultAgentId);
+        logger.info('Agent bindings configured', { count: bindings.length, defaultAgentId });
+      }
+    }
+  } catch { /* best-effort */ }
+
   if (process.env['NODE_ENV'] !== 'test') {
     inboundMgr.startAll().catch(err => logger.error('[inbound] startAll error', { err: err instanceof Error ? err.message : String(err) }));
   }
