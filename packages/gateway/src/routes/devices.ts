@@ -1,15 +1,17 @@
 // ─── Device pairing routes ────────────────────────────────────────────────────
 //
-// GET    /api/devices            — list all paired devices
-// GET    /api/devices/pending    — list pending (awaiting approval) devices
-// GET    /api/devices/:id        — get a single device
-// POST   /api/devices/:id/approve — approve a device (issues a device token)
-// POST   /api/devices/:id/deny   — deny a device
-// DELETE /api/devices/:id        — remove/forget a device
-// PATCH  /api/devices/:id        — update device label (does NOT rotate token)
+// GET    /api/devices              — list all paired devices
+// GET    /api/devices/pending      — list pending (awaiting approval) devices
+// GET    /api/devices/:id          — get a single device
+// POST   /api/devices/:id/approve  — approve a device (issues a device token)
+// POST   /api/devices/:id/deny     — deny a device
+// POST   /api/devices/:id/revoke   — revoke an approved device (keeps record, clears token)
+// POST   /api/devices/:id/grace    — grant a short grace period for provisional access
+// DELETE /api/devices/:id          — remove/forget a device
+// PATCH  /api/devices/:id          — update device label (does NOT rotate token)
 //
-// When a device is approved or denied, a device:approved / device:denied event
-// is broadcast to all connected WS clients so the UI can update immediately.
+// When a device is approved, denied, or revoked, an event is broadcast to all
+// connected WS clients so the UI can update immediately.
 //
 
 import type { FastifyInstance } from 'fastify';
@@ -68,6 +70,32 @@ export function registerDeviceRoutes(
       const device = store.deny(id);
       const { deviceToken: _tok, ...safe } = device;
       broadcast?.({ type: 'device:denied', payload: { deviceId: id, device: safe } });
+      return reply.send({ ok: true, device: safe });
+    } catch (err) {
+      return reply.code(404).send({ ok: false, error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  // POST /api/devices/:id/revoke — revoke approved device, keep record
+  app.post<{ Params: { id: string } }>('/api/devices/:id/revoke', async (req, reply) => {
+    const { id } = req.params;
+    try {
+      const device = store.revoke(id);
+      const { deviceToken: _tok, ...safe } = device;
+      broadcast?.({ type: 'device:revoked', payload: { deviceId: id, device: safe } });
+      return reply.send({ ok: true, device: safe });
+    } catch (err) {
+      return reply.code(404).send({ ok: false, error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  // POST /api/devices/:id/grace — grant provisional grace period
+  app.post<{ Params: { id: string }; Body: { durationMs?: number } }>('/api/devices/:id/grace', async (req, reply) => {
+    const { id } = req.params;
+    const durationMs = Math.min(Math.max((req.body as { durationMs?: number })?.durationMs ?? 5 * 60 * 1000, 0), 60 * 60 * 1000);
+    try {
+      const device = store.setGracePeriod(id, durationMs);
+      const { deviceToken: _tok, ...safe } = device;
       return reply.send({ ok: true, device: safe });
     } catch (err) {
       return reply.code(404).send({ ok: false, error: err instanceof Error ? err.message : String(err) });

@@ -17,7 +17,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { randomBytes, timingSafeEqual } from 'crypto';
 
-export type DeviceApprovalStatus = 'approved' | 'pending' | 'denied';
+export type DeviceApprovalStatus = 'approved' | 'pending' | 'denied' | 'revoked';
 
 export interface PairedDevice {
   deviceId: string;
@@ -26,12 +26,21 @@ export interface PairedDevice {
   role: string;
   caps?: string[];
   status: DeviceApprovalStatus;
-  deviceToken?: string;     // issued on approval; undefined while pending/denied
+  deviceToken?: string;     // issued on approval; undefined while pending/denied/revoked
   approvedAt?: number;
   deniedAt?: number;
+  revokedAt?: number;
   requestedAt: number;
   lastSeenAt?: number;
   label?: string;           // user-assigned friendly label
+  /** Total number of times this device has connected. */
+  connectionCount?: number;
+  /**
+   * Grace period expiry (Unix ms). During the grace window, the device is allowed
+   * to connect on the local network without explicit approval. After the window
+   * expires, the device must be explicitly approved.
+   */
+  gracePeriodExpiresAt?: number;
 }
 
 interface PersistedStore {
@@ -104,15 +113,16 @@ export class DevicePairingStore {
       return { device: updated, tokenValid: false };
     }
 
-    // Update caps/role (non-pairing fields)
+    // Update caps/role (non-pairing fields) and increment connection count
     const refreshed: PairedDevice = {
       ...device,
-      role:     identity.role,
-      caps:     identity.caps,
-      lastSeenAt: Date.now(),
+      role:            identity.role,
+      caps:            identity.caps,
+      lastSeenAt:      Date.now(),
+      connectionCount: (device.connectionCount ?? 0) + 1,
     };
 
-    const tokenValid = device.status === 'approved' &&
+    const tokenValid = (device.status === 'approved') &&
       !!device.deviceToken &&
       !!suppliedToken &&
       timingSafeEqual(Buffer.from(device.deviceToken, 'utf8'), Buffer.from(suppliedToken, 'utf8'));
@@ -182,11 +192,59 @@ export class DevicePairingStore {
   }
 
   /**
+   * Revoke an approved device — invalidates its token but keeps the record.
+   * The device must re-pair to reconnect. Unlike remove(), the device history
+   * is preserved and the device can be re-approved without losing its identity.
+   */
+  revoke(deviceId: string): PairedDevice {
+    const device = this.devices.get(deviceId);
+    if (!device) throw new Error(`Device not found: ${deviceId}`);
+    const updated: PairedDevice = {
+      ...device,
+      status:      'revoked',
+      deviceToken: undefined,
+      revokedAt:   Date.now(),
+    };
+    this.devices.set(deviceId, updated);
+    this.persist();
+    return updated;
+  }
+
+  /**
    * Remove a device entirely (revoke + forget).
    */
   remove(deviceId: string): void {
     this.devices.delete(deviceId);
     this.persist();
+  }
+
+  /**
+   * Grant a device a grace period — allows it to connect without explicit approval
+   * for the given duration. Useful for local-network devices that should be
+   * auto-trusted briefly while the user reviews the pairing request.
+   *
+   * @param durationMs Grace period duration in ms (default: 5 minutes)
+   */
+  setGracePeriod(deviceId: string, durationMs = 5 * 60 * 1000): PairedDevice {
+    const device = this.devices.get(deviceId);
+    if (!device) throw new Error(`Device not found: ${deviceId}`);
+    const updated: PairedDevice = {
+      ...device,
+      gracePeriodExpiresAt: Date.now() + durationMs,
+    };
+    this.devices.set(deviceId, updated);
+    this.persist();
+    return updated;
+  }
+
+  /**
+   * Returns true if the device has an active grace period.
+   * A device in grace is treated as provisionally approved.
+   */
+  isInGrace(deviceId: string): boolean {
+    const device = this.devices.get(deviceId);
+    if (!device || !device.gracePeriodExpiresAt) return false;
+    return Date.now() < device.gracePeriodExpiresAt;
   }
 
   /**
