@@ -125,15 +125,16 @@ interface AgentForm {
   temperature: number;
   maxTokens: number;
   maxTurns: number;
-  tags: string;           // comma-separated in the UI
-  allowedTools: string;  // comma-separated in the UI
-  idleTimeoutMs: number; // 0 = no timeout
+  tags: string;            // comma-separated in the UI
+  allowedTools: string;   // comma-separated in the UI
+  deniedTools: string;    // comma-separated in the UI
+  idleTimeoutMs: number;  // 0 = no timeout
 }
 
 const EMPTY_FORM: AgentForm = {
   name: '', systemPrompt: '', description: '', memoryScope: 'session',
   modelId: '', providerId: '', temperature: 0.7, maxTokens: 2048, maxTurns: 5,
-  tags: '', allowedTools: '', idleTimeoutMs: 0,
+  tags: '', allowedTools: '', deniedTools: '', idleTimeoutMs: 0,
 };
 
 // ── Access profile types and badge ─────────────────────────────────────────
@@ -320,6 +321,7 @@ export function AgentsPanel() {
       maxTurns: agent.maxTurns ?? 5,
       tags: (agent.tags ?? []).join(', '),
       allowedTools: (agent.allowedTools ?? []).join(', '),
+      deniedTools: (agent.deniedTools ?? []).join(', '),
       idleTimeoutMs: agent.idleTimeoutMs ?? 0,
     });
     setCreateError(null);
@@ -334,6 +336,7 @@ export function AgentsPanel() {
     setCreateError(null);
     const parsedTags = form.tags.split(',').map(t => t.trim()).filter(Boolean);
     const parsedTools = form.allowedTools.split(',').map(t => t.trim()).filter(Boolean);
+    const parsedDenied = form.deniedTools.split(',').map(t => t.trim()).filter(Boolean);
     const payload = {
       name: form.name, systemPrompt: form.systemPrompt,
       description: form.description, memoryScope: form.memoryScope,
@@ -344,6 +347,7 @@ export function AgentsPanel() {
       ...(form.providerId && { providerId: form.providerId }),
       ...(parsedTags.length > 0 ? { tags: parsedTags } : {}),
       ...(parsedTools.length > 0 ? { allowedTools: parsedTools } : { allowedTools: null }),
+      ...(parsedDenied.length > 0 ? { deniedTools: parsedDenied } : { deniedTools: null }),
       ...(form.idleTimeoutMs > 0 ? { idleTimeoutMs: form.idleTimeoutMs } : { idleTimeoutMs: null }),
     };
     try {
@@ -648,6 +652,15 @@ export function AgentsPanel() {
               />
             </div>
             <div>
+              <label className="text-xs text-zinc-500 block mb-1">Denied tools <span className="text-zinc-700">(comma-separated, always blocked)</span></label>
+              <input
+                value={form.deniedTools}
+                onChange={e => setForm(f => ({ ...f, deniedTools: e.target.value }))}
+                placeholder="shell_exec, write_file"
+                className={INPUT_CLS}
+              />
+            </div>
+            <div>
               <label className="text-xs text-zinc-500 block mb-1">Idle timeout <span className="text-zinc-700">(ms, 0 = none)</span></label>
               <input
                 type="number" min={0} step={60000}
@@ -678,11 +691,13 @@ export function AgentsPanel() {
                   {selected.modelId && ` · model: ${selected.modelId}`}
                   {selected.idleTimeoutMs != null && ` · idle: ${selected.idleTimeoutMs / 1000}s`}
                 </p>
-                {((selected.tags?.length ?? 0) > 0 || (selected.allowedTools?.length ?? 0) > 0) && (
+                {((selected.tags?.length ?? 0) > 0 || (selected.allowedTools?.length ?? 0) > 0 || (selected.deniedTools?.length ?? 0) > 0) && (
                   <p className="text-xs text-zinc-700 mt-0.5">
                     {(selected.tags?.length ?? 0) > 0 && `tags: ${selected.tags.join(', ')}`}
                     {(selected.tags?.length ?? 0) > 0 && (selected.allowedTools?.length ?? 0) > 0 && ' · '}
-                    {(selected.allowedTools?.length ?? 0) > 0 && `tools: ${(selected.allowedTools ?? []).join(', ')}`}
+                    {(selected.allowedTools?.length ?? 0) > 0 && `allow: ${(selected.allowedTools ?? []).join(', ')}`}
+                    {((selected.allowedTools?.length ?? 0) > 0 || (selected.tags?.length ?? 0) > 0) && (selected.deniedTools?.length ?? 0) > 0 && ' · '}
+                    {(selected.deniedTools?.length ?? 0) > 0 && <span className="text-red-900">deny: {(selected.deniedTools ?? []).join(', ')}</span>}
                   </p>
                 )}
               </div>

@@ -8,7 +8,7 @@
 //   - /api/*, /ws/*               → network-only (never cache live data)
 //   - everything else             → network-first with cache fallback
 
-const CACHE_NAME = 'krythor-0.2.0-1774755556427'; // replaced by deploy-dist.js
+const CACHE_NAME = 'krythor-0.2.0-1774755702144'; // replaced by deploy-dist.js
 
 // ── Install ────────────────────────────────────────────────────────────────────
 self.addEventListener('install', (event) => {

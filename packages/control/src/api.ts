@@ -474,12 +474,12 @@ export interface Agent {
   memoryScope: string; maxTurns: number; tags: string[];
   createdAt: number; updatedAt: number; modelId?: string;
   providerId?: string; temperature?: number; maxTokens?: number;
-  allowedTools?: string[]; idleTimeoutMs?: number;
+  allowedTools?: string[]; deniedTools?: string[]; idleTimeoutMs?: number;
 }
 export interface CreateAgentInput {
   name: string; systemPrompt: string; description?: string;
   memoryScope?: string; maxTurns?: number; modelId?: string; providerId?: string;
-  tags?: string[]; allowedTools?: string[] | null; idleTimeoutMs?: number | null;
+  tags?: string[]; allowedTools?: string[] | null; deniedTools?: string[] | null; idleTimeoutMs?: number | null;
 }
 export interface AgentRun {
   id: string; agentId: string; status: string; input: string;
