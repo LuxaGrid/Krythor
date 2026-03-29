@@ -2,7 +2,8 @@ export { ModelEngine } from './ModelEngine.js';
 export { TokenTracker } from './TokenTracker.js';
 export { parseProviderList, validateProviderConfig } from './config/validate.js';
 export type { ProviderValidationResult } from './config/validate.js';
-export type { ProviderTokenStats, SessionStats, TotalStats, StatsSnapshot } from './TokenTracker.js';
+export type { ProviderTokenStats, SessionStats, TotalStats, StatsSnapshot, ModelPricing, InferenceRecord } from './TokenTracker.js';
+export { estimateCostUSD } from './TokenTracker.js';
 export { TaskClassifier } from './TaskClassifier.js';
 export type { TaskType, ClassificationResult } from './TaskClassifier.js';
 export { ModelRecommender } from './ModelRecommender.js';
@@ -39,4 +40,5 @@ export type {
   StreamChunk,
   RoutingContext,
   ResponseFormat,
+  ThinkingConfig,
 } from './types.js';

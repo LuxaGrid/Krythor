@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { TokenTracker } from './TokenTracker.js';
+import { TokenTracker, estimateCostUSD } from './TokenTracker.js';
 
 describe('TokenTracker', () => {
   let tracker: TokenTracker;
@@ -80,5 +80,37 @@ describe('TokenTracker', () => {
     const snap = tracker.snapshot();
     const parsed = new Date(snap.session.startTime);
     expect(parsed.getTime()).not.toBeNaN();
+  });
+
+  it('includes estimatedCostUSD in totals', () => {
+    tracker.record({ providerId: 'anthropic', model: 'claude-sonnet-4-6', inputTokens: 1_000_000, outputTokens: 500_000 });
+    const snap = tracker.snapshot();
+    // 1M input * $3/M + 500K output * $15/M = $3 + $7.50 = $10.50
+    expect(snap.totals.estimatedCostUSD).toBeCloseTo(10.5, 2);
+  });
+
+  it('includes estimatedCostUSD on provider stats', () => {
+    tracker.record({ providerId: 'openai', model: 'gpt-4o', inputTokens: 1_000_000, outputTokens: 0 });
+    const snap = tracker.snapshot();
+    const p = snap.session.providers.find(x => x.model === 'gpt-4o')!;
+    // 1M input * $5/M = $5
+    expect(p.estimatedCostUSD).toBeCloseTo(5, 2);
+  });
+
+  it('returns undefined cost for local/unknown models', () => {
+    expect(estimateCostUSD('llama3', 100, 50)).toBeUndefined();
+    expect(estimateCostUSD('mistral:latest', 100, 50)).toBeUndefined();
+  });
+
+  it('estimateCostUSD works for known models', () => {
+    // gpt-4o: $5/M input, $15/M output
+    const cost = estimateCostUSD('gpt-4o', 100_000, 50_000);
+    expect(cost).toBeCloseTo(0.5 + 0.75, 4); // $0.50 + $0.75 = $1.25
+  });
+
+  it('estimateCostUSD is case-insensitive', () => {
+    const cost1 = estimateCostUSD('GPT-4O', 1000, 1000);
+    const cost2 = estimateCostUSD('gpt-4o', 1000, 1000);
+    expect(cost1).toBe(cost2);
   });
 });
