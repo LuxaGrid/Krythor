@@ -356,6 +356,7 @@ export class TelegramInbound {
     this.rateLimiter = null;
     this.debouncer?.flushAll();
     this.debouncePending.clear();
+    this.queueContext.clear();
   }
 
   // ── Polling loop ───────────────────────────────────────────────────────────

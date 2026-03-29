@@ -1647,7 +1647,8 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
 
   // GET /api/presence — list connected clients and nodes.
   app.get('/api/presence', async () => {
-    return { entries: presenceStore.list(), count: presenceStore.list().length };
+    const entries = presenceStore.list();
+    return { entries, count: entries.length };
   });
 
   // POST /api/presence/beacon — client heartbeat to refresh presence.
@@ -1806,11 +1807,13 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   // Patch the heartbeat into the heartbeatRef so the config route can update it at runtime.
   heartbeatRef.instance = heartbeat;
 
-  // Apply startup heartbeat config from app-config.json (deferred because HeartbeatEngine was
-  // created after registerConfigRoute, so the startup block in config.ts couldn't apply it).
+  // Apply deferred startup config from app-config.json (heartbeat, rate limits, bindings).
+  // Read once and apply all fields — heartbeat must be deferred because it's created after
+  // registerConfigRoute.
+  let startupAppCfg: Record<string, unknown> | null = null;
   try {
     if (existsSync(appConfigPath)) {
-      const startupAppCfg = JSON.parse(readFileSync(appConfigPath, 'utf-8')) as Record<string, unknown>;
+      startupAppCfg = JSON.parse(readFileSync(appConfigPath, 'utf-8')) as Record<string, unknown>;
       const hbPatch: Record<string, unknown> = {};
       if ('heartbeatDirectPolicy' in startupAppCfg) hbPatch['directPolicy'] = startupAppCfg['heartbeatDirectPolicy'];
       if ('heartbeatThinkingDefault' in startupAppCfg) hbPatch['thinkingDefault'] = startupAppCfg['heartbeatThinkingDefault'];
@@ -1819,30 +1822,21 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
       if (Object.keys(hbPatch).length > 0) {
         heartbeat.patchConfig(hbPatch as Parameters<typeof heartbeat.patchConfig>[0]);
       }
-    }
-  } catch { /* startup heartbeat config is best-effort */ }
-
-  // Apply per-agent rate limit + sub-agent archive + web fetch allowlist from app-config.json
-  try {
-    if (existsSync(appConfigPath)) {
-      const rateCfg = JSON.parse(readFileSync(appConfigPath, 'utf-8')) as Record<string, unknown>;
-      if (typeof rateCfg['agentMaxRunsPerMinute'] === 'number') {
-        orchestrator.setMaxRunsPerMinute(rateCfg['agentMaxRunsPerMinute']);
-        logger.info('Per-agent rate limit configured', { agentMaxRunsPerMinute: rateCfg['agentMaxRunsPerMinute'] });
+      if (typeof startupAppCfg['agentMaxRunsPerMinute'] === 'number') {
+        orchestrator.setMaxRunsPerMinute(startupAppCfg['agentMaxRunsPerMinute']);
+        logger.info('Per-agent rate limit configured', { agentMaxRunsPerMinute: startupAppCfg['agentMaxRunsPerMinute'] });
       }
-      if (typeof rateCfg['subAgentArchiveMs'] === 'number') {
-        orchestrator.setSubAgentArchiveMs(rateCfg['subAgentArchiveMs']);
-        logger.info('Sub-agent auto-archive configured', { subAgentArchiveMs: rateCfg['subAgentArchiveMs'] });
+      if (typeof startupAppCfg['subAgentArchiveMs'] === 'number') {
+        orchestrator.setSubAgentArchiveMs(startupAppCfg['subAgentArchiveMs']);
+        logger.info('Sub-agent auto-archive configured', { subAgentArchiveMs: startupAppCfg['subAgentArchiveMs'] });
       }
-      if (Array.isArray(rateCfg['webFetchAllowedUrls'])) {
-        const urls = (rateCfg['webFetchAllowedUrls'] as unknown[]).filter((u): u is string => typeof u === 'string');
+      if (Array.isArray(startupAppCfg['webFetchAllowedUrls'])) {
+        const urls = (startupAppCfg['webFetchAllowedUrls'] as unknown[]).filter((u): u is string => typeof u === 'string');
         setWebFetchAllowedUrls(urls);
         logger.info('web_fetch URL allowlist configured', { count: urls.length });
       }
     }
   } catch { /* best-effort */ }
-
-  // Deferred: agent bindings are applied after inboundMgr is created below
 
   // Chat channel registry (inbound bot channels — Telegram, Discord, WhatsApp)
   const chatChannelRegistry = new ChatChannelRegistry(join(dataDir, 'config'));
@@ -1853,10 +1847,7 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   // Session router — reads session config from app-config.json
   const sessionConfig = ((): SessionConfig => {
     try {
-      if (existsSync(appConfigPath)) {
-        const cfg = JSON.parse(readFileSync(appConfigPath, 'utf-8')) as Record<string, unknown>;
-        return (cfg['session'] ?? {}) as SessionConfig;
-      }
+      if (startupAppCfg) return (startupAppCfg['session'] ?? {}) as SessionConfig;
     } catch { /* fallback to defaults */ }
     return {};
   })();
@@ -1865,20 +1856,15 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   // Inbound channel manager — manages Telegram, Discord, WhatsApp from registry
   const inboundMgr = new InboundChannelManager(chatChannelRegistry, orchestrator, dataDir, logger, convStore, sessionRouter);
 
-  // Agent binding rules — load from app-config.json if present
-  try {
-    if (existsSync(appConfigPath)) {
-      const bindCfg = JSON.parse(readFileSync(appConfigPath, 'utf-8')) as Record<string, unknown>;
-      if (Array.isArray(bindCfg['agentBindings'])) {
-        const bindings = (bindCfg['agentBindings'] as unknown[]).filter(
-          (b): b is AgentBinding => typeof b === 'object' && b !== null && typeof (b as AgentBinding).agentId === 'string',
-        );
-        const defaultAgentId = typeof bindCfg['defaultAgentId'] === 'string' ? bindCfg['defaultAgentId'] : undefined;
-        inboundMgr.setBindings(bindings, defaultAgentId);
-        logger.info('Agent bindings configured', { count: bindings.length, defaultAgentId });
-      }
-    }
-  } catch { /* best-effort */ }
+  // Agent binding rules — from the already-parsed startupAppCfg
+  if (startupAppCfg && Array.isArray(startupAppCfg['agentBindings'])) {
+    const bindings = (startupAppCfg['agentBindings'] as unknown[]).filter(
+      (b): b is AgentBinding => typeof b === 'object' && b !== null && typeof (b as AgentBinding).agentId === 'string',
+    );
+    const defaultAgentId = typeof startupAppCfg['defaultAgentId'] === 'string' ? startupAppCfg['defaultAgentId'] : undefined;
+    inboundMgr.setBindings(bindings, defaultAgentId);
+    logger.info('Agent bindings configured', { count: bindings.length, defaultAgentId });
+  }
 
   if (process.env['NODE_ENV'] !== 'test') {
     inboundMgr.startAll().catch(err => logger.error('[inbound] startAll error', { err: err instanceof Error ? err.message : String(err) }));
