@@ -583,7 +583,7 @@ export function SettingsPanel() {
       {/* About */}
       <Section title="About">
         <Row label="Version" value={healthData?.version ?? '—'} />
-        <Row label="Platform" value={gatewayInfo?.platform ?? process.platform} />
+        <Row label="Platform" value={gatewayInfo?.platform ?? '—'} />
         <Row label="Architecture" value={gatewayInfo?.arch ?? '—'} />
         <Row label="Node.js" value={healthData?.nodeVersion ?? '—'} />
         <Row label="Gateway ID" value={gatewayInfo?.gatewayId ?? '—'} />
