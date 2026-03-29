@@ -1390,11 +1390,19 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   // Agent message bus — in-process agent-to-agent messaging and delegation
   const agentMessageBus = new AgentMessageBus();
 
+  // ── Real-time request metrics — created early so agent routes can use it ────
+  const metricsCollector = new MetricsCollector(60);
+  app.addHook('onResponse', async (req, reply) => {
+    if (!req.routeOptions.url?.startsWith('/api/')) return;
+    const latencyMs = reply.elapsedTime ?? 0;
+    metricsCollector.record(reply.statusCode, latencyMs);
+  });
+
   // Register routes
   registerCommandRoute(app, core, orchestrator, broadcast, guard, convStore, devicePairingStore, approvalManager, privacyRouter);
   registerMemoryRoutes(app, memory, models, guard, channelEmit, approvalManager, janitorStatus);
   registerModelRoutes(app, models, memory, guard, channelEmit, approvalManager);
-  registerAgentRoutes(app, orchestrator, guard, accessProfileStore, approvalManager, agentMessageBus);
+  registerAgentRoutes(app, orchestrator, guard, accessProfileStore, approvalManager, agentMessageBus, metricsCollector);
   registerGuardRoutes(app, guard, guardDecisionStore);
   registerConfigRoute(app, join(dataDir, 'config'), guard, orchestrator, memory, heartbeatRef, approvalManager);
   registerConversationRoutes(app, convStore, guard, channelEmit, memory ?? undefined, approvalManager);
@@ -1677,14 +1685,6 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   // reference heartbeat directly (avoids a late-binding closure or re-export).
   registerDashboardRoute(app, models, memory, orchestrator, heartbeat);
 
-  // ── Real-time request metrics (Item 9) ──────────────────────────────────────
-  const metricsCollector = new MetricsCollector(60);
-  app.addHook('onResponse', async (req, reply) => {
-    // Only track /api/* routes; skip static assets and health
-    if (!req.routeOptions.url?.startsWith('/api/')) return;
-    const latencyMs = reply.elapsedTime ?? 0;
-    metricsCollector.record(reply.statusCode, latencyMs);
-  });
   registerMetricsRoutes(app, metricsCollector);
 
   // Patch the heartbeat into the heartbeatRef so the config route can update it at runtime.

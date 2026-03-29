@@ -1,8 +1,8 @@
 /**
  * Dashboard metrics routes — ITEM 9
  *
- * GET /api/dashboard/metrics/series — returns sliding-window request metrics
- *   as time-series samples suitable for rendering sparklines / trend charts.
+ * GET /api/dashboard/metrics/series  — sliding-window request metrics (sparklines)
+ * GET /api/dashboard/metrics/agents  — per-agent run stats sorted by usage
  *
  * Query params:
  *   ?window=60  — number of minutes of history (default: 60, max: 1440)
@@ -23,4 +23,10 @@ export function registerMetricsRoutes(
       return reply.send(metrics.getSeries());
     },
   );
+
+  // Per-agent run statistics — lifetime counters, sorted by totalRuns desc.
+  // Returns an array of AgentRunStats objects (empty if no runs recorded yet).
+  app.get('/api/dashboard/metrics/agents', async (_req, reply) => {
+    return reply.send(metrics.getAgentStats());
+  });
 }

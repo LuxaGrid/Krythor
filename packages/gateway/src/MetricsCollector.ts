@@ -5,12 +5,19 @@
  * Each sample captures: request count, error count, and sum of response
  * latencies so callers can derive req/min, error rate, and avg latency.
  *
+ * Also tracks per-agent run metrics: total runs, errors, latency, and
+ * token usage — kept as lifetime counters (not windowed) so dashboards
+ * can rank agents by usage without waiting for a full window to fill.
+ *
  * Usage:
  *   const mc = new MetricsCollector();
  *   // In Fastify onResponse hook:
  *   mc.record(res.statusCode, responseTimeMs);
+ *   // After an agent run completes:
+ *   mc.recordAgentRun(agentId, agentName, durationMs, success, tokensUsed);
  *   // In route handler:
  *   return mc.getSeries();
+ *   return mc.getAgentStats();
  */
 
 export interface MetricSample {
@@ -38,10 +45,33 @@ export interface MetricsSeries {
   };
 }
 
+/** Lifetime per-agent run statistics. */
+export interface AgentRunStats {
+  agentId:        string;
+  agentName:      string;
+  totalRuns:      number;
+  failedRuns:     number;
+  totalTokens:    number;
+  totalLatencyMs: number;
+  avgLatencyMs:   number;
+  errorRate:      number;  // 0–1
+  lastRunAt:      number;  // Unix epoch ms
+}
+
 export class MetricsCollector {
   private readonly windowMinutes: number;
   /** Map from bucket-epoch-second (floored to minute) → mutable sample */
   private readonly buckets = new Map<number, MetricSample>();
+  /** Lifetime per-agent run counters */
+  private readonly agentCounters = new Map<string, {
+    agentId:        string;
+    agentName:      string;
+    totalRuns:      number;
+    failedRuns:     number;
+    totalTokens:    number;
+    totalLatencyMs: number;
+    lastRunAt:      number;
+  }>();
 
   constructor(windowMinutes = 60) {
     this.windowMinutes = windowMinutes;
@@ -59,6 +89,27 @@ export class MetricsCollector {
     sample.latencySum += latencyMs;
     if (statusCode >= 500) sample.errors += 1;
     this.evict();
+  }
+
+  /** Record a completed agent run. */
+  recordAgentRun(
+    agentId:    string,
+    agentName:  string,
+    latencyMs:  number,
+    success:    boolean,
+    tokens = 0,
+  ): void {
+    let c = this.agentCounters.get(agentId);
+    if (!c) {
+      c = { agentId, agentName, totalRuns: 0, failedRuns: 0, totalTokens: 0, totalLatencyMs: 0, lastRunAt: 0 };
+      this.agentCounters.set(agentId, c);
+    }
+    c.agentName      = agentName;  // update in case name changed
+    c.totalRuns      += 1;
+    c.totalLatencyMs += latencyMs;
+    c.totalTokens    += tokens;
+    c.lastRunAt       = Date.now();
+    if (!success) c.failedRuns += 1;
   }
 
   /** Return the full series, ordered oldest → newest. */
@@ -86,6 +137,23 @@ export class MetricsCollector {
         errorRate:    totalRequests > 0 ? totalErrors / totalRequests : 0,
       },
     };
+  }
+
+  /** Return per-agent stats, sorted by totalRuns descending. */
+  getAgentStats(): AgentRunStats[] {
+    return [...this.agentCounters.values()]
+      .map(c => ({
+        agentId:        c.agentId,
+        agentName:      c.agentName,
+        totalRuns:      c.totalRuns,
+        failedRuns:     c.failedRuns,
+        totalTokens:    c.totalTokens,
+        totalLatencyMs: c.totalLatencyMs,
+        avgLatencyMs:   c.totalRuns > 0 ? Math.round(c.totalLatencyMs / c.totalRuns) : 0,
+        errorRate:      c.totalRuns > 0 ? c.failedRuns / c.totalRuns : 0,
+        lastRunAt:      c.lastRunAt,
+      }))
+      .sort((a, b) => b.totalRuns - a.totalRuns);
   }
 
   // ── Private ───────────────────────────────────────────────────────────────

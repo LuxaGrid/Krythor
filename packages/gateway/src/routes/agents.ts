@@ -7,6 +7,7 @@ import { validateString, MAX_NAME_LEN, MAX_DESCRIPTION_LEN, MAX_SYSTEM_PROMPT_LE
 import type { AccessProfileStore } from '../AccessProfileStore.js';
 import type { ApprovalManager } from '../ApprovalManager.js';
 import { guardCheck } from '../guardCheck.js';
+import type { MetricsCollector } from '../MetricsCollector.js';
 
 interface ParallelJob { agentId: string; input: RunAgentInput }
 interface ParallelBody { jobs: ParallelJob[] }
@@ -19,6 +20,7 @@ export function registerAgentRoutes(
   accessProfileStore?: AccessProfileStore,
   approvalManager?: ApprovalManager,
   messageBus?: AgentMessageBus,
+  metricsCollector?: MetricsCollector,
 ): void {
 
   // GET /api/agents
@@ -288,10 +290,19 @@ export function registerAgentRoutes(
       if (!allowed) return;
     }
 
+    const runStart = Date.now();
     try {
       const run = await orchestrator.runAgent(req.params.id, req.body as RunAgentInput);
+      metricsCollector?.recordAgentRun(
+        agent.id,
+        agent.name,
+        Date.now() - runStart,
+        true,
+        (run as unknown as Record<string, unknown>)['tokensUsed'] as number | undefined ?? 0,
+      );
       return reply.send(run);
     } catch (err) {
+      metricsCollector?.recordAgentRun(agent.id, agent.name, Date.now() - runStart, false);
       if (err instanceof RunRateLimitError) {
         reply.header('Retry-After', '60');
         return reply.code(429).send({ error: err.message });
