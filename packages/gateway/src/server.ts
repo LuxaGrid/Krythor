@@ -83,6 +83,8 @@ import { registerKeyPoolRoutes } from './routes/keyPool.js';
 import { SessionDirectiveStore } from './SessionDirectiveStore.js';
 import { gatewayEvents } from './GatewayEventBus.js';
 import { BootstrapRunner } from './BootstrapRunner.js';
+import { StandingOrderStore } from './StandingOrderStore.js';
+import { registerStandingOrderRoutes } from './routes/standingOrders.js';
 import { registerApiKeyRoutes } from './routes/apiKeys.js';
 import { registerJobRoutes } from './routes/jobs.js';
 import { registerErrorHandler } from './errors.js';
@@ -1430,6 +1432,9 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   // ── Session directive store — per-conversation directive overrides ────────
   const sessionDirectiveStore = new SessionDirectiveStore();
 
+  // ── Standing order store — persistent agent authorization programs ─────────
+  const standingOrderStore = new StandingOrderStore(join(dataDir, 'config'));
+
   // ── Real-time request metrics — created early so agent routes can use it ────
   const metricsCollector = new MetricsCollector(60);
   app.addHook('onResponse', async (req, reply) => {
@@ -1483,6 +1488,7 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   const cronStore = new CronStore(join(dataDir, 'config'));
   const cronScheduler = new CronScheduler(cronStore, orchestrator);
   registerCronRoutes(app, cronStore, cronScheduler);
+  registerStandingOrderRoutes(app, standingOrderStore, orchestrator);
 
   // Job queue routes
   registerJobRoutes(app, jobQueue);
