@@ -60,6 +60,17 @@ export interface PolicyCondition {
   scopes?: string[];              // match these scopes
   minRisk?: RiskLevel;            // match >= this risk level
   contentPattern?: string;        // regex pattern matched against content
+  /**
+   * UTC hour range (inclusive) to match. Both values are 0–23.
+   * Example: { from: 9, to: 17 } matches 09:00–17:59 UTC.
+   * Wraps midnight when from > to (e.g. { from: 22, to: 6 } matches 22:00–06:59 UTC).
+   */
+  allowedHours?: { from: number; to: number };
+  /**
+   * Days of week to match (0 = Sunday, 6 = Saturday, UTC).
+   * Example: [1, 2, 3, 4, 5] for weekdays only.
+   */
+  allowedDays?: number[];
 }
 
 export interface PolicyRule {

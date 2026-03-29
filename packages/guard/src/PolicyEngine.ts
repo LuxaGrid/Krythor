@@ -109,6 +109,20 @@ export class PolicyEngine {
       }
     }
 
+    if (c.allowedHours) {
+      const { from, to } = c.allowedHours;
+      const hour = new Date().getUTCHours();
+      const inRange = from <= to
+        ? hour >= from && hour <= to
+        : hour >= from || hour <= to; // wraps midnight
+      if (!inRange) return false;
+    }
+
+    if (c.allowedDays && c.allowedDays.length > 0) {
+      const day = new Date().getUTCDay();
+      if (!c.allowedDays.includes(day)) return false;
+    }
+
     return true;
   }
 }
