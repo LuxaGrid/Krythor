@@ -24,6 +24,11 @@ export interface Peer {
   source: 'manual' | 'mdns' | 'auto';
   /** Auth token for the remote gateway (optional — stored unencrypted for now) */
   authToken?: string;
+  /**
+   * User-defined key-value tags for organization (e.g. environment, region, owner).
+   * All keys and values are strings.
+   */
+  tags?: Record<string, string>;
   isEnabled: boolean;
   createdAt: string;
   updatedAt: string;

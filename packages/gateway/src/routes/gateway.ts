@@ -101,7 +101,7 @@ export function registerGatewayRoutes(
 
   // POST /api/gateway/peers — register a peer by URL
   app.post<{
-    Body: { name: string; url: string; authToken?: string };
+    Body: { name: string; url: string; authToken?: string; tags?: Record<string, string> };
   }>('/api/gateway/peers', {
     schema: {
       body: {
@@ -111,6 +111,7 @@ export function registerGatewayRoutes(
           name:      { type: 'string', minLength: 1, maxLength: 128 },
           url:       { type: 'string', minLength: 1, maxLength: 2048 },
           authToken: { type: 'string', maxLength: 256 },
+          tags:      { type: 'object', additionalProperties: { type: 'string' } },
         },
         additionalProperties: false,
       },
@@ -143,7 +144,7 @@ export function registerGatewayRoutes(
   // PATCH /api/gateway/peers/:id — update a peer
   app.patch<{
     Params: { id: string };
-    Body: { name?: string; url?: string; authToken?: string; isEnabled?: boolean };
+    Body: { name?: string; url?: string; authToken?: string; isEnabled?: boolean; tags?: Record<string, string> };
   }>('/api/gateway/peers/:id', {
     schema: {
       body: {
@@ -154,6 +155,7 @@ export function registerGatewayRoutes(
           url:       { type: 'string', minLength: 1, maxLength: 2048 },
           authToken: { type: 'string', maxLength: 256 },
           isEnabled: { type: 'boolean' },
+          tags:      { type: 'object', additionalProperties: { type: 'string' } },
         },
         additionalProperties: false,
       },
