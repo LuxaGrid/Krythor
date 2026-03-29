@@ -10,7 +10,7 @@ import { KrythorCore, AgentOrchestrator, ExecTool, CustomToolStore, WebhookTool,
 import { MemoryEngine, GuardDecisionStore, OllamaEmbeddingProvider, AuditStore, JobQueue } from '@krythor/memory';
 import { ModelEngine, ModelRecommender, PreferenceStore } from '@krythor/models';
 import { GuardEngine, ModerationEngine } from '@krythor/guard';
-import { SkillRegistry, SkillRunner } from '@krythor/skills';
+import { SkillRegistry, SkillRunner, SkillFileLoader } from '@krythor/skills';
 import type { SkillEvent } from '@krythor/skills';
 import { registerCommandRoute } from './routes/command.js';
 import { registerMemoryRoutes, type JanitorStatus } from './routes/memory.js';
@@ -758,6 +758,7 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   // lifecycle events to all connected WebSocket clients.
   const skillRegistry = new SkillRegistry(join(dataDir, 'config'));
 
+
   // Wire Ollama embedding provider if any Ollama provider is configured and enabled.
   // Uses the first enabled Ollama provider's endpoint with the nomic-embed-text model,
   // which is the standard lightweight embedding model for Ollama.
@@ -924,6 +925,14 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   workspaceManager.ensureWorkspace();
   orchestrator.setWorkspaceDir(workspaceDir);
   logger.system('workspace_init', { dir: workspaceDir });
+
+  // File-backed skills: scan workspace dir for SKILL.md sub-directories.
+  // The loader re-scans on every list request; the watcher debounces FS events
+  // and emits a log line so operators can observe hot-reload activity.
+  const skillFileLoader = new SkillFileLoader([workspaceDir]);
+  const stopSkillWatcher = skillFileLoader.watch(() => {
+    logger.info('Skill files changed — reload on next request');
+  }, 500);
 
 
   // Session transcript storage — one JSONL file per run at:
@@ -1456,7 +1465,7 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   registerConfigRoute(app, join(dataDir, 'config'), guard, orchestrator, memory, heartbeatRef, approvalManager);
   registerConversationRoutes(app, convStore, guard, channelEmit, memory ?? undefined, approvalManager);
   if (memory) registerSessionMaintenanceRoutes(app, memory);
-  registerSkillRoutes(app, skillRegistry, guard, skillRunner, approvalManager);
+  registerSkillRoutes(app, skillRegistry, guard, skillRunner, approvalManager, skillFileLoader);
   registerRecommendRoutes(app, models, recommender, guard);
   registerToolRoutes(app, guard, execTool, core);
   registerCustomToolRoutes(app, customToolStore, guard);
@@ -1916,6 +1925,9 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   // Expose waitForDrain so index.ts can drain active runs on graceful shutdown
   (app as unknown as Record<string, unknown>)['waitForDrain'] = (timeoutMs: number) =>
     orchestrator.waitForDrain(timeoutMs);
+
+  // Stop skill file watcher on server close
+  app.addHook('onClose', async () => { stopSkillWatcher(); });
 
   return app;
 }
