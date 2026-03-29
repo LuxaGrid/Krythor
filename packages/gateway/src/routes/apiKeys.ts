@@ -30,15 +30,19 @@ export function registerApiKeyRoutes(app: FastifyInstance, store: ApiKeyStore): 
           name:        { type: 'string', minLength: 1, maxLength: 100 },
           permissions: { type: 'array', items: { type: 'string' }, minItems: 1 },
           expiresAt:   { type: 'number' },
+          rateLimit:   { type: 'number', minimum: 1 },
+          dailyLimit:  { type: 'number', minimum: 1 },
         },
         additionalProperties: false,
       },
     },
   }, async (req, reply) => {
-    const { name, permissions, expiresAt } = req.body as {
+    const { name, permissions, expiresAt, rateLimit, dailyLimit } = req.body as {
       name: string;
       permissions: ApiKeyPermission[];
       expiresAt?: number;
+      rateLimit?: number;
+      dailyLimit?: number;
     };
 
     // Validate permission values
@@ -47,7 +51,7 @@ export function registerApiKeyRoutes(app: FastifyInstance, store: ApiKeyStore): 
       return reply.code(400).send({ error: `Unknown permissions: ${invalid.join(', ')}` });
     }
 
-    const { key, entry } = store.create(name, permissions, expiresAt);
+    const { key, entry } = store.create(name, permissions, expiresAt, rateLimit, dailyLimit);
     const { keyHash: _kh, ...safe } = entry;
     return reply.code(201).send({ key, entry: safe });
   });
@@ -68,6 +72,8 @@ export function registerApiKeyRoutes(app: FastifyInstance, store: ApiKeyStore): 
           name:        { type: 'string', minLength: 1, maxLength: 100 },
           permissions: { type: 'array', items: { type: 'string' } },
           expiresAt:   { type: ['number', 'null'] },
+          rateLimit:   { type: ['number', 'null'], minimum: 1 },
+          dailyLimit:  { type: ['number', 'null'], minimum: 1 },
         },
         additionalProperties: false,
       },
@@ -78,6 +84,8 @@ export function registerApiKeyRoutes(app: FastifyInstance, store: ApiKeyStore): 
       name?: string;
       permissions?: ApiKeyPermission[];
       expiresAt?: number | null;
+      rateLimit?: number | null;
+      dailyLimit?: number | null;
     };
 
     if (updates.permissions) {

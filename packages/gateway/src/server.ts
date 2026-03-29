@@ -71,6 +71,7 @@ import { HeartbeatEngine, type HeartbeatRunRecord, type HeartbeatInsight } from 
 import { logger } from './logger.js';
 import { loadOrCreateToken, verifyToken } from './auth.js';
 import { ApiKeyStore } from './ApiKeyStore.js';
+import { ApiKeyRateLimiter } from './ApiKeyRateLimiter.js';
 import { registerApiKeyRoutes } from './routes/apiKeys.js';
 import { registerJobRoutes } from './routes/jobs.js';
 import { registerErrorHandler } from './errors.js';
@@ -197,6 +198,7 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
   const authCfg = loadOrCreateToken(join(dataDir, 'config'));
   // Named API key store — lives alongside auth config
   const apiKeyStore = new ApiKeyStore(join(dataDir, 'config'));
+  const apiKeyRateLimiter = new ApiKeyRateLimiter();
   if (!authCfg.authDisabled) {
     if ((authCfg as unknown as Record<string, unknown>)['firstRun']) {
       logger.info('Auth token generated (first run) — stored in app-config.json');
@@ -415,6 +417,13 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
       if (token && token.startsWith('kry_')) {
         const apiKey = apiKeyStore.validate(token);
         if (apiKey) {
+          // Enforce per-key rate limiting and daily quotas
+          const rateResult = apiKeyRateLimiter.check(apiKey);
+          if (!rateResult.allowed) {
+            reply.header('Retry-After', String(rateResult.retryAfterSeconds ?? 60));
+            reply.code(429).send({ error: rateResult.reason ?? 'Rate limit exceeded' });
+            return;
+          }
           // Record last-used and attach to request for downstream permission checks
           apiKeyStore.touch(apiKey.id);
           (req as unknown as Record<string, unknown>)['apiKey'] = apiKey;

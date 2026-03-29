@@ -47,6 +47,10 @@ export interface ApiKey {
   lastUsedAt?: number;
   expiresAt?: number; // undefined = never expires
   active: boolean;
+  /** Max requests per minute for this key (undefined = no per-key limit). */
+  rateLimit?: number;
+  /** Max requests per day for this key (undefined = no daily quota). */
+  dailyLimit?: number;
 }
 
 // Safe subset for API responses — excludes keyHash
@@ -90,6 +94,8 @@ export class ApiKeyStore {
     name: string,
     permissions: ApiKeyPermission[],
     expiresAt?: number,
+    rateLimit?: number,
+    dailyLimit?: number,
   ): { key: string; entry: ApiKey } {
     const rawKey = `kry_${randomBytes(20).toString('hex')}`;
     const keyHash = createHash('sha256').update(rawKey).digest('hex');
@@ -103,6 +109,8 @@ export class ApiKeyStore {
       createdAt: Date.now(),
       expiresAt,
       active: true,
+      rateLimit,
+      dailyLimit,
     };
     this.keys.push(entry);
     this.save();
@@ -131,14 +139,26 @@ export class ApiKeyStore {
     }
   }
 
-  /** Update name, permissions, or expiry on an existing key. */
-  update(id: string, updates: { name?: string; permissions?: ApiKeyPermission[]; expiresAt?: number | null }): ApiKey | null {
+  /** Update name, permissions, expiry, rateLimit, or dailyLimit on an existing key. */
+  update(id: string, updates: {
+    name?: string;
+    permissions?: ApiKeyPermission[];
+    expiresAt?: number | null;
+    rateLimit?: number | null;
+    dailyLimit?: number | null;
+  }): ApiKey | null {
     const entry = this.keys.find(k => k.id === id);
     if (!entry) return null;
     if (updates.name !== undefined) entry.name = updates.name;
     if (updates.permissions !== undefined) entry.permissions = updates.permissions;
     if (updates.expiresAt !== undefined) {
       entry.expiresAt = updates.expiresAt === null ? undefined : updates.expiresAt;
+    }
+    if (updates.rateLimit !== undefined) {
+      entry.rateLimit = updates.rateLimit === null ? undefined : updates.rateLimit;
+    }
+    if (updates.dailyLimit !== undefined) {
+      entry.dailyLimit = updates.dailyLimit === null ? undefined : updates.dailyLimit;
     }
     this.save();
     return entry;
