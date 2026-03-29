@@ -15,7 +15,7 @@
 //
 
 import { execSync } from 'child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, cpSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, cpSync, rmSync } from 'fs';
 import { join } from 'path';
 
 const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
@@ -34,6 +34,9 @@ const buildDir = 'pkg-build';
 const installPrefix = '/usr/local/lib/krythor';
 const scriptDir = join(buildDir, 'scripts');
 const payloadDir = join(buildDir, 'payload', 'usr', 'local', 'lib', 'krythor');
+
+// Clean any stale pkg-build dir to avoid cpSync ENOTDIR on re-runs
+if (existsSync(buildDir)) rmSync(buildDir, { recursive: true, force: true });
 
 mkdirSync(scriptDir, { recursive: true });
 mkdirSync(payloadDir, { recursive: true });
