@@ -445,6 +445,9 @@ function Sidebar({ conversations, activeId, onSelect, onNew, onDelete, onRename,
                           {conv.pinned && (
                             <span className="text-amber-600 text-[9px] mr-0.5" title="Pinned">📌</span>
                           )}
+                          {conv.compactedAt && (
+                            <span className="text-zinc-600 text-[9px] mr-0.5" title={`Compacted ${new Date(conv.compactedAt).toLocaleDateString()}`}>◈</span>
+                          )}
                           <button
                             onClick={e => startEdit(conv, e)}
                             className="text-zinc-600 hover:text-zinc-300 p-0.5 rounded"

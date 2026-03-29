@@ -1113,7 +1113,9 @@ export function SettingsPanel() {
           </div>
 
           <p className="text-[10px] text-zinc-600">
-            Pinned sessions are never auto-deleted. Temporary sessions are removed after 1 day, debug sessions after 3 days.
+            Pinned sessions are never auto-deleted.
+            Retention by type: <span className="text-zinc-500">temporary=1d · debug=3d · interactive/agent_run/cron_run/tool_run={retentionDays || 90}d</span>.
+            Failed agent runs get an extra 30 days.
           </p>
 
           {retentionMsg && (

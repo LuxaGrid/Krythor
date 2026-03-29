@@ -285,11 +285,14 @@ export function registerConversationRoutes(app: FastifyInstance, store: Conversa
     const result = memory.runJanitor();
     return reply.send({
       ok: true,
-      conversationsPruned: result.conversationsPruned,
-      memoryEntriesPruned: result.memoryEntriesPruned,
+      conversationsPruned:  result.conversationsPruned,
+      memoryEntriesPruned:  result.memoryEntriesPruned,
       learningRecordsPruned: result.learningRecordsPruned,
-      ranAt: result.ranAt,
-      tableCountsAfter: result.tableCountsAfter,
+      sessionsCompacted:    result.sessionsCompacted,
+      rawTranscriptsPruned: result.rawTranscriptsPruned,
+      sessionsByKindPruned: result.sessionsByKindPruned,
+      ranAt:                result.ranAt,
+      tableCountsAfter:     result.tableCountsAfter,
     });
   });
 }

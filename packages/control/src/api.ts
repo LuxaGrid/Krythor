@@ -251,6 +251,7 @@ export interface Conversation {
   archived?: boolean;
   pinned?: boolean;
   isIdle?: boolean;
+  compactedAt?: number | null;
 }
 
 export interface Message {

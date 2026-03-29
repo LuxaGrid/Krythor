@@ -18,6 +18,8 @@ export interface Conversation {
   agentId: string | null;
   createdAt: number;
   updatedAt: number;
+  /** Timestamp when this conversation was compacted (raw transcript replaced by summary). Null if not compacted. */
+  compactedAt?: number | null;
 }
 
 export interface Message {
@@ -45,6 +47,7 @@ interface ConversationRow {
   agent_id: string | null;
   created_at: number;
   updated_at: number;
+  compacted_at?: number | null;
 }
 
 interface MessageRow {
@@ -69,6 +72,7 @@ function rowToConversation(row: ConversationRow): Conversation {
     agentId: row.agent_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    compactedAt: row.compacted_at ?? null,
   };
 }
 
