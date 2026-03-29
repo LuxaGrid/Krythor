@@ -359,7 +359,6 @@ export interface JanitorStatus {
   config: Record<string, unknown>;
 }
 export const getJanitorStatus = () => req<JanitorStatus>('GET', '/memory/janitor/status');
-export const runJanitor = () => req<JanitorStatus['lastResult']>('POST', '/memory/janitor/run');
 export interface MemoryStatsDetailed extends MemoryStats {
   oldest?: string | null;
   newest?: string | null;
@@ -679,6 +678,28 @@ export interface InferenceRecord {
 
 export const getTokenHistory = () =>
   req<{ history: InferenceRecord[]; windowSize: number }>('GET', '/stats/history');
+
+// ── Session cleanup / janitor ──────────────────────────────────────────────────
+export interface JanitorResult {
+  conversationsPruned:  number;
+  memoryEntriesPruned:  number;
+  sessionsCompacted:    number;
+  rawTranscriptsPruned: number;
+  sessionsByKindPruned: Record<string, number>;
+  tableCountsAfter:     Record<string, number>;
+  ranAt:                number;
+}
+export interface MaintenanceEstimate {
+  currentCount:      number;
+  wouldPruneByAge:   number;
+  wouldPruneByCount: number;
+  lastJanitorRunAt:  number | null;
+  nextJanitorRunAt:  number | null;
+  janitorConfig:     Record<string, unknown>;
+  lastResult:        JanitorResult | null;
+}
+export const getMaintenanceEstimate = () => req<MaintenanceEstimate>('GET', '/sessions/maintenance');
+export const runJanitor             = () => req<JanitorResult>('POST', '/memory/janitor/run');
 
 // ── Real-time metrics series ───────────────────────────────────────────────────
 export interface MetricSample {

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { health, getGatewayInfo, getHeartbeatHistory, getDiscordConfig, setDiscordConfig, stopDiscord, listPlugins, exportProviderConfig, importProviderConfig, exportFullConfig, importFullConfig, listWebChatPairings, createWebChatPairing, revokeWebChatPairing, listApiKeys, createApiKey, revokeApiKey, getAppConfig, patchAppConfig, checkForUpdate, setGatewayBaseUrl, getGatewayBaseUrl, setGatewayToken } from '../api.ts';
-import type { Health, GatewayInfo, ProviderHealthEntry, DiscordConfig, Plugin, WebChatPairingEntry, WebChatPairingCreated, ApiKeySafe, ApiKeyPermission, UpdateInfo } from '../api.ts';
+import { health, getGatewayInfo, getHeartbeatHistory, getDiscordConfig, setDiscordConfig, stopDiscord, listPlugins, exportProviderConfig, importProviderConfig, exportFullConfig, importFullConfig, listWebChatPairings, createWebChatPairing, revokeWebChatPairing, listApiKeys, createApiKey, revokeApiKey, getAppConfig, patchAppConfig, checkForUpdate, setGatewayBaseUrl, getGatewayBaseUrl, setGatewayToken, getMaintenanceEstimate, runJanitor } from '../api.ts';
+import type { Health, GatewayInfo, ProviderHealthEntry, DiscordConfig, Plugin, WebChatPairingEntry, WebChatPairingCreated, ApiKeySafe, ApiKeyPermission, UpdateInfo, MaintenanceEstimate, JanitorResult } from '../api.ts';
 import { PanelHeader } from './PanelHeader.tsx';
 import { useLocale } from '../i18n/index.js';
 
@@ -138,6 +138,18 @@ export function SettingsPanel() {
   const [discordError, setDiscordError] = useState<string | null>(null);
   const [discordStatus, setDiscordStatus] = useState<string | null>(null);
 
+  // Session cleanup / retention policy state
+  const [maintenance, setMaintenance]         = useState<MaintenanceEstimate | null>(null);
+  const [janitorRunning, setJanitorRunning]   = useState(false);
+  const [janitorResult, setJanitorResult]     = useState<JanitorResult | null>(null);
+  const [janitorMsg, setJanitorMsg]           = useState<string | null>(null);
+  const [retentionDays, setRetentionDays]     = useState('');
+  const [maxConvs, setMaxConvs]               = useState('');
+  const [compactDays, setCompactDays]         = useState('');
+  const [deleteRaw, setDeleteRaw]             = useState(false);
+  const [retentionSaving, setRetentionSaving] = useState(false);
+  const [retentionMsg, setRetentionMsg]       = useState<string | null>(null);
+
   useEffect(() => {
     applyTheme(theme);
   }, [theme]);
@@ -159,13 +171,14 @@ export function SettingsPanel() {
   useEffect(() => {
     async function load() {
       try {
-        const [h, info, hist, disc, plugs, appCfg] = await Promise.all([
+        const [h, info, hist, disc, plugs, appCfg, maint] = await Promise.all([
           health(),
           getGatewayInfo().catch(() => null),
           getHeartbeatHistory().catch(() => ({})),
           getDiscordConfig().catch(() => null),
           listPlugins().catch(() => []),
           getAppConfig().catch(() => null),
+          getMaintenanceEstimate().catch(() => null),
         ]);
         setHealthData(h);
         if (appCfg) {
@@ -173,6 +186,14 @@ export function SettingsPanel() {
           setTlsCertPath(appCfg.httpsCertPath ?? '');
           setTlsKeyPath(appCfg.httpsKeyPath ?? '');
           setTlsSelfSigned(appCfg.httpsSelfSigned ?? true);
+        }
+        if (maint) {
+          setMaintenance(maint);
+          const cfg = maint.janitorConfig as Record<string, unknown>;
+          if (cfg['conversationRetentionDays']) setRetentionDays(String(cfg['conversationRetentionDays']));
+          if (cfg['maxConversations'])          setMaxConvs(String(cfg['maxConversations']));
+          if (cfg['compactAfterDays'])          setCompactDays(String(cfg['compactAfterDays']));
+          if (cfg['deleteRawAfterSuccess'])     setDeleteRaw(Boolean(cfg['deleteRawAfterSuccess']));
         }
         setGatewayInfo(info);
         setProviderHistory(hist);
@@ -198,6 +219,40 @@ export function SettingsPanel() {
   }
 
   const toggleTheme = () => setTheme(t => t === 'dark' ? 'light' : 'dark');
+
+  async function handleJanitorRun() {
+    setJanitorRunning(true);
+    setJanitorMsg(null);
+    try {
+      const result = await runJanitor();
+      setJanitorResult(result);
+      setJanitorMsg(`Cleanup complete — ${result.conversationsPruned} conversations pruned, ${result.memoryEntriesPruned} memory entries pruned, ${result.sessionsCompacted} sessions compacted.`);
+      const fresh = await getMaintenanceEstimate().catch(() => null);
+      if (fresh) setMaintenance(fresh);
+    } catch (e) {
+      setJanitorMsg(`Error: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setJanitorRunning(false);
+    }
+  }
+
+  async function handleRetentionSave() {
+    setRetentionSaving(true);
+    setRetentionMsg(null);
+    try {
+      const patch: Record<string, number | boolean | null> = {};
+      patch.sessionPruneAfterDays    = retentionDays.trim() ? parseInt(retentionDays.trim(), 10) : null;
+      patch.sessionMaxConversations  = maxConvs.trim()      ? parseInt(maxConvs.trim(), 10)      : null;
+      patch.sessionCompactAfterDays  = compactDays.trim()   ? parseInt(compactDays.trim(), 10)   : null;
+      patch.sessionDeleteRawAfterSuccess = deleteRaw;
+      await patchAppConfig(patch as Parameters<typeof patchAppConfig>[0]);
+      setRetentionMsg('Retention policy saved. Changes take effect on the next cleanup run.');
+    } catch (e) {
+      setRetentionMsg(`Error: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setRetentionSaving(false);
+    }
+  }
 
   async function handleTlsSave() {
     setTlsSaving(true);
@@ -953,6 +1008,148 @@ export function SettingsPanel() {
             </div>
           )}
         </div>
+      </Section>
+
+      {/* ── Session Cleanup ─────────────────────────────────────────────── */}
+      <Section title="Session Cleanup">
+        {/* Status strip */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-zinc-800/40 rounded-lg overflow-hidden mb-3">
+          <div className="bg-zinc-900/80 px-3 py-2">
+            <p className="text-[10px] text-zinc-500 uppercase tracking-wide">Conversations</p>
+            <p className="text-sm font-mono text-zinc-200">{maintenance?.currentCount ?? '—'}</p>
+          </div>
+          <div className="bg-zinc-900/80 px-3 py-2">
+            <p className="text-[10px] text-zinc-500 uppercase tracking-wide">Would prune (age)</p>
+            <p className={`text-sm font-mono ${(maintenance?.wouldPruneByAge ?? 0) > 0 ? 'text-amber-400' : 'text-zinc-400'}`}>
+              {maintenance?.wouldPruneByAge ?? '—'}
+            </p>
+          </div>
+          <div className="bg-zinc-900/80 px-3 py-2">
+            <p className="text-[10px] text-zinc-500 uppercase tracking-wide">Last cleanup</p>
+            <p className="text-xs font-mono text-zinc-400">
+              {maintenance?.lastJanitorRunAt
+                ? new Date(maintenance.lastJanitorRunAt).toLocaleTimeString()
+                : 'Never'}
+            </p>
+          </div>
+          <div className="bg-zinc-900/80 px-3 py-2">
+            <p className="text-[10px] text-zinc-500 uppercase tracking-wide">Next cleanup</p>
+            <p className="text-xs font-mono text-zinc-400">
+              {maintenance?.nextJanitorRunAt
+                ? new Date(maintenance.nextJanitorRunAt).toLocaleTimeString()
+                : '~6h'}
+            </p>
+          </div>
+        </div>
+
+        {/* Last result detail */}
+        {(janitorResult ?? maintenance?.lastResult) && (() => {
+          const r = janitorResult ?? maintenance?.lastResult!;
+          const byKind = Object.entries(r.sessionsByKindPruned ?? {}).filter(([,v]) => v > 0);
+          return (
+            <div className="mb-3 px-3 py-2 bg-zinc-800/40 rounded-lg text-xs text-zinc-400 space-y-0.5">
+              <p className="text-zinc-300 font-medium mb-1">Last cleanup result</p>
+              {r.conversationsPruned  > 0 && <p>· {r.conversationsPruned} conversations deleted</p>}
+              {r.memoryEntriesPruned  > 0 && <p>· {r.memoryEntriesPruned} memory entries pruned</p>}
+              {r.sessionsCompacted    > 0 && <p>· {r.sessionsCompacted} sessions compacted</p>}
+              {r.rawTranscriptsPruned > 0 && <p>· {r.rawTranscriptsPruned} raw transcripts deleted</p>}
+              {byKind.map(([kind, n]) => <p key={kind}>· {n} {kind} sessions removed</p>)}
+              {r.conversationsPruned === 0 && r.memoryEntriesPruned === 0 && r.sessionsCompacted === 0 && (
+                <p className="text-zinc-600">Nothing to clean up.</p>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* Retention policy form */}
+        <div className="space-y-2.5 mb-3">
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-[10px] text-zinc-500 uppercase tracking-wide mb-1">
+                Delete after (days) <span className="text-zinc-600 normal-case">default 90</span>
+              </label>
+              <input
+                type="number" min="1" max="3650"
+                placeholder="90"
+                value={retentionDays}
+                onChange={e => setRetentionDays(e.target.value)}
+                className={INPUT_CLS}
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] text-zinc-500 uppercase tracking-wide mb-1">
+                Max conversations <span className="text-zinc-600 normal-case">0 = unlimited</span>
+              </label>
+              <input
+                type="number" min="1"
+                placeholder="unlimited"
+                value={maxConvs}
+                onChange={e => setMaxConvs(e.target.value)}
+                className={INPUT_CLS}
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-[10px] text-zinc-500 uppercase tracking-wide mb-1">
+                Compact after (days) <span className="text-zinc-600 normal-case">0 = off</span>
+              </label>
+              <input
+                type="number" min="0"
+                placeholder="0"
+                value={compactDays}
+                onChange={e => setCompactDays(e.target.value)}
+                className={INPUT_CLS}
+              />
+            </div>
+            <div className="flex items-end">
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={deleteRaw}
+                  onChange={e => setDeleteRaw(e.target.checked)}
+                  className="w-3.5 h-3.5 rounded accent-brand-500"
+                />
+                <span className="text-xs text-zinc-400">Delete raw transcript after compaction</span>
+              </label>
+            </div>
+          </div>
+
+          <p className="text-[10px] text-zinc-600">
+            Pinned sessions are never auto-deleted. Temporary sessions are removed after 1 day, debug sessions after 3 days.
+          </p>
+
+          {retentionMsg && (
+            <p className={`text-xs ${retentionMsg.startsWith('Error') ? 'text-red-400' : 'text-emerald-400'}`}>
+              {retentionMsg}
+            </p>
+          )}
+
+          <button
+            onClick={() => void handleRetentionSave()}
+            disabled={retentionSaving}
+            className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-zinc-300 text-xs rounded-lg transition-colors"
+          >
+            {retentionSaving ? 'Saving…' : 'Save retention policy'}
+          </button>
+        </div>
+
+        {/* Manual run */}
+        <div className="border-t border-zinc-800 pt-3 flex items-center gap-3 flex-wrap">
+          <button
+            onClick={() => void handleJanitorRun()}
+            disabled={janitorRunning}
+            className="px-3 py-1.5 bg-amber-900/40 hover:bg-amber-900/60 disabled:opacity-50 text-amber-300 text-xs font-medium rounded-lg border border-amber-900/40 transition-colors"
+          >
+            {janitorRunning ? 'Running cleanup…' : 'Run cleanup now'}
+          </button>
+          <span className="text-xs text-zinc-600">Runs automatically every 6 hours and on startup.</span>
+        </div>
+        {janitorMsg && (
+          <p className={`mt-2 text-xs ${janitorMsg.startsWith('Error') ? 'text-red-400' : 'text-emerald-400'}`}>
+            {janitorMsg}
+          </p>
+        )}
       </Section>
 
       </div>

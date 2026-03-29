@@ -11,6 +11,21 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+#### Token Cost Feed tab (2026-03-29)
+
+- **Token Cost Feed UI tab** — new "Token Cost" tab between Dashboard and Settings showing a live table of every LLM inference call with columns: TIME, AGENT, SESSION, MODEL, TOKENS (↑ prompt / ↓ completion), estimated USD COST, and ACTIVITY status badge
+- **Time window filter** — filter the feed to last 15 minutes, 1 hour, 6 hours, 24 hours, or all time; summary totals strip shows total tokens in/out, total cost, and call count for the selected window
+- **Per-agent token budgets** — click any agent chip at the bottom of the Token Cost tab to set a daily token limit and/or per-session token limit; limits are enforced gateway-side via `TokenBudgetStore`; budget modal shows live current usage vs. limits with color-coded bars
+- **Token budget API** — `GET /api/agents/:id/budget`, `PUT /api/agents/:id/budget`, `DELETE /api/agents/:id/budget` expose budget management; usage counters reset automatically at session boundary and daily midnight
+
+#### Automatic session cleanup (2026-03-29)
+
+- **Independent janitor schedule** — gateway now runs the DbJanitor automatically every 6 hours (independent of the heartbeat cycle); a skip-window guard prevents double-runs if a manual cleanup ran recently
+- **Session Cleanup section in Settings** — new section at the bottom of the Settings tab showing: janitor status (last run, next scheduled run), last result detail (conversations pruned, memory entries pruned, sessions compacted, raw transcripts pruned), a retention policy form (delete-after days, max conversations, compact-after days, delete-raw-after-compact toggle), and a "Run cleanup now" button
+- **Maintenance estimate endpoint enriched** — `GET /api/sessions/maintenance` now includes `lastJanitorRunAt`, `nextJanitorRunAt`, `janitorConfig`, and the full `lastResult` from the most recent janitor run
+- **Session kind retention** — debug sessions pruned after 3 days; temporary sessions after 1 day; all other kinds fall back to the configured `conversationRetentionDays`
+- **Test coverage** — 4 new DbJanitor test suites: abandoned/empty session pruning, malformed/corrupt session resilience, pinned session preservation, and debug-kind faster retention (30 total DbJanitor tests, all green)
+
 #### Security: external content isolation in agent tool results (2026-03-27)
 
 - **`<external-content>` wrapping for `web_fetch` and `web_search` results**: tool results from external URLs and web searches are now wrapped in XML markers (`<external-content source="web_fetch" url="...">` / `<external-content source="web_search" query="...">`) before being injected into the model's message history. A fixed advisory note follows each block reminding the model to treat the content as untrusted data. This mitigates indirect prompt injection (MITRE ATLAS T-EXEC-002): malicious instructions embedded in fetched web pages or search snippets are now clearly delimited from the agent's own reasoning context, making it significantly harder for adversarial content to hijack tool-call decisions or exfiltrate data via subsequent tool calls. No changes to `WebFetchTool` SSRF protection or caching behaviour

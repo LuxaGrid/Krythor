@@ -72,7 +72,9 @@ This is not just chat. This is AI you can operate.
 - **Persistent job queue** — SQLite-backed job queue with exponential backoff retry and status tracking
 - **Per-agent rate limiting** — configurable runs-per-minute cap with `429 Too Many Requests` enforcement
 - **Agent-to-agent messaging bus** — in-process `send()`, `subscribe()`, and `delegate()` with HTTP API
-- **Memory janitor UI** — scheduled cleanup with status display, pruning stats, and "Run Now" button
+- **Token Cost Feed** — live tab showing every LLM inference call with time, agent, session, model, token counts, and estimated USD cost; time window filter (15m/1h/6h/24h/all); summary totals strip; per-agent token budget limits (daily and per-session caps) configurable directly from the UI
+- **Memory janitor UI** — scheduled cleanup with status display, pruning stats, and "Run Now" button in the Settings tab; janitor runs automatically every 6 hours in the background
+- **Session cleanup policies** — retention rules enforced per session kind: interactive conversations pruned by age and max-count caps; debug sessions expire after 3 days; temporary sessions after 1 day; pinned sessions protected from idle archival and compaction
 - **Session compaction** — summarize old conversation turns to free storage via the Memory tab
 - **Vector / semantic search** — `GET /api/memory/semantic-search` with Ollama embeddings, BM25 fallback
 - **Named API keys** — scoped permissions with SHA-256 hashing, `kry_` prefix, revocable individually
@@ -103,7 +105,7 @@ This is not just chat. This is AI you can operate.
 - **Workflow parallel steps** — steps sharing a `parallel` group label run concurrently via `Promise.allSettled()`; outputs joined and passed to the next step
 - **Runtime moderation CRUD** — add, update, and delete custom moderation patterns at runtime via `POST/PATCH/DELETE /api/moderation/patterns`; persisted to `moderation-custom.json`
 - **Per-type fallback chains** — `taskFallbackChains` in app-config.json maps task types to ordered provider IDs, injected into routing context for fine-grained failover
-- **Session pruning API** — `POST /api/sessions/prune` with SQL-level single-query DELETE; `GET /api/sessions/list` and `/stale` for maintenance and preview
+- **Session pruning API** — `POST /api/sessions/prune` with SQL-level single-query DELETE; `GET /api/sessions/list` and `/stale` for maintenance and preview; `GET /api/sessions/maintenance` dry-run estimate; `POST /api/sessions/maintenance/run` to trigger cleanup immediately
 
 ---
 

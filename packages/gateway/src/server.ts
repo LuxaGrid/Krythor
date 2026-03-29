@@ -1487,7 +1487,7 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   registerKeyPoolRoutes(app, apiKeyPool);
   if (memory) registerKnowledgeRoutes(app, memory);
   registerConfigRoute(app, join(dataDir, 'config'), guard, orchestrator, memory, heartbeatRef, approvalManager);
-  registerConversationRoutes(app, convStore, guard, channelEmit, memory ?? undefined, approvalManager);
+  registerConversationRoutes(app, convStore, guard, channelEmit, memory ?? undefined, approvalManager, janitorStatus);
   if (memory) registerSessionMaintenanceRoutes(app, memory);
   registerSkillRoutes(app, skillRegistry, guard, skillRunner, approvalManager, skillFileLoader);
   registerRecommendRoutes(app, models, recommender, guard);
@@ -1968,7 +1968,12 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   // Runs every 10 minutes. Disabled in test environments to prevent timer leaks.
   const IDLE_ARCHIVE_THRESHOLD_MS = 24 * 60 * 60 * 1000; // 24 hours
   const IDLE_CLEANUP_INTERVAL_MS  = 10 * 60 * 1000;      // 10 minutes
+  // Full janitor runs independently every 6 hours (also triggered by heartbeat
+  // memory_hygiene check — the interval here ensures cleanup proceeds even if
+  // heartbeat is disabled or misconfigured).
+  const JANITOR_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
   let idleCleanupInterval: ReturnType<typeof setInterval> | undefined;
+  let janitorInterval:     ReturnType<typeof setInterval> | undefined;
   if (process.env['NODE_ENV'] !== 'test') {
     idleCleanupInterval = setInterval(() => {
       try {
@@ -1992,10 +1997,28 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
         });
       }
     }, IDLE_CLEANUP_INTERVAL_MS);
+
+    // Independent scheduled janitor — runs full retention enforcement every 6 hours.
+    // Skips the run if the janitor already ran within the last 5 hours 50 minutes
+    // (to avoid double-runs when the heartbeat memory_hygiene check fires at the same time).
+    janitorInterval = setInterval(() => {
+      const lastRun = janitorStatus.lastRunAt;
+      const skipWindow = JANITOR_INTERVAL_MS - 10 * 60 * 1000; // 5h50m
+      if (lastRun && (Date.now() - lastRun) < skipWindow) return;
+      try {
+        logger.info('Session cleanup: scheduled janitor run starting');
+        memory.runJanitor();
+      } catch (err) {
+        logger.warn('Session cleanup: scheduled janitor run failed', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }, JANITOR_INTERVAL_MS);
   }
 
   app.addHook('onClose', async () => {
     if (idleCleanupInterval) clearInterval(idleCleanupInterval);
+    if (janitorInterval)     clearInterval(janitorInterval);
     heartbeat.stop();
     // memory.close() closes the shared SQLite connection used by both stores
     memory.close();

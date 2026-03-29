@@ -3,6 +3,7 @@ import type { ConversationStore, MemoryEngine } from '@krythor/memory';
 import type { GuardEngine } from '@krythor/guard';
 import type { ApprovalManager } from '../ApprovalManager.js';
 import { guardCheck } from '../guardCheck.js';
+import type { JanitorStatus } from './memory.js';
 
 /** Conversations are considered idle after this many milliseconds without activity. */
 const SESSION_IDLE_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes
@@ -22,7 +23,7 @@ function withIdleStatus(conv: { id: string; title: string; agentId: string | nul
   };
 }
 
-export function registerConversationRoutes(app: FastifyInstance, store: ConversationStore, guard?: GuardEngine, emit?: (event: string, data: Record<string, unknown>) => void, memory?: MemoryEngine, approvalManager?: ApprovalManager): void {
+export function registerConversationRoutes(app: FastifyInstance, store: ConversationStore, guard?: GuardEngine, emit?: (event: string, data: Record<string, unknown>) => void, memory?: MemoryEngine, approvalManager?: ApprovalManager, janitorStatus?: JanitorStatus): void {
 
   // GET /api/conversations — list all, with idle status metadata
   // ?include_archived=true — include archived conversations (hidden by default)
@@ -255,7 +256,21 @@ export function registerConversationRoutes(app: FastifyInstance, store: Conversa
       });
     }
     const estimate = memory.dryRunMaintenance();
-    return reply.send(estimate);
+    return reply.send({
+      ...estimate,
+      lastJanitorRunAt: janitorStatus?.lastRunAt  ?? null,
+      nextJanitorRunAt: janitorStatus?.nextRunAt  ?? null,
+      janitorConfig:    janitorStatus?.config     ?? {},
+      lastResult:       janitorStatus?.lastResult ? {
+        conversationsPruned:     janitorStatus.lastResult.conversationsPruned,
+        memoryEntriesPruned:     janitorStatus.lastResult.memoryEntriesPruned,
+        sessionsCompacted:       janitorStatus.lastResult.sessionsCompacted,
+        rawTranscriptsPruned:    janitorStatus.lastResult.rawTranscriptsPruned,
+        sessionsByKindPruned:    janitorStatus.lastResult.sessionsByKindPruned,
+        tableCountsAfter:        janitorStatus.lastResult.tableCountsAfter,
+        ranAt:                   janitorStatus.lastResult.ranAt,
+      } : null,
+    });
   });
 
   // POST /api/sessions/maintenance/run — trigger cleanup
