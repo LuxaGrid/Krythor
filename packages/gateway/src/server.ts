@@ -78,6 +78,8 @@ import { registerModerationRoutes } from './routes/moderation.js';
 import { WorkflowEngine } from './WorkflowEngine.js';
 import { registerWorkflowRoutes } from './routes/workflows.js';
 import { registerKnowledgeRoutes } from './routes/knowledge.js';
+import { ApiKeyPool } from './ApiKeyPool.js';
+import { registerKeyPoolRoutes } from './routes/keyPool.js';
 import { registerApiKeyRoutes } from './routes/apiKeys.js';
 import { registerJobRoutes } from './routes/jobs.js';
 import { registerErrorHandler } from './errors.js';
@@ -1414,6 +1416,9 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   // ── Token budget store ────────────────────────────────────────────────────
   const tokenBudgetStore = new TokenBudgetStore(join(dataDir, 'config'));
 
+  // ── API key pool — per-provider round-robin key rotation ─────────────────
+  const apiKeyPool = new ApiKeyPool(join(dataDir, 'config'));
+
   // ── Real-time request metrics — created early so agent routes can use it ────
   const metricsCollector = new MetricsCollector(60);
   app.addHook('onResponse', async (req, reply) => {
@@ -1430,6 +1435,7 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   registerGuardRoutes(app, guard, guardDecisionStore);
   registerModerationRoutes(app, moderation);
   registerWorkflowRoutes(app, workflowEngine);
+  registerKeyPoolRoutes(app, apiKeyPool);
   if (memory) registerKnowledgeRoutes(app, memory);
   registerConfigRoute(app, join(dataDir, 'config'), guard, orchestrator, memory, heartbeatRef, approvalManager);
   registerConversationRoutes(app, convStore, guard, channelEmit, memory ?? undefined, approvalManager);
