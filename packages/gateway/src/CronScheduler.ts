@@ -1,3 +1,4 @@
+import { createHmac } from 'crypto';
 import type { AgentOrchestrator } from '@krythor/core';
 import { RunQueueFullError } from '@krythor/core';
 import type { CronStore } from './CronStore.js';
@@ -99,6 +100,27 @@ export class CronScheduler {
       }
     }
 
+    // ── Webhook delivery mode ──────────────────────────────────────────────────
+    if (job.webhookUrl) {
+      logger.info('[CronScheduler] Delivering job via webhook', { jobId, jobName: job.name, url: job.webhookUrl });
+      try {
+        await this.deliverWebhook(job.webhookUrl, job.webhookSecret, {
+          jobId,
+          jobName: job.name,
+          message: job.message,
+          firedAt: new Date().toISOString(),
+        });
+        this.store.recordSuccess(jobId);
+        logger.info('[CronScheduler] Webhook delivery succeeded', { jobId });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.warn('[CronScheduler] Webhook delivery failed', { jobId, error: msg });
+        this.store.recordFailure(jobId, msg);
+      }
+      return;
+    }
+
+    // ── Agent run mode ─────────────────────────────────────────────────────────
     logger.info('[CronScheduler] Running job', { jobId, jobName: job.name, agentId });
 
     try {
@@ -111,6 +133,28 @@ export class CronScheduler {
         : err instanceof Error ? err.message : String(err);
       logger.warn('[CronScheduler] Job failed', { jobId, jobName: job.name, error: msg });
       this.store.recordFailure(jobId, msg);
+    }
+  }
+
+  private async deliverWebhook(
+    url: string,
+    secret: string | undefined,
+    payload: Record<string, unknown>,
+  ): Promise<void> {
+    const body = JSON.stringify(payload);
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'User-Agent':   'Krythor-CronScheduler/1.0',
+    };
+
+    if (secret) {
+      const sig = createHmac('sha256', secret).update(body).digest('hex');
+      headers['X-Krythor-Signature'] = `sha256=${sig}`;
+    }
+
+    const res = await fetch(url, { method: 'POST', headers, body });
+    if (!res.ok) {
+      throw new Error(`Webhook returned HTTP ${res.status}`);
     }
   }
 }

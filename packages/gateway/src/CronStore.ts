@@ -52,8 +52,18 @@ export interface CronJob {
   schedule: CronSchedule;
   /** Agent ID to run (uses default agent if omitted) */
   agentId?: string;
-  /** Message to send to the agent */
+  /** Message to send to the agent (or webhook payload body when webhookUrl is set) */
   message: string;
+  /**
+   * Webhook delivery mode: when set, the job POSTs to this URL instead of running an agent.
+   * The request body is JSON: { jobId, jobName, message, firedAt }.
+   */
+  webhookUrl?: string;
+  /**
+   * HMAC-SHA256 secret for webhook delivery.
+   * When set, an X-Krythor-Signature header is added: sha256=<hex>.
+   */
+  webhookSecret?: string;
   /** Whether the job is active */
   enabled: boolean;
   /** Delete after first successful run (for 'at' jobs) */
@@ -78,6 +88,8 @@ export interface CreateCronJobInput {
   schedule: CronSchedule;
   agentId?: string;
   message: string;
+  webhookUrl?: string;
+  webhookSecret?: string;
   enabled?: boolean;
   deleteAfterRun?: boolean;
 }
@@ -88,6 +100,8 @@ export interface UpdateCronJobInput {
   schedule?: CronSchedule;
   agentId?: string;
   message?: string;
+  webhookUrl?: string;
+  webhookSecret?: string;
   enabled?: boolean;
   deleteAfterRun?: boolean;
 }
@@ -228,6 +242,8 @@ export class CronStore {
       schedule:      input.schedule,
       agentId:       input.agentId,
       message:       input.message,
+      webhookUrl:    input.webhookUrl,
+      webhookSecret: input.webhookSecret,
       enabled:       input.enabled !== false,
       deleteAfterRun: input.deleteAfterRun,
       runCount:      0,
@@ -248,9 +264,11 @@ export class CronStore {
       ...existing,
       ...(input.name !== undefined      && { name: input.name }),
       ...(input.description !== undefined && { description: input.description }),
-      ...(input.agentId !== undefined   && { agentId: input.agentId || undefined }),
-      ...(input.message !== undefined   && { message: input.message }),
-      ...(input.enabled !== undefined   && { enabled: input.enabled }),
+      ...(input.agentId        !== undefined && { agentId:       input.agentId || undefined }),
+      ...(input.message        !== undefined && { message:       input.message }),
+      ...(input.webhookUrl     !== undefined && { webhookUrl:    input.webhookUrl || undefined }),
+      ...(input.webhookSecret  !== undefined && { webhookSecret: input.webhookSecret || undefined }),
+      ...(input.enabled        !== undefined && { enabled:       input.enabled }),
       ...(input.deleteAfterRun !== undefined && { deleteAfterRun: input.deleteAfterRun }),
       updatedAt: now.toISOString(),
     };
