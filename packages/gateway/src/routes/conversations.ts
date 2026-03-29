@@ -120,6 +120,14 @@ export function registerConversationRoutes(app: FastifyInstance, store: Conversa
     return reply.send(withIdleStatus(updated));
   });
 
+  // GET /api/conversations/:id/token-stats — aggregate token usage for a conversation
+  app.get<{ Params: { id: string } }>('/api/conversations/:id/token-stats', async (req, reply) => {
+    const conv = store.getConversation(req.params.id);
+    if (!conv) return reply.code(404).send({ error: 'Conversation not found' });
+    const stats = store.getTokenStats(req.params.id);
+    return reply.send(stats);
+  });
+
   // DELETE /api/conversations/:id
   app.delete<{ Params: { id: string } }>('/api/conversations/:id', async (req, reply) => {
     const conv = store.getConversation(req.params.id);

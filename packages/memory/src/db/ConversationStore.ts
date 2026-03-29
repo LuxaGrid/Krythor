@@ -27,6 +27,10 @@ export interface Message {
   content: string;
   modelId: string | null;
   providerId: string | null;
+  /** Number of prompt/input tokens for this turn (null = not tracked). */
+  inputTokens: number | null;
+  /** Number of completion/output tokens for this turn (null = not tracked). */
+  outputTokens: number | null;
   createdAt: number;
 }
 
@@ -50,6 +54,8 @@ interface MessageRow {
   content: string;
   model_id: string | null;
   provider_id: string | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
   created_at: number;
 }
 
@@ -74,6 +80,8 @@ function rowToMessage(row: MessageRow): Message {
     content: row.content,
     modelId: row.model_id,
     providerId: row.provider_id,
+    inputTokens: row.input_tokens ?? null,
+    outputTokens: row.output_tokens ?? null,
     createdAt: row.created_at,
   };
 }
@@ -193,15 +201,18 @@ export class ConversationStore {
     content: string,
     modelId?: string,
     providerId?: string,
+    tokens?: { inputTokens?: number; outputTokens?: number },
   ): Message {
     const now = Date.now();
     const id = randomUUID();
+    const inputTokens = tokens?.inputTokens ?? null;
+    const outputTokens = tokens?.outputTokens ?? null;
     this.db.prepare(`
-      INSERT INTO messages (id, conversation_id, role, content, model_id, provider_id, created_at)
-      VALUES (@id, @conversationId, @role, @content, @modelId, @providerId, @now)
-    `).run({ id, conversationId, role, content, modelId: modelId ?? null, providerId: providerId ?? null, now });
+      INSERT INTO messages (id, conversation_id, role, content, model_id, provider_id, input_tokens, output_tokens, created_at)
+      VALUES (@id, @conversationId, @role, @content, @modelId, @providerId, @inputTokens, @outputTokens, @now)
+    `).run({ id, conversationId, role, content, modelId: modelId ?? null, providerId: providerId ?? null, inputTokens, outputTokens, now });
     this.touchConversation(conversationId);
-    return { id, conversationId, role, content, modelId: modelId ?? null, providerId: providerId ?? null, createdAt: now };
+    return { id, conversationId, role, content, modelId: modelId ?? null, providerId: providerId ?? null, inputTokens, outputTokens, createdAt: now };
   }
 
   getMessages(conversationId: string): Message[] {
@@ -209,6 +220,26 @@ export class ConversationStore {
       SELECT * FROM messages WHERE conversation_id = @conversationId ORDER BY created_at ASC
     `).all({ conversationId }) as MessageRow[];
     return rows.map(rowToMessage);
+  }
+
+  /**
+   * Return aggregate token stats for a conversation.
+   * Both totals are null when no token data has been recorded.
+   */
+  getTokenStats(conversationId: string): { totalInputTokens: number | null; totalOutputTokens: number | null; messageCount: number } {
+    const row = this.db.prepare(`
+      SELECT
+        COUNT(*) AS message_count,
+        SUM(input_tokens)  AS total_input,
+        SUM(output_tokens) AS total_output
+      FROM messages
+      WHERE conversation_id = @conversationId
+    `).get({ conversationId }) as { message_count: number; total_input: number | null; total_output: number | null } | undefined;
+    return {
+      totalInputTokens:  row?.total_input ?? null,
+      totalOutputTokens: row?.total_output ?? null,
+      messageCount:      row?.message_count ?? 0,
+    };
   }
 
   /** Delete a single message by ID. Returns true if a row was deleted. */
@@ -289,6 +320,8 @@ export class ConversationStore {
       content:        row.content,
       modelId:        row.model_id,
       providerId:     row.provider_id,
+      inputTokens:    row.input_tokens ?? null,
+      outputTokens:   row.output_tokens ?? null,
       createdAt:      row.created_at,
       conversation:   rowToConversation({
         id:         row.conversation_id,
