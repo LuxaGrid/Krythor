@@ -1493,6 +1493,31 @@ async function runDaemon() {
   console.log('');
 }
 
+// Find the PID of the process listening on a given port.
+// Uses platform-appropriate commands: netstat on Windows, lsof on macOS/Linux.
+async function findPidByPort(port) {
+  const { execSync } = require('child_process');
+  try {
+    if (process.platform === 'win32') {
+      // netstat -ano lists listening/established connections with PID
+      const out = execSync(`netstat -ano`, { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] });
+      for (const line of out.split('\n')) {
+        if (line.includes(`:${port} `) && (line.includes('LISTENING') || line.includes('ESTABLISHED'))) {
+          const parts = line.trim().split(/\s+/);
+          const p = parseInt(parts[parts.length - 1], 10);
+          if (!isNaN(p) && p > 0) return p;
+        }
+      }
+    } else {
+      // lsof -ti :PORT returns just the PID
+      const out = execSync(`lsof -ti :${port}`, { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] });
+      const p = parseInt(out.trim().split('\n')[0], 10);
+      if (!isNaN(p) && p > 0) return p;
+    }
+  } catch { /* command failed or no match */ }
+  return null;
+}
+
 async function runStop() {
   const fs = require('fs');
   const pidFile = getPidFile();
@@ -1505,13 +1530,16 @@ async function runStop() {
   } catch { /* no PID file — attempt to find by port */ }
 
   if (!pid || isNaN(pid)) {
-    // No PID file — check if gateway is running at all
-    if (!await isKrythorRunning()) {
-      console.log('\x1b[33m  Krythor is not running.\x1b[0m');
-      process.exit(0);
+    // No PID file — try to find the process by port
+    pid = await findPidByPort(PORT);
+    if (!pid) {
+      if (!await isKrythorRunning()) {
+        console.log('\x1b[33m  Krythor is not running.\x1b[0m');
+        process.exit(0);
+      }
+      console.log('\x1b[33m  Could not find Krythor process. Try rebooting.\x1b[0m');
+      process.exit(1);
     }
-    console.log('\x1b[33m  No PID file found. If Krythor is running in foreground, press Ctrl+C in that terminal.\x1b[0m');
-    process.exit(1);
   }
 
   try {
