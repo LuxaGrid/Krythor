@@ -245,6 +245,8 @@ export const pinConversation           = (id: string, pinned: boolean) => req<Co
 export const archiveConversation       = (id: string, archived: boolean) => req<Conversation>('PATCH', `/conversations/${id}`, { archived });
 export const getMessages               = (id: string) => req<Message[]>('GET', `/conversations/${id}/messages`);
 export const deleteLastAssistantMessage = (id: string) => req<void>('DELETE', `/conversations/${id}/messages/last-assistant`);
+export const getConversationTokenStats = (id: string) =>
+  req<{ totalInputTokens: number | null; totalOutputTokens: number | null; messageCount: number }>('GET', `/conversations/${id}/token-stats`);
 export const exportConversation = async (id: string, format: 'json' | 'markdown', title: string): Promise<void> => {
   const res = await fetch(`${BASE}/conversations/${id}/export?format=${format}`, {
     headers: _gatewayToken ? { Authorization: `Bearer ${_gatewayToken}` } : {},
@@ -700,6 +702,37 @@ export interface GatewayInfo {
 }
 
 export const getGatewayInfo = () => req<GatewayInfo>('GET', '/gateway/info');
+
+// ── Gateway Peers ─────────────────────────────────────────────────────────────
+
+export interface GatewayPeer {
+  id: string;
+  name: string;
+  url: string;
+  gatewayId?: string;
+  version?: string;
+  platform?: string;
+  capabilities?: string[];
+  source: 'manual' | 'mdns' | 'auto';
+  authToken?: string;
+  tags?: Record<string, string>;
+  isEnabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+  lastSeenAt?: string;
+  lastHealthAt?: string;
+  healthy?: boolean;
+  latencyMs?: number;
+}
+
+export const listPeers = () => req<{ peers: GatewayPeer[] }>('GET', '/gateway/peers');
+export const getPeer = (id: string) => req<GatewayPeer>('GET', `/gateway/peers/${encodeURIComponent(id)}`);
+export const createPeer = (input: { name: string; url: string; authToken?: string; tags?: Record<string, string> }) =>
+  req<GatewayPeer>('POST', '/gateway/peers', input);
+export const updatePeer = (id: string, patch: { name?: string; url?: string; authToken?: string; isEnabled?: boolean; tags?: Record<string, string> }) =>
+  req<GatewayPeer>('PATCH', `/gateway/peers/${encodeURIComponent(id)}`, patch);
+export const deletePeer = (id: string) => req<{ ok: boolean }>('DELETE', `/gateway/peers/${encodeURIComponent(id)}`);
+export const probePeer = (id: string) => req<{ healthy: boolean; latencyMs: number; info?: Record<string, unknown> }>('POST', `/gateway/peers/${encodeURIComponent(id)}/probe`);
 
 // ── Heartbeat history ─────────────────────────────────────────────────────────
 export interface ProviderHealthEntry {

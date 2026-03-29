@@ -29,6 +29,7 @@ import { WorkspacePanel } from './components/WorkspacePanel.tsx';
 import { DevicesPanel } from './components/DevicesPanel.tsx';
 import { CronPanel } from './components/CronPanel.tsx';
 import { StandingOrdersPanel } from './components/StandingOrdersPanel.tsx';
+import { PeersPanel } from './components/PeersPanel.tsx';
 
 // ── App Config Context ─────────────────────────────────────────────────────
 interface AppConfigCtx {
@@ -42,7 +43,7 @@ export const AppConfigContext = createContext<AppConfigCtx>({
 export const useAppConfig = () => useContext(AppConfigContext);
 
 // ── Tabs ──────────────────────────────────────────────────────────────────
-type Tab = 'command' | 'agents' | 'skills' | 'memory' | 'models' | 'guard' | 'events' | 'mission' | 'command-center' | 'workflow' | 'dashboard' | 'settings' | 'logs' | 'config-editor' | 'custom-tools' | 'channels' | 'chat-channels' | 'file-browser' | 'audit' | 'workspace' | 'devices' | 'cron' | 'standing-orders';
+type Tab = 'command' | 'agents' | 'skills' | 'memory' | 'models' | 'guard' | 'events' | 'mission' | 'command-center' | 'workflow' | 'dashboard' | 'settings' | 'logs' | 'config-editor' | 'custom-tools' | 'channels' | 'chat-channels' | 'file-browser' | 'audit' | 'workspace' | 'devices' | 'cron' | 'standing-orders' | 'peers';
 
 // Primary tabs — always visible
 const PRIMARY_TABS: { id: Tab; label: string; hint: string }[] = [
@@ -73,6 +74,7 @@ const ADVANCED_TABS: { id: Tab; label: string; hint: string }[] = [
   { id: 'devices',         label: 'Devices',          hint: 'Paired WS devices — approve or deny connection requests' },
   { id: 'cron',            label: 'Cron Jobs',        hint: 'Schedule agents to run automatically on a time-based schedule' },
   { id: 'standing-orders', label: 'Standing Orders',  hint: 'Persistent agent authorization programs and structured instruction injection' },
+  { id: 'peers',           label: 'Peers',             hint: 'Connected gateway peers — LAN mDNS discovery and manual registration' },
 ];
 
 const ALL_TABS = [...PRIMARY_TABS, ...ADVANCED_TABS];
@@ -861,6 +863,7 @@ function AppInner({ onTokenReady }: { onTokenReady: (token: string) => void }) {
           <div className={`h-full ${tab === 'devices'          ? 'block' : 'hidden'}`}><DevicesPanel /></div>
           <div className={`h-full ${tab === 'cron'             ? 'block' : 'hidden'}`}><CronPanel /></div>
           <div className={`h-full ${tab === 'standing-orders'  ? 'block' : 'hidden'}`}><StandingOrdersPanel /></div>
+          <div className={`h-full ${tab === 'peers'            ? 'block' : 'hidden'}`}><PeersPanel /></div>
         </div>
       </div>
     </AppConfigContext.Provider>
