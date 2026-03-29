@@ -44,6 +44,8 @@ export { AuditStore } from './db/AuditStore.js';
 export type { AuditEntry } from './db/AuditStore.js';
 export { JobQueue } from './db/JobQueue.js';
 export type { Job, JobType, JobStatus } from './db/JobQueue.js';
+export { KnowledgeStore } from './db/KnowledgeStore.js';
+export type { KnowledgeDocument, KnowledgeChunk, CreateDocumentInput, CreateChunkInput, SearchChunksOptions } from './db/KnowledgeStore.js';
 export type {
   SessionEntry,
   SessionKind,

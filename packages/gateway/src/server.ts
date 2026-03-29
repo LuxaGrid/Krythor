@@ -77,6 +77,7 @@ import { TokenBudgetStore } from './TokenBudgetStore.js';
 import { registerModerationRoutes } from './routes/moderation.js';
 import { WorkflowEngine } from './WorkflowEngine.js';
 import { registerWorkflowRoutes } from './routes/workflows.js';
+import { registerKnowledgeRoutes } from './routes/knowledge.js';
 import { registerApiKeyRoutes } from './routes/apiKeys.js';
 import { registerJobRoutes } from './routes/jobs.js';
 import { registerErrorHandler } from './errors.js';
@@ -1429,6 +1430,7 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   registerGuardRoutes(app, guard, guardDecisionStore);
   registerModerationRoutes(app, moderation);
   registerWorkflowRoutes(app, workflowEngine);
+  if (memory) registerKnowledgeRoutes(app, memory);
   registerConfigRoute(app, join(dataDir, 'config'), guard, orchestrator, memory, heartbeatRef, approvalManager);
   registerConversationRoutes(app, convStore, guard, channelEmit, memory ?? undefined, approvalManager);
   if (memory) registerSessionMaintenanceRoutes(app, memory);

@@ -14,6 +14,7 @@ import { DbJanitor } from './db/DbJanitor.js';
 import type { JanitorResult, LogFn, DbJanitorConfig } from './db/DbJanitor.js';
 import { HeartbeatInsightStore } from './db/HeartbeatInsightStore.js';
 import { SessionStore } from './db/SessionStore.js';
+import { KnowledgeStore } from './db/KnowledgeStore.js';
 import type {
   CreateMemoryInput,
   UpdateMemoryInput,
@@ -49,6 +50,7 @@ export class MemoryEngine {
   readonly janitor: DbJanitor;
   readonly heartbeatInsightStore: HeartbeatInsightStore;
   readonly sessionStore: SessionStore;
+  readonly knowledgeStore: KnowledgeStore;
   /** Directory containing memory.db and any .bak backup files. */
   readonly dbDir: string;
   private _decayInterval: ReturnType<typeof setInterval> | null = null;
@@ -74,6 +76,7 @@ export class MemoryEngine {
     this.janitor = new DbJanitor(this.db, logFn);
     this.heartbeatInsightStore = new HeartbeatInsightStore(this.db);
     this.sessionStore = new SessionStore(this.db);
+    this.knowledgeStore = new KnowledgeStore(this.db);
 
     // Apply decay, clear session-scoped memories, and run retention janitor on
     // startup (non-blocking). Session scope is documented as "cleared on session
