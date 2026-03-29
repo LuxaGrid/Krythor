@@ -3,6 +3,9 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   test: {
     environment: 'node',
+    // Redirect KRYTHOR_DATA_DIR to a fresh temp directory so tests never
+    // touch the real user data directory (agents.json, providers.json, etc.).
+    globalSetup: './src/testSetup.ts',
     // Each test file builds a real Fastify server backed by the same SQLite DB
     // and auth token on disk. Running files in parallel causes token races.
     // Sequential execution (one file at a time) keeps the shared state consistent.
