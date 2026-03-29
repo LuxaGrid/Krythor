@@ -15,7 +15,7 @@
 //
 
 import { execSync } from 'child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, cpSync, rmSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, cpSync, rmSync, realpathSync } from 'fs';
 import { join } from 'path';
 
 const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
@@ -24,9 +24,9 @@ const version = pkg.version;
 const arch = process.argv.includes('--arch') ?
   process.argv[process.argv.indexOf('--arch') + 1] : 'arm64';
 
-const distDir = `krythor-dist-mac`;
+const distDir = existsSync('krythor-dist-mac') ? realpathSync('krythor-dist-mac') : 'krythor-dist-mac';
 if (!existsSync(distDir)) {
-  console.error(`✗ ${distDir} not found. Run: node bundle.js --platform mac --arch ${arch}`);
+  console.error(`✗ krythor-dist-mac not found. Run: node bundle.js --platform mac --arch ${arch}`);
   process.exit(1);
 }
 

@@ -15,15 +15,15 @@
 //
 
 import { execSync } from 'child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, cpSync, rmSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, cpSync, rmSync, realpathSync } from 'fs';
 import { join } from 'path';
 
 const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
 const version = pkg.version;
 
-const distDir = 'krythor-dist-linux';
+const distDir = existsSync('krythor-dist-linux') ? realpathSync('krythor-dist-linux') : 'krythor-dist-linux';
 if (!existsSync(distDir)) {
-  console.error(`✗ ${distDir} not found. Run: node bundle.js --platform linux --arch x64`);
+  console.error(`✗ krythor-dist-linux not found. Run: node bundle.js --platform linux --arch x64`);
   process.exit(1);
 }
 
