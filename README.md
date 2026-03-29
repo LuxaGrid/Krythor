@@ -98,7 +98,12 @@ This is not just chat. This is AI you can operate.
 - **Non-interactive setup** — `krythor setup --non-interactive` for automated installs
 - **Backup command** — `krythor backup` creates a timestamped archive of the data directory
 - **Canvas** — agent-editable HTML/CSS/JS pages served under the gateway
-- **Doctor + Repair** — comprehensive diagnostics with migration integrity check and credential validation
+- **Doctor + Repair** — comprehensive diagnostics with migration integrity check and credential validation; `--fix` flag auto-creates missing config files
+- **Standing orders** — persistent named directives that are automatically injected as context into every agent run matching their scope
+- **Workflow parallel steps** — steps sharing a `parallel` group label run concurrently via `Promise.allSettled()`; outputs joined and passed to the next step
+- **Runtime moderation CRUD** — add, update, and delete custom moderation patterns at runtime via `POST/PATCH/DELETE /api/moderation/patterns`; persisted to `moderation-custom.json`
+- **Per-type fallback chains** — `taskFallbackChains` in app-config.json maps task types to ordered provider IDs, injected into routing context for fine-grained failover
+- **Session pruning API** — `POST /api/sessions/prune` with SQL-level single-query DELETE; `GET /api/sessions/list` and `/stale` for maintenance and preview
 
 ---
 
@@ -204,6 +209,16 @@ Type `/` in the chat input to see the autocomplete dropdown. Arrow keys or Tab t
 |---------|--------|
 | /new | Start a new conversation |
 | /clear | Clear the current conversation |
+| /compact | Summarize old turns and compact the conversation |
+| /model [id] | Switch the active model for this conversation |
+| /agent [id] | Switch the active agent for this conversation |
+| /think | Toggle extended thinking on/off |
+| /fast | Toggle fast mode on/off |
+| /verbose | Toggle verbose mode on/off |
+| /reasoning | Toggle reasoning display on/off |
+| /btw [question] | Ask a one-shot side question using the current conversation as read-only context (does not modify session state) |
+| /subagents | Show spawned sub-agents for the current run |
+| /devices | List connected peer devices |
 | /memory | Jump to the Memory tab |
 | /agents | Jump to the Agents tab |
 | /models | Jump to the Models tab |
@@ -417,6 +432,7 @@ All commands assume Krythor is installed via the one-line installer or a release
 | Command | Description |
 |---------|-------------|
 | `krythor doctor` | Run all diagnostics — prints pass/fail for runtime, DB, migrations, credentials |
+| `krythor doctor --fix` | Run diagnostics and auto-create any missing config files (`providers.json`, `agents.json`, `policy.json`) |
 | `krythor repair` | Auto-fix issues found by doctor (re-compiles native modules, reruns migrations) |
 | `krythor backup` | Create a timestamped `.tar.gz` / `.zip` archive of the data directory |
 
