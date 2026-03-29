@@ -161,7 +161,19 @@ export class ModelRouter {
       if (found) return { ...found, selectionReason: `agent override modelId=${context.agentModelId}` };
     }
 
-    // 4. Walk all enabled providers sorted by priority (desc), with default first
+    // 4. Per-type fallback chain — try providers in declared order, skip unavailable
+    if (context.fallbackChain && context.fallbackChain.length > 0) {
+      for (const providerId of context.fallbackChain) {
+        const p = this.registry.getProvider(providerId);
+        if (!p || !p.isEnabled) continue;
+        const breaker = this.breakers.get(p.id);
+        if (breaker?.isOpen()) continue;
+        return { provider: p, model: this.resolveModel(p, request.model), selectionReason: `taskType chain: ${providerId}` };
+      }
+      // Chain exhausted — fall through to global priority routing
+    }
+
+    // 5. Walk all enabled providers sorted by priority (desc), with default first
     //    when priorities are tied.  Skip providers with open circuits.
     const enabled = this.registry.listEnabled();
     const configs = this.registry.listConfigs();

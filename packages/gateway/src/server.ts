@@ -1837,6 +1837,17 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
         setWebFetchAllowedUrls(urls);
         logger.info('web_fetch URL allowlist configured', { count: urls.length });
       }
+      if (startupAppCfg['taskFallbackChains'] && typeof startupAppCfg['taskFallbackChains'] === 'object' && !Array.isArray(startupAppCfg['taskFallbackChains'])) {
+        const chains = startupAppCfg['taskFallbackChains'] as Record<string, unknown>;
+        const validated: Record<string, string[]> = {};
+        for (const [taskType, chain] of Object.entries(chains)) {
+          if (Array.isArray(chain) && chain.every((x): x is string => typeof x === 'string')) {
+            validated[taskType] = chain;
+          }
+        }
+        models.taskFallbackChains = validated;
+        logger.info('Task fallback chains configured', { taskTypes: Object.keys(validated) });
+      }
     }
   } catch { /* best-effort */ }
 

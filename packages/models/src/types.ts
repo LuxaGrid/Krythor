@@ -204,5 +204,12 @@ export interface StreamChunk {
 export interface RoutingContext {
   agentModelId?: string;     // agent-specific model override
   skillModelId?: string;     // skill-specific model override
-  taskType?: string;         // hint for future smart routing
+  taskType?: string;         // hint for smart routing / per-type fallback lookup
+  /**
+   * Explicit ordered provider ID list for this request.
+   * The router tries providers in this order (skipping unavailable ones) before
+   * falling back to the normal priority resolution.  Populated automatically when
+   * taskType matches a configured taskFallbackChain entry.
+   */
+  fallbackChain?: string[];
 }

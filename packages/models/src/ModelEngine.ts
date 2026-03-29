@@ -35,6 +35,14 @@ export class ModelEngine {
   readonly router: ModelRouter;
   readonly tokenTracker: TokenTracker;
 
+  /**
+   * Per-task-type provider ordering. When context.taskType matches a key,
+   * the router tries the listed providers in order before falling back to
+   * global priority ordering.
+   *   { "code": ["anthropic", "openai"], "chat": ["openai", "anthropic"] }
+   */
+  taskFallbackChains: Record<string, string[]> = {};
+
   constructor(
     configDir?: string,
     warnFn?: (message: string, data?: Record<string, unknown>) => void,
@@ -208,9 +216,18 @@ export class ModelEngine {
 
   // ── Inference ─────────────────────────────────────────────────────────────
 
+  private enrichContext(context?: RoutingContext): RoutingContext {
+    const ctx = context ?? {};
+    if (ctx.taskType && !ctx.fallbackChain) {
+      const chain = this.taskFallbackChains[ctx.taskType];
+      if (chain && chain.length > 0) return { ...ctx, fallbackChain: chain };
+    }
+    return ctx;
+  }
+
   async infer(request: InferenceRequest, context?: RoutingContext, signal?: AbortSignal): Promise<InferenceResponse> {
     try {
-      const response = await this.router.infer(request, context, signal);
+      const response = await this.router.infer(request, this.enrichContext(context), signal);
       this.tokenTracker.record({
         providerId:    response.providerId,
         model:         response.model,
@@ -221,7 +238,7 @@ export class ModelEngine {
     } catch (err) {
       // Best-effort: resolve provider/model for error tracking
       try {
-        const resolved = this.router.resolve(request, context ?? {});
+        const resolved = this.router.resolve(request, this.enrichContext(context));
         this.tokenTracker.recordError(resolved.provider.id, resolved.model);
       } catch { /* ignore resolution failure during error tracking */ }
       throw err;
@@ -237,7 +254,7 @@ export class ModelEngine {
     let completionTokens: number | undefined;
     let hasError = false;
     try {
-      for await (const chunk of this.router.inferStream(request, context, signal)) {
+      for await (const chunk of this.router.inferStream(request, this.enrichContext(context), signal)) {
         if (chunk.model) model = chunk.model;
         if (chunk.providerId) providerId = chunk.providerId;
         if (chunk.done) {
