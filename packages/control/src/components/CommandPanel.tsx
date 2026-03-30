@@ -254,7 +254,9 @@ interface SidebarProps {
   onToggleArchived: () => void;
   onCreateGroup: (name: string) => void;
   onRenameGroup: (id: string, name: string) => void;
+  onUpdateGroupDescription: (id: string, description: string | null) => void;
   onDeleteGroup: (id: string) => void;
+  onReorderGroup: (id: string, newSortOrder: number) => void;
   onAddToGroup: (groupId: string, conversationId: string) => void;
   onRemoveFromGroup: (conversationId: string) => void;
 }
@@ -273,7 +275,9 @@ function Sidebar({
   onToggleArchived,
   onCreateGroup,
   onRenameGroup,
+  onUpdateGroupDescription,
   onDeleteGroup,
+  onReorderGroup,
   onAddToGroup,
   onRemoveFromGroup,
 }: SidebarProps) {
@@ -285,9 +289,13 @@ function Sidebar({
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [editGroupValue, setEditGroupValue] = useState('');
+  const [editingGroupDescId, setEditingGroupDescId] = useState<string | null>(null);
+  const [editGroupDescValue, setEditGroupDescValue] = useState('');
   const [addToGroupConvId, setAddToGroupConvId] = useState<string | null>(null);
   const [newGroupName, setNewGroupName] = useState('');
   const [showNewGroupInput, setShowNewGroupInput] = useState(false);
+  const [dragGroupId, setDragGroupId] = useState<string | null>(null);
+  const [dragOverGroupId, setDragOverGroupId] = useState<string | null>(null);
 
   const toggleGroupCollapsed = (id: string) => {
     setCollapsedGroups(prev => {
@@ -307,6 +315,41 @@ function Sidebar({
     const name = editGroupValue.trim();
     if (name) onRenameGroup(id, name);
     setEditingGroupId(null);
+  };
+
+  const startEditGroupDesc = (group: ConversationGroup, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingGroupDescId(group.id);
+    setEditGroupDescValue(group.description ?? '');
+  };
+
+  const commitEditGroupDesc = (id: string) => {
+    const desc = editGroupDescValue.trim();
+    onUpdateGroupDescription(id, desc || null);
+    setEditingGroupDescId(null);
+  };
+
+  const handleDragStart = (e: React.DragEvent, id: string) => {
+    setDragGroupId(id);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e: React.DragEvent, id: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverGroupId(id);
+  };
+
+  const handleDrop = (e: React.DragEvent, targetId: string, targetGroups: ConversationGroup[]) => {
+    e.preventDefault();
+    setDragOverGroupId(null);
+    if (!dragGroupId || dragGroupId === targetId) { setDragGroupId(null); return; }
+    const fromIdx = targetGroups.findIndex(g => g.id === dragGroupId);
+    const toIdx   = targetGroups.findIndex(g => g.id === targetId);
+    if (fromIdx === -1 || toIdx === -1) { setDragGroupId(null); return; }
+    // Assign the dropped group the sortOrder of the target and shift others
+    onReorderGroup(dragGroupId, toIdx);
+    setDragGroupId(null);
   };
 
   const commitNewGroup = () => {
@@ -430,31 +473,66 @@ function Sidebar({
             {groups.map(group => {
               const groupConvs = conversations.filter(c => c.groupId === group.id && !c.archived);
               const collapsed = collapsedGroups.has(group.id);
+              const isDragOver = dragOverGroupId === group.id;
               return (
-                <div key={group.id}>
+                <div
+                  key={group.id}
+                  draggable
+                  onDragStart={e => handleDragStart(e, group.id)}
+                  onDragOver={e => handleDragOver(e, group.id)}
+                  onDragLeave={() => setDragOverGroupId(null)}
+                  onDrop={e => handleDrop(e, group.id, groups)}
+                  onDragEnd={() => { setDragGroupId(null); setDragOverGroupId(null); }}
+                  className={isDragOver ? 'border-t border-brand-500/60' : ''}
+                >
                   {/* Group header */}
                   <div
                     className="group flex items-center gap-1 px-3 py-1.5 cursor-pointer hover:bg-zinc-900 transition-colors"
                     onClick={() => toggleGroupCollapsed(group.id)}
                   >
+                    <span className="text-zinc-600 hover:text-zinc-400 text-[10px] w-3 shrink-0 cursor-grab active:cursor-grabbing" title="Drag to reorder">⠿</span>
                     <span className="text-zinc-600 text-[10px] w-3 shrink-0">{collapsed ? '▸' : '▾'}</span>
-                    {editingGroupId === group.id ? (
-                      <input
-                        value={editGroupValue}
-                        onChange={e => setEditGroupValue(e.target.value)}
-                        onKeyDown={e => {
-                          if (e.key === 'Enter') commitEditGroup(group.id);
-                          if (e.key === 'Escape') setEditingGroupId(null);
-                          e.stopPropagation();
-                        }}
-                        onBlur={() => commitEditGroup(group.id)}
-                        onClick={e => e.stopPropagation()}
-                        autoFocus
-                        className="flex-1 bg-zinc-700 rounded px-1.5 py-0.5 text-zinc-200 outline-none text-xs"
-                      />
-                    ) : (
-                      <span className="flex-1 text-xs text-zinc-400 font-medium truncate">{group.name}</span>
-                    )}
+                    <div className="flex-1 min-w-0">
+                      {editingGroupId === group.id ? (
+                        <input
+                          value={editGroupValue}
+                          onChange={e => setEditGroupValue(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') commitEditGroup(group.id);
+                            if (e.key === 'Escape') setEditingGroupId(null);
+                            e.stopPropagation();
+                          }}
+                          onBlur={() => commitEditGroup(group.id)}
+                          onClick={e => e.stopPropagation()}
+                          autoFocus
+                          className="w-full bg-zinc-700 rounded px-1.5 py-0.5 text-zinc-200 outline-none text-xs"
+                        />
+                      ) : (
+                        <span className="block text-xs text-zinc-400 font-medium truncate">{group.name}</span>
+                      )}
+                      {editingGroupDescId === group.id ? (
+                        <input
+                          value={editGroupDescValue}
+                          onChange={e => setEditGroupDescValue(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') commitEditGroupDesc(group.id);
+                            if (e.key === 'Escape') setEditingGroupDescId(null);
+                            e.stopPropagation();
+                          }}
+                          onBlur={() => commitEditGroupDesc(group.id)}
+                          onClick={e => e.stopPropagation()}
+                          autoFocus
+                          placeholder="Add description…"
+                          className="w-full bg-zinc-700 rounded px-1.5 py-0.5 text-zinc-300 outline-none text-[10px] mt-0.5"
+                        />
+                      ) : group.description ? (
+                        <span
+                          className="block text-[10px] text-zinc-600 truncate cursor-text hover:text-zinc-500"
+                          onClick={e => startEditGroupDesc(group, e)}
+                          title={group.description}
+                        >{group.description}</span>
+                      ) : null}
+                    </div>
                     <span className="text-zinc-700 text-[10px] shrink-0">{groupConvs.length}</span>
                     <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 shrink-0" onClick={e => e.stopPropagation()}>
                       <button
@@ -462,6 +540,11 @@ function Sidebar({
                         className="text-zinc-600 hover:text-zinc-300 p-0.5 rounded text-[11px]"
                         title="Rename group"
                       >✎</button>
+                      <button
+                        onClick={e => startEditGroupDesc(group, e)}
+                        className="text-zinc-600 hover:text-zinc-300 p-0.5 rounded text-[10px]"
+                        title="Edit description"
+                      >≡</button>
                       <button
                         onClick={e => { e.stopPropagation(); onDeleteGroup(group.id); }}
                         className="text-zinc-600 hover:text-red-400 p-0.5 rounded text-[11px]"
@@ -932,6 +1015,28 @@ export function CommandPanel({ health, onTabChange, newChatRef }: Props) {
     } catch { /* non-fatal */ }
   };
 
+  const handleUpdateGroupDescription = async (id: string, description: string | null) => {
+    try {
+      const updated = await updateConversationGroup(id, { description });
+      setGroups(prev => prev.map(g => g.id === id ? { ...g, ...updated } : g));
+    } catch { /* non-fatal */ }
+  };
+
+  const handleReorderGroup = async (id: string, newIndex: number) => {
+    try {
+      // Optimistically reorder local state
+      setGroups(prev => {
+        const next = [...prev];
+        const fromIdx = next.findIndex(g => g.id === id);
+        if (fromIdx === -1) return prev;
+        const [moved] = next.splice(fromIdx, 1);
+        next.splice(newIndex, 0, moved!);
+        return next.map((g, i) => ({ ...g, sortOrder: i }));
+      });
+      await updateConversationGroup(id, { sortOrder: newIndex });
+    } catch { /* non-fatal */ }
+  };
+
   const handleDeleteGroup = async (id: string) => {
     try {
       await deleteConversationGroup(id);
@@ -1170,7 +1275,9 @@ export function CommandPanel({ health, onTabChange, newChatRef }: Props) {
           onToggleArchived={handleToggleArchived}
           onCreateGroup={handleCreateGroup}
           onRenameGroup={handleRenameGroup}
+          onUpdateGroupDescription={handleUpdateGroupDescription}
           onDeleteGroup={handleDeleteGroup}
+          onReorderGroup={handleReorderGroup}
           onAddToGroup={handleAddToGroup}
           onRemoveFromGroup={handleRemoveFromGroup}
         />
