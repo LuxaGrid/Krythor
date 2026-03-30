@@ -19,7 +19,14 @@ import {
   listAgents,
   listModels,
   respondApproval,
+  listConversationGroups,
+  createConversationGroup,
+  updateConversationGroup,
+  deleteConversationGroup,
+  addConversationToGroup,
+  removeConversationFromGroup,
   type Conversation,
+  type ConversationGroup,
   type StreamEvent,
   type Health,
   type ModelInfo,
@@ -235,6 +242,7 @@ function MessageBubble({ msg, isLast, onRegenerate }: MessageBubbleProps) {
 
 interface SidebarProps {
   conversations: Conversation[];
+  groups: ConversationGroup[];
   activeId: string | null;
   onSelect: (id: string) => void;
   onNew: () => void;
@@ -244,14 +252,69 @@ interface SidebarProps {
   onArchive: (id: string, archived: boolean) => void;
   showArchived: boolean;
   onToggleArchived: () => void;
+  onCreateGroup: (name: string) => void;
+  onRenameGroup: (id: string, name: string) => void;
+  onDeleteGroup: (id: string) => void;
+  onAddToGroup: (groupId: string, conversationId: string) => void;
+  onRemoveFromGroup: (conversationId: string) => void;
 }
 
-function Sidebar({ conversations, activeId, onSelect, onNew, onDelete, onRename, onPin, onArchive, showArchived, onToggleArchived }: SidebarProps) {
+function Sidebar({
+  conversations,
+  groups,
+  activeId,
+  onSelect,
+  onNew,
+  onDelete,
+  onRename,
+  onPin,
+  onArchive,
+  showArchived,
+  onToggleArchived,
+  onCreateGroup,
+  onRenameGroup,
+  onDeleteGroup,
+  onAddToGroup,
+  onRemoveFromGroup,
+}: SidebarProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [exportMenuId, setExportMenuId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+  const [editGroupValue, setEditGroupValue] = useState('');
+  const [addToGroupConvId, setAddToGroupConvId] = useState<string | null>(null);
+  const [newGroupName, setNewGroupName] = useState('');
+  const [showNewGroupInput, setShowNewGroupInput] = useState(false);
+
+  const toggleGroupCollapsed = (id: string) => {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const startEditGroup = (group: ConversationGroup, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingGroupId(group.id);
+    setEditGroupValue(group.name);
+  };
+
+  const commitEditGroup = (id: string) => {
+    const name = editGroupValue.trim();
+    if (name) onRenameGroup(id, name);
+    setEditingGroupId(null);
+  };
+
+  const commitNewGroup = () => {
+    const name = newGroupName.trim();
+    if (name) onCreateGroup(name);
+    setNewGroupName('');
+    setShowNewGroupInput(false);
+  };
 
   const handleExport = async (conv: Conversation, format: 'json' | 'markdown', e: React.MouseEvent) => {
     e.stopPropagation();
@@ -290,27 +353,55 @@ function Sidebar({ conversations, activeId, onSelect, onNew, onDelete, onRename,
   // Pinned conversations shown first; archived shown only when toggled
   const pinned   = filtered.filter(c => c.pinned && !c.archived);
   const archived = filtered.filter(c => c.archived);
-  const unpinned = filtered.filter(c => !c.pinned && !c.archived);
+  const unpinned = filtered.filter(c => !c.pinned && !c.archived && !c.groupId);
 
   // Group unpinned (non-archived) by time
-  const groups: Record<string, Conversation[]> = {};
+  const timeGroups: Record<string, Conversation[]> = {};
   for (const conv of unpinned) {
     const label = groupLabel(conv.updatedAt);
-    if (!groups[label]) groups[label] = [];
-    groups[label]!.push(conv);
+    if (!timeGroups[label]) timeGroups[label] = [];
+    timeGroups[label]!.push(conv);
   }
   const groupOrder = ['Today', 'Yesterday', 'This Week', 'Older'];
 
   return (
     <div className="w-full shrink-0 border-r border-zinc-800 flex flex-col bg-zinc-950">
       <div className="p-2 border-b border-zinc-800 flex flex-col gap-1">
-        <button
-          onClick={onNew}
-          className="w-full flex items-center gap-2 px-3 py-2 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs transition-colors"
-        >
-          <span className="text-brand-400 text-sm leading-none">+</span>
-          New Chat
-        </button>
+        <div className="flex gap-1">
+          <button
+            onClick={onNew}
+            className="flex-1 flex items-center gap-2 px-3 py-2 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs transition-colors"
+          >
+            <span className="text-brand-400 text-sm leading-none">+</span>
+            New Chat
+          </button>
+          <button
+            onClick={() => setShowNewGroupInput(v => !v)}
+            className="flex items-center gap-1 px-2 py-2 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 text-xs transition-colors"
+            title="New Group"
+          >
+            <span className="text-brand-400 text-sm leading-none">⊞</span>
+          </button>
+        </div>
+        {showNewGroupInput && (
+          <div className="flex gap-1">
+            <input
+              value={newGroupName}
+              onChange={e => setNewGroupName(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') { e.preventDefault(); commitNewGroup(); }
+                if (e.key === 'Escape') { setShowNewGroupInput(false); setNewGroupName(''); }
+              }}
+              autoFocus
+              placeholder="Group name…"
+              className="flex-1 bg-zinc-700 border border-zinc-600 rounded px-2 py-1 text-xs text-zinc-200 placeholder-zinc-500 outline-none focus:border-brand-600/60"
+            />
+            <button
+              onClick={commitNewGroup}
+              className="px-2 py-1 bg-brand-700 hover:bg-brand-600 text-white text-xs rounded transition-colors"
+            >Add</button>
+          </div>
+        )}
         <input
           value={search}
           onChange={e => setSearch(e.target.value)}
@@ -331,7 +422,113 @@ function Sidebar({ conversations, activeId, onSelect, onNew, onDelete, onRename,
       </div>
 
       <div className="flex-1 overflow-y-auto scrollbar-thin">
-        {conversations.filter(c => !c.archived).length === 0 && !showArchived && !search && (
+
+        {/* ── Groups section ─────────────────────────────────────────────── */}
+        {groups.length > 0 && (
+          <div className="border-b border-zinc-800/60 pb-1">
+            <p className="text-zinc-600 text-xs px-3 pt-3 pb-1 font-medium uppercase tracking-wide">Groups</p>
+            {groups.map(group => {
+              const groupConvs = conversations.filter(c => c.groupId === group.id && !c.archived);
+              const collapsed = collapsedGroups.has(group.id);
+              return (
+                <div key={group.id}>
+                  {/* Group header */}
+                  <div
+                    className="group flex items-center gap-1 px-3 py-1.5 cursor-pointer hover:bg-zinc-900 transition-colors"
+                    onClick={() => toggleGroupCollapsed(group.id)}
+                  >
+                    <span className="text-zinc-600 text-[10px] w-3 shrink-0">{collapsed ? '▸' : '▾'}</span>
+                    {editingGroupId === group.id ? (
+                      <input
+                        value={editGroupValue}
+                        onChange={e => setEditGroupValue(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') commitEditGroup(group.id);
+                          if (e.key === 'Escape') setEditingGroupId(null);
+                          e.stopPropagation();
+                        }}
+                        onBlur={() => commitEditGroup(group.id)}
+                        onClick={e => e.stopPropagation()}
+                        autoFocus
+                        className="flex-1 bg-zinc-700 rounded px-1.5 py-0.5 text-zinc-200 outline-none text-xs"
+                      />
+                    ) : (
+                      <span className="flex-1 text-xs text-zinc-400 font-medium truncate">{group.name}</span>
+                    )}
+                    <span className="text-zinc-700 text-[10px] shrink-0">{groupConvs.length}</span>
+                    <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 shrink-0" onClick={e => e.stopPropagation()}>
+                      <button
+                        onClick={e => startEditGroup(group, e)}
+                        className="text-zinc-600 hover:text-zinc-300 p-0.5 rounded text-[11px]"
+                        title="Rename group"
+                      >✎</button>
+                      <button
+                        onClick={e => { e.stopPropagation(); onDeleteGroup(group.id); }}
+                        className="text-zinc-600 hover:text-red-400 p-0.5 rounded text-[11px]"
+                        title="Delete group"
+                      >✕</button>
+                    </div>
+                  </div>
+                  {/* Group conversations */}
+                  {!collapsed && groupConvs.map(conv => (
+                    <div
+                      key={conv.id}
+                      onClick={() => onSelect(conv.id)}
+                      className={`group pl-7 pr-3 py-1.5 cursor-pointer text-xs flex items-center gap-1 relative border-l-2 ml-3 transition-colors ${
+                        activeId === conv.id
+                          ? 'bg-zinc-800/80 border-brand-500 text-zinc-100'
+                          : 'border-zinc-800 text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300'
+                      }`}
+                    >
+                      <span className="flex-1 truncate">{conv.title}</span>
+                      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 shrink-0" onClick={e => e.stopPropagation()}>
+                        <button
+                          onClick={() => onRemoveFromGroup(conv.id)}
+                          className="text-zinc-600 hover:text-zinc-300 p-0.5 rounded text-[10px]"
+                          title="Remove from group"
+                        >⊟</button>
+                      </div>
+                    </div>
+                  ))}
+                  {!collapsed && groupConvs.length === 0 && (
+                    <p className="pl-7 pr-3 py-1 text-zinc-700 text-[10px] italic">No conversations</p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* "Add to group" popover */}
+        {addToGroupConvId && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+            onClick={() => setAddToGroupConvId(null)}
+          >
+            <div
+              className="bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl p-3 min-w-[200px] max-w-[260px]"
+              onClick={e => e.stopPropagation()}
+            >
+              <p className="text-zinc-400 text-xs font-medium mb-2 uppercase tracking-wide">Add to group</p>
+              {groups.length === 0 && (
+                <p className="text-zinc-600 text-xs py-1">No groups yet. Create one above.</p>
+              )}
+              {groups.map(g => (
+                <button
+                  key={g.id}
+                  onClick={() => { onAddToGroup(g.id, addToGroupConvId); setAddToGroupConvId(null); }}
+                  className="w-full text-left px-2 py-1.5 rounded text-xs text-zinc-300 hover:bg-zinc-800 transition-colors"
+                >{g.name}</button>
+              ))}
+              <button
+                onClick={() => setAddToGroupConvId(null)}
+                className="mt-2 w-full text-center text-zinc-600 hover:text-zinc-400 text-xs py-1"
+              >Cancel</button>
+            </div>
+          </div>
+        )}
+
+        {conversations.filter(c => !c.archived).length === 0 && !showArchived && !search && groups.length === 0 && (
           <p className="text-zinc-700 text-xs p-3 leading-relaxed">No conversations yet. Start one above.</p>
         )}
         {search && filtered.length === 0 && (
@@ -394,7 +591,7 @@ function Sidebar({ conversations, activeId, onSelect, onNew, onDelete, onRename,
         )}
 
         {groupOrder.map(label => {
-          const items = groups[label];
+          const items = timeGroups[label];
           if (!items || items.length === 0) return null;
           return (
             <div key={label}>
@@ -483,6 +680,13 @@ function Sidebar({ conversations, activeId, onSelect, onNew, onDelete, onRename,
                               >JSON (.json)</button>
                             </div>
                           )}
+                          {groups.length > 0 && (
+                            <button
+                              onClick={e => { e.stopPropagation(); setAddToGroupConvId(conv.id); }}
+                              className="text-zinc-600 hover:text-brand-400 p-0.5 rounded text-[10px]"
+                              title="Add to group"
+                            >⊞</button>
+                          )}
                           <button
                             onClick={e => confirmDelete(conv.id, e)}
                             className="text-zinc-600 hover:text-red-400 p-0.5 rounded"
@@ -568,6 +772,7 @@ export function CommandPanel({ health, onTabChange, newChatRef }: Props) {
   const { config } = useAppConfig();
 
   const [conversations, setConversations]     = useState<Conversation[]>([]);
+  const [groups, setGroups]                   = useState<ConversationGroup[]>([]);
   const [activeConvId, setActiveConvId]       = useState<string | null>(null);
   const [messages, setMessages]               = useState<LocalMessage[]>([]);
   const [input, setInput]                     = useState('');
@@ -613,6 +818,11 @@ export function CommandPanel({ health, onTabChange, newChatRef }: Props) {
   }, [showArchived]);
 
   useEffect(() => { loadConversations(); }, [loadConversations]);
+
+  // Load conversation groups
+  useEffect(() => {
+    listConversationGroups().then(setGroups).catch(() => {});
+  }, []);
 
   // Load messages for active conversation
   useEffect(() => {
@@ -706,6 +916,45 @@ export function CommandPanel({ health, onTabChange, newChatRef }: Props) {
   const handleRename = async (id: string, title: string) => {
     await updateConversation(id, title).catch(() => {});
     setConversations(prev => prev.map(c => c.id === id ? { ...c, title } : c));
+  };
+
+  const handleCreateGroup = async (name: string) => {
+    try {
+      const group = await createConversationGroup(name);
+      setGroups(prev => [...prev, group]);
+    } catch { /* non-fatal */ }
+  };
+
+  const handleRenameGroup = async (id: string, name: string) => {
+    try {
+      const updated = await updateConversationGroup(id, { name });
+      setGroups(prev => prev.map(g => g.id === id ? { ...g, ...updated } : g));
+    } catch { /* non-fatal */ }
+  };
+
+  const handleDeleteGroup = async (id: string) => {
+    try {
+      await deleteConversationGroup(id);
+      setGroups(prev => prev.filter(g => g.id !== id));
+      // Clear groupId on conversations that belonged to this group
+      setConversations(prev => prev.map(c => c.groupId === id ? { ...c, groupId: null } : c));
+    } catch { /* non-fatal */ }
+  };
+
+  const handleAddToGroup = async (groupId: string, conversationId: string) => {
+    try {
+      await addConversationToGroup(groupId, conversationId);
+      setConversations(prev => prev.map(c => c.id === conversationId ? { ...c, groupId } : c));
+    } catch { /* non-fatal */ }
+  };
+
+  const handleRemoveFromGroup = async (conversationId: string) => {
+    try {
+      const conv = conversations.find(c => c.id === conversationId);
+      if (!conv?.groupId) return;
+      await removeConversationFromGroup(conv.groupId, conversationId);
+      setConversations(prev => prev.map(c => c.id === conversationId ? { ...c, groupId: null } : c));
+    } catch { /* non-fatal */ }
   };
 
   const stop = () => {
@@ -909,6 +1158,7 @@ export function CommandPanel({ health, onTabChange, newChatRef }: Props) {
       <div style={{ width: sidebarW, flexShrink: 0 }} className="flex flex-col overflow-hidden">
         <Sidebar
           conversations={conversations}
+          groups={groups}
           activeId={activeConvId}
           onSelect={handleSelect}
           onNew={handleNew}
@@ -918,6 +1168,11 @@ export function CommandPanel({ health, onTabChange, newChatRef }: Props) {
           onArchive={handleArchive}
           showArchived={showArchived}
           onToggleArchived={handleToggleArchived}
+          onCreateGroup={handleCreateGroup}
+          onRenameGroup={handleRenameGroup}
+          onDeleteGroup={handleDeleteGroup}
+          onAddToGroup={handleAddToGroup}
+          onRemoveFromGroup={handleRemoveFromGroup}
         />
       </div>
       <SidebarResizeHandle onMouseDown={sidebarDrag} />

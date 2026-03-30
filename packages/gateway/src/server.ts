@@ -82,6 +82,7 @@ import { registerModerationRoutes } from './routes/moderation.js';
 import { WorkflowEngine } from './WorkflowEngine.js';
 import { registerWorkflowRoutes } from './routes/workflows.js';
 import { registerKnowledgeRoutes } from './routes/knowledge.js';
+import { registerConversationGroupRoutes } from './routes/conversationGroups.js';
 import { ApiKeyPool } from './ApiKeyPool.js';
 import { registerKeyPoolRoutes } from './routes/keyPool.js';
 import { SessionDirectiveStore } from './SessionDirectiveStore.js';
@@ -1489,6 +1490,7 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   registerWorkflowRoutes(app, workflowEngine);
   registerKeyPoolRoutes(app, apiKeyPool);
   if (memory) registerKnowledgeRoutes(app, memory);
+  if (memory) registerConversationGroupRoutes(app, memory.conversationGroupStore, convStore);
   registerConfigRoute(app, join(dataDir, 'config'), guard, orchestrator, memory, heartbeatRef, approvalManager);
   registerConversationRoutes(app, convStore, guard, channelEmit, memory ?? undefined, approvalManager, janitorStatus);
   if (memory) registerSessionMaintenanceRoutes(app, memory);

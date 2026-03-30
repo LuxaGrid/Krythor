@@ -252,6 +252,16 @@ export interface Conversation {
   pinned?: boolean;
   isIdle?: boolean;
   compactedAt?: number | null;
+  groupId?: string | null;
+}
+
+export interface ConversationGroup {
+  id: string;
+  name: string;
+  description?: string | null;
+  sortOrder: number;
+  createdAt: number;
+  updatedAt: number;
 }
 
 export interface Message {
@@ -290,6 +300,32 @@ export const exportConversation = async (id: string, format: 'json' | 'markdown'
   a.click();
   URL.revokeObjectURL(url);
 };
+
+// ── Conversation Groups ────────────────────────────────────────────────────
+
+export const listConversationGroups = () =>
+  req<ConversationGroup[]>('GET', '/conversation-groups');
+
+export const createConversationGroup = (name: string, description?: string | null) =>
+  req<ConversationGroup>('POST', '/conversation-groups', { name, description: description ?? null });
+
+export const updateConversationGroup = (id: string, fields: { name?: string; description?: string | null; sortOrder?: number }) =>
+  req<ConversationGroup>('PATCH', `/conversation-groups/${id}`, fields);
+
+export const deleteConversationGroup = (id: string) =>
+  req<void>('DELETE', `/conversation-groups/${id}`);
+
+export const getConversationGroupWithConversations = (id: string) =>
+  req<ConversationGroup & { conversations: Conversation[] }>('GET', `/conversation-groups/${id}`);
+
+export const addConversationToGroup = (groupId: string, conversationId: string) =>
+  req<void>('POST', `/conversation-groups/${groupId}/conversations`, { conversationId });
+
+export const removeConversationFromGroup = (groupId: string, conversationId: string) =>
+  req<void>('DELETE', `/conversation-groups/${groupId}/conversations/${conversationId}`);
+
+export const listGroupConversations = (groupId: string) =>
+  req<Conversation[]>('GET', `/conversation-groups/${groupId}/conversations`);
 
 // ── Memory ─────────────────────────────────────────────────────────────────
 export const listMemory = (params?: { text?: string; scope?: string; tags?: string; limit?: number; offset?: number }) => {

@@ -20,6 +20,8 @@ export interface Conversation {
   updatedAt: number;
   /** Timestamp when this conversation was compacted (raw transcript replaced by summary). Null if not compacted. */
   compactedAt?: number | null;
+  /** ID of the conversation group this belongs to, or null if ungrouped. */
+  groupId?: string | null;
 }
 
 export interface Message {
@@ -48,6 +50,7 @@ interface ConversationRow {
   created_at: number;
   updated_at: number;
   compacted_at?: number | null;
+  group_id?: string | null;
 }
 
 interface MessageRow {
@@ -73,6 +76,7 @@ function rowToConversation(row: ConversationRow): Conversation {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     compactedAt: row.compacted_at ?? null,
+    groupId: row.group_id ?? null,
   };
 }
 
@@ -123,7 +127,7 @@ export class ConversationStore {
       INSERT INTO conversations (id, title, name, pinned, agent_id, created_at, updated_at)
       VALUES (@id, @title, NULL, 0, @agentId, @now, @now)
     `).run({ id, title: 'New Chat', agentId: agentId ?? null, now });
-    return { id, title: 'New Chat', name: null, pinned: false, archived: false, agentId: agentId ?? null, createdAt: now, updatedAt: now };
+    return { id, title: 'New Chat', name: null, pinned: false, archived: false, agentId: agentId ?? null, createdAt: now, updatedAt: now, groupId: null };
   }
 
   listConversations(includeArchived = false): Conversation[] {

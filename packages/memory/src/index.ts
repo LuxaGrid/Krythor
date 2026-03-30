@@ -1,6 +1,8 @@
 export { MemoryEngine } from './MemoryEngine.js';
 export { ConversationStore } from './db/ConversationStore.js';
 export type { Conversation, Message } from './db/ConversationStore.js';
+export { ConversationGroupStore } from './db/ConversationGroupStore.js';
+export type { ConversationGroup } from './db/ConversationGroupStore.js';
 export { MemoryStore } from './db/MemoryStore.js';
 export { GuardDecisionStore } from './db/GuardDecisionStore.js';
 export { AgentRunStore } from './db/AgentRunStore.js';
