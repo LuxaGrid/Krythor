@@ -47,7 +47,7 @@ This is not just chat. This is AI you can operate.
 - **Agent system** — custom prompts, memory scope, model preferences, tool permissions, chaining/handoff per agent
 - **Agent import/export** — share agent configs as JSON files
 - **Skills** — reusable task templates with structured routing hints, task profiles, and built-in templates (summarize, translate, explain)
-- **Krythor Vault** — a browsable skill library with official and community skills; install, update, and remove skills directly from the Vault tab; collections (Official Starter Pack, Real Estate Pack, Productivity Pack) for quick discovery; local JSON import for custom skills
+- **Krythor Vault** — a browsable skill library with 40 official skills across 6 collections (Real Estate Pack, Finance Pack, Productivity Pack, Communication Pack, Business Workflow Pack, Official Starter Pack); install, update, and remove skills directly from the Vault tab; filter by collection, category, source, or risk level; local JSON import for custom community skills with live risk analysis and category assignment before import
 - **Guard engine** — policy-based allow/deny/warn/require-approval control per operation with persistent SQLite audit trail and live test mode; three distinct safety modes (Guarded, Balanced, Power User)
 - **Approval flow** — `require-approval` guard actions pause execution and surface a modal in the UI; streaming approval integration sends `approval_required` SSE events mid-stream
 - **Tool system** — exec (local commands), web_search (DuckDuckGo), web_fetch (URL content), file tools (9 operations), memory tools, user-defined webhook tools with one-click test-fire
@@ -213,38 +213,108 @@ The Vault tab gives you a browsable library of skills you can install into Kryth
 
 ### What's in the Vault
 
-| Skill | Category | Risk | Source |
-|-------|----------|------|--------|
-| Summarize Document | Productivity | Low | Official |
-| Meeting Notes | Productivity | Low | Official |
-| Draft Email | Communication | Low | Official |
-| Translate | Language | Low | Official |
-| Web Research | Research | Medium | Official |
-| Code Review | Development | Low | Official |
-| Property Listing Writer | Real Estate | Low | Official |
-| Offer Letter Drafter | Real Estate | Low | Official |
-| Market Analysis Summary | Real Estate | Low | Official |
-| Changelog Generator | Development | Low | Official |
+40 official skills across 5 categories:
+
+**Real Estate (11 skills)**
+
+| Skill | Risk |
+|-------|------|
+| Property Listing Writer | Low |
+| Offer Letter Drafter | Low |
+| Market Analysis Summary | Low |
+| Client Follow-Up Engine | Low |
+| Listing Intelligence Builder | Low |
+| Open House Recap Engine | Low |
+| Seller Update Generator | Low |
+| Buyer Match Helper | Low |
+| Offer Positioning Assistant | Low |
+| Objection Handling Assistant | Low |
+| Lead Qualification Engine | Low |
+
+**Finance (5 skills)**
+
+| Skill | Risk |
+|-------|------|
+| Stock Opportunity Scanner | Low |
+| Trade Setup Builder | Low |
+| Portfolio Insight Engine | Low |
+| Trade Journal Intelligence | Low |
+| Risk & Position Sizer | Low |
+
+**Business (5 skills)**
+
+| Skill | Risk |
+|-------|------|
+| Meeting to Workflow Converter | Low |
+| Decision Engine | Low |
+| Proposal Builder | Low |
+| Process to Playbook Builder | Low |
+| CRM Memory Sync Skill | Low |
+
+**Productivity (7 skills)**
+
+| Skill | Risk |
+|-------|------|
+| Summarize Document | Low |
+| Meeting Notes | Low |
+| Task Breakdown Engine | Low |
+| Weekly Planning System | Low |
+| Daily Brief Builder | Low |
+| Priority Triage Engine | Low |
+| Inbox Intelligence | Low |
+
+**Marketing & Communication (8 skills)**
+
+| Skill | Risk |
+|-------|------|
+| Draft Email | Low |
+| Multi-Step Content Engine | Low |
+| Social Repurposing Engine | Low |
+| Rewrite Optimizer | Low |
+| Follow-Up Sequence Builder | Low |
+| Conversation Memory Builder | Low |
+| Relationship Nurture Planner | Low |
+| Personal Context Assistant | Low |
+
+**Development & Research (4 skills)**
+
+| Skill | Risk |
+|-------|------|
+| Web Research | Medium |
+| Code Review | Low |
+| Changelog Generator | Low |
+| Translate | Low |
 
 ### Collections
 
-| Collection | Skills included |
-|------------|----------------|
-| Official Starter Pack | Summarize Document, Draft Email, Meeting Notes, Translate |
-| Real Estate Pack | Property Listing Writer, Offer Letter Drafter, Market Analysis Summary |
-| Productivity Pack | Summarize Document, Meeting Notes, Draft Email, Web Research |
+| Collection | Skills |
+|------------|--------|
+| Official Starter Pack | 7 core skills across Productivity and Communication |
+| Real Estate Pack | All 11 Real Estate skills |
+| Finance Pack | All 5 Finance skills |
+| Productivity Pack | 7 Productivity skills |
+| Communication Pack | 7 Communication and Marketing skills |
+| Business Workflow Pack | 7 Business and Workflow skills |
 
 ### Risk levels
 
 | Risk | Permissions that trigger it |
 |------|----------------------------|
-| Low | No special permissions, `memory:read` |
+| Low | No special permissions, `memory:read`, `file:read` |
 | Medium | `internet:read`, `memory:write`, `skill:invoke` |
 | High | `shell:exec`, `file:write`, `file:delete`, `webhook:call` |
 
+Risk is computed automatically from declared permissions and displayed on every skill card before installation.
+
 ### Local import
 
-The **Import local** button in the Vault panel lets you paste or load a `.json` file containing a custom skill. Any valid skill JSON with `name` and `systemPrompt` fields is accepted and saved as a Community skill.
+The **Import local** button in the Vault panel lets you paste or load a `.json` file containing a custom skill. As you type or paste JSON, the panel instantly shows:
+
+- A **live risk analysis** — computed from the declared `permissions` array, showing a color-coded risk badge (green/amber/red) and labeled permission tags
+- A contextual **risk warning** for medium or high risk skills
+- A **category field** — pre-populated from the JSON's `category` field if present, editable, with autocomplete suggestions
+
+Any valid skill JSON with `name` and `systemPrompt` fields is accepted and saved as a Community skill.
 
 ---
 
@@ -1268,7 +1338,7 @@ To uninstall: remove the application folder (`~/.krythor`) and the data folder a
 - ✅ In-UI notification feed (bell icon, unread badge, mark-all-read)
 - ✅ Plugin sandboxing (isolated child process, 30-second timeout)
 - ✅ Structured output / JSON mode (`json_object` and `json_schema`)
-- ✅ Krythor Vault — downloadable skill library with official/community skills, collections, and local import
+- ✅ Krythor Vault — 40 official skills across 6 collections (Real Estate, Finance, Productivity, Communication, Business Workflow, Starter Pack); local import with live risk analysis and category assignment
 - ✅ Agent token budgets — per-agent daily and per-session caps with `BUDGET_EXCEEDED` structured error
 - ✅ External content isolation — `<external-content>` wrapping on web_fetch/web_search results to mitigate prompt injection
 - ✅ Reverse-proxy support — `KRYTHOR_TRUSTED_PROXY`, `KRYTHOR_HOST`, `KRYTHOR_PORT`, `KRYTHOR_GATEWAY_TOKEN` env vars
