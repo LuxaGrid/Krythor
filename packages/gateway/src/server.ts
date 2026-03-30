@@ -75,6 +75,10 @@ import { AuditLogger } from './AuditLogger.js';
 import { HeartbeatEngine, type HeartbeatRunRecord, type HeartbeatInsight } from './heartbeat/HeartbeatEngine.js';
 import { logger } from './logger.js';
 import { loadOrCreateToken, verifyToken } from './auth.js';
+import { TailscaleService } from './TailscaleService.js';
+import type { TailscaleMode, TailscaleConfig, GatewayAuthMode } from './TailscaleService.js';
+import { validateAndApplyTailscale } from './tailscaleStartup.js';
+import { registerTailscaleRoutes } from './routes/tailscale.js';
 import { ApiKeyStore } from './ApiKeyStore.js';
 import { ApiKeyRateLimiter } from './ApiKeyRateLimiter.js';
 import { TokenBudgetStore } from './TokenBudgetStore.js';
@@ -227,17 +231,22 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
     logger.warn('Auth is DISABLED — all API routes are unprotected');
   }
 
+  // ── Shared early app-config read ─────────────────────────────────────────
+  // Read app-config.json once here so both TLS and Tailscale startup blocks
+  // can reference it without each re-reading the file.
+  const _earlyAppCfgPath = join(dataDir, 'config', 'app-config.json');
+  let _earlyRawAppCfg: Record<string, unknown> = {};
+  if (existsSync(_earlyAppCfgPath)) {
+    try { _earlyRawAppCfg = JSON.parse(readFileSync(_earlyAppCfgPath, 'utf8')) as Record<string, unknown>; } catch { /* ignore */ }
+  }
+
   // ── TLS / HTTPS setup ────────────────────────────────────────────────────
   // Reads httpsEnabled, httpsCertPath, httpsKeyPath, httpsSelfSigned from
   // app-config.json. When httpsSelfSigned is true and cert/key files are
   // missing, generates a self-signed certificate and stores it in configDir.
   let tlsOptions: { cert: Buffer; key: Buffer } | null = null;
   {
-    const appCfgPath = join(dataDir, 'config', 'app-config.json');
-    let rawAppCfg: Record<string, unknown> = {};
-    if (existsSync(appCfgPath)) {
-      try { rawAppCfg = JSON.parse(readFileSync(appCfgPath, 'utf8')) as Record<string, unknown>; } catch { /* ignore */ }
-    }
+    const rawAppCfg = _earlyRawAppCfg;
     const httpsEnabled = rawAppCfg['httpsEnabled'] === true;
     if (httpsEnabled) {
       const selfSigned = rawAppCfg['httpsSelfSigned'] === true;
@@ -274,6 +283,30 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
       } catch (tlsErr) {
         logger.error('TLS setup failed — falling back to HTTP', { error: String(tlsErr) });
         tlsOptions = null;
+      }
+    }
+  }
+
+  // ── Tailscale startup ─────────────────────────────────────────────────────
+  // Reads tailscaleMode, tailscaleResetOnExit, gatewayAuthMode from app-config.json.
+  // Hard-fails if mode !== 'off' and Tailscale is not installed/logged in.
+  let _tailscaleServiceInstance: TailscaleService | null = null;
+  let _tailscaleActiveConfig: TailscaleConfig = { mode: 'off', resetOnExit: false };
+  {
+    const tsCfg: TailscaleConfig = {
+      mode: (_earlyRawAppCfg['tailscaleMode'] as TailscaleMode) ?? 'off',
+      resetOnExit: _earlyRawAppCfg['tailscaleResetOnExit'] === true,
+    };
+    const authMode: GatewayAuthMode = (_earlyRawAppCfg['gatewayAuthMode'] as GatewayAuthMode) ?? 'token';
+    _tailscaleActiveConfig = tsCfg;
+    _tailscaleServiceInstance = new TailscaleService(GATEWAY_PORT);
+    if (tsCfg.mode !== 'off') {
+      try {
+        await validateAndApplyTailscale(tsCfg, authMode, GATEWAY_PORT, logger);
+        logger.info('Tailscale networking active', { mode: tsCfg.mode });
+      } catch (err) {
+        logger.error('Tailscale startup failed — refusing to start', { error: String(err) });
+        process.exit(1);
       }
     }
   }
@@ -1546,6 +1579,7 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   registerStreamWs(app, core, () => authCfg.token, guard, devicePairingStore, gatewayId, KRYTHOR_VERSION);
   registerDeviceRoutes(app, devicePairingStore, broadcast);
   registerNodeRoutes(app);
+  registerTailscaleRoutes(app, _tailscaleServiceInstance!, () => _tailscaleActiveConfig);
 
   // Templates endpoint — lists workspace template files available in the user's data dir.
   // Returns { name, filename, size, description } for each .md file in <dataDir>/templates/.

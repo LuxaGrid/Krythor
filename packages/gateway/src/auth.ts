@@ -27,6 +27,12 @@ export interface AuthConfig {
    * otherwise the header could be spoofed by any direct HTTP client.
    */
   allowTailscale?: boolean;
+  /**
+   * Gateway auth mode for Tailscale networking.
+   * 'token'    — standard bearer token auth (default)
+   * 'password' — required when using Funnel mode (public exposure)
+   */
+  gatewayAuthMode?: 'token' | 'password';
 }
 
 /** Load or generate the gateway auth token.
@@ -60,14 +66,24 @@ export function loadOrCreateToken(configDir: string): AuthConfig {
   const authSub = cfg['auth'] as Record<string, unknown> | undefined;
   const allowTailscale = cfg['allowTailscale'] === true || authSub?.['allowTailscale'] === true;
 
+  // gatewayAuthMode — read from top-level field or nested auth.mode
+  const rawAuthMode = cfg['gatewayAuthMode'] ?? authSub?.['mode'];
+  const gatewayAuthMode: 'token' | 'password' | undefined =
+    rawAuthMode === 'token' || rawAuthMode === 'password' ? rawAuthMode : undefined;
+
+  const tailscaleExtras: Partial<AuthConfig> = {
+    ...(allowTailscale && { allowTailscale }),
+    ...(gatewayAuthMode && { gatewayAuthMode }),
+  };
+
   // KRYTHOR_GATEWAY_TOKEN env var — highest priority (does not persist to disk)
   const envToken = process.env['KRYTHOR_GATEWAY_TOKEN'];
   if (typeof envToken === 'string' && envToken.length >= 32) {
-    return { token: envToken, ...(allowTailscale && { allowTailscale }) };
+    return { token: envToken, ...tailscaleExtras };
   }
 
   if (typeof cfg['gatewayToken'] === 'string' && cfg['gatewayToken'].length >= 32) {
-    return { token: cfg['gatewayToken'] as string, ...(allowTailscale && { allowTailscale }) };
+    return { token: cfg['gatewayToken'] as string, ...tailscaleExtras };
   }
 
   // First start — generate and persist a new token.
@@ -75,7 +91,7 @@ export function loadOrCreateToken(configDir: string): AuthConfig {
   cfg['gatewayToken'] = token;
   mkdirSync(configDir, { recursive: true });
   writeFileSync(path, JSON.stringify(cfg, null, 2), 'utf8');
-  return { token, firstRun: true, allowTailscale } as AuthConfig & { firstRun?: boolean };
+  return { token, firstRun: true, ...tailscaleExtras } as AuthConfig & { firstRun?: boolean };
 }
 
 /** Verify a bearer token string against the expected value. */

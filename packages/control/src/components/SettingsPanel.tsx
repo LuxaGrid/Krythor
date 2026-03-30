@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { health, getGatewayInfo, getHeartbeatHistory, getDiscordConfig, setDiscordConfig, stopDiscord, listPlugins, exportProviderConfig, importProviderConfig, exportFullConfig, importFullConfig, listWebChatPairings, createWebChatPairing, revokeWebChatPairing, listApiKeys, createApiKey, revokeApiKey, getAppConfig, patchAppConfig, checkForUpdate, setGatewayBaseUrl, getGatewayBaseUrl, setGatewayToken, getMaintenanceEstimate, runJanitor } from '../api.ts';
-import type { Health, GatewayInfo, ProviderHealthEntry, DiscordConfig, Plugin, WebChatPairingEntry, WebChatPairingCreated, ApiKeySafe, ApiKeyPermission, UpdateInfo, MaintenanceEstimate, JanitorResult } from '../api.ts';
+import { health, getGatewayInfo, getHeartbeatHistory, getDiscordConfig, setDiscordConfig, stopDiscord, listPlugins, exportProviderConfig, importProviderConfig, exportFullConfig, importFullConfig, listWebChatPairings, createWebChatPairing, revokeWebChatPairing, listApiKeys, createApiKey, revokeApiKey, getAppConfig, patchAppConfig, checkForUpdate, setGatewayBaseUrl, getGatewayBaseUrl, setGatewayToken, getMaintenanceEstimate, runJanitor, getTailscaleStatus } from '../api.ts';
+import type { Health, GatewayInfo, ProviderHealthEntry, DiscordConfig, Plugin, WebChatPairingEntry, WebChatPairingCreated, ApiKeySafe, ApiKeyPermission, UpdateInfo, MaintenanceEstimate, JanitorResult, TailscaleStatusResponse } from '../api.ts';
 import { PanelHeader } from './PanelHeader.tsx';
 import { useLocale } from '../i18n/index.js';
 
@@ -118,6 +118,16 @@ export function SettingsPanel() {
   const [tlsSaving, setTlsSaving]             = useState(false);
   const [tlsMsg, setTlsMsg]                   = useState<string | null>(null);
 
+  // Tailscale state
+  const [tailscaleMode, setTailscaleMode]         = useState<'off' | 'serve' | 'funnel'>('off');
+  const [tailscaleResetOnExit, setTsResetOnExit]  = useState(false);
+  const [gatewayBind, setGatewayBind]             = useState<'loopback' | 'tailnet' | 'auto'>('loopback');
+  const [gatewayAuthMode, setGatewayAuthMode]     = useState<'token' | 'password'>('token');
+  const [allowTailscale, setAllowTailscale]       = useState(false);
+  const [tsSaving, setTsSaving]                   = useState(false);
+  const [tsMsg, setTsMsg]                         = useState<string | null>(null);
+  const [tsStatus, setTsStatus]                   = useState<TailscaleStatusResponse | null>(null);
+
   // Update check state
   const [updateInfo, setUpdateInfo]           = useState<UpdateInfo | null>(null);
   const [updateChecking, setUpdateChecking]   = useState(false);
@@ -168,6 +178,13 @@ export function SettingsPanel() {
     } catch { /* non-fatal */ }
   }, []);
 
+  const loadTailscaleStatus = useCallback(async () => {
+    try {
+      const status = await getTailscaleStatus();
+      setTsStatus(status);
+    } catch { /* non-fatal */ }
+  }, []);
+
   useEffect(() => {
     async function load() {
       try {
@@ -186,6 +203,11 @@ export function SettingsPanel() {
           setTlsCertPath(appCfg.httpsCertPath ?? '');
           setTlsKeyPath(appCfg.httpsKeyPath ?? '');
           setTlsSelfSigned(appCfg.httpsSelfSigned ?? true);
+          setTailscaleMode((appCfg.tailscaleMode as 'off' | 'serve' | 'funnel') ?? 'off');
+          setTsResetOnExit(appCfg.tailscaleResetOnExit ?? false);
+          setGatewayBind((appCfg.gatewayBind as 'loopback' | 'tailnet' | 'auto') ?? 'loopback');
+          setGatewayAuthMode((appCfg.gatewayAuthMode as 'token' | 'password') ?? 'token');
+          setAllowTailscale(appCfg.allowTailscale ?? false);
         }
         if (maint) {
           setMaintenance(maint);
@@ -208,7 +230,8 @@ export function SettingsPanel() {
     load();
     void loadChatPairings();
     void loadApiKeys();
-  }, [loadChatPairings, loadApiKeys]);
+    void loadTailscaleStatus();
+  }, [loadChatPairings, loadApiKeys, loadTailscaleStatus]);
 
   if (loading) {
     return (
@@ -269,6 +292,26 @@ export function SettingsPanel() {
       setTlsMsg(e instanceof Error ? e.message : 'Failed to save TLS settings');
     } finally {
       setTlsSaving(false);
+    }
+  }
+
+  async function handleTailscaleSave() {
+    setTsSaving(true);
+    setTsMsg(null);
+    try {
+      await patchAppConfig({
+        tailscaleMode,
+        tailscaleResetOnExit,
+        gatewayBind,
+        gatewayAuthMode,
+        allowTailscale,
+      });
+      setTsMsg('Tailscale settings saved. Restart the gateway to apply.');
+      await loadTailscaleStatus();
+    } catch (e: unknown) {
+      setTsMsg(e instanceof Error ? e.message : 'Failed to save Tailscale settings');
+    } finally {
+      setTsSaving(false);
     }
   }
 
@@ -852,6 +895,123 @@ export function SettingsPanel() {
           <button onClick={() => void handleTlsSave()} disabled={tlsSaving}
             className="text-xs px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 disabled:opacity-50 text-white rounded transition-colors">
             {tlsSaving ? 'Saving…' : 'Save TLS Settings'}
+          </button>
+        </div>
+      </Section>
+
+      {/* Tailscale Networking */}
+      <Section title="Tailscale Networking">
+        <p className="text-zinc-500 text-xs mb-3">
+          Configure Tailscale networking for the gateway. Changes require a gateway restart to apply.
+          Funnel exposes your gateway publicly over HTTPS — password auth is required.
+        </p>
+        <div className="space-y-3">
+          {/* Mode selector */}
+          <div>
+            <label className="block text-xs text-zinc-400 mb-1">Mode</label>
+            <select value={tailscaleMode} onChange={e => setTailscaleMode(e.target.value as 'off' | 'serve' | 'funnel')}
+              className="text-sm bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-zinc-200 focus:outline-none focus:border-zinc-500">
+              <option value="off">Off (disabled)</option>
+              <option value="serve">Serve (tailnet only)</option>
+              <option value="funnel">Funnel (public HTTPS)</option>
+            </select>
+          </div>
+
+          {tailscaleMode !== 'off' && (
+            <>
+              {/* Bind mode */}
+              <div>
+                <label className="block text-xs text-zinc-400 mb-1">Bind mode</label>
+                <select value={gatewayBind} onChange={e => setGatewayBind(e.target.value as 'loopback' | 'tailnet' | 'auto')}
+                  className="text-sm bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-zinc-200 focus:outline-none focus:border-zinc-500">
+                  <option value="loopback">Loopback (recommended)</option>
+                  <option value="tailnet">Tailnet</option>
+                  <option value="auto">Auto</option>
+                </select>
+              </div>
+
+              {/* Auth mode */}
+              <div>
+                <label className="block text-xs text-zinc-400 mb-1">Auth mode</label>
+                <select value={gatewayAuthMode} onChange={e => setGatewayAuthMode(e.target.value as 'token' | 'password')}
+                  className="text-sm bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-zinc-200 focus:outline-none focus:border-zinc-500">
+                  <option value="token">Token (bearer)</option>
+                  <option value="password">Password</option>
+                </select>
+              </div>
+
+              {/* Funnel warning */}
+              {tailscaleMode === 'funnel' && gatewayAuthMode !== 'password' && (
+                <p className="text-xs text-amber-400 bg-amber-950/30 border border-amber-800/40 rounded px-2 py-1.5">
+                  Funnel exposes your gateway publicly. Password auth mode is required to prevent unauthorized access.
+                </p>
+              )}
+
+              {/* Funnel info note */}
+              {tailscaleMode === 'funnel' && (
+                <p className="text-xs text-zinc-500">
+                  Funnel exposes your gateway publicly over HTTPS via Tailscale. Password auth required.
+                </p>
+              )}
+
+              {/* allowTailscale — only relevant for serve mode */}
+              {tailscaleMode === 'serve' && (
+                <label className="flex items-center gap-2 text-sm text-zinc-300 cursor-pointer">
+                  <input type="checkbox" checked={allowTailscale} onChange={e => setAllowTailscale(e.target.checked)} className="accent-sky-500" />
+                  Accept Tailscale identity header (no bearer token required)
+                </label>
+              )}
+
+              {/* allowTailscale warning when not in serve mode */}
+              {allowTailscale && tailscaleMode !== 'serve' && (
+                <p className="text-xs text-amber-400">
+                  Tailscale identity auth is only safe when mode is set to Serve (tailnet-only).
+                </p>
+              )}
+
+              {/* resetOnExit */}
+              <label className="flex items-center gap-2 text-sm text-zinc-300 cursor-pointer">
+                <input type="checkbox" checked={tailscaleResetOnExit} onChange={e => setTsResetOnExit(e.target.checked)} className="accent-sky-500" />
+                Reset Tailscale Serve config on gateway exit
+              </label>
+            </>
+          )}
+
+          {/* Status panel */}
+          {tsStatus && (
+            <div className="mt-2 p-2 bg-zinc-800/60 border border-zinc-700 rounded text-xs space-y-1">
+              <p className="text-zinc-400 font-medium mb-1">Status</p>
+              <div className="flex items-center gap-2">
+                <span className={`w-2 h-2 rounded-full ${tsStatus.installed ? 'bg-green-500' : 'bg-red-500'}`} />
+                <span className="text-zinc-300">CLI {tsStatus.installed ? 'installed' : 'not found'}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className={`w-2 h-2 rounded-full ${tsStatus.loggedIn ? 'bg-green-500' : 'bg-red-500'}`} />
+                <span className="text-zinc-300">{tsStatus.loggedIn ? 'Logged in' : 'Not logged in'}</span>
+              </div>
+              {tsStatus.tailnetIP && (
+                <p className="text-zinc-400">Tailnet IP: <span className="text-zinc-200 font-mono">{tsStatus.tailnetIP}</span></p>
+              )}
+              {tsStatus.magicDNS && (
+                <p className="text-zinc-400">MagicDNS: <span className="text-zinc-200 font-mono">{tsStatus.magicDNS}</span></p>
+              )}
+              {tsStatus.activeURL && (
+                <p className="text-zinc-400">URL: <span className="text-zinc-200 font-mono">{tsStatus.activeURL}</span></p>
+              )}
+              {tsStatus.warnings.length > 0 && (
+                <div className="mt-1">
+                  {tsStatus.warnings.map((w, i) => (
+                    <p key={i} className="text-amber-400">{w}</p>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {tsMsg && <p className={`text-xs ${tsMsg.includes('Failed') ? 'text-red-400' : 'text-green-400'}`}>{tsMsg}</p>}
+          <button onClick={() => void handleTailscaleSave()} disabled={tsSaving}
+            className="text-xs px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 disabled:opacity-50 text-white rounded transition-colors">
+            {tsSaving ? 'Saving…' : 'Save Tailscale Settings'}
           </button>
         </div>
       </Section>

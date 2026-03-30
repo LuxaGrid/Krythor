@@ -5,6 +5,7 @@ import type { MemoryEngine } from '@krythor/memory';
 import type { HeartbeatEngine } from '../heartbeat/HeartbeatEngine.js';
 import type { ApprovalManager } from '../ApprovalManager.js';
 import { guardCheck } from '../guardCheck.js';
+import type { TailscaleMode, GatewayBind, GatewayAuthMode } from '../TailscaleService.js';
 
 /** Late-bound reference box so config route can reach heartbeat after it's created. */
 export interface HeartbeatRef { instance?: HeartbeatEngine }
@@ -60,6 +61,17 @@ export interface AppConfig {
   httpsKeyPath?: string;
   /** Auto-generate self-signed cert when httpsEnabled=true and cert/key not found. */
   httpsSelfSigned?: boolean;
+  // ── Tailscale networking ──────────────────────────────────────────────────
+  /** Tailscale networking mode. 'off' = disabled, 'serve' = tailnet only, 'funnel' = public HTTPS. */
+  tailscaleMode?: TailscaleMode;
+  /** When true, runs `tailscale serve reset` on gateway exit. */
+  tailscaleResetOnExit?: boolean;
+  /** Which network interface/address the gateway binds to for Tailscale. */
+  gatewayBind?: GatewayBind;
+  /** Gateway auth mode when using Tailscale: 'token' (bearer) or 'password'. Funnel requires 'password'. */
+  gatewayAuthMode?: GatewayAuthMode;
+  /** When true, requests bearing a Tailscale-User-Login header are accepted without a bearer token. */
+  allowTailscale?: boolean;
 }
 
 export function registerConfigRoute(app: FastifyInstance, configDir: string, guard?: GuardEngine, orchestrator?: AgentOrchestrator, memory?: MemoryEngine, heartbeatRef?: HeartbeatRef, approvalManager?: ApprovalManager): void {
@@ -167,6 +179,11 @@ export function registerConfigRoute(app: FastifyInstance, configDir: string, gua
           httpsCertPath:               { type: ['string', 'null'], maxLength: 1024 },
           httpsKeyPath:                { type: ['string', 'null'], maxLength: 1024 },
           httpsSelfSigned:             { type: ['boolean', 'null'] },
+          tailscaleMode:               { type: ['string', 'null'], enum: ['off', 'serve', 'funnel', null] },
+          tailscaleResetOnExit:        { type: ['boolean', 'null'] },
+          gatewayBind:                 { type: ['string', 'null'], enum: ['loopback', 'tailnet', 'auto', null] },
+          gatewayAuthMode:             { type: ['string', 'null'], enum: ['token', 'password', null] },
+          allowTailscale:              { type: ['boolean', 'null'] },
         },
         additionalProperties: false,
       },
@@ -280,6 +297,21 @@ export function registerConfigRoute(app: FastifyInstance, configDir: string, gua
     }
     if ('httpsSelfSigned' in patch) {
       updated.httpsSelfSigned = (patch['httpsSelfSigned'] as boolean | null) ?? undefined;
+    }
+    if ('tailscaleMode' in patch) {
+      updated.tailscaleMode = (patch['tailscaleMode'] as TailscaleMode | null) ?? undefined;
+    }
+    if ('tailscaleResetOnExit' in patch) {
+      updated.tailscaleResetOnExit = (patch['tailscaleResetOnExit'] as boolean | null) ?? undefined;
+    }
+    if ('gatewayBind' in patch) {
+      updated.gatewayBind = (patch['gatewayBind'] as GatewayBind | null) ?? undefined;
+    }
+    if ('gatewayAuthMode' in patch) {
+      updated.gatewayAuthMode = (patch['gatewayAuthMode'] as GatewayAuthMode | null) ?? undefined;
+    }
+    if ('allowTailscale' in patch) {
+      updated.allowTailscale = (patch['allowTailscale'] as boolean | null) ?? undefined;
     }
     write(updated);
     // Never return webhookToken in the response — treat it as write-only

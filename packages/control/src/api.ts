@@ -159,7 +159,26 @@ export interface AppConfig {
   httpsCertPath?: string;
   httpsKeyPath?: string;
   httpsSelfSigned?: boolean;
+  // Tailscale networking
+  tailscaleMode?: string;
+  tailscaleResetOnExit?: boolean;
+  gatewayBind?: string;
+  gatewayAuthMode?: string;
+  allowTailscale?: boolean;
 }
+
+// ── Tailscale status ────────────────────────────────────────────────────────
+export interface TailscaleStatusResponse {
+  installed:  boolean;
+  loggedIn:   boolean;
+  tailnetIP:  string | null;
+  magicDNS:   string | null;
+  activeMode: string;
+  activeURL:  string | null;
+  warnings:   string[];
+}
+
+export const getTailscaleStatus = () => req<TailscaleStatusResponse>('GET', '/tailscale/status');
 
 // ── Command ────────────────────────────────────────────────────────────────
 export const runCommand = (input: string, agentId?: string, modelId?: string, conversationId?: string) =>
