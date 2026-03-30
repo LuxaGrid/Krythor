@@ -7,6 +7,32 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [2.3.0] - 2026-03-29
+
+### Added
+
+- **Krythor Vault** — a browsable, installable skill library accessible from the new Vault tab in the control UI
+- **10 Vault skills** — 9 official skills across Productivity, Research, Development, Communication, Language, and Real Estate categories; 1 community skill
+- **Real Estate Pack** — 3 purpose-built skills: Property Listing Writer, Offer Letter Drafter, Market Analysis Summary
+- **Official Starter Pack and Productivity Pack** — curated collections for common use cases
+- **Collections** — skill groupings displayed in the Vault UI for faster discovery; filter catalog to any collection with one click
+- **Local skill import** — import any skill JSON directly from a file or paste into the Vault panel
+- **VaultRegistry** — persistent `vault-installed.json` tracks installed vault skills with provenance, version, and source metadata
+- **Vault API** — 6 routes: catalog, installed list, install, install/local, remove, update
+
+### Fixed
+
+- `file:delete` permission now correctly classified as high risk in the frontend (was missing from the high-risk set; backend was already correct)
+- `file:read` permission risk now consistent between frontend and backend (both: low risk)
+- Vault manifest no longer references a missing `$schema` file
+- Vault catalog API response now includes `collections` array
+
+### Changed
+
+- Vault manifest bumped to `manifestVersion: 2` (adds collections support)
+
+---
+
 ## [Unreleased]
 
 ### Added

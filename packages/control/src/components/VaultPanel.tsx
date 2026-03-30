@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   getVaultCatalog, installVaultSkill, removeVaultSkill, updateVaultSkill, importVaultSkillLocal,
-  type VaultCatalogEntry, type VaultCatalog, type VaultSource, type VaultRisk,
+  type VaultCatalogEntry, type VaultCatalog, type VaultCollection, type VaultSource, type VaultRisk,
 } from '../api.ts';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -40,18 +40,48 @@ function PermissionTag({ perm }: { perm: string }) {
     'internet:read': 'internet',
     'skill:invoke': 'skill chaining',
     'file:write':   'file write',
+    'file:delete':  'file delete',
     'file:read':    'file read',
     'shell:exec':   'shell exec',
     'webhook:call': 'webhook',
   };
   const label = PERM_LABELS[perm] ?? perm;
-  const high   = ['file:write', 'shell:exec', 'webhook:call'].includes(perm);
-  const medium = ['internet:read', 'memory:write', 'skill:invoke', 'file:read'].includes(perm);
+  const high   = ['file:write', 'file:delete', 'shell:exec', 'webhook:call'].includes(perm);
+  const medium = ['internet:read', 'memory:write', 'skill:invoke'].includes(perm);
   const cls    = high   ? 'bg-red-950/50 text-red-300 border-red-800/40'
                : medium ? 'bg-amber-950/50 text-amber-300 border-amber-800/40'
                :          'bg-zinc-800/60 text-zinc-400 border-zinc-700/40';
   return (
     <span className={`text-[10px] px-1.5 py-0.5 rounded border ${cls}`}>{label}</span>
+  );
+}
+
+// ── Collections Bar ───────────────────────────────────────────────────────────
+
+interface CollectionsBarProps {
+  collections:    VaultCollection[];
+  activeId:       string | null;
+  onSelect:       (id: string | null) => void;
+}
+
+function CollectionsBar({ collections, activeId, onSelect }: CollectionsBarProps) {
+  if (collections.length === 0) return null;
+  return (
+    <div className="flex items-center gap-2 flex-wrap pt-2">
+      <span className="text-[10px] text-zinc-600 uppercase tracking-wide">Collections</span>
+      {collections.map(col => (
+        <button
+          key={col.id}
+          onClick={() => onSelect(activeId === col.id ? null : col.id)}
+          title={col.description}
+          className={`text-xs px-2.5 py-1 rounded-lg border transition-colors ${
+            activeId === col.id
+              ? 'bg-brand-800/50 border-brand-600/60 text-brand-300'
+              : 'bg-zinc-800/40 border-zinc-700/40 text-zinc-400 hover:text-zinc-200 hover:border-zinc-600'
+          }`}
+        >{col.name}</button>
+      ))}
+    </div>
   );
 }
 
@@ -354,6 +384,7 @@ export function VaultPanel() {
   const [installTarget,  setInstallTarget] = useState<VaultCatalogEntry | null>(null);
   const [showImport,     setShowImport]    = useState(false);
   const [busy,           setBusy]          = useState<string | null>(null);
+  const [collection,     setCollection]    = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -387,7 +418,12 @@ export function VaultPanel() {
     ? [ALL_CATEGORIES, ...Array.from(new Set(catalog.skills.map(s => s.category))).sort()]
     : [ALL_CATEGORIES];
 
+  const activeCollection = collection
+    ? (catalog?.collections ?? []).find(c => c.id === collection) ?? null
+    : null;
+
   const filtered = (catalog?.skills ?? []).filter(entry => {
+    if (activeCollection && !activeCollection.skillIds.includes(entry.id)) return false;
     if (showInstalled && !entry.installed)       return false;
     if (showUpdates   && !entry.updateAvailable) return false;
     if (sourceFilter !== 'all' && entry.source !== sourceFilter) return false;
@@ -479,6 +515,12 @@ export function VaultPanel() {
             </label>
           )}
         </div>
+
+        <CollectionsBar
+          collections={catalog?.collections ?? []}
+          activeId={collection}
+          onSelect={setCollection}
+        />
 
         {catalog?.note && (
           <p className="mt-2 text-xs text-zinc-600">{catalog.note}</p>

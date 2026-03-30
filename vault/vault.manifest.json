@@ -1,6 +1,5 @@
 {
-  "$schema": "./vault.schema.json",
-  "manifestVersion": "1",
+  "manifestVersion": "2",
   "updatedAt": "2026-03-29",
   "skills": [
     {
@@ -88,6 +87,48 @@
       "path": "skills/draft-email.json"
     },
     {
+      "id": "vault-property-listing",
+      "name": "Property Listing Writer",
+      "description": "Writes compelling real estate listing descriptions from property details. Highlights key features, neighborhood appeal, and lifestyle benefits to attract qualified buyers.",
+      "category": "Real Estate",
+      "source": "official",
+      "version": "1.0.0",
+      "minKrythorVersion": "0.2.0",
+      "author": "Krythor",
+      "permissions": [],
+      "risk": "low",
+      "tags": ["real-estate", "listing", "writing", "property"],
+      "path": "skills/property-listing.json"
+    },
+    {
+      "id": "vault-offer-letter",
+      "name": "Offer Letter Drafter",
+      "description": "Drafts a professional real estate offer letter from buyer details and offer terms. Structures the offer clearly with contingencies, timeline, and earnest money.",
+      "category": "Real Estate",
+      "source": "official",
+      "version": "1.0.0",
+      "minKrythorVersion": "0.2.0",
+      "author": "Krythor",
+      "permissions": [],
+      "risk": "low",
+      "tags": ["real-estate", "offer", "letter", "buyer"],
+      "path": "skills/offer-letter.json"
+    },
+    {
+      "id": "vault-market-analysis",
+      "name": "Market Analysis Summary",
+      "description": "Summarizes a real estate market analysis from comparable sales data. Identifies pricing trends, days on market, and a recommended list price range.",
+      "category": "Real Estate",
+      "source": "official",
+      "version": "1.0.0",
+      "minKrythorVersion": "0.2.0",
+      "author": "Krythor",
+      "permissions": ["memory:read"],
+      "risk": "low",
+      "tags": ["real-estate", "market", "analysis", "comps", "pricing"],
+      "path": "skills/market-analysis.json"
+    },
+    {
       "id": "vault-community-changelog",
       "name": "Changelog Generator",
       "description": "Generates a structured changelog from git commit history or a list of changes. Produces Keep a Changelog format output.",
@@ -100,6 +141,40 @@
       "risk": "low",
       "tags": ["changelog", "git", "development"],
       "path": "skills/community-changelog.json"
+    }
+  ],
+  "collections": [
+    {
+      "id": "official-starter-pack",
+      "name": "Official Starter Pack",
+      "description": "Essential skills for everyday AI-assisted work. A solid foundation for any Krythor setup.",
+      "skillIds": [
+        "vault-summarize-document",
+        "vault-draft-email",
+        "vault-meeting-notes",
+        "vault-translate"
+      ]
+    },
+    {
+      "id": "real-estate-pack",
+      "name": "Real Estate Pack",
+      "description": "Purpose-built skills for real estate professionals. Write listings, draft offers, and analyze market comps.",
+      "skillIds": [
+        "vault-property-listing",
+        "vault-offer-letter",
+        "vault-market-analysis"
+      ]
+    },
+    {
+      "id": "productivity-pack",
+      "name": "Productivity Pack",
+      "description": "Skills that save time on routine tasks — summarizing, scheduling, researching, and writing.",
+      "skillIds": [
+        "vault-summarize-document",
+        "vault-meeting-notes",
+        "vault-draft-email",
+        "vault-web-research"
+      ]
     }
   ]
 }

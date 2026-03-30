@@ -4,6 +4,34 @@ Tracks all AI-assisted implementation work on this codebase.
 
 ---
 
+## 2026-03-29 — v2.3.0: Krythor Vault
+
+### Vault skill library (packages: gateway, control, vault/)
+- `VaultRegistry` — persists `vault-installed.json`; tracks vaultId→skillId mapping, version, source, risk, installedAt
+- `registerVaultRoutes` — 6 routes: `GET /api/vault/catalog`, `GET /api/vault/installed`, `POST /api/vault/install`, `POST /api/vault/install/local`, `DELETE /api/vault/installed/:id`, `POST /api/vault/update/:id`
+- `resolveVaultRoot()` walks 4 candidate paths upward from `__dirname` to find `vault/` directory in any install layout
+- Risk classification derived from permissions: `shell:exec/file:write/file:delete/webhook:call` = high; `internet:read/memory:write/skill:invoke` = medium; else low
+- All mutating routes guarded via `guardCheck` with `skill:create` / `skill:delete`
+
+### Vault catalog (vault/)
+- `vault.manifest.json` v2 with 10 skills (9 official, 1 community) + 3 collections
+- Official Starter Pack, Real Estate Pack (3 skills), Productivity Pack
+- Skill files: summarize-document, web-research, code-review, meeting-notes, translate, draft-email, property-listing, offer-letter, market-analysis, community-changelog
+
+### VaultPanel (packages/control)
+- Search, category/source/state filters, CollectionsBar for one-click collection filtering
+- SkillCard with install/update/remove actions; InstallModal with risk/community warnings
+- LocalImportModal for JSON paste or `.json` file pick
+- 22 VaultRegistry unit tests (schema, risk classification, semver compat, corrupt-file resilience)
+
+### Fixes
+- `file:delete` added to high-risk set in frontend PermissionTag (was missing; backend was correct)
+- `file:read` risk aligned frontend↔backend (both: low)
+- Manifest `$schema` reference to missing file removed
+- Catalog API response includes `collections` array
+
+---
+
 ## 2026-03-28 — v0.8: Graceful Shutdown, API Keys, TLS, Job Queue, Agent Tools, Semantic Search, Notification Feed, Plugin Sandboxing, Structured Output
 
 ### Feature 1 — Graceful shutdown (packages: core, gateway)

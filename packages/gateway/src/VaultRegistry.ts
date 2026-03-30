@@ -29,10 +29,18 @@ export interface VaultManifestEntry {
   path:               string;
 }
 
+export interface VaultCollection {
+  id:          string;
+  name:        string;
+  description: string;
+  skillIds:    string[];
+}
+
 export interface VaultManifest {
   manifestVersion: string;
   updatedAt:       string;
   skills:          VaultManifestEntry[];
+  collections:     VaultCollection[];
 }
 
 /** Record of a locally installed Vault skill */

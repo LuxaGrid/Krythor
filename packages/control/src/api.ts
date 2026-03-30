@@ -687,11 +687,19 @@ export interface VaultCatalogEntry {
   updateAvailable:  boolean;
 }
 
+export interface VaultCollection {
+  id:          string;
+  name:        string;
+  description: string;
+  skillIds:    string[];
+}
+
 export interface VaultCatalog {
   manifestVersion: string;
   updatedAt:       string;
   skills:          VaultCatalogEntry[];
   updatable:       string[];
+  collections:     VaultCollection[];
   note?:           string;
 }
 
