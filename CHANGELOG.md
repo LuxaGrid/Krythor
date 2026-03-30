@@ -12,7 +12,7 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 
 - **Krythor Vault** — a browsable, installable skill library accessible from the new Vault tab in the control UI
-- **10 Vault skills** — 9 official skills across Productivity, Research, Development, Communication, Language, and Real Estate categories; 1 community skill
+- **10 Vault skills** — 10 official skills across Productivity, Research, Development, Communication, Language, and Real Estate categories
 - **Real Estate Pack** — 3 purpose-built skills: Property Listing Writer, Offer Letter Drafter, Market Analysis Summary
 - **Official Starter Pack and Productivity Pack** — curated collections for common use cases
 - **Collections** — skill groupings displayed in the Vault UI for faster discovery; filter catalog to any collection with one click

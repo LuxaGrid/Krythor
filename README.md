@@ -224,7 +224,7 @@ The Vault tab gives you a browsable library of skills you can install into Kryth
 | Property Listing Writer | Real Estate | Low | Official |
 | Offer Letter Drafter | Real Estate | Low | Official |
 | Market Analysis Summary | Real Estate | Low | Official |
-| Changelog Generator | Development | Low | Community |
+| Changelog Generator | Development | Low | Official |
 
 ### Collections
 

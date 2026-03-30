@@ -6,9 +6,9 @@
   "tags": ["changelog", "git", "development"],
   "permissions": ["memory:read"],
   "category": "Development",
-  "source": "community",
+  "source": "official",
   "version": "1.0.0",
-  "author": "community",
+  "author": "Krythor",
   "risk": "low",
   "enabled": true,
   "userInvocable": true
