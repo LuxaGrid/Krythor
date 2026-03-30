@@ -47,6 +47,7 @@ This is not just chat. This is AI you can operate.
 - **Agent system** — custom prompts, memory scope, model preferences, tool permissions, chaining/handoff per agent
 - **Agent import/export** — share agent configs as JSON files
 - **Skills** — reusable task templates with structured routing hints, task profiles, and built-in templates (summarize, translate, explain)
+- **Krythor Vault** — a browsable skill library with official and community skills; install, update, and remove skills directly from the Vault tab; collections (Official Starter Pack, Real Estate Pack, Productivity Pack) for quick discovery; local JSON import for custom skills
 - **Guard engine** — policy-based allow/deny/warn/require-approval control per operation with persistent SQLite audit trail and live test mode; three distinct safety modes (Guarded, Balanced, Power User)
 - **Approval flow** — `require-approval` guard actions pause execution and surface a modal in the UI; streaming approval integration sends `approval_required` SSE events mid-stream
 - **Tool system** — exec (local commands), web_search (DuckDuckGo), web_fetch (URL content), file tools (9 operations), memory tools, user-defined webhook tools with one-click test-fire
@@ -200,6 +201,47 @@ See `docs/guardrails.md` for full documentation.
 | Tab or Enter | Apply selected slash command or palette action |
 | Escape | Close command palette or dismiss slash dropdown |
 | Ctrl+S | Save in Config Editor |
+
+---
+
+## 🗃️ Krythor Vault
+
+The Vault tab gives you a browsable library of skills you can install into Krythor with one click.
+
+### What's in the Vault
+
+| Skill | Category | Risk | Source |
+|-------|----------|------|--------|
+| Summarize Document | Productivity | Low | Official |
+| Meeting Notes | Productivity | Low | Official |
+| Draft Email | Communication | Low | Official |
+| Translate | Language | Low | Official |
+| Web Research | Research | Medium | Official |
+| Code Review | Development | Low | Official |
+| Property Listing Writer | Real Estate | Low | Official |
+| Offer Letter Drafter | Real Estate | Low | Official |
+| Market Analysis Summary | Real Estate | Low | Official |
+| Changelog Generator | Development | Low | Community |
+
+### Collections
+
+| Collection | Skills included |
+|------------|----------------|
+| Official Starter Pack | Summarize Document, Draft Email, Meeting Notes, Translate |
+| Real Estate Pack | Property Listing Writer, Offer Letter Drafter, Market Analysis Summary |
+| Productivity Pack | Summarize Document, Meeting Notes, Draft Email, Web Research |
+
+### Risk levels
+
+| Risk | Permissions that trigger it |
+|------|----------------------------|
+| Low | No special permissions, `memory:read` |
+| Medium | `internet:read`, `memory:write`, `skill:invoke` |
+| High | `shell:exec`, `file:write`, `file:delete`, `webhook:call` |
+
+### Local import
+
+The **Import local** button in the Vault panel lets you paste or load a `.json` file containing a custom skill. Any valid skill JSON with `name` and `systemPrompt` fields is accepted and saved as a Community skill.
 
 ---
 
@@ -609,6 +651,7 @@ The dashboard has a customizable tab bar — click **+ Tabs** to pin or unpin an
 | Agents | Create custom AI assistants with their own instructions, workspace, and access profile |
 | Guard | Set safety mode (Guarded / Balanced / Power User); define allow/deny/warn/require-approval rules |
 | Skills | Reusable task templates with routing profiles |
+| Vault | Browse and install skills from the Krythor Vault; filter by collection, category, or source; local import |
 | Dashboard | Token usage sparklines, heartbeat last-run, circuit breaker status, real-time metrics |
 | Logs | Live log stream with filter, search, pause, copy, and expandable JSON rows |
 | Events | Real-time event stream with icons, timestamps, type coloring, and filter |
@@ -880,6 +923,12 @@ All API endpoints are served at `http://127.0.0.1:47200`. Most require a Bearer 
 | GET | `/api/agents/:id/access-profile` | Required | Get an agent's current access profile |
 | PUT | `/api/agents/:id/access-profile` | Required | Set an agent's access profile |
 | GET | `/api/skills` | Required | List registered skills |
+| GET | `/api/vault/catalog` | Required | List all Vault skills enriched with install state and update availability |
+| GET | `/api/vault/installed` | Required | List locally installed Vault skills with provenance metadata |
+| POST | `/api/vault/install` | Required | Install a skill from the Vault catalog by `vaultId` |
+| POST | `/api/vault/install/local` | Required | Import a skill from a JSON body (saved as a Community skill) |
+| DELETE | `/api/vault/installed/:id` | Required | Remove an installed Vault skill |
+| POST | `/api/vault/update/:id` | Required | Update an installed skill to the latest catalog version |
 | GET | `/api/stats` | Required | Token usage for this session |
 | GET | `/api/conversations` | Required | List recent conversations |
 | POST | `/api/conversations/:id/archive` | Required | Archive a conversation |
@@ -1074,6 +1123,9 @@ packages/
   guard/      — Policy engine (allow/deny/warn/require-approval rules per operation)
   skills/     — Skill registry and runner
   setup/      — CLI setup wizard and diagnostics
+vault/
+  vault.manifest.json  — Vault catalog (skills + collections metadata)
+  skills/              — Individual skill JSON files (systemPrompt, permissions, etc.)
 start.js      — Launcher (starts gateway, opens browser)
 bundle.js     — Distribution packager (creates krythor-dist/)
 build-exe.js  — Windows SEA executable builder
@@ -1191,6 +1243,7 @@ To uninstall: remove the application folder (`~/.krythor`) and the data folder a
 - ✅ In-UI notification feed (bell icon, unread badge, mark-all-read)
 - ✅ Plugin sandboxing (isolated child process, 30-second timeout)
 - ✅ Structured output / JSON mode (`json_object` and `json_schema`)
+- ✅ Krythor Vault — downloadable skill library with official/community skills, collections, and local import
 - ⬜ Code signing (OV certificate — eliminates SmartScreen warning)
 - ⬜ Auto-updater UI (download and replace in-place)
 - ⬜ macOS / Linux native installers
