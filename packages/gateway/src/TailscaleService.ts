@@ -138,12 +138,11 @@ export class TailscaleService {
 
   /**
    * Apply Tailscale Serve mode:
-   *   tailscale serve --bg http / <port>
-   *   tailscale serve --bg http /ws/ <port>
+   *   tailscale serve --bg <port>
+   * This proxies all traffic (HTTP + WebSocket upgrades) on the tailnet to localhost:<port>.
    */
   async applyServe(): Promise<void> {
-    await run(['serve', '--bg', 'http', '/', String(this.port)]);
-    await run(['serve', '--bg', 'http', '/ws/', String(this.port)]);
+    await run(['serve', '--bg', String(this.port)]);
   }
 
   /**
