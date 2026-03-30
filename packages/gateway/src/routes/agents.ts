@@ -43,6 +43,15 @@ export function registerAgentRoutes(
     return reply.send(orchestrator.stats());
   });
 
+  // GET /api/agents/health — health snapshots for all tracked agents
+  // Must be registered before /api/agents/:id to prevent "health" matching as :id
+  app.get('/api/agents/health', async (_req, reply) => {
+    return reply.send({
+      agents:     orchestrator.healthGate.allSnapshots(),
+      thresholds: orchestrator.healthGate.thresholds(),
+    });
+  });
+
   // GET /api/agents/:id
   app.get<{ Params: { id: string } }>('/api/agents/:id', async (req, reply) => {
     const agent = orchestrator.getAgent(req.params.id);
@@ -627,14 +636,6 @@ export function registerAgentRoutes(
     if (!agent) return reply.code(404).send({ error: 'Agent not found' });
     return reply.send({
       ...orchestrator.healthGate.snapshot(req.params.id),
-      thresholds: orchestrator.healthGate.thresholds(),
-    });
-  });
-
-  // GET /api/agents/health — health snapshots for all tracked agents
-  app.get('/api/agents/health', async (_req, reply) => {
-    return reply.send({
-      agents:     orchestrator.healthGate.allSnapshots(),
       thresholds: orchestrator.healthGate.thresholds(),
     });
   });

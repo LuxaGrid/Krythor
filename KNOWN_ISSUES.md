@@ -16,6 +16,7 @@
 - **Status:** Known
 - **Impact:** Running gateway from `~/.krythor` with a different Node.js version than the one used to compile `better-sqlite3` causes `ERR_DLOPEN_FAILED`
 - **Fix:** Always use the bundled runtime at `~/.krythor/runtime/node.exe` (Windows) to start the installed gateway. The `Krythor.bat` launcher handles this automatically.
+- **Dev note:** The dev system may use a different Node version than the production runtime. Tests run against the dev node and require `better-sqlite3` compiled for it. Before starting the production gateway manually, rebuild: `cd .pnvm/better-sqlite3@11.10.0/node_modules/better-sqlite3 && ~/.krythor/runtime/node.exe /path/to/node-gyp rebuild`. `scripts/full-build-loop.ps1` will warn (step 1.5) when versions differ.
 
 ### Bundle Size Warning (control)
 - **Status:** Non-blocking warning

@@ -4,6 +4,37 @@ Tracks all AI-assisted implementation work on this codebase.
 
 ---
 
+## 2026-03-30 — v2.3.0: Agent Health Gate, Conversation Groups, Tailscale
+
+### Agent Health Gate (packages: core, gateway, control)
+- `AgentHealthGate` — rolling-window (default 10) per-agent health tracker; computes `stability` (success rate) and `efficiency` (clean run rate)
+- Three phases: `healthy` / `degraded` / `paused`; auto-recovery after `recoveryWindowMs` (default 2 min)
+- `AgentPausedError` — thrown by `check()`, caught by gateway route handlers; returns HTTP 503 + `Retry-After` header
+- `AgentOrchestrator` wires `healthGate.check()` pre-run and `healthGate.record()` post-run in both `runAgent` and `runAgentStream`
+- Exported from `@krythor/core` index: `AgentHealthGate`, `AgentPausedError`, `AgentHealthSnapshot`, `AgentHealthConfig`, `AgentPhase`
+- 4 new API routes: `GET /api/agents/health`, `GET /api/agents/:id/health`, `POST /api/agents/:id/health/unpause`, `POST /api/agents/:id/health/reset`
+- `AgentHealthBadge` component in `AgentsPanel.tsx` with phase colors (emerald/amber/red), dropdown showing stability%, efficiency%, consecutive failures, resume countdown, Unpause/Reset buttons
+- 25 unit tests in `AgentHealthGate.test.ts` covering all phase transitions, auto-recovery (fake timers), rolling window eviction, efficiency/clean run detection
+
+### Conversation Groups enhancements (packages: memory, gateway, control)
+- Drag-to-reorder via HTML5 native drag API (`draggable`, `onDragStart/Over/Drop`) with optimistic local state reorder + API PATCH
+- Inline description editing — click group description to edit in-place; `PATCH /api/conversation-groups/:id` persists
+- 33 unit tests in `ConversationGroupStore.test.ts` covering all CRUD, FK cascade, rolling sort_order
+
+### Tailscale networking (packages: gateway)
+- `TailscaleService.applyServe()` fixed — was passing invalid multi-argument form; corrected to `tailscale serve --bg <port>`
+- README: Tailscale setup how-to guide for Serve mode and Funnel mode
+
+### Build loop fixes
+- `full-build-loop.ps1`: added native module version check step (step 1.5), vault catalog check, agent health gate check, conversation groups check
+- `GET /api/agents/health` route moved before `GET /api/agents/:id` in `agents.ts` to prevent Fastify radix conflict
+- Test memory artifacts (`Dup A`, `Test Import A`) cleaned from production data directory
+
+### Known issues resolved
+- `better-sqlite3` NODE_MODULE_VERSION mismatch between dev node (v24) and production runtime (v20) — documented in `KNOWN_ISSUES.md`; tests now always run against dev node, production deploys must rebuild before launch
+
+---
+
 ## 2026-03-29 — v2.3.0: Krythor Vault
 
 ### Vault skill library (packages: gateway, control, vault/)

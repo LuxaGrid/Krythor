@@ -100,6 +100,24 @@ if ($installExit -ne 0) {
 }
 
 # =============================================================================
+#  STEP 1.5 — Rebuild native modules for runtime node if versions differ
+# =============================================================================
+
+Write-Step "Step 1.5 · Native module compatibility"
+
+$sysNodeVer    = (node --version 2>&1)
+$runtimeNodeVer = if (Test-Path $runtimeNode) { (& $runtimeNode --version 2>&1) } else { $sysNodeVer }
+$sqlitePath    = Join-Path $root '.pnvm\better-sqlite3@11.10.0\node_modules\better-sqlite3'
+$nodeGypPath   = Join-Path $root '.pnvm\node-gyp@12.2.0\node_modules\node-gyp\bin\node-gyp.js'
+
+if ($sysNodeVer -ne $runtimeNodeVer -and (Test-Path $sqlitePath) -and (Test-Path $nodeGypPath)) {
+    Add-Check 'node-version-mismatch' 'WARN' "Dev node $sysNodeVer vs runtime $runtimeNodeVer — better-sqlite3 compiled for dev; runtime may fail"
+    Add-Check 'sqlite3-compat' 'INFO' "Run: `"$runtimeNode`" `"$nodeGypPath`" rebuild (in $sqlitePath) before deploying production"
+} else {
+    Add-Check 'native-module-compat' 'PASS' "Node version: $sysNodeVer (runtime: $runtimeNodeVer)"
+}
+
+# =============================================================================
 #  STEP 2 — pnpm -r build
 # =============================================================================
 
@@ -368,6 +386,42 @@ if ($SkipRuntime) {
             Add-Check 'skills-endpoint' 'PASS' "/api/skills responds — $($skillsList.Count) skill(s)"
         } catch {
             Add-Check 'skills-endpoint' 'FAIL' "/api/skills failed: $($_.Exception.Message)"
+        }
+
+        # ── Vault catalog ─────────────────────────────────────────────────────
+        try {
+            $resp = Invoke-RestMethod -Uri "http://${host_}:${port}/api/vault/catalog" -Headers $headers -TimeoutSec 5 -ErrorAction Stop
+            $vaultCount = if ($resp.skills) { @($resp.skills).Count } else { 0 }
+            if ($vaultCount -ge 1) {
+                Add-Check 'vault-catalog' 'PASS' "/api/vault/catalog — $vaultCount skill(s) in vault"
+            } else {
+                Add-Check 'vault-catalog' 'WARN' "/api/vault/catalog — 0 vault skills (expected ≥1)"
+            }
+        } catch {
+            Add-Check 'vault-catalog' 'FAIL' "/api/vault/catalog failed: $($_.Exception.Message)"
+        }
+
+        # ── Agent health gate ─────────────────────────────────────────────────
+        try {
+            $resp = Invoke-RestMethod -Uri "http://${host_}:${port}/api/agents/health" -Headers $headers -TimeoutSec 5 -ErrorAction Stop
+            $agentHealthList = @($resp.agents)
+            $thresholds = $resp.thresholds
+            if ($thresholds -and $thresholds.windowSize) {
+                Add-Check 'agent-health-gate' 'PASS' "/api/agents/health — $($agentHealthList.Count) tracked agent(s), windowSize=$($thresholds.windowSize)"
+            } else {
+                Add-Check 'agent-health-gate' 'WARN' "/api/agents/health — missing thresholds in response"
+            }
+        } catch {
+            Add-Check 'agent-health-gate' 'FAIL' "/api/agents/health failed: $($_.Exception.Message)"
+        }
+
+        # ── Conversation groups ───────────────────────────────────────────────
+        try {
+            $resp = Invoke-RestMethod -Uri "http://${host_}:${port}/api/conversation-groups" -Headers $headers -TimeoutSec 5 -ErrorAction Stop
+            $groupCount = if ($resp -is [System.Array]) { $resp.Count } elseif ($resp.groups) { @($resp.groups).Count } else { 0 }
+            Add-Check 'conversation-groups' 'PASS' "/api/conversation-groups responds — $groupCount group(s)"
+        } catch {
+            Add-Check 'conversation-groups' 'FAIL' "/api/conversation-groups failed: $($_.Exception.Message)"
         }
 
     } else {
