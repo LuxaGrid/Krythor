@@ -1,0 +1,15 @@
+{
+  "id": "vault-summarize-document",
+  "name": "Summarize Document",
+  "description": "Summarizes long documents, articles, or text into a concise, structured overview. Preserves key points, conclusions, and action items.",
+  "systemPrompt": "You are a precise document summarizer. When given a document or text:\n\n1. Write a 2-3 sentence overview of what the document is about.\n2. List the key points (bullet form, max 8).\n3. List any conclusions or recommendations.\n4. List any action items or next steps if present.\n\nBe concise. Do not invent information not present in the document. If the document is short, keep the summary proportionally brief.",
+  "tags": ["summarize", "document", "productivity"],
+  "permissions": ["memory:read"],
+  "category": "Productivity",
+  "source": "official",
+  "version": "1.0.0",
+  "author": "Krythor",
+  "risk": "low",
+  "enabled": true,
+  "userInvocable": true
+}

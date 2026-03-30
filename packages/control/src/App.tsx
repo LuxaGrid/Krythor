@@ -31,6 +31,7 @@ import { CronPanel } from './components/CronPanel.tsx';
 import { StandingOrdersPanel } from './components/StandingOrdersPanel.tsx';
 import { PeersPanel } from './components/PeersPanel.tsx';
 import { TokenCostPanel } from './components/TokenCostPanel.tsx';
+import { VaultPanel } from './components/VaultPanel.tsx';
 
 // ── App Config Context ─────────────────────────────────────────────────────
 interface AppConfigCtx {
@@ -44,7 +45,7 @@ export const AppConfigContext = createContext<AppConfigCtx>({
 export const useAppConfig = () => useContext(AppConfigContext);
 
 // ── Tabs ──────────────────────────────────────────────────────────────────
-type Tab = 'command' | 'agents' | 'skills' | 'memory' | 'models' | 'guard' | 'events' | 'mission' | 'command-center' | 'workflow' | 'dashboard' | 'settings' | 'logs' | 'config-editor' | 'custom-tools' | 'channels' | 'chat-channels' | 'file-browser' | 'audit' | 'workspace' | 'devices' | 'cron' | 'standing-orders' | 'peers' | 'token-cost';
+type Tab = 'command' | 'agents' | 'skills' | 'memory' | 'models' | 'guard' | 'events' | 'mission' | 'command-center' | 'workflow' | 'dashboard' | 'settings' | 'logs' | 'config-editor' | 'custom-tools' | 'channels' | 'chat-channels' | 'file-browser' | 'audit' | 'workspace' | 'devices' | 'cron' | 'standing-orders' | 'peers' | 'token-cost' | 'vault';
 
 // Primary tabs — always visible
 const PRIMARY_TABS: { id: Tab; label: string; hint: string }[] = [
@@ -60,6 +61,7 @@ const PRIMARY_TABS: { id: Tab; label: string; hint: string }[] = [
 
 // Advanced tabs — shown in overflow menu
 const ADVANCED_TABS: { id: Tab; label: string; hint: string }[] = [
+  { id: 'vault',         label: 'Vault',            hint: 'Browse and install reusable skills from the Krythor Vault' },
   { id: 'skills',        label: 'Skills',          hint: 'Reusable task templates' },
   { id: 'guard',         label: 'Guard',           hint: 'Safety rules and policy engine' },
   { id: 'logs',          label: 'Logs',            hint: 'Live gateway log stream' },
@@ -867,6 +869,7 @@ function AppInner({ onTokenReady }: { onTokenReady: (token: string) => void }) {
           <div className={`h-full ${tab === 'standing-orders'  ? 'block' : 'hidden'}`}><StandingOrdersPanel /></div>
           <div className={`h-full ${tab === 'peers'            ? 'block' : 'hidden'}`}><PeersPanel /></div>
           <div className={`h-full ${tab === 'token-cost'      ? 'block' : 'hidden'}`}><TokenCostPanel /></div>
+          <div className={`h-full ${tab === 'vault'           ? 'block' : 'hidden'}`}><VaultPanel /></div>
         </div>
       </div>
     </AppConfigContext.Provider>

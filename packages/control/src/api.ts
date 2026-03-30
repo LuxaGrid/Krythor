@@ -665,6 +665,67 @@ export interface SkillRunResult {
   skillId: string; output: string; modelUsed?: string; durationMs: number; status: string;
 }
 
+// ── Vault ─────────────────────────────────────────────────────────────────────
+
+export type VaultSource = 'official' | 'community';
+export type VaultRisk   = 'low' | 'medium' | 'high';
+
+export interface VaultCatalogEntry {
+  id:               string;
+  name:             string;
+  description:      string;
+  category:         string;
+  source:           VaultSource;
+  version:          string;
+  minKrythorVersion: string;
+  author:           string;
+  permissions:      string[];
+  risk:             VaultRisk;
+  tags:             string[];
+  installed:        boolean;
+  skillId:          string | null;
+  updateAvailable:  boolean;
+}
+
+export interface VaultCatalog {
+  manifestVersion: string;
+  updatedAt:       string;
+  skills:          VaultCatalogEntry[];
+  updatable:       string[];
+  note?:           string;
+}
+
+export interface InstalledVaultSkill {
+  vaultId:         string;
+  skillId:         string;
+  name:            string;
+  version:         string;
+  source:          VaultSource;
+  author:          string;
+  category:        string;
+  permissions:     string[];
+  risk:            VaultRisk;
+  installedAt:     number;
+  manifestVersion: string;
+}
+
+export interface VaultInstallResult {
+  ok:          boolean;
+  skill:       Skill;
+  vaultRecord: InstalledVaultSkill;
+}
+
+export const getVaultCatalog     = () => req<VaultCatalog>('GET', '/vault/catalog');
+export const getVaultInstalled   = () => req<InstalledVaultSkill[]>('GET', '/vault/installed');
+export const installVaultSkill   = (vaultId: string) =>
+  req<VaultInstallResult>('POST', '/vault/install', { vaultId });
+export const removeVaultSkill    = (vaultId: string) =>
+  req<void>('DELETE', `/vault/installed/${encodeURIComponent(vaultId)}`);
+export const updateVaultSkill    = (vaultId: string) =>
+  req<VaultInstallResult>('POST', `/vault/update/${encodeURIComponent(vaultId)}`);
+export const importVaultSkillLocal = (pkg: Record<string, unknown>) =>
+  req<VaultInstallResult>('POST', '/vault/install/local', pkg);
+
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 export const getDashboard = () => req<Dashboard>('GET', '/dashboard');
 

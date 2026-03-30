@@ -21,6 +21,8 @@ import { registerConfigRoute, type HeartbeatRef } from './routes/config.js';
 import { registerConfigPortabilityRoutes } from './routes/config.portability.js';
 import { registerConversationRoutes } from './routes/conversations.js';
 import { registerSkillRoutes } from './routes/skills.js';
+import { registerVaultRoutes } from './routes/vault.js';
+import { VaultRegistry } from './VaultRegistry.js';
 import { registerRecommendRoutes } from './routes/recommend.js';
 import { registerToolRoutes } from './routes/tools.js';
 import { registerCustomToolRoutes } from './routes/tools.custom.js';
@@ -772,6 +774,7 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   // The event emitter is wired after `broadcast` is defined — forward skill
   // lifecycle events to all connected WebSocket clients.
   const skillRegistry = new SkillRegistry(join(dataDir, 'config'));
+  const vaultRegistry = new VaultRegistry(join(dataDir, 'config'));
 
 
   // Wire Ollama embedding provider if any Ollama provider is configured and enabled.
@@ -1490,6 +1493,7 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   registerConversationRoutes(app, convStore, guard, channelEmit, memory ?? undefined, approvalManager, janitorStatus);
   if (memory) registerSessionMaintenanceRoutes(app, memory);
   registerSkillRoutes(app, skillRegistry, guard, skillRunner, approvalManager, skillFileLoader);
+  registerVaultRoutes(app, skillRegistry, vaultRegistry, guard, approvalManager);
   registerRecommendRoutes(app, models, recommender, guard);
   registerToolRoutes(app, guard, execTool, core);
   registerCustomToolRoutes(app, customToolStore, guard);
