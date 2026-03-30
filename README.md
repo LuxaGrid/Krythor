@@ -74,6 +74,7 @@ This is not just chat. This is AI you can operate.
 - **Cron job management** — schedule agents with cron expressions, fixed intervals, or one-shot timestamps
 - **Persistent job queue** — SQLite-backed job queue with exponential backoff retry and status tracking
 - **Per-agent rate limiting** — configurable runs-per-minute cap with `429 Too Many Requests` enforcement
+- **Agent health gate** — adaptive per-agent health tracking; monitors stability (success rate) and efficiency (clean runs without fallback or retries) over a rolling window; automatically pauses degraded agents and issues `503 Agent Paused` with a `Retry-After` header; auto-recovers after a configurable window; health badge on every agent card with live metrics, unpause, and reset controls
 - **Agent-to-agent messaging bus** — in-process `send()`, `subscribe()`, and `delegate()` with HTTP API
 - **Token Cost Feed** — live tab showing every LLM inference call with time, agent, session, model, token counts, and estimated USD cost; time window filter (15m/1h/6h/24h/all); summary totals strip; per-agent token budget limits (daily and per-session caps) configurable directly from the UI
 - **Memory janitor UI** — scheduled cleanup with status display, pruning stats, and "Run Now" button in the Settings tab; janitor runs automatically every 6 hours in the background
@@ -724,7 +725,7 @@ The dashboard has a customizable tab bar — click **+ Tabs** to pin or unpin an
 | Command | Send messages and get AI responses; archive/restore conversations; slash commands |
 | Memory | View and manage what Krythor remembers across sessions; session compaction; memory janitor |
 | Models | Add, test, and configure AI providers; quick-add presets for popular services |
-| Agents | Create custom AI assistants with their own instructions, workspace, and access profile |
+| Agents | Create custom AI assistants with their own instructions, workspace, and access profile; health badge shows live stability and efficiency per agent |
 | Guard | Set safety mode (Guarded / Balanced / Power User); define allow/deny/warn/require-approval rules |
 | Skills | Reusable task templates with routing profiles |
 | Vault | Browse and install skills from the Krythor Vault; filter by collection, category, or source; local import |
@@ -1063,6 +1064,10 @@ All API endpoints are served at `http://127.0.0.1:47200`. Most require a Bearer 
 | GET | `/api/agents/:id/budget` | Required | Get an agent's token budget |
 | PUT | `/api/agents/:id/budget` | Required | Set or update an agent's token budget (daily and per-session caps) |
 | DELETE | `/api/agents/:id/budget` | Required | Remove an agent's token budget |
+| GET | `/api/agents/:id/health` | Required | Agent health snapshot (phase, stability, efficiency, pausedUntil) |
+| GET | `/api/agents/health` | Required | Health snapshots for all tracked agents |
+| POST | `/api/agents/:id/health/unpause` | Required | Manually unpause a paused agent |
+| POST | `/api/agents/:id/health/reset` | Required | Reset all health history for an agent |
 | POST | `/api/recommend/override` | Required | Report a model override for learning system feedback |
 | GET | `/api/conversation-groups` | Required | List all conversation groups |
 | POST | `/api/conversation-groups` | Required | Create a conversation group |
@@ -1439,6 +1444,7 @@ To uninstall: remove the application folder (`~/.krythor`) and the data folder a
 - ✅ Structured output / JSON mode (`json_object` and `json_schema`)
 - ✅ Krythor Vault — 40 official skills across 6 collections (Real Estate, Finance, Productivity, Communication, Business Workflow, Starter Pack); local import with live risk analysis and category assignment
 - ✅ Agent token budgets — per-agent daily and per-session caps with `BUDGET_EXCEEDED` structured error
+- ✅ Agent health gate — adaptive stability/efficiency tracking per agent; auto-pause on degraded health with timed auto-recovery; `503 Agent Paused` with `Retry-After`; health badge with unpause and reset in the Agents panel
 - ✅ External content isolation — `<external-content>` wrapping on web_fetch/web_search results to mitigate prompt injection
 - ✅ Reverse-proxy support — `KRYTHOR_TRUSTED_PROXY`, `KRYTHOR_HOST`, `KRYTHOR_PORT`, `KRYTHOR_GATEWAY_TOKEN` env vars
 - ✅ Conversation groups — organize chats into named folders from the sidebar; group/ungroup, rename, drag-to-reorder, inline description editing
