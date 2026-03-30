@@ -103,6 +103,9 @@ This is not just chat. This is AI you can operate.
 - **Canvas** — agent-editable HTML/CSS/JS pages served under the gateway
 - **Doctor + Repair** — comprehensive diagnostics with migration integrity check and credential validation; `--fix` flag auto-creates missing config files
 - **Standing orders** — persistent named directives that are automatically injected as context into every agent run matching their scope
+- **Agent token budgets** — configurable daily and per-session token caps per agent; budget exceeded responses surface cleanly in both streaming and non-streaming paths with a `BUDGET_EXCEEDED` error code
+- **External content isolation** — `web_search` and `web_fetch` tool results are wrapped in `<external-content>` markers in the agent context, mitigating indirect prompt injection attacks
+- **Reverse-proxy support** — `KRYTHOR_TRUSTED_PROXY` env var enables trusted-proxy authentication for requests from specified IPs; `KRYTHOR_HOST` and `KRYTHOR_PORT` override the default bind address and port; `KRYTHOR_GATEWAY_TOKEN` sets the gateway auth token via environment variable
 - **Workflow parallel steps** — steps sharing a `parallel` group label run concurrently via `Promise.allSettled()`; outputs joined and passed to the next step
 - **Runtime moderation CRUD** — add, update, and delete custom moderation patterns at runtime via `POST/PATCH/DELETE /api/moderation/patterns`; persisted to `moderation-custom.json`
 - **Per-type fallback chains** — `taskFallbackChains` in app-config.json maps task types to ordered provider IDs, injected into routing context for fine-grained failover
@@ -256,12 +259,12 @@ Type `/` in the chat input to see the autocomplete dropdown. Arrow keys or Tab t
 | /compact | Summarize old turns and compact the conversation |
 | /model [id] | Switch the active model for this conversation |
 | /agent [id] | Switch the active agent for this conversation |
-| /think | Toggle extended thinking on/off |
-| /fast | Toggle fast mode on/off |
-| /verbose | Toggle verbose mode on/off |
-| /reasoning | Toggle reasoning display on/off |
+| /think [level] | Set extended thinking level: `off` · `minimal` · `low` · `medium` · `high` · `xhigh` · `adaptive`. No argument shows current level. Aliases: `/thinking`, `/t` |
+| /fast [on\|off] | Toggle fast model routing preference. No argument shows current state |
+| /verbose [on\|full\|off] | Control tool-call verbosity: `on` forwards tool calls, `full` adds outputs, `off` is silent (default). No argument shows current state. Alias: `/v` |
+| /reasoning [on\|off\|stream] | Control reasoning/thinking block visibility: `on` forwards thinking blocks as messages, `stream` streams thinking before reply, `off` hides them (default). No argument shows current state |
 | /btw [question] | Ask a one-shot side question using the current conversation as read-only context (does not modify session state) |
-| /subagents | Show spawned sub-agents for the current run |
+| /subagents [list\|kill id\|log id] | Manage spawned sub-agents: `list` shows active runs, `kill <runId>` stops one, `log <runId>` shows its output. No argument defaults to `list` |
 | /devices | List connected peer devices |
 | /memory | Jump to the Memory tab |
 | /agents | Jump to the Agents tab |
@@ -274,7 +277,7 @@ Type `/` in the chat input to see the autocomplete dropdown. Arrow keys or Tab t
 
 ---
 
-**Status:** Krythor is in active development and currently available as an early public preview. The current release is intended for testers, technical users, and early adopters.
+**Status:** Krythor is in active development and currently available as an early public preview. Current version: **v2.3.0**. The current release is intended for testers, technical users, and early adopters.
 
 ---
 
@@ -965,6 +968,28 @@ All API endpoints are served at `http://127.0.0.1:47200`. Most require a Bearer 
 | GET | `/api/auth/keys` | Required | List named API keys |
 | POST | `/api/auth/keys` | Required | Create a named API key |
 | DELETE | `/api/auth/keys/:id` | Required | Revoke a named API key |
+| GET | `/api/cron` | Required | List all cron jobs |
+| GET | `/api/cron/:id` | Required | Get a cron job |
+| POST | `/api/cron` | Required | Create a cron job (cron expression, interval, or one-shot timestamp) |
+| PATCH | `/api/cron/:id` | Required | Update a cron job |
+| DELETE | `/api/cron/:id` | Required | Delete a cron job |
+| POST | `/api/cron/:id/run` | Required | Trigger a cron job immediately |
+| GET | `/api/workflows` | Required | List all workflows |
+| GET | `/api/workflows/:id` | Required | Get a workflow |
+| POST | `/api/workflows` | Required | Create a workflow |
+| PUT | `/api/workflows/:id` | Required | Update a workflow |
+| DELETE | `/api/workflows/:id` | Required | Delete a workflow |
+| POST | `/api/workflows/:id/run` | Required | Execute a workflow with input |
+| GET | `/api/standing-orders` | Required | List all standing orders |
+| POST | `/api/standing-orders` | Required | Create a standing order |
+| GET | `/api/standing-orders/:id` | Required | Get a standing order |
+| PATCH | `/api/standing-orders/:id` | Required | Update a standing order |
+| DELETE | `/api/standing-orders/:id` | Required | Delete a standing order |
+| POST | `/api/standing-orders/:id/run` | Required | Execute a standing order |
+| GET | `/api/standing-orders/:id/prompt` | Required | Get the rendered system prompt for a standing order |
+| GET | `/api/agents/:id/budget` | Required | Get an agent's token budget |
+| PUT | `/api/agents/:id/budget` | Required | Set or update an agent's token budget (daily and per-session caps) |
+| DELETE | `/api/agents/:id/budget` | Required | Remove an agent's token budget |
 | POST | `/api/recommend/override` | Required | Report a model override for learning system feedback |
 | WS | `/ws/stream` | Required | Real-time event stream |
 
@@ -1244,6 +1269,9 @@ To uninstall: remove the application folder (`~/.krythor`) and the data folder a
 - ✅ Plugin sandboxing (isolated child process, 30-second timeout)
 - ✅ Structured output / JSON mode (`json_object` and `json_schema`)
 - ✅ Krythor Vault — downloadable skill library with official/community skills, collections, and local import
+- ✅ Agent token budgets — per-agent daily and per-session caps with `BUDGET_EXCEEDED` structured error
+- ✅ External content isolation — `<external-content>` wrapping on web_fetch/web_search results to mitigate prompt injection
+- ✅ Reverse-proxy support — `KRYTHOR_TRUSTED_PROXY`, `KRYTHOR_HOST`, `KRYTHOR_PORT`, `KRYTHOR_GATEWAY_TOKEN` env vars
 - ⬜ Code signing (OV certificate — eliminates SmartScreen warning)
 - ⬜ Auto-updater UI (download and replace in-place)
 - ⬜ macOS / Linux native installers
