@@ -1165,6 +1165,94 @@ Each gateway has a stable UUID identity visible at `GET /api/gateway/info`.
 
 ---
 
+## 🔒 Tailscale Networking Setup
+
+Tailscale lets you securely access your Krythor gateway from any of your own devices — or expose it publicly — without port forwarding or VPN configuration.
+
+### Prerequisites
+
+1. [Install Tailscale](https://tailscale.com/download) on this machine and every device you want to connect from
+2. Log in: `tailscale up`
+3. Verify it's running: `tailscale status` — you should see your machine listed with a `100.x.x.x` IP
+
+### Mode 1 — Serve (access from your own devices)
+
+Use this when you want to reach Krythor from your phone, laptop, or other personal devices on your tailnet. The gateway is **not** exposed to the public internet.
+
+**In the Krythor Settings tab → Tailscale Networking:**
+
+| Setting | Value |
+|---------|-------|
+| Mode | Serve |
+| Bind | Loopback (recommended) |
+| Auth mode | Token |
+| Allow Tailscale identity | On |
+| Reset on exit | On (optional — cleans up when Krythor stops) |
+
+Or set in `app-config.json`:
+
+```json
+{
+  "tailscaleMode": "serve",
+  "gatewayBind": "loopback",
+  "gatewayAuthMode": "token",
+  "allowTailscale": true,
+  "tailscaleResetOnExit": true
+}
+```
+
+Restart Krythor. The gateway will be available at:
+
+```
+https://<your-machine-name>.<tailnet-name>.ts.net
+```
+
+You can find this URL in the Settings tab → Tailscale status panel after restart.
+
+**Tip:** With `allowTailscale: true`, any device on your tailnet can access the gateway without needing the bearer token — Tailscale handles the identity.
+
+### Mode 2 — Funnel (public HTTPS access)
+
+Use this when you need the gateway reachable from the public internet — for example as a webhook receiver or a shared agent endpoint. **Password auth is required** for Funnel mode.
+
+> Funnel requires your Tailscale account to have Funnel enabled. See [Tailscale Funnel docs](https://tailscale.com/kb/1223/tailscale-funnel).
+
+**In Settings tab → Tailscale Networking:**
+
+| Setting | Value |
+|---------|-------|
+| Mode | Funnel |
+| Auth mode | Password (**required**) |
+| Allow Tailscale identity | Off |
+
+```json
+{
+  "tailscaleMode": "funnel",
+  "gatewayBind": "loopback",
+  "gatewayAuthMode": "password",
+  "allowTailscale": false
+}
+```
+
+Krythor will refuse to start in Funnel mode with token auth — this is intentional to prevent accidentally exposing the gateway without a password.
+
+### Verifying it works
+
+After restarting with Serve or Funnel mode active:
+
+1. Open Settings → Tailscale Networking — the status panel shows your tailnet IP, MagicDNS hostname, and active URL
+2. From another device on your tailnet, open the displayed URL in a browser
+3. You should reach the Krythor Control UI
+
+If startup fails, Krythor will log the reason and exit rather than start silently broken. Common causes:
+- `tailscale: command not found` — Tailscale CLI not in PATH
+- `Tailscale is not logged in` — run `tailscale up`
+- `Funnel mode ... password auth mode is required` — change auth mode to Password in settings
+
+See `docs/tailscale.md` for the full configuration reference and security notes.
+
+---
+
 ## 🛠️ Tools
 
 Krythor agents can use built-in tools via a structured JSON call in their response:
