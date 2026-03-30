@@ -53,7 +53,7 @@ This is not just chat. This is AI you can operate.
 - **Tool system** — exec (local commands), web_search (DuckDuckGo), web_fetch (URL content), file tools (9 operations), memory tools, user-defined webhook tools with one-click test-fire
 - **Tool use in agent inference loop** — agents autonomously call `file_read`, `file_write`, `shell_exec`, `memory_search`, `memory_save`, `web_search`, and `web_fetch`
 - **Session management** — named conversations, archive/restore, pinning, idle detection, export as JSON/Markdown
-- **Conversation groups** — organize conversations into named, reusable groups via the sidebar; add/remove conversations per group; groups persist across sessions
+- **Conversation groups** — organize conversations into named, reusable groups via the sidebar; add/remove conversations per group; drag to reorder groups; inline description editing; groups persist across sessions
 - **Conversation search** — filter conversations by title in the sidebar
 - **Tailscale networking** — expose the gateway securely over your tailnet (Serve mode) or publicly via HTTPS (Funnel mode) without port-forwarding; mode, bind, and auth settings in the Settings tab
 - **Token spend history** — ring buffer of last 1000 inferences; Dashboard shows per-model sparklines with token breakdown
@@ -1441,7 +1441,7 @@ To uninstall: remove the application folder (`~/.krythor`) and the data folder a
 - ✅ Agent token budgets — per-agent daily and per-session caps with `BUDGET_EXCEEDED` structured error
 - ✅ External content isolation — `<external-content>` wrapping on web_fetch/web_search results to mitigate prompt injection
 - ✅ Reverse-proxy support — `KRYTHOR_TRUSTED_PROXY`, `KRYTHOR_HOST`, `KRYTHOR_PORT`, `KRYTHOR_GATEWAY_TOKEN` env vars
-- ✅ Conversation groups — organize chats into named folders from the sidebar; group/ungroup, rename, reorder
+- ✅ Conversation groups — organize chats into named folders from the sidebar; group/ungroup, rename, drag-to-reorder, inline description editing
 - ✅ Tailscale networking — Serve (tailnet-only) and Funnel (public HTTPS) modes; configurable auth and bind mode
 - ⬜ Code signing (OV certificate — eliminates SmartScreen warning)
 - ⬜ Auto-updater UI (download and replace in-place)
