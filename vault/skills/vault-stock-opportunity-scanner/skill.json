@@ -1,0 +1,57 @@
+{
+  "id": "vault-stock-opportunity-scanner",
+  "name": "Stock Opportunity Scanner",
+  "description": "Evaluates a list of tickers against current market conditions, ranks them by opportunity strength, and highlights risk/reward for each. Produces a prioritized watchlist with reasoning.",
+  "version": "1.0.0",
+  "category": "Finance",
+  "source": "official",
+  "author": "Krythor",
+  "tags": ["stocks", "trading", "scanner", "opportunities", "watchlist", "finance"],
+  "permissions": ["memory:read", "memory:write"],
+  "risk": "low",
+  "enabled": true,
+  "userInvocable": true,
+  "guard": {
+    "operation": "skill:invoke",
+    "risk": "low"
+  },
+  "compatibility": {
+    "minKrythorVersion": "0.2.0"
+  },
+  "inputs": [
+    {
+      "id": "tickers",
+      "label": "Tickers to scan",
+      "type": "text",
+      "placeholder": "e.g. AAPL, NVDA, TSLA, MSFT, AMD",
+      "required": true,
+      "description": "Comma-separated list of stock tickers to evaluate"
+    },
+    {
+      "id": "timeframe",
+      "label": "Trading timeframe",
+      "type": "select",
+      "options": ["Day trade (intraday)", "Swing trade (2–10 days)", "Position trade (weeks–months)"],
+      "required": true,
+      "description": "Your intended holding period — affects how signals are weighted"
+    },
+    {
+      "id": "market_conditions",
+      "label": "Current market context",
+      "type": "text",
+      "placeholder": "e.g. Broad market pulling back, tech sector strong, VIX elevated",
+      "required": false,
+      "description": "Optional description of macro or sector conditions to factor into ranking"
+    },
+    {
+      "id": "criteria",
+      "label": "Opportunity criteria",
+      "type": "text",
+      "placeholder": "e.g. momentum breakout, oversold bounce, earnings catalyst",
+      "required": false,
+      "description": "What type of setup you are looking for — helps filter and rank accordingly"
+    }
+  ],
+  "systemPrompt": "You are a disciplined stock opportunity analyst. You do not speculate casually — you evaluate each ticker methodically and rank by opportunity quality.\n\nYou have been given a list of tickers, a trading timeframe, and optional market context. Your task:\n\n1. **Evaluate each ticker independently.** For each, assess:\n   - Price trend and momentum direction\n   - Key support/resistance levels relevant to the timeframe\n   - Volume behavior (confirming or diverging from price)\n   - Relative strength vs. sector or market\n   - Potential catalysts or risks (earnings, macro events, sector rotation)\n   - Risk/reward estimate (qualitative: favorable / neutral / unfavorable)\n\n2. **Rank the tickers** from highest to lowest opportunity quality for the given timeframe and criteria. Explain the ranking logic.\n\n3. **For each ticker, output a structured block:**\n   - Ticker and name\n   - Opportunity score (1–10)\n   - Setup type (breakout / bounce / trend continuation / avoid)\n   - Key level to watch\n   - Risk/reward: favorable / neutral / unfavorable\n   - One-sentence thesis\n   - One key risk\n\n4. **End with a ranked summary table** and a top pick with brief justification.\n\n5. **Suggest next step:** for the top 1–2 opportunities, recommend whether to build a full trade setup now or continue monitoring.\n\nDo not guess prices you cannot know. Use conditional language where specific data is unavailable. Be systematic, not enthusiastic.",
+  "promptTemplate": "Scan the following tickers for trading opportunities.\n\nTickers: {{tickers}}\nTimeframe: {{timeframe}}\nMarket context: {{market_conditions}}\nOpportunity criteria: {{criteria}}\n\nEvaluate each ticker, rank by opportunity quality, and produce structured output per the system instructions."
+}

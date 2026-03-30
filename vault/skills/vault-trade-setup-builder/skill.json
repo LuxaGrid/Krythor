@@ -1,0 +1,72 @@
+{
+  "id": "vault-trade-setup-builder",
+  "name": "Trade Setup Builder",
+  "description": "Builds a complete, structured trade plan for a specific ticker — entry zone, targets, stop loss, position sizing rationale, and risk/reward ratio. Eliminates the cognitive load of planning in the moment.",
+  "version": "1.0.0",
+  "category": "Finance",
+  "source": "official",
+  "author": "Krythor",
+  "tags": ["trading", "trade-plan", "entry", "stop-loss", "risk-reward", "finance"],
+  "permissions": ["memory:read", "memory:write"],
+  "risk": "low",
+  "enabled": true,
+  "userInvocable": true,
+  "guard": {
+    "operation": "skill:invoke",
+    "risk": "low"
+  },
+  "compatibility": {
+    "minKrythorVersion": "0.2.0"
+  },
+  "inputs": [
+    {
+      "id": "ticker",
+      "label": "Ticker",
+      "type": "text",
+      "placeholder": "e.g. NVDA",
+      "required": true,
+      "description": "The stock you are planning the trade for"
+    },
+    {
+      "id": "direction",
+      "label": "Trade direction",
+      "type": "select",
+      "options": ["Long (buy)", "Short (sell)"],
+      "required": true,
+      "description": "Whether you are going long or short"
+    },
+    {
+      "id": "timeframe",
+      "label": "Trade timeframe",
+      "type": "select",
+      "options": ["Scalp (minutes)", "Day trade (intraday)", "Swing trade (2–10 days)", "Position trade (weeks–months)"],
+      "required": true
+    },
+    {
+      "id": "entry_thesis",
+      "label": "Entry thesis",
+      "type": "text",
+      "placeholder": "e.g. Breakout above $900 resistance on high volume, sector momentum strong",
+      "required": true,
+      "description": "Why you are considering this trade — the setup logic"
+    },
+    {
+      "id": "current_price",
+      "label": "Current price",
+      "type": "text",
+      "placeholder": "e.g. 887.50",
+      "required": false,
+      "description": "Optional — used to calculate relative levels and ratios"
+    },
+    {
+      "id": "account_risk_pct",
+      "label": "Max account risk per trade (%)",
+      "type": "text",
+      "placeholder": "e.g. 1",
+      "required": false,
+      "description": "Percentage of account you are willing to risk — used for position sizing guidance"
+    }
+  ],
+  "systemPrompt": "You are a structured trade planner. Your job is to convert a trader's thesis into a complete, actionable trade plan. You do not trade emotionally — you build plans with defined levels and clear rules.\n\nGiven a ticker, direction, timeframe, thesis, and optional current price, produce:\n\n1. **Trade Overview**\n   - Ticker, direction, timeframe\n   - Setup classification (breakout / breakdown / bounce / trend continuation / reversal)\n   - Thesis summary (restated concisely)\n\n2. **Entry Plan**\n   - Ideal entry zone with reasoning (not a single price — a zone)\n   - Trigger condition (what must happen to confirm entry)\n   - Avoid entry if (conditions that invalidate the setup)\n\n3. **Exit Plan**\n   - Target 1 (conservative, first partial exit)\n   - Target 2 (full target, where thesis is complete)\n   - Stop loss level with reasoning (below/above which structure is broken)\n   - Trailing stop guidance if applicable\n\n4. **Risk Profile**\n   - Risk/reward ratio for T1 and T2 (if price provided)\n   - Position sizing guidance (if account risk % provided: calculate maximum shares/contracts to risk that %)\n   - Risk/reward verdict: strong (>2:1) / acceptable (1.5–2:1) / marginal (<1.5:1)\n\n5. **Trade Management Rules**\n   - What to do if price stalls at T1\n   - What to do if price returns to entry zone after partial fill\n   - What invalidates the trade entirely\n\n6. **Next Step**\n   - Immediate action: set alerts, wait for trigger, enter now?\n   - Suggest logging this setup in Trade Journal Intelligence after execution\n\nBe precise. Use conditional language for levels derived from thesis rather than live data. Do not give financial advice — present this as a structured planning exercise.",
+  "promptTemplate": "Build a complete trade plan for the following setup.\n\nTicker: {{ticker}}\nDirection: {{direction}}\nTimeframe: {{timeframe}}\nEntry thesis: {{entry_thesis}}\nCurrent price: {{current_price}}\nMax account risk per trade: {{account_risk_pct}}%\n\nProduce a structured trade plan per the system instructions."
+}

@@ -1,0 +1,69 @@
+{
+  "id": "vault-portfolio-insight-engine",
+  "name": "Portfolio Insight Engine",
+  "description": "Analyzes a portfolio's composition for diversification quality, sector overexposure, correlation risk, and position balance. Produces a structured assessment with specific improvement recommendations.",
+  "version": "1.0.0",
+  "category": "Finance",
+  "source": "official",
+  "author": "Krythor",
+  "tags": ["portfolio", "diversification", "risk", "allocation", "analysis", "finance"],
+  "permissions": ["memory:read", "memory:write"],
+  "risk": "low",
+  "enabled": true,
+  "userInvocable": true,
+  "guard": {
+    "operation": "skill:invoke",
+    "risk": "low"
+  },
+  "compatibility": {
+    "minKrythorVersion": "0.2.0"
+  },
+  "inputs": [
+    {
+      "id": "holdings",
+      "label": "Current holdings",
+      "type": "text",
+      "placeholder": "e.g. AAPL 25%, MSFT 20%, NVDA 15%, GOOGL 10%, SPY 15%, BND 10%, CASH 5%",
+      "required": true,
+      "description": "List positions with approximate percentage allocation. Include ETFs, bonds, cash if applicable."
+    },
+    {
+      "id": "portfolio_size",
+      "label": "Portfolio size (optional)",
+      "type": "text",
+      "placeholder": "e.g. $50,000",
+      "required": false,
+      "description": "Total portfolio value — used for dollar-level context in recommendations"
+    },
+    {
+      "id": "goal",
+      "label": "Portfolio goal",
+      "type": "select",
+      "options": [
+        "Long-term growth",
+        "Balanced growth and income",
+        "Capital preservation",
+        "Aggressive growth",
+        "Income generation"
+      ],
+      "required": true,
+      "description": "Your primary objective — shapes what constitutes a weakness or strength"
+    },
+    {
+      "id": "time_horizon",
+      "label": "Time horizon",
+      "type": "select",
+      "options": ["< 1 year", "1–3 years", "3–10 years", "10+ years"],
+      "required": true
+    },
+    {
+      "id": "concerns",
+      "label": "Specific concerns (optional)",
+      "type": "text",
+      "placeholder": "e.g. too concentrated in tech, worried about rate sensitivity, need more income",
+      "required": false
+    }
+  ],
+  "systemPrompt": "You are a portfolio analyst. Your role is to evaluate a portfolio's structure systematically — not to recommend specific buy/sell actions, but to identify structural strengths, weaknesses, and risks based on what is already held.\n\nGiven the holdings, goal, and time horizon, produce:\n\n1. **Portfolio Snapshot**\n   - Reconstruct the portfolio by sector, asset class, and geography (inferred from holdings)\n   - Identify top 3 concentrations by sector or theme\n   - Calculate the largest single-position weighting\n\n2. **Diversification Assessment**\n   - Is the portfolio adequately diversified for the stated goal? (Yes / Partially / No)\n   - Identify any single-sector concentration risk (>30% in one sector = flag)\n   - Identify correlation clusters (positions likely to move together in a downturn)\n   - Rate overall diversification: Strong / Adequate / Weak\n\n3. **Risk Exposure Analysis**\n   - Overall risk profile: Conservative / Moderate / Aggressive\n   - Does the risk level match the stated goal and time horizon? Flag any mismatch.\n   - Identify the portfolio's biggest vulnerability (what market scenario would cause the most damage)\n   - Volatility characteristics: high / medium / low relative to a standard benchmark\n\n4. **Weaknesses and Gaps**\n   - What is missing for the stated goal? (e.g. income, inflation protection, international exposure)\n   - Which positions are duplicating each other's exposure?\n   - Any positions that seem misaligned with the goal?\n\n5. **Improvement Recommendations**\n   - 3–5 specific, structural suggestions (not stock picks — asset class or category level)\n   - Each recommendation with reasoning tied to the stated goal\n   - Priority order: highest impact first\n\n6. **Summary Verdict**\n   - Portfolio health score: 1–10\n   - One-sentence overall assessment\n   - Top priority action\n\n7. **Next Step**\n   - Suggest reviewing with Trade Journal Intelligence if actively trading, or revisiting in 90 days if long-term holding\n\nDo not recommend specific securities. Focus on structure, allocation balance, and goal alignment.",
+  "promptTemplate": "Analyze the following portfolio.\n\nHoldings: {{holdings}}\nPortfolio size: {{portfolio_size}}\nGoal: {{goal}}\nTime horizon: {{time_horizon}}\nSpecific concerns: {{concerns}}\n\nProduce a full portfolio insight analysis per the system instructions."
+}

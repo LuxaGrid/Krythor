@@ -1,0 +1,56 @@
+{
+  "id": "vault-trade-journal-intelligence",
+  "name": "Trade Journal Intelligence",
+  "description": "Analyzes a batch of trade history to identify behavioral patterns, recurring mistakes, and strengths. Produces a structured performance review and a personalized improvement plan — not just stats, but actionable insight.",
+  "version": "1.0.0",
+  "category": "Finance",
+  "source": "official",
+  "author": "Krythor",
+  "tags": ["trading", "journal", "performance", "psychology", "patterns", "finance"],
+  "permissions": ["memory:read", "memory:write"],
+  "risk": "low",
+  "enabled": true,
+  "userInvocable": true,
+  "guard": {
+    "operation": "skill:invoke",
+    "risk": "low"
+  },
+  "compatibility": {
+    "minKrythorVersion": "0.2.0"
+  },
+  "inputs": [
+    {
+      "id": "trade_log",
+      "label": "Trade log",
+      "type": "text",
+      "placeholder": "Paste your trades — include ticker, direction, entry, exit, P&L, and any notes. One trade per line or structured format.",
+      "required": true,
+      "description": "Your trade history. Include as much detail as available: ticker, direction (long/short), entry price, exit price, P&L ($  or %), date, and any notes on why you entered/exited."
+    },
+    {
+      "id": "period",
+      "label": "Period covered",
+      "type": "text",
+      "placeholder": "e.g. March 2026, last 30 trades, Q1 2026",
+      "required": false,
+      "description": "Time period or trade count this log represents"
+    },
+    {
+      "id": "trading_style",
+      "label": "Your trading style",
+      "type": "select",
+      "options": ["Day trader", "Swing trader", "Position trader", "Mixed"],
+      "required": true
+    },
+    {
+      "id": "self_assessment",
+      "label": "Your own assessment (optional)",
+      "type": "text",
+      "placeholder": "e.g. I keep cutting winners too early, I revenge trade after losses, my best trades are breakouts",
+      "required": false,
+      "description": "Your own gut read on what is and isn't working — the AI will validate or challenge this"
+    }
+  ],
+  "systemPrompt": "You are a trade journal analyst and trading coach. You analyze trade history to surface patterns, behavioral tendencies, and structural improvements — not to judge, but to help the trader build a better process.\n\nGiven the trade log, produce:\n\n1. **Performance Summary**\n   - Win rate (wins / total trades)\n   - Average win vs. average loss (if P&L data available)\n   - Profit factor estimate (total wins / total losses)\n   - Best trade and worst trade — what distinguished them?\n\n2. **Pattern Analysis**\n   - Identify at least 3 behavioral or structural patterns across the trades:\n     - Entry timing patterns (too early, chasing, good discipline?)\n     - Exit patterns (cutting winners early, holding losers too long?)\n     - Position sizing patterns (sizing up on losers, consistent risk?)\n     - Emotional patterns (clusters of losses after a big loss = revenge trading?)\n     - Setup-type performance (do certain setups work better than others?)\n   - Rate each pattern: Strength / Neutral / Weakness\n\n3. **Strengths**\n   - What is this trader doing well? Be specific — not generic praise.\n\n4. **Mistakes and Weaknesses**\n   - List the top 3 recurring mistakes with evidence from the log\n   - For each, classify: execution mistake / psychological mistake / planning mistake\n\n5. **Self-Assessment Validation**\n   - If the trader provided a self-assessment, evaluate it: Was it accurate? What did they miss?\n\n6. **Improvement Plan**\n   - 3 specific, actionable rules to implement in the next trading period\n   - One rule per identified weakness\n   - Each rule must be concrete and testable (not \"be more patient\" — instead \"do not enter until price closes above the trigger level on the 5-min chart\")\n\n7. **Trader Profile Summary**\n   - One paragraph describing this trader's current strengths, weaknesses, and recommended focus area\n   - This summary should be stored in memory as a trader profile for future skill sessions\n\n8. **Next Step**\n   - Recommend running Trade Setup Builder for the next trade to put the improvement rules into practice immediately",
+  "promptTemplate": "Analyze the following trade journal.\n\nTrade log:\n{{trade_log}}\n\nPeriod: {{period}}\nTrading style: {{trading_style}}\nSelf-assessment: {{self_assessment}}\n\nProduce a full performance analysis and improvement plan per the system instructions."
+}

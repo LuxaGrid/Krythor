@@ -1,0 +1,80 @@
+{
+  "id": "vault-risk-position-sizer",
+  "name": "Risk & Position Sizer",
+  "description": "Calculates the correct position size for a trade based on account size, risk tolerance, entry price, and stop loss. Enforces consistent risk discipline and explains every step of the calculation.",
+  "version": "1.0.0",
+  "category": "Finance",
+  "source": "official",
+  "author": "Krythor",
+  "tags": ["risk", "position-sizing", "discipline", "money-management", "trading", "finance"],
+  "permissions": ["memory:read", "memory:write"],
+  "risk": "low",
+  "enabled": true,
+  "userInvocable": true,
+  "guard": {
+    "operation": "skill:invoke",
+    "risk": "low"
+  },
+  "compatibility": {
+    "minKrythorVersion": "0.2.0"
+  },
+  "inputs": [
+    {
+      "id": "account_size",
+      "label": "Account size ($)",
+      "type": "text",
+      "placeholder": "e.g. 25000",
+      "required": true,
+      "description": "Your total trading account value in USD"
+    },
+    {
+      "id": "risk_pct",
+      "label": "Risk per trade (%)",
+      "type": "text",
+      "placeholder": "e.g. 1",
+      "required": true,
+      "description": "Percentage of account you are willing to lose on this trade (typical: 0.5%–2%)"
+    },
+    {
+      "id": "entry_price",
+      "label": "Entry price ($)",
+      "type": "text",
+      "placeholder": "e.g. 145.50",
+      "required": true,
+      "description": "Your planned entry price per share"
+    },
+    {
+      "id": "stop_price",
+      "label": "Stop loss price ($)",
+      "type": "text",
+      "placeholder": "e.g. 141.00",
+      "required": true,
+      "description": "Your stop loss price — where you will exit if the trade goes wrong"
+    },
+    {
+      "id": "target_price",
+      "label": "Target price ($)",
+      "type": "text",
+      "placeholder": "e.g. 158.00",
+      "required": false,
+      "description": "Optional — your profit target for risk/reward calculation"
+    },
+    {
+      "id": "ticker",
+      "label": "Ticker",
+      "type": "text",
+      "placeholder": "e.g. AAPL",
+      "required": false
+    },
+    {
+      "id": "instrument_type",
+      "label": "Instrument type",
+      "type": "select",
+      "options": ["Stocks (shares)", "Options (contracts)", "Futures (contracts)", "Forex (lots)"],
+      "required": true,
+      "description": "The type of instrument — affects how position size is expressed"
+    }
+  ],
+  "systemPrompt": "You are a risk management calculator and trading discipline enforcer. Your job is to compute position size precisely, explain every step, and flag any risk management concerns.\n\nGiven account size, risk percentage, entry price, and stop price, compute and present:\n\n1. **Risk Calculation**\n   - Dollar risk per trade: account_size × (risk_pct / 100)\n   - Risk per share/unit: |entry_price − stop_price|\n   - Show both figures clearly\n\n2. **Position Size**\n   - Shares/contracts: dollar_risk ÷ risk_per_unit (round down to whole shares)\n   - Total position value: shares × entry_price\n   - Position as % of account: (position_value / account_size) × 100\n   - Flag if position exceeds 20% of account (concentration risk warning)\n   - Flag if position exceeds 50% of account (critical oversize warning)\n\n3. **Risk/Reward Analysis** (if target provided)\n   - Dollar reward: (target_price − entry_price) × shares (long) or reversed for short\n   - Risk/reward ratio: reward ÷ dollar_risk\n   - Verdict: Strong (≥3:1) / Good (2–3:1) / Acceptable (1.5–2:1) / Poor (<1.5:1)\n   - Recommendation: proceed / proceed with caution / reconsider stop or target\n\n4. **Stop Loss Validation**\n   - Stop distance as % from entry\n   - Is the stop tight or wide for the instrument? (>5% is typically wide for equities)\n   - If stop is very tight (<0.5%), flag: may be too tight for normal volatility\n\n5. **Risk Rule Checklist**\n   - ✓ or ✗ for each:\n     - Risk % is ≤ 2% of account\n     - Position size ≤ 20% of account\n     - R:R ratio ≥ 1.5:1 (if target provided)\n     - Stop is defined before entry\n\n6. **Plain-English Summary**\n   - One paragraph: what you are risking, what you can gain, and whether this trade meets standard risk discipline\n\n7. **Next Step**\n   - If trade passes risk rules: suggest building the full plan in Trade Setup Builder\n   - If trade fails risk rules: state specifically what needs to change before entering\n\nPresent all calculations step-by-step. Do not obscure math. The goal is for the trader to fully understand their risk before placing the trade.",
+  "promptTemplate": "Calculate position size and risk profile for the following trade.\n\nTicker: {{ticker}}\nInstrument: {{instrument_type}}\nAccount size: ${{account_size}}\nRisk per trade: {{risk_pct}}%\nEntry price: ${{entry_price}}\nStop loss: ${{stop_price}}\nTarget: ${{target_price}}\n\nCompute position size, validate risk/reward, and produce the full risk assessment per the system instructions."
+}

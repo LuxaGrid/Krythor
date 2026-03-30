@@ -1,5 +1,5 @@
 {
-  "manifestVersion": "3",
+  "manifestVersion": "4",
   "updatedAt": "2026-03-29",
   "skills": [
     {
@@ -11,9 +11,15 @@
       "version": "1.0.0",
       "minKrythorVersion": "0.2.0",
       "author": "Krythor",
-      "permissions": ["memory:read"],
+      "permissions": [
+        "memory:read"
+      ],
       "risk": "low",
-      "tags": ["summarize", "document", "productivity"],
+      "tags": [
+        "summarize",
+        "document",
+        "productivity"
+      ],
       "path": "skills/summarize-document.json"
     },
     {
@@ -25,9 +31,16 @@
       "version": "1.0.0",
       "minKrythorVersion": "0.2.0",
       "author": "Krythor",
-      "permissions": ["internet:read", "memory:write"],
+      "permissions": [
+        "internet:read",
+        "memory:write"
+      ],
       "risk": "medium",
-      "tags": ["research", "web", "search"],
+      "tags": [
+        "research",
+        "web",
+        "search"
+      ],
       "path": "skills/web-research.json"
     },
     {
@@ -39,9 +52,16 @@
       "version": "1.0.0",
       "minKrythorVersion": "0.2.0",
       "author": "Krythor",
-      "permissions": ["memory:read"],
+      "permissions": [
+        "memory:read"
+      ],
       "risk": "low",
-      "tags": ["code", "review", "development", "security"],
+      "tags": [
+        "code",
+        "review",
+        "development",
+        "security"
+      ],
       "path": "skills/code-review.json"
     },
     {
@@ -53,9 +73,16 @@
       "version": "1.0.0",
       "minKrythorVersion": "0.2.0",
       "author": "Krythor",
-      "permissions": ["memory:write"],
+      "permissions": [
+        "memory:write"
+      ],
       "risk": "low",
-      "tags": ["meeting", "notes", "productivity", "summarize"],
+      "tags": [
+        "meeting",
+        "notes",
+        "productivity",
+        "summarize"
+      ],
       "path": "skills/meeting-notes.json"
     },
     {
@@ -69,7 +96,10 @@
       "author": "Krythor",
       "permissions": [],
       "risk": "low",
-      "tags": ["translate", "language"],
+      "tags": [
+        "translate",
+        "language"
+      ],
       "path": "skills/translate.json"
     },
     {
@@ -83,7 +113,11 @@
       "author": "Krythor",
       "permissions": [],
       "risk": "low",
-      "tags": ["email", "writing", "communication"],
+      "tags": [
+        "email",
+        "writing",
+        "communication"
+      ],
       "path": "skills/draft-email.json"
     },
     {
@@ -97,7 +131,12 @@
       "author": "Krythor",
       "permissions": [],
       "risk": "low",
-      "tags": ["real-estate", "listing", "writing", "property"],
+      "tags": [
+        "real-estate",
+        "listing",
+        "writing",
+        "property"
+      ],
       "path": "skills/property-listing.json"
     },
     {
@@ -111,7 +150,12 @@
       "author": "Krythor",
       "permissions": [],
       "risk": "low",
-      "tags": ["real-estate", "offer", "letter", "buyer"],
+      "tags": [
+        "real-estate",
+        "offer",
+        "letter",
+        "buyer"
+      ],
       "path": "skills/offer-letter.json"
     },
     {
@@ -123,9 +167,17 @@
       "version": "1.0.0",
       "minKrythorVersion": "0.2.0",
       "author": "Krythor",
-      "permissions": ["memory:read"],
+      "permissions": [
+        "memory:read"
+      ],
       "risk": "low",
-      "tags": ["real-estate", "market", "analysis", "comps", "pricing"],
+      "tags": [
+        "real-estate",
+        "market",
+        "analysis",
+        "comps",
+        "pricing"
+      ],
       "path": "skills/market-analysis.json"
     },
     {
@@ -137,9 +189,15 @@
       "version": "1.0.0",
       "minKrythorVersion": "0.2.0",
       "author": "Krythor",
-      "permissions": ["memory:read"],
+      "permissions": [
+        "memory:read"
+      ],
       "risk": "low",
-      "tags": ["changelog", "git", "development"],
+      "tags": [
+        "changelog",
+        "git",
+        "development"
+      ],
       "path": "skills/community-changelog.json"
     },
     {
@@ -151,9 +209,18 @@
       "version": "1.0.0",
       "minKrythorVersion": "0.2.0",
       "author": "Krythor",
-      "permissions": ["memory:read", "memory:write"],
+      "permissions": [
+        "memory:read",
+        "memory:write"
+      ],
       "risk": "low",
-      "tags": ["real-estate", "client", "follow-up", "crm", "memory"],
+      "tags": [
+        "real-estate",
+        "client",
+        "follow-up",
+        "crm",
+        "memory"
+      ],
       "path": "skills/vault-client-followup-engine/skill.json"
     },
     {
@@ -165,9 +232,17 @@
       "version": "1.0.0",
       "minKrythorVersion": "0.2.0",
       "author": "Krythor",
-      "permissions": ["memory:write"],
+      "permissions": [
+        "memory:write"
+      ],
       "risk": "low",
-      "tags": ["real-estate", "listing", "mls", "marketing", "pricing"],
+      "tags": [
+        "real-estate",
+        "listing",
+        "mls",
+        "marketing",
+        "pricing"
+      ],
       "path": "skills/vault-listing-intelligence-builder/skill.json"
     },
     {
@@ -179,9 +254,17 @@
       "version": "1.0.0",
       "minKrythorVersion": "0.2.0",
       "author": "Krythor",
-      "permissions": ["memory:write"],
+      "permissions": [
+        "memory:write"
+      ],
       "risk": "low",
-      "tags": ["real-estate", "open-house", "leads", "follow-up", "seller"],
+      "tags": [
+        "real-estate",
+        "open-house",
+        "leads",
+        "follow-up",
+        "seller"
+      ],
       "path": "skills/vault-open-house-recap-engine/skill.json"
     },
     {
@@ -193,9 +276,17 @@
       "version": "1.0.0",
       "minKrythorVersion": "0.2.0",
       "author": "Krythor",
-      "permissions": ["memory:read"],
+      "permissions": [
+        "memory:read"
+      ],
       "risk": "low",
-      "tags": ["real-estate", "seller", "update", "communication", "listing"],
+      "tags": [
+        "real-estate",
+        "seller",
+        "update",
+        "communication",
+        "listing"
+      ],
       "path": "skills/vault-seller-update-generator/skill.json"
     },
     {
@@ -207,9 +298,18 @@
       "version": "1.0.0",
       "minKrythorVersion": "0.2.0",
       "author": "Krythor",
-      "permissions": ["memory:read", "memory:write"],
+      "permissions": [
+        "memory:read",
+        "memory:write"
+      ],
       "risk": "low",
-      "tags": ["real-estate", "buyer", "matching", "profile", "search"],
+      "tags": [
+        "real-estate",
+        "buyer",
+        "matching",
+        "profile",
+        "search"
+      ],
       "path": "skills/vault-buyer-match-helper/skill.json"
     },
     {
@@ -223,7 +323,13 @@
       "author": "Krythor",
       "permissions": [],
       "risk": "low",
-      "tags": ["real-estate", "offer", "negotiation", "strategy", "buyer"],
+      "tags": [
+        "real-estate",
+        "offer",
+        "negotiation",
+        "strategy",
+        "buyer"
+      ],
       "path": "skills/vault-offer-positioning-assistant/skill.json"
     },
     {
@@ -235,9 +341,17 @@
       "version": "1.0.0",
       "minKrythorVersion": "0.2.0",
       "author": "Krythor",
-      "permissions": ["memory:read"],
+      "permissions": [
+        "memory:read"
+      ],
       "risk": "low",
-      "tags": ["real-estate", "objections", "sales", "negotiation", "scripts"],
+      "tags": [
+        "real-estate",
+        "objections",
+        "sales",
+        "negotiation",
+        "scripts"
+      ],
       "path": "skills/vault-objection-handling-assistant/skill.json"
     },
     {
@@ -249,23 +363,39 @@
       "version": "1.0.0",
       "minKrythorVersion": "0.2.0",
       "author": "Krythor",
-      "permissions": ["memory:write"],
+      "permissions": [
+        "memory:write"
+      ],
       "risk": "low",
-      "tags": ["real-estate", "leads", "qualification", "crm", "sales"],
+      "tags": [
+        "real-estate",
+        "leads",
+        "qualification",
+        "crm",
+        "sales"
+      ],
       "path": "skills/vault-lead-qualification-engine/skill.json"
     },
     {
       "id": "vault-proposal-builder",
       "name": "Proposal Builder",
-      "description": "Generates a complete client proposal from scope, deliverables, timeline, and pricing — including executive summary, scope of work, and a closing section.",
+      "description": "Generates a complete client proposal from scope, deliverables, timeline, and pricing \u00e2\u20ac\u201d including executive summary, scope of work, and a closing section.",
       "category": "Business",
       "source": "official",
       "version": "1.0.0",
       "minKrythorVersion": "0.2.0",
       "author": "Krythor",
-      "permissions": ["memory:read"],
+      "permissions": [
+        "memory:read"
+      ],
       "risk": "low",
-      "tags": ["business", "proposal", "sales", "client", "writing"],
+      "tags": [
+        "business",
+        "proposal",
+        "sales",
+        "client",
+        "writing"
+      ],
       "path": "skills/vault-proposal-builder/skill.json"
     },
     {
@@ -279,7 +409,13 @@
       "author": "Krythor",
       "permissions": [],
       "risk": "low",
-      "tags": ["business", "decisions", "strategy", "analysis", "planning"],
+      "tags": [
+        "business",
+        "decisions",
+        "strategy",
+        "analysis",
+        "planning"
+      ],
       "path": "skills/vault-decision-engine/skill.json"
     },
     {
@@ -291,9 +427,17 @@
       "version": "1.0.0",
       "minKrythorVersion": "0.2.0",
       "author": "Krythor",
-      "permissions": ["memory:write"],
+      "permissions": [
+        "memory:write"
+      ],
       "risk": "low",
-      "tags": ["business", "operations", "playbook", "sop", "workflow"],
+      "tags": [
+        "business",
+        "operations",
+        "playbook",
+        "sop",
+        "workflow"
+      ],
       "path": "skills/vault-process-to-playbook/skill.json"
     },
     {
@@ -305,9 +449,18 @@
       "version": "1.0.0",
       "minKrythorVersion": "0.2.0",
       "author": "Krythor",
-      "permissions": ["memory:read", "memory:write"],
+      "permissions": [
+        "memory:read",
+        "memory:write"
+      ],
       "risk": "low",
-      "tags": ["business", "crm", "memory", "client", "notes"],
+      "tags": [
+        "business",
+        "crm",
+        "memory",
+        "client",
+        "notes"
+      ],
       "path": "skills/vault-crm-memory-sync/skill.json"
     },
     {
@@ -319,9 +472,18 @@
       "version": "1.0.0",
       "minKrythorVersion": "0.2.0",
       "author": "Krythor",
-      "permissions": ["memory:read", "memory:write"],
+      "permissions": [
+        "memory:read",
+        "memory:write"
+      ],
       "risk": "low",
-      "tags": ["business", "relationships", "nurture", "crm", "planning"],
+      "tags": [
+        "business",
+        "relationships",
+        "nurture",
+        "crm",
+        "planning"
+      ],
       "path": "skills/vault-relationship-nurture-planner/skill.json"
     },
     {
@@ -333,9 +495,17 @@
       "version": "1.0.0",
       "minKrythorVersion": "0.2.0",
       "author": "Krythor",
-      "permissions": ["memory:write"],
+      "permissions": [
+        "memory:write"
+      ],
       "risk": "low",
-      "tags": ["productivity", "meetings", "workflow", "tasks", "planning"],
+      "tags": [
+        "productivity",
+        "meetings",
+        "workflow",
+        "tasks",
+        "planning"
+      ],
       "path": "skills/vault-meeting-to-workflow/skill.json"
     },
     {
@@ -347,9 +517,18 @@
       "version": "1.0.0",
       "minKrythorVersion": "0.2.0",
       "author": "Krythor",
-      "permissions": ["memory:read", "memory:write"],
+      "permissions": [
+        "memory:read",
+        "memory:write"
+      ],
       "risk": "low",
-      "tags": ["productivity", "planning", "weekly", "goals", "tasks"],
+      "tags": [
+        "productivity",
+        "planning",
+        "weekly",
+        "goals",
+        "tasks"
+      ],
       "path": "skills/vault-weekly-planning-system/skill.json"
     },
     {
@@ -363,7 +542,13 @@
       "author": "Krythor",
       "permissions": [],
       "risk": "low",
-      "tags": ["productivity", "prioritization", "tasks", "triage", "focus"],
+      "tags": [
+        "productivity",
+        "prioritization",
+        "tasks",
+        "triage",
+        "focus"
+      ],
       "path": "skills/vault-priority-triage-engine/skill.json"
     },
     {
@@ -375,15 +560,24 @@
       "version": "1.0.0",
       "minKrythorVersion": "0.2.0",
       "author": "Krythor",
-      "permissions": ["memory:read", "memory:write"],
+      "permissions": [
+        "memory:read",
+        "memory:write"
+      ],
       "risk": "low",
-      "tags": ["productivity", "daily", "planning", "focus", "brief"],
+      "tags": [
+        "productivity",
+        "daily",
+        "planning",
+        "focus",
+        "brief"
+      ],
       "path": "skills/vault-daily-brief-builder/skill.json"
     },
     {
       "id": "vault-social-repurposing-engine",
       "name": "Social Repurposing Engine",
-      "description": "Converts any source content into a LinkedIn post, X thread, Instagram caption with hashtags, and a short-form video script hook — all platform-native in tone.",
+      "description": "Converts any source content into a LinkedIn post, X thread, Instagram caption with hashtags, and a short-form video script hook \u00e2\u20ac\u201d all platform-native in tone.",
       "category": "Marketing",
       "source": "official",
       "version": "1.0.0",
@@ -391,7 +585,13 @@
       "author": "Krythor",
       "permissions": [],
       "risk": "low",
-      "tags": ["marketing", "social-media", "content", "repurposing", "writing"],
+      "tags": [
+        "marketing",
+        "social-media",
+        "content",
+        "repurposing",
+        "writing"
+      ],
       "path": "skills/vault-social-repurposing-engine/skill.json"
     },
     {
@@ -403,9 +603,17 @@
       "version": "1.0.0",
       "minKrythorVersion": "0.2.0",
       "author": "Krythor",
-      "permissions": ["memory:write"],
+      "permissions": [
+        "memory:write"
+      ],
       "risk": "low",
-      "tags": ["marketing", "content", "strategy", "planning", "calendar"],
+      "tags": [
+        "marketing",
+        "content",
+        "strategy",
+        "planning",
+        "calendar"
+      ],
       "path": "skills/vault-multi-step-content-engine/skill.json"
     },
     {
@@ -417,9 +625,17 @@
       "version": "1.0.0",
       "minKrythorVersion": "0.2.0",
       "author": "Krythor",
-      "permissions": ["memory:read"],
+      "permissions": [
+        "memory:read"
+      ],
       "risk": "low",
-      "tags": ["marketing", "email", "follow-up", "sequence", "automation"],
+      "tags": [
+        "marketing",
+        "email",
+        "follow-up",
+        "sequence",
+        "automation"
+      ],
       "path": "skills/vault-follow-up-sequence-builder/skill.json"
     },
     {
@@ -431,9 +647,17 @@
       "version": "1.0.0",
       "minKrythorVersion": "0.2.0",
       "author": "Krythor",
-      "permissions": ["memory:read"],
+      "permissions": [
+        "memory:read"
+      ],
       "risk": "low",
-      "tags": ["marketing", "email", "inbox", "communication", "productivity"],
+      "tags": [
+        "marketing",
+        "email",
+        "inbox",
+        "communication",
+        "productivity"
+      ],
       "path": "skills/vault-inbox-intelligence/skill.json"
     },
     {
@@ -447,7 +671,13 @@
       "author": "Krythor",
       "permissions": [],
       "risk": "low",
-      "tags": ["writing", "editing", "rewrite", "clarity", "optimization"],
+      "tags": [
+        "writing",
+        "editing",
+        "rewrite",
+        "clarity",
+        "optimization"
+      ],
       "path": "skills/vault-rewrite-optimizer/skill.json"
     },
     {
@@ -459,9 +689,18 @@
       "version": "1.0.0",
       "minKrythorVersion": "0.2.0",
       "author": "Krythor",
-      "permissions": ["memory:read", "memory:write"],
+      "permissions": [
+        "memory:read",
+        "memory:write"
+      ],
       "risk": "low",
-      "tags": ["writing", "personalization", "memory", "context", "profile"],
+      "tags": [
+        "writing",
+        "personalization",
+        "memory",
+        "context",
+        "profile"
+      ],
       "path": "skills/vault-personal-context-assistant/skill.json"
     },
     {
@@ -473,9 +712,18 @@
       "version": "1.0.0",
       "minKrythorVersion": "0.2.0",
       "author": "Krythor",
-      "permissions": ["memory:read", "memory:write"],
+      "permissions": [
+        "memory:read",
+        "memory:write"
+      ],
       "risk": "low",
-      "tags": ["writing", "memory", "relationships", "context", "notes"],
+      "tags": [
+        "writing",
+        "memory",
+        "relationships",
+        "context",
+        "notes"
+      ],
       "path": "skills/vault-conversation-memory-builder/skill.json"
     },
     {
@@ -489,8 +737,134 @@
       "author": "Krythor",
       "permissions": [],
       "risk": "low",
-      "tags": ["writing", "productivity", "planning", "breakdown", "tasks"],
+      "tags": [
+        "writing",
+        "productivity",
+        "planning",
+        "breakdown",
+        "tasks"
+      ],
       "path": "skills/vault-task-breakdown-engine/skill.json"
+    },
+    {
+      "id": "vault-stock-opportunity-scanner",
+      "name": "Stock Opportunity Scanner",
+      "description": "Evaluates a list of tickers against current market conditions, ranks them by opportunity strength, and highlights risk/reward for each. Produces a prioritized watchlist with reasoning.",
+      "category": "Finance",
+      "source": "official",
+      "version": "1.0.0",
+      "minKrythorVersion": "0.2.0",
+      "author": "Krythor",
+      "permissions": [
+        "memory:read",
+        "memory:write"
+      ],
+      "risk": "low",
+      "tags": [
+        "stocks",
+        "trading",
+        "scanner",
+        "opportunities",
+        "watchlist",
+        "finance"
+      ],
+      "path": "skills/vault-stock-opportunity-scanner/skill.json"
+    },
+    {
+      "id": "vault-trade-setup-builder",
+      "name": "Trade Setup Builder",
+      "description": "Builds a complete, structured trade plan for a specific ticker \u2014 entry zone, targets, stop loss, position sizing rationale, and risk/reward ratio. Eliminates the cognitive load of planning in the moment.",
+      "category": "Finance",
+      "source": "official",
+      "version": "1.0.0",
+      "minKrythorVersion": "0.2.0",
+      "author": "Krythor",
+      "permissions": [
+        "memory:read",
+        "memory:write"
+      ],
+      "risk": "low",
+      "tags": [
+        "trading",
+        "trade-plan",
+        "entry",
+        "stop-loss",
+        "risk-reward",
+        "finance"
+      ],
+      "path": "skills/vault-trade-setup-builder/skill.json"
+    },
+    {
+      "id": "vault-portfolio-insight-engine",
+      "name": "Portfolio Insight Engine",
+      "description": "Analyzes a portfolio's composition for diversification quality, sector overexposure, correlation risk, and position balance. Produces a structured assessment with specific improvement recommendations.",
+      "category": "Finance",
+      "source": "official",
+      "version": "1.0.0",
+      "minKrythorVersion": "0.2.0",
+      "author": "Krythor",
+      "permissions": [
+        "memory:read",
+        "memory:write"
+      ],
+      "risk": "low",
+      "tags": [
+        "portfolio",
+        "diversification",
+        "risk",
+        "allocation",
+        "analysis",
+        "finance"
+      ],
+      "path": "skills/vault-portfolio-insight-engine/skill.json"
+    },
+    {
+      "id": "vault-trade-journal-intelligence",
+      "name": "Trade Journal Intelligence",
+      "description": "Analyzes a batch of trade history to identify behavioral patterns, recurring mistakes, and strengths. Produces a structured performance review and a personalized improvement plan.",
+      "category": "Finance",
+      "source": "official",
+      "version": "1.0.0",
+      "minKrythorVersion": "0.2.0",
+      "author": "Krythor",
+      "permissions": [
+        "memory:read",
+        "memory:write"
+      ],
+      "risk": "low",
+      "tags": [
+        "trading",
+        "journal",
+        "performance",
+        "psychology",
+        "patterns",
+        "finance"
+      ],
+      "path": "skills/vault-trade-journal-intelligence/skill.json"
+    },
+    {
+      "id": "vault-risk-position-sizer",
+      "name": "Risk & Position Sizer",
+      "description": "Calculates the correct position size for a trade based on account size, risk tolerance, entry price, and stop loss. Enforces consistent risk discipline and explains every step of the calculation.",
+      "category": "Finance",
+      "source": "official",
+      "version": "1.0.0",
+      "minKrythorVersion": "0.2.0",
+      "author": "Krythor",
+      "permissions": [
+        "memory:read",
+        "memory:write"
+      ],
+      "risk": "low",
+      "tags": [
+        "risk",
+        "position-sizing",
+        "discipline",
+        "money-management",
+        "trading",
+        "finance"
+      ],
+      "path": "skills/vault-risk-position-sizer/skill.json"
     }
   ],
   "collections": [
@@ -511,7 +885,7 @@
     {
       "id": "real-estate-pack",
       "name": "Real Estate Pack",
-      "description": "A complete toolkit for real estate professionals — from lead qualification to listing intelligence, offer strategy, and client follow-up.",
+      "description": "A complete toolkit for real estate professionals \u00e2\u20ac\u201d from lead qualification to listing intelligence, offer strategy, and client follow-up.",
       "skillIds": [
         "vault-property-listing",
         "vault-offer-letter",
@@ -529,7 +903,7 @@
     {
       "id": "productivity-pack",
       "name": "Productivity Pack",
-      "description": "Skills that reduce cognitive load and create operational consistency — planning, prioritizing, meeting recaps, and daily structure.",
+      "description": "Skills that reduce cognitive load and create operational consistency \u00e2\u20ac\u201d planning, prioritizing, meeting recaps, and daily structure.",
       "skillIds": [
         "vault-summarize-document",
         "vault-meeting-notes",
@@ -566,6 +940,18 @@
         "vault-relationship-nurture-planner",
         "vault-multi-step-content-engine",
         "vault-web-research"
+      ]
+    },
+    {
+      "id": "finance-pack",
+      "name": "Finance Pack",
+      "description": "Elite trading and investment skills \u2014 scan opportunities, build trade plans, size positions, analyze portfolios, and review performance with discipline.",
+      "skillIds": [
+        "vault-stock-opportunity-scanner",
+        "vault-trade-setup-builder",
+        "vault-portfolio-insight-engine",
+        "vault-trade-journal-intelligence",
+        "vault-risk-position-sizer"
       ]
     }
   ]
