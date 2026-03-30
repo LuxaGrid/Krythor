@@ -1,3 +1,4 @@
+import './nativeLoader.js'; // must be first — sets up correct better-sqlite3 binary for this Node version
 import { buildServer, GATEWAY_HOST, GATEWAY_PORT, TRUSTED_PROXIES, warnIfNetworkExposed } from './server.js';
 import { logger } from './logger.js';
 import type { ReadinessResult } from './readiness.js';
