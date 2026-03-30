@@ -28,6 +28,7 @@ let app: Awaited<ReturnType<typeof buildServer>>;
 let authToken: string;
 
 function getDataDir(): string {
+  if (process.env['KRYTHOR_DATA_DIR']) return process.env['KRYTHOR_DATA_DIR'];
   if (process.platform === 'win32') {
     return join(process.env['LOCALAPPDATA'] ?? join(homedir(), 'AppData', 'Local'), 'Krythor');
   }

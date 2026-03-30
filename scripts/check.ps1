@@ -603,6 +603,38 @@ if ($portInUse) {
             }
         }
 
+        # Conversation groups (Chat Groups — migration 015)
+        try {
+            $resp = Invoke-RestMethod -Uri "http://${host_}:${port}/api/conversation-groups" -Headers $headers -TimeoutSec 3 -ErrorAction Stop
+            $groupCount = if ($resp.total -ne $null) { $resp.total } else { @($resp.groups).Count }
+            Add-Result 'LiveAPI' 'conversation-groups' 'PASS' "/api/conversation-groups responds — $groupCount group(s)"
+        } catch {
+            Add-Result 'LiveAPI' 'conversation-groups' 'FAIL' "/api/conversation-groups failed: $($_.Exception.Message)"
+        }
+
+        # Tailscale status endpoint
+        try {
+            $resp = Invoke-RestMethod -Uri "http://${host_}:${port}/api/tailscale/status" -Headers $headers -TimeoutSec 3 -ErrorAction Stop
+            $tsStatus = if ($resp.status) { $resp.status } else { 'unknown' }
+            Add-Result 'LiveAPI' 'tailscale-status' 'PASS' "/api/tailscale/status responds — status: $tsStatus"
+        } catch {
+            $statusCode = $_.Exception.Response.StatusCode.value__
+            if ($statusCode -eq 503 -or $statusCode -eq 404) {
+                Add-Result 'LiveAPI' 'tailscale-status' 'INFO' "/api/tailscale/status — Tailscale not active ($statusCode)"
+            } else {
+                Add-Result 'LiveAPI' 'tailscale-status' 'WARN' "/api/tailscale/status returned $statusCode"
+            }
+        }
+
+        # Finance Vault / vault skill route
+        try {
+            $resp = Invoke-RestMethod -Uri "http://${host_}:${port}/api/skills" -Headers $headers -TimeoutSec 3 -ErrorAction Stop
+            $skillsList = @($resp)
+            Add-Result 'LiveAPI' 'skills-list' 'PASS' "/api/skills responds — $($skillsList.Count) skill(s)"
+        } catch {
+            Add-Result 'LiveAPI' 'skills-list' 'FAIL' "/api/skills failed: $($_.Exception.Message)"
+        }
+
     } else {
         Add-Result 'LiveAPI' 'auth-token' 'WARN' 'Could not read auth token from app-config.json — skipping authenticated checks'
     }

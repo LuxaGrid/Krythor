@@ -15,6 +15,7 @@ let authToken: string;
 const HOST = `127.0.0.1:${GATEWAY_PORT}`;
 
 function getDataDir(): string {
+  if (process.env['KRYTHOR_DATA_DIR']) return process.env['KRYTHOR_DATA_DIR'];
   if (process.platform === 'win32') {
     return join(process.env['LOCALAPPDATA'] ?? join(homedir(), 'AppData', 'Local'), 'Krythor');
   }

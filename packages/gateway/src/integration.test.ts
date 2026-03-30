@@ -31,6 +31,7 @@ const HOST = `127.0.0.1:${GATEWAY_PORT}`;
 const createdSkillIds: string[] = [];
 
 function getDataDir(): string {
+  if (process.env['KRYTHOR_DATA_DIR']) return process.env['KRYTHOR_DATA_DIR'];
   if (process.platform === 'win32') {
     return join(process.env['LOCALAPPDATA'] ?? join(homedir(), 'AppData', 'Local'), 'Krythor');
   }
@@ -148,13 +149,13 @@ describe('Integration — guard + command route', () => {
 // ── 3. DB migration + integrity check ─────────────────────────────────────────
 
 describe('Integration — applySchema (migration + integrity check)', () => {
-  it('runs all 14 migrations on a fresh in-memory DB and reports ok integrity', () => {
+  it('runs all 15 migrations on a fresh in-memory DB and reports ok integrity', () => {
     const db = new Database(':memory:');
     const result = applySchema(db);
 
-    expect(result.migration.applied).toBe(14);
-    expect(result.migration.total).toBe(14);
-    expect(result.migration.userVersion).toBe(14);
+    expect(result.migration.applied).toBe(15);
+    expect(result.migration.total).toBe(15);
+    expect(result.migration.userVersion).toBe(15);
     expect(result.integrityStatus).toBe('ok');
     expect(result.integrityMessages).toHaveLength(0);
     db.close();
@@ -169,7 +170,7 @@ describe('Integration — applySchema (migration + integrity check)', () => {
     const second = applySchema(db, dbPath);
 
     expect(second.migration.applied).toBe(0);
-    expect(second.migration.userVersion).toBe(14);
+    expect(second.migration.userVersion).toBe(15);
     expect(second.integrityStatus).toBe('ok');
     db.close();
   });

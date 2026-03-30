@@ -64,7 +64,7 @@ $gatewayProcess = $null
 Write-Host ""
 Write-Host "  ╔═══════════════════════════════════════════════════╗" -ForegroundColor Cyan
 Write-Host "  ║         KRYTHOR — Full Build & Validation Loop     ║" -ForegroundColor Cyan
-Write-Host "  ║           $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')  ·  v0.2.1              ║" -ForegroundColor Cyan
+Write-Host "  ║           $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')  ·  v2.3.0              ║" -ForegroundColor Cyan
 Write-Host "  ╚═══════════════════════════════════════════════════╝" -ForegroundColor Cyan
 Write-Host ""
 
@@ -129,7 +129,8 @@ $keyArtefacts = @(
     @{ path = 'packages\models\dist\index.js';  label = 'models/dist/index.js' },
     @{ path = 'packages\guard\dist\index.js';   label = 'guard/dist/index.js' },
     @{ path = 'packages\skills\dist\index.js';  label = 'skills/dist/index.js' },
-    @{ path = 'packages\setup\dist\bin\setup.js'; label = 'setup/dist/bin/setup.js' }
+    @{ path = 'packages\setup\dist\bin\setup.js'; label = 'setup/dist/bin/setup.js' },
+    @{ path = 'packages\memory\dist\migrations\015_conversation_groups.sql'; label = 'memory/dist/migrations/015_conversation_groups.sql' }
 )
 
 foreach ($a in $keyArtefacts) {
@@ -335,6 +336,38 @@ if ($SkipRuntime) {
             Add-Check 'guardrails-policy-file' 'PASS' "policy.yaml present"
         } else {
             Add-Check 'guardrails-policy-file' 'WARN' "No guardrails policy file found — using default allow policy"
+        }
+
+        # ── Conversation groups (Chat Groups, migration 015) ──────────────────
+        try {
+            $resp = Invoke-RestMethod -Uri "http://${host_}:${port}/api/conversation-groups" -Headers $headers -TimeoutSec 5 -ErrorAction Stop
+            $groupCount = if ($resp.total -ne $null) { $resp.total } else { @($resp.groups).Count }
+            Add-Check 'conversation-groups' 'PASS' "/api/conversation-groups responds — $groupCount group(s)"
+        } catch {
+            Add-Check 'conversation-groups' 'FAIL' "/api/conversation-groups failed: $($_.Exception.Message)"
+        }
+
+        # ── Tailscale integration ─────────────────────────────────────────────
+        try {
+            $resp = Invoke-RestMethod -Uri "http://${host_}:${port}/api/tailscale/status" -Headers $headers -TimeoutSec 5 -ErrorAction Stop
+            $tsStatus = if ($resp.status) { $resp.status } else { 'unknown' }
+            Add-Check 'tailscale-status' 'PASS' "/api/tailscale/status responds — status: $tsStatus"
+        } catch {
+            $statusCode = $_.Exception.Response.StatusCode.value__
+            if ($statusCode -eq 503 -or $statusCode -eq 404) {
+                Add-Check 'tailscale-status' 'INFO' "/api/tailscale/status — Tailscale not active ($statusCode)"
+            } else {
+                Add-Check 'tailscale-status' 'WARN' "/api/tailscale/status returned $statusCode"
+            }
+        }
+
+        # ── Skills endpoint (Finance Vault and other skills) ──────────────────
+        try {
+            $resp = Invoke-RestMethod -Uri "http://${host_}:${port}/api/skills" -Headers $headers -TimeoutSec 5 -ErrorAction Stop
+            $skillsList = @($resp)
+            Add-Check 'skills-endpoint' 'PASS' "/api/skills responds — $($skillsList.Count) skill(s)"
+        } catch {
+            Add-Check 'skills-endpoint' 'FAIL' "/api/skills failed: $($_.Exception.Message)"
         }
 
     } else {
