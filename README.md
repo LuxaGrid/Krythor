@@ -53,7 +53,9 @@ This is not just chat. This is AI you can operate.
 - **Tool system** — exec (local commands), web_search (DuckDuckGo), web_fetch (URL content), file tools (9 operations), memory tools, user-defined webhook tools with one-click test-fire
 - **Tool use in agent inference loop** — agents autonomously call `file_read`, `file_write`, `shell_exec`, `memory_search`, `memory_save`, `web_search`, and `web_fetch`
 - **Session management** — named conversations, archive/restore, pinning, idle detection, export as JSON/Markdown
+- **Conversation groups** — organize conversations into named, reusable groups via the sidebar; add/remove conversations per group; groups persist across sessions
 - **Conversation search** — filter conversations by title in the sidebar
+- **Tailscale networking** — expose the gateway securely over your tailnet (Serve mode) or publicly via HTTPS (Funnel mode) without port-forwarding; mode, bind, and auth settings in the Settings tab
 - **Token spend history** — ring buffer of last 1000 inferences; Dashboard shows per-model sparklines with token breakdown
 - **Chat channel onboarding** — connect Telegram, Discord, WhatsApp, Slack, Signal, Mattermost, Google Chat, BlueBubbles, and iMessage as inbound bot channels; guided setup wizard with credential masking
 - **File & Computer Access (Access Profiles)** — 9 file operation tools; three access profiles per agent: safe (workspace only), standard (workspace + non-system paths, shell with confirmation), full_access (unrestricted)
@@ -213,7 +215,7 @@ The Vault tab gives you a browsable library of skills you can install into Kryth
 
 ### What's in the Vault
 
-40 official skills across 5 categories:
+40 official skills across 6 categories:
 
 **Real Estate (11 skills)**
 
@@ -615,6 +617,7 @@ Other key docs:
 - `docs/channels.md` — Chat channel setup (Telegram, Discord, WhatsApp)
 - `docs/permissions.md` — Agent access profiles, file tools, and audit log
 - `docs/guardrails.md` — Guard engine, policy files, audit log
+- `docs/tailscale.md` — Tailscale Serve/Funnel setup, auth modes, security requirements
 
 ---
 
@@ -736,7 +739,7 @@ The dashboard has a customizable tab bar — click **+ Tabs** to pin or unpin an
 | Command Center | Live animated scene with Cybernetic Brain Planet, agent entities, and command log |
 | Cron Jobs | Schedule agents with cron expressions, intervals, or one-shot timestamps |
 | Jobs | View the persistent job queue — status, retry history, cancel |
-| Settings | API key management, TLS/HTTPS configuration, full config export/import |
+| Settings | API key management, TLS/HTTPS configuration, Tailscale networking, full config export/import |
 
 ---
 
@@ -1061,6 +1064,14 @@ All API endpoints are served at `http://127.0.0.1:47200`. Most require a Bearer 
 | PUT | `/api/agents/:id/budget` | Required | Set or update an agent's token budget (daily and per-session caps) |
 | DELETE | `/api/agents/:id/budget` | Required | Remove an agent's token budget |
 | POST | `/api/recommend/override` | Required | Report a model override for learning system feedback |
+| GET | `/api/conversation-groups` | Required | List all conversation groups |
+| POST | `/api/conversation-groups` | Required | Create a conversation group |
+| GET | `/api/conversation-groups/:id` | Required | Get group metadata and its conversations |
+| PATCH | `/api/conversation-groups/:id` | Required | Rename or reorder a group |
+| DELETE | `/api/conversation-groups/:id` | Required | Delete a group (conversations are kept) |
+| POST | `/api/conversation-groups/:id/conversations` | Required | Add a conversation to a group |
+| DELETE | `/api/conversation-groups/:id/conversations/:convId` | Required | Remove a conversation from a group |
+| GET | `/api/tailscale/status` | Required | Tailscale connection status and network info |
 | WS | `/ws/stream` | Required | Real-time event stream |
 
 ---
@@ -1342,6 +1353,8 @@ To uninstall: remove the application folder (`~/.krythor`) and the data folder a
 - ✅ Agent token budgets — per-agent daily and per-session caps with `BUDGET_EXCEEDED` structured error
 - ✅ External content isolation — `<external-content>` wrapping on web_fetch/web_search results to mitigate prompt injection
 - ✅ Reverse-proxy support — `KRYTHOR_TRUSTED_PROXY`, `KRYTHOR_HOST`, `KRYTHOR_PORT`, `KRYTHOR_GATEWAY_TOKEN` env vars
+- ✅ Conversation groups — organize chats into named folders from the sidebar; group/ungroup, rename, reorder
+- ✅ Tailscale networking — Serve (tailnet-only) and Funnel (public HTTPS) modes; configurable auth and bind mode
 - ⬜ Code signing (OV certificate — eliminates SmartScreen warning)
 - ⬜ Auto-updater UI (download and replace in-place)
 - ⬜ macOS / Linux native installers
