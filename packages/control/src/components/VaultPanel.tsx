@@ -189,6 +189,23 @@ function InstallModal({ entry, onClose, onInstalled }: InstallModalProps) {
   );
 }
 
+// ── Risk classification (mirrors backend classifyRisk) ────────────────────────
+
+function classifyRiskLocal(permissions: string[]): VaultRisk {
+  if (
+    permissions.includes('shell:exec') ||
+    permissions.includes('file:write') ||
+    permissions.includes('file:delete') ||
+    permissions.includes('webhook:call')
+  ) return 'high';
+  if (
+    permissions.includes('internet:read') ||
+    permissions.includes('memory:write') ||
+    permissions.includes('skill:invoke')
+  ) return 'medium';
+  return 'low';
+}
+
 // ── Local Import Modal ────────────────────────────────────────────────────────
 
 interface LocalImportModalProps {
@@ -196,11 +213,50 @@ interface LocalImportModalProps {
   onImported: () => void;
 }
 
+interface ParsedPreview {
+  permissions: string[];
+  risk:        VaultRisk;
+  category:    string;
+}
+
+function parsePreview(json: string): ParsedPreview | null {
+  if (!json.trim()) return null;
+  try {
+    const pkg = JSON.parse(json) as Record<string, unknown>;
+    const permissions = Array.isArray(pkg['permissions']) ? pkg['permissions'].map(String) : [];
+    return {
+      permissions,
+      risk:     classifyRiskLocal(permissions),
+      category: String(pkg['category'] ?? ''),
+    };
+  } catch {
+    return null;
+  }
+}
+
+const SUGGESTED_CATEGORIES = [
+  'Real Estate', 'Business', 'Marketing', 'Writing', 'Productivity',
+  'Communication', 'Development', 'Finance', 'Legal', 'Operations',
+];
+
 function LocalImportModal({ onClose, onImported }: LocalImportModalProps) {
-  const [json,  setJson]  = useState('');
-  const [busy,  setBusy]  = useState(false);
-  const [err,   setErr]   = useState('');
-  const fileRef = useRef<HTMLInputElement>(null);
+  const [json,     setJson]     = useState('');
+  const [category, setCategory] = useState('');
+  const [busy,     setBusy]     = useState(false);
+  const [err,      setErr]      = useState('');
+  const fileRef             = useRef<HTMLInputElement>(null);
+  const lastParsedCategory  = useRef('');
+
+  const preview = parsePreview(json);
+
+  const handleJsonChange = (value: string) => {
+    setJson(value);
+    const p = parsePreview(value);
+    if (p && p.category && p.category !== lastParsedCategory.current) {
+      lastParsedCategory.current = p.category;
+      setCategory(p.category);
+    }
+  };
 
   const doImport = async () => {
     setErr('');
@@ -215,6 +271,7 @@ function LocalImportModal({ onClose, onImported }: LocalImportModalProps) {
       setErr('Skill JSON must include "name" and "systemPrompt" fields.');
       return;
     }
+    if (category.trim()) pkg['category'] = category.trim();
     setBusy(true);
     try {
       await importVaultSkillLocal(pkg);
@@ -230,43 +287,84 @@ function LocalImportModal({ onClose, onImported }: LocalImportModalProps) {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = ev => setJson(String(ev.target?.result ?? ''));
+    reader.onload = ev => handleJsonChange(String(ev.target?.result ?? ''));
     reader.readAsText(file);
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
       <div
-        className="bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl w-full max-w-lg mx-4"
+        className="bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] flex flex-col"
         onClick={e => e.stopPropagation()}
       >
-        <div className="px-5 py-4 border-b border-zinc-800 flex items-center justify-between">
+        <div className="px-5 py-4 border-b border-zinc-800 flex items-center justify-between flex-shrink-0">
           <h2 className="text-zinc-100 font-semibold">Import skill from file</h2>
           <button onClick={onClose} className="text-zinc-600 hover:text-zinc-300 text-lg">×</button>
         </div>
-        <div className="px-5 py-4 space-y-3">
+
+        <div className="px-5 py-4 space-y-3 overflow-y-auto">
           <p className="text-zinc-400 text-xs">Paste a skill JSON or select a .json file to import as a Community skill.</p>
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".json"
-            onChange={onFileChange}
-            className="hidden"
-          />
+          <input ref={fileRef} type="file" accept=".json" onChange={onFileChange} className="hidden" />
           <button
             onClick={() => fileRef.current?.click()}
             className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs rounded-lg transition-colors"
           >Choose file…</button>
+
           <textarea
             value={json}
-            onChange={e => setJson(e.target.value)}
+            onChange={e => handleJsonChange(e.target.value)}
             placeholder='{"name": "My Skill", "systemPrompt": "You are...", "description": "..."}'
-            rows={8}
+            rows={7}
             className="w-full bg-zinc-800/60 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-300 text-xs font-mono resize-none focus:outline-none focus:border-zinc-500"
           />
+
+          {/* Category field */}
+          <div>
+            <label className="text-[10px] text-zinc-500 uppercase tracking-wide block mb-1">Category</label>
+            <input
+              type="text"
+              value={category}
+              onChange={e => setCategory(e.target.value)}
+              placeholder="e.g. Real Estate, Business, Productivity…"
+              list="vault-category-suggestions"
+              className="w-full bg-zinc-800/60 border border-zinc-700 rounded-lg px-3 py-1.5 text-zinc-300 text-xs focus:outline-none focus:border-zinc-500"
+            />
+            <datalist id="vault-category-suggestions">
+              {SUGGESTED_CATEGORIES.map(c => <option key={c} value={c} />)}
+            </datalist>
+          </div>
+
+          {/* Live risk analysis */}
+          {preview && (
+            <div className={`px-3 py-3 rounded-lg border space-y-2 ${
+              preview.risk === 'high'   ? 'bg-red-950/20 border-red-800/40'
+            : preview.risk === 'medium' ? 'bg-amber-950/20 border-amber-800/40'
+            :                             'bg-zinc-800/40 border-zinc-700/40'
+            }`}>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs text-zinc-400 font-medium">Risk analysis</span>
+                <RiskBadge risk={preview.risk} />
+              </div>
+              {preview.permissions.length > 0 ? (
+                <div className="flex flex-wrap gap-1">
+                  {preview.permissions.map(p => <PermissionTag key={p} perm={p} />)}
+                </div>
+              ) : (
+                <p className="text-zinc-600 text-[11px]">No permissions declared — low risk by default.</p>
+              )}
+              {preview.risk === 'high' && (
+                <p className="text-red-300 text-[11px]">This skill declares high-sensitivity permissions. Review carefully before importing.</p>
+              )}
+              {preview.risk === 'medium' && (
+                <p className="text-amber-300 text-[11px]">This skill requests elevated permissions. Only import from sources you trust.</p>
+              )}
+            </div>
+          )}
+
           {err && <p className="text-red-400 text-xs">{err}</p>}
         </div>
-        <div className="px-5 py-3 border-t border-zinc-800 flex justify-end gap-2">
+
+        <div className="px-5 py-3 border-t border-zinc-800 flex justify-end gap-2 flex-shrink-0">
           <button onClick={onClose} className="px-3 py-1.5 text-zinc-400 hover:text-zinc-200 text-sm">Cancel</button>
           <button
             onClick={() => void doImport()}
