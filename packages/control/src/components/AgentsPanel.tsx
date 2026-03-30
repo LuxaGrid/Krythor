@@ -5,7 +5,9 @@ import {
   listAgents, createAgent, updateAgent, deleteAgent, runAgent,
   listRuns, agentStats, listModels, importAgent, exportAgent,
   getAgentAccessProfile, setAgentAccessProfile,
+  getAgentHealth, unpauseAgent, resetAgentHealth,
   type Agent, type AgentRun, type AgentStats, type ModelInfo,
+  type AgentHealthSnapshot,
 } from '../api.ts';
 import { useAppConfig } from '../App.tsx';
 import { PanelHeader } from './PanelHeader.tsx';
@@ -221,6 +223,97 @@ function AccessProfileBadge({ agentId, profile, loading, onChange }: AccessProfi
   );
 }
 
+// ── Agent health badge ─────────────────────────────────────────────────────
+
+const PHASE_CLS = {
+  healthy:  'bg-emerald-950/50 text-emerald-400 border-emerald-700/60',
+  degraded: 'bg-amber-950/50 text-amber-400 border-amber-700/60',
+  paused:   'bg-red-950/50 text-red-400 border-red-700/60',
+};
+
+interface AgentHealthBadgeProps {
+  agentId:   string;
+  snapshot:  AgentHealthSnapshot | undefined;
+  loading:   boolean;
+  onUnpause: (id: string) => void;
+  onReset:   (id: string) => void;
+}
+
+function AgentHealthBadge({ agentId, snapshot, loading, onUnpause, onReset }: AgentHealthBadgeProps) {
+  const [open, setOpen] = useState(false);
+  if (loading || !snapshot) return null;
+  // Don't show badge if healthy and we have very few runs (no signal yet)
+  if (snapshot.phase === 'healthy' && snapshot.windowSize < 2) return null;
+
+  const phase = snapshot.phase;
+  const resumeIn = snapshot.pausedUntil
+    ? Math.max(0, Math.ceil((snapshot.pausedUntil - Date.now()) / 1000))
+    : null;
+
+  return (
+    <div className="relative" onClick={e => e.stopPropagation()}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        className={`text-[9px] px-1.5 py-0.5 rounded border font-medium transition-colors flex items-center gap-0.5 ${PHASE_CLS[phase]}`}
+        title={`Agent health: ${phase}`}
+      >
+        {phase === 'paused' && <span>⏸</span>}
+        {phase === 'degraded' && <span>⚠</span>}
+        {phase === 'healthy' && <span>✓</span>}
+        {phase}
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute left-0 top-full mt-1 z-50 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl p-3 min-w-[200px]">
+            <p className="text-zinc-400 text-xs font-medium mb-2 uppercase tracking-wide">Agent Health</p>
+            <div className="space-y-1 text-xs mb-3">
+              <div className="flex justify-between">
+                <span className="text-zinc-500">Stability</span>
+                <span className={snapshot.stability >= 0.7 ? 'text-emerald-400' : snapshot.stability >= 0.5 ? 'text-amber-400' : 'text-red-400'}>
+                  {(snapshot.stability * 100).toFixed(0)}%
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-zinc-500">Efficiency</span>
+                <span className={snapshot.efficiency >= 0.6 ? 'text-emerald-400' : snapshot.efficiency >= 0.4 ? 'text-amber-400' : 'text-red-400'}>
+                  {(snapshot.efficiency * 100).toFixed(0)}%
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-zinc-500">Window</span>
+                <span className="text-zinc-300">{snapshot.windowSize} runs</span>
+              </div>
+              {snapshot.consecutiveFailures > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-zinc-500">Consec. failures</span>
+                  <span className="text-red-400">{snapshot.consecutiveFailures}</span>
+                </div>
+              )}
+              {resumeIn !== null && (
+                <div className="flex justify-between">
+                  <span className="text-zinc-500">Resumes in</span>
+                  <span className="text-amber-400">{resumeIn}s</span>
+                </div>
+              )}
+            </div>
+            {phase === 'paused' && (
+              <button
+                onClick={() => { onUnpause(agentId); setOpen(false); }}
+                className="w-full text-xs px-2 py-1.5 bg-amber-900/40 hover:bg-amber-800/50 text-amber-300 rounded mb-1 transition-colors"
+              >Unpause now</button>
+            )}
+            <button
+              onClick={() => { onReset(agentId); setOpen(false); }}
+              className="w-full text-xs px-2 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 rounded transition-colors"
+            >Reset health history</button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function AgentsPanel() {
   const { config, setConfig } = useAppConfig();
   const [agents, setAgents]   = useState<Agent[]>([]);
@@ -233,6 +326,10 @@ export function AgentsPanel() {
   // Access profiles per agent
   const [accessProfiles, setAccessProfiles] = useState<Record<string, AccessProfile>>({});
   const [profilesLoading, setProfilesLoading] = useState<Record<string, boolean>>({});
+
+  // Health snapshots per agent
+  const [healthSnapshots, setHealthSnapshots] = useState<Record<string, AgentHealthSnapshot>>({});
+  const [healthLoading, setHealthLoading] = useState<Record<string, boolean>>({});
   const [runInput, setRunInput] = useState('');
   const [running, setRunning]   = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
@@ -276,6 +373,16 @@ export function AgentsPanel() {
         a.forEach(ag => { next[ag.id] = false; });
         return next;
       });
+
+      // Fetch health snapshots for all agents (best-effort)
+      setHealthLoading(prev => { const n = { ...prev }; a.forEach(ag => { n[ag.id] = true; }); return n; });
+      const healthResults = await Promise.allSettled(
+        a.map(ag => getAgentHealth(ag.id).then(r => ({ id: ag.id, snapshot: r as AgentHealthSnapshot })))
+      );
+      const healthMap: Record<string, AgentHealthSnapshot> = {};
+      healthResults.forEach(r => { if (r.status === 'fulfilled') healthMap[r.value.id] = r.value.snapshot; });
+      setHealthSnapshots(prev => ({ ...prev, ...healthMap }));
+      setHealthLoading(prev => { const n = { ...prev }; a.forEach(ag => { n[ag.id] = false; }); return n; });
     } catch { /* ignore */ }
     finally { setLoading(false); }
   }, [config.selectedAgentId, selected]);
@@ -283,6 +390,20 @@ export function AgentsPanel() {
   const handleProfileChange = useCallback(async (agentId: string, profile: AccessProfile) => {
     await setAgentAccessProfile(agentId, profile);
     setAccessProfiles(prev => ({ ...prev, [agentId]: profile }));
+  }, []);
+
+  const handleUnpause = useCallback(async (agentId: string) => {
+    try {
+      const snap = await unpauseAgent(agentId);
+      setHealthSnapshots(prev => ({ ...prev, [agentId]: snap }));
+    } catch { /* ignore */ }
+  }, []);
+
+  const handleResetHealth = useCallback(async (agentId: string) => {
+    try {
+      const snap = await resetAgentHealth(agentId);
+      setHealthSnapshots(prev => ({ ...prev, [agentId]: snap }));
+    } catch { /* ignore */ }
   }, []);
 
   useEffect(() => { void load(); }, [load]);
@@ -388,8 +509,9 @@ export function AgentsPanel() {
       if (run.status === 'failed') {
         setRunError(run.errorMessage ?? 'Run failed. Check your provider is reachable in the Models tab.');
       }
-      const s = await agentStats();
-      setStats(s);
+      const [s, health] = await Promise.allSettled([agentStats(), getAgentHealth(selected.id)]);
+      if (s.status === 'fulfilled') setStats(s.value);
+      if (health.status === 'fulfilled') setHealthSnapshots(prev => ({ ...prev, [selected.id]: health.value as AgentHealthSnapshot }));
     } catch (err) {
       setRunError(err instanceof Error ? err.message : 'Request failed');
     } finally {
@@ -493,6 +615,13 @@ export function AgentsPanel() {
                   ${selected?.id === a.id ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200'}`}
               >
                 <span className="flex-1 truncate">{a.name}</span>
+                <AgentHealthBadge
+                  agentId={a.id}
+                  snapshot={healthSnapshots[a.id]}
+                  loading={healthLoading[a.id] ?? false}
+                  onUnpause={handleUnpause}
+                  onReset={handleResetHealth}
+                />
                 <AccessProfileBadge
                   agentId={a.id}
                   profile={accessProfiles[a.id]}

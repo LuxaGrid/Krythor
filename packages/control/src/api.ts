@@ -592,6 +592,45 @@ export const setAgentBudget    = (id: string, limits: { dailyLimit?: number | nu
   req<TokenBudget>('PUT', `/agents/${id}/budget`, limits);
 export const deleteAgentBudget = (id: string) => req<{ ok: boolean }>('DELETE', `/agents/${id}/budget`);
 
+// ── Agent health gate ──────────────────────────────────────────────────────────
+
+export type AgentPhase = 'healthy' | 'degraded' | 'paused';
+
+export interface AgentHealthSnapshot {
+  agentId:             string;
+  phase:               AgentPhase;
+  stability:           number;
+  efficiency:          number;
+  windowSize:          number;
+  pausedUntil:         number | null;
+  totalRuns:           number;
+  consecutiveFailures: number;
+}
+
+export interface AgentHealthThresholds {
+  degradedStability:       number;
+  pausedStability:         number;
+  degradedEfficiency:      number;
+  pausedEfficiency:        number;
+  consecutiveFailureLimit: number;
+  recoveryWindowMs:        number;
+  windowSize:              number;
+}
+
+export interface AgentHealthResponse {
+  agents?:     AgentHealthSnapshot[];  // from /agents/health
+  agentId?:    string;                 // from /agents/:id/health
+  phase?:      AgentPhase;
+  stability?:  number;
+  efficiency?: number;
+  thresholds:  AgentHealthThresholds;
+}
+
+export const getAgentHealth    = (id: string) => req<AgentHealthSnapshot & { thresholds: AgentHealthThresholds }>('GET', `/agents/${id}/health`);
+export const getAllAgentHealth  = () => req<AgentHealthResponse>('GET', '/agents/health');
+export const unpauseAgent      = (id: string) => req<AgentHealthSnapshot>('POST', `/agents/${id}/health/unpause`);
+export const resetAgentHealth  = (id: string) => req<AgentHealthSnapshot>('POST', `/agents/${id}/health/reset`);
+
 export async function getAgentAccessProfile(id: string): Promise<{ agentId: string; profile: string }> {
   const r = await fetch(`${_baseUrl}/agents/${id}/access-profile`, {
     headers: _gatewayToken ? { Authorization: `Bearer ${_gatewayToken}` } : {},

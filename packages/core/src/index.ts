@@ -32,6 +32,8 @@ export type { ValidationResult, AgentDefinitionRaw, AppConfigRaw, ProviderConfig
 export { SystemIdentityProvider } from './SystemIdentityProvider.js';
 export type { SoulMetadata } from './SystemIdentityProvider.js';
 export { AgentOrchestrator, RunQueueFullError, RunRateLimitError } from './agents/AgentOrchestrator.js';
+export { AgentHealthGate, AgentPausedError } from './agents/AgentHealthGate.js';
+export type { AgentHealthSnapshot, AgentHealthConfig, AgentPhase } from './agents/AgentHealthGate.js';
 export { AgentMessageBus } from './agents/AgentMessageBus.js';
 export type { AgentMessage as AgentMessageBusMessage } from './agents/AgentMessageBus.js';
 export { AgentRegistry } from './agents/AgentRegistry.js';

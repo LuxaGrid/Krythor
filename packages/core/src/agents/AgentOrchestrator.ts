@@ -6,6 +6,8 @@ import type { ModelEngine } from '@krythor/models';
 import type { ExecTool } from '../tools/ExecTool.js';
 import { AgentRegistry } from './AgentRegistry.js';
 import { AgentRunner } from './AgentRunner.js';
+import { AgentHealthGate, AgentPausedError } from './AgentHealthGate.js';
+import type { AgentHealthSnapshot, AgentHealthConfig } from './AgentHealthGate.js';
 import { SessionTranscriptStore } from './SessionTranscriptStore.js';
 import type { LearningRecorder, HandoffResolver, CustomToolDispatcher, SpawnAgentResolver, GuardLike } from './AgentRunner.js';
 import type { ContextEngine } from './ContextEngine.js';
@@ -107,6 +109,9 @@ export class AgentOrchestrator extends EventEmitter {
 
   private globalWorkspaceDir: string | null = null;
   private recordLearning?: LearningRecorder;
+
+  // Agent health gate — tracks per-agent stability and auto-pauses unhealthy agents
+  readonly healthGate: AgentHealthGate = new AgentHealthGate();
   private execToolInstance: ExecTool | null = null;
   private transcriptStore: SessionTranscriptStore | null = null;
   private contextEngineInstance: ContextEngine | null = null;
@@ -362,6 +367,7 @@ export class AgentOrchestrator extends EventEmitter {
     options?: { contextMessages?: Array<{ role: string; content: string }>; runId?: string },
   ): Promise<AgentRun> {
     this.checkRateLimit(agentId);
+    this.healthGate.check(agentId);
     await this.acquireSlot();
     const agent = this.registry.getById(agentId);
     if (!agent) throw new Error(`Agent "${agentId}" not found`);
@@ -382,6 +388,11 @@ export class AgentOrchestrator extends EventEmitter {
     } finally {
       this.releaseSlot();
     }
+    this.healthGate.record(
+      agentId,
+      run.status === 'completed' ? 'success' : run.status === 'stopped' ? 'stopped' : 'failure',
+      { fallbackOccurred: run.fallbackOccurred, retryCount: run.retryCount },
+    );
     this.storeRun(run);
     this.transcriptStore?.write(run);
     return run;
@@ -393,6 +404,7 @@ export class AgentOrchestrator extends EventEmitter {
     options?: { contextMessages?: Array<{ role: string; content: string }>; runId?: string },
   ): Promise<AgentRun> {
     this.checkRateLimit(agentId);
+    this.healthGate.check(agentId);
     await this.acquireSlot();
     const agent = this.registry.getById(agentId);
     if (!agent) throw new Error(`Agent "${agentId}" not found`);
@@ -413,6 +425,11 @@ export class AgentOrchestrator extends EventEmitter {
     } finally {
       this.releaseSlot();
     }
+    this.healthGate.record(
+      agentId,
+      run.status === 'completed' ? 'success' : run.status === 'stopped' ? 'stopped' : 'failure',
+      { fallbackOccurred: run.fallbackOccurred, retryCount: run.retryCount },
+    );
     this.storeRun(run);
     this.transcriptStore?.write(run);
     return run;

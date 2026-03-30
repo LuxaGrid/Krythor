@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { AgentOrchestrator, CreateAgentInput, UpdateAgentInput, RunAgentInput, AgentEvent } from '@krythor/core';
-import { RunQueueFullError, RunRateLimitError } from '@krythor/core';
+import { RunQueueFullError, RunRateLimitError, AgentPausedError } from '@krythor/core';
 import type { AgentMessageBus } from '@krythor/core';
 import type { GuardEngine } from '@krythor/guard';
 import { validateString, MAX_NAME_LEN, MAX_DESCRIPTION_LEN, MAX_SYSTEM_PROMPT_LEN } from '../validate.js';
@@ -257,6 +257,11 @@ export function registerAgentRoutes(
       const run = await orchestrator.runAgent(req.params.id, { input: message });
       return reply.send({ output: run.output ?? '', modelUsed: run.modelUsed, status: run.status, runId: run.id });
     } catch (err) {
+      if (err instanceof AgentPausedError) {
+        const retryAfter = Math.ceil((err.pausedUntil - Date.now()) / 1000);
+        reply.header('Retry-After', String(retryAfter));
+        return sendError(reply, 503, 'AGENT_PAUSED', err.message, 'This agent has been paused due to repeated failures. It will auto-recover shortly.');
+      }
       if (err instanceof RunRateLimitError) {
         reply.header('Retry-After', '60');
         return sendError(reply, 429, 'RATE_LIMITED', err.message, 'This agent has hit its per-minute run limit. Wait a moment and try again.');
@@ -315,6 +320,11 @@ export function registerAgentRoutes(
       return reply.send(run);
     } catch (err) {
       metricsCollector?.recordAgentRun(agent.id, agent.name, Date.now() - runStart, false);
+      if (err instanceof AgentPausedError) {
+        const retryAfter = Math.ceil((err.pausedUntil - Date.now()) / 1000);
+        reply.header('Retry-After', String(retryAfter));
+        return sendError(reply, 503, 'AGENT_PAUSED', err.message, 'This agent has been paused due to repeated failures. It will auto-recover shortly.');
+      }
       if (err instanceof RunRateLimitError) {
         reply.header('Retry-After', '60');
         return sendError(reply, 429, 'RATE_LIMITED', err.message, 'This agent has hit its per-minute run limit. Wait a moment and try again.');
@@ -608,4 +618,40 @@ export function registerAgentRoutes(
       return reply.send({ ok: true });
     });
   }
+
+  // ── Agent health gate ────────────────────────────────────────────────────────
+
+  // GET /api/agents/:id/health — health snapshot for a single agent
+  app.get<{ Params: { id: string } }>('/api/agents/:id/health', async (req, reply) => {
+    const agent = orchestrator.getAgent(req.params.id);
+    if (!agent) return reply.code(404).send({ error: 'Agent not found' });
+    return reply.send({
+      ...orchestrator.healthGate.snapshot(req.params.id),
+      thresholds: orchestrator.healthGate.thresholds(),
+    });
+  });
+
+  // GET /api/agents/health — health snapshots for all tracked agents
+  app.get('/api/agents/health', async (_req, reply) => {
+    return reply.send({
+      agents:     orchestrator.healthGate.allSnapshots(),
+      thresholds: orchestrator.healthGate.thresholds(),
+    });
+  });
+
+  // POST /api/agents/:id/health/unpause — operator override to clear a pause
+  app.post<{ Params: { id: string } }>('/api/agents/:id/health/unpause', async (req, reply) => {
+    const agent = orchestrator.getAgent(req.params.id);
+    if (!agent) return reply.code(404).send({ error: 'Agent not found' });
+    orchestrator.healthGate.unpause(req.params.id);
+    return reply.send(orchestrator.healthGate.snapshot(req.params.id));
+  });
+
+  // POST /api/agents/:id/health/reset — reset all health history for an agent
+  app.post<{ Params: { id: string } }>('/api/agents/:id/health/reset', async (req, reply) => {
+    const agent = orchestrator.getAgent(req.params.id);
+    if (!agent) return reply.code(404).send({ error: 'Agent not found' });
+    orchestrator.healthGate.reset(req.params.id);
+    return reply.send(orchestrator.healthGate.snapshot(req.params.id));
+  });
 }
