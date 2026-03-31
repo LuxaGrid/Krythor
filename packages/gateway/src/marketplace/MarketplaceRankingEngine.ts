@@ -60,8 +60,8 @@ export class MarketplaceRankingEngine {
       const categoryFit  = this.scoreCategoryFit(talent, input);
       const geographyFit = this.scoreGeographyFit(talent, input);
       const trust        = this.scoreTrust(talent);
-      const response     = this.scoreResponseHistory(talent);
-      const recency      = this.scoreRecency(talent);
+      const response     = this.scoreResponseHistory(talent, input);
+      const recency      = this.scoreRecency(talent, input);
       const preferred    = this.scorePreferred(talent);
       const penalties    = this.scorePenalties(talent);
 
@@ -186,9 +186,9 @@ export class MarketplaceRankingEngine {
     };
   }
 
-  // ── Response history (0–15) ─────────────────────────────────────────────
+  // ── Response history (0–15, +3 urgency bonus for high) ─────────────────
 
-  private scoreResponseHistory(talent: TalentProfile): RankDimension {
+  private scoreResponseHistory(talent: TalentProfile, input: RankInput): RankDimension {
     const ratePts = Math.round(talent.responseRate * 10);
     let speedPts = 0;
     let speedNote = 'no response time data';
@@ -203,20 +203,59 @@ export class MarketplaceRankingEngine {
         speedNote = `slow response (~${talent.avgResponseTimeHours.toFixed(0)}h)`;
       }
     }
-    const pts = ratePts + speedPts;
+
+    // Urgency response-time bonus: only for high urgency (max +3 pts)
+    let urgencyBonus = 0;
+    let urgencyNote = '';
+    if (input.urgency === 'high' && talent.avgResponseTimeHours !== undefined && talent.avgResponseTimeHours !== null) {
+      if (talent.avgResponseTimeHours < 4) {
+        urgencyBonus = 3;
+        urgencyNote = `high urgency: responds <4h (+3)`;
+      } else if (talent.avgResponseTimeHours < 12) {
+        urgencyBonus = 2;
+        urgencyNote = `high urgency: responds <12h (+2)`;
+      } else if (talent.avgResponseTimeHours < 24) {
+        urgencyBonus = 1;
+        urgencyNote = `high urgency: responds <24h (+1)`;
+      } else {
+        urgencyNote = `high urgency: responds ≥24h (+0)`;
+      }
+    }
+
+    const pts = ratePts + speedPts + urgencyBonus;
+    const urgencyPart = urgencyNote ? `; ${urgencyNote}` : '';
     return {
       score: Math.min(pts, 15),
-      reason: `Response rate ${(talent.responseRate * 100).toFixed(0)}% (${ratePts} pts), ${speedNote} (${speedPts} pts)`,
+      reason: `Response rate ${(talent.responseRate * 100).toFixed(0)}% (${ratePts} pts), ${speedNote} (${speedPts} pts)${urgencyPart}`,
     };
   }
 
   // ── Recency (0–5) ───────────────────────────────────────────────────────
 
-  private scoreRecency(talent: TalentProfile): RankDimension {
+  private scoreRecency(talent: TalentProfile, input: RankInput): RankDimension {
     if (!talent.lastUsedAt) {
       return { score: 0, reason: 'Never used' };
     }
     const daysSince = (Date.now() - talent.lastUsedAt) / (1000 * 60 * 60 * 24);
+    const urgency = input.urgency ?? 'medium';
+
+    if (urgency === 'high') {
+      // Tighter windows — prefer recently active talent
+      if (daysSince <= 7)  return { score: 5, reason: `Used ${Math.round(daysSince)}d ago (within 7d; high urgency)` };
+      if (daysSince <= 14) return { score: 3, reason: `Used ${Math.round(daysSince)}d ago (within 14d; high urgency)` };
+      if (daysSince <= 30) return { score: 1, reason: `Used ${Math.round(daysSince)}d ago (within 30d; high urgency)` };
+      return { score: 0, reason: `Last used ${Math.round(daysSince)}d ago (high urgency threshold 30d)` };
+    }
+
+    if (urgency === 'low') {
+      // Broader windows — can use less active talent
+      if (daysSince <= 60)  return { score: 5, reason: `Used ${Math.round(daysSince)}d ago (within 60d; low urgency)` };
+      if (daysSince <= 180) return { score: 3, reason: `Used ${Math.round(daysSince)}d ago (within 180d; low urgency)` };
+      if (daysSince <= 365) return { score: 1, reason: `Used ${Math.round(daysSince)}d ago (within 365d; low urgency)` };
+      return { score: 0, reason: `Last used ${Math.round(daysSince)}d ago (low urgency threshold 365d)` };
+    }
+
+    // medium (default)
     if (daysSince <= 30)  return { score: 5, reason: `Used ${Math.round(daysSince)}d ago (within 30d)` };
     if (daysSince <= 90)  return { score: 3, reason: `Used ${Math.round(daysSince)}d ago (within 90d)` };
     if (daysSince <= 180) return { score: 1, reason: `Used ${Math.round(daysSince)}d ago (within 180d)` };

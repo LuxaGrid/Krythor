@@ -641,6 +641,22 @@ export class TalentStore {
     if (!row) throw new Error(`TalentOutreach "${id}" not found`);
 
     const existing = this.rowToOutreach(row);
+
+    // Validate status transition if status is changing
+    if (input.status !== undefined && input.status !== existing.status) {
+      const current = existing.status;
+      const newStatus = input.status;
+      const validTransitions: Record<OutreachStatus, OutreachStatus[]> = {
+        pending:  ['approved', 'denied'],
+        approved: ['sent', 'denied'],
+        sent:     [],
+        denied:   [],
+      };
+      if (!validTransitions[current].includes(newStatus)) {
+        throw new Error(`Invalid outreach status transition: ${current} → ${newStatus}`);
+      }
+    }
+
     const updated: TalentOutreach = {
       ...existing,
       ...input,
@@ -665,6 +681,27 @@ export class TalentStore {
   listPendingOutreach(): TalentOutreach[] {
     const rows = this.selectPendingOutreach.all() as OutreachRow[];
     return rows.map(r => this.rowToOutreach(r));
+  }
+
+  getDashboardStats(): {
+    totalActive: number;
+    totalProfiles: number;
+    preferredCount: number;
+    recentlyUsedCount: number;
+    recentlyContactedCount: number;
+    pendingOutreachCount: number;
+    blockedCount: number;
+  } {
+    const totalActive = (this.db.prepare(`SELECT COUNT(*) as c FROM talent_profiles WHERE status = 'active'`).get() as any).c;
+    const totalProfiles = (this.db.prepare(`SELECT COUNT(*) as c FROM talent_profiles`).get() as any).c;
+    const preferredCount = (this.db.prepare(`SELECT COUNT(*) as c FROM talent_profiles WHERE preferred = 1 AND status = 'active'`).get() as any).c;
+    const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    const ninetyDaysAgo = Date.now() - 90 * 24 * 60 * 60 * 1000;
+    const recentlyUsedCount = (this.db.prepare(`SELECT COUNT(*) as c FROM talent_profiles WHERE last_used_at > ? AND status = 'active'`).get(thirtyDaysAgo) as any).c;
+    const recentlyContactedCount = (this.db.prepare(`SELECT COUNT(*) as c FROM talent_profiles WHERE last_contacted_at > ?`).get(ninetyDaysAgo) as any).c;
+    const pendingOutreachCount = (this.db.prepare(`SELECT COUNT(*) as c FROM talent_outreach WHERE status = 'pending'`).get() as any).c;
+    const blockedCount = (this.db.prepare(`SELECT COUNT(*) as c FROM talent_profiles WHERE status = 'blocked'`).get() as any).c;
+    return { totalActive, totalProfiles, preferredCount, recentlyUsedCount, recentlyContactedCount, pendingOutreachCount, blockedCount };
   }
 
   // ── Marketplace requests ──────────────────────────────────────────────────
@@ -700,9 +737,14 @@ export class TalentStore {
     this.resolveRequestStmt.run(Date.now(), talentId, id);
   }
 
-  listRequests(limit = 50): MarketplaceRequest[] {
-    const rows = this.selectRequests.all(Math.min(limit, 1000)) as RequestRow[];
-    return rows.map(r => this.rowToRequest(r));
+  listRequests(limit = 50, resolved?: boolean): MarketplaceRequest[] {
+    let sql = `SELECT * FROM marketplace_requests`;
+    const params: unknown[] = [];
+    if (resolved === true) { sql += ` WHERE resolved_at IS NOT NULL`; }
+    else if (resolved === false) { sql += ` WHERE resolved_at IS NULL`; }
+    sql += ` ORDER BY created_at DESC LIMIT ?`;
+    params.push(Math.min(limit, 1000));
+    return (this.db.prepare(sql).all(...params) as any[]).map(this.rowToRequest.bind(this));
   }
 
   // ── Row mappers ───────────────────────────────────────────────────────────

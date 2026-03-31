@@ -301,6 +301,40 @@ describe('TalentStore', () => {
     expect(pending[0]!.status).toBe('pending');
   });
 
+  // 8b. outreach status state machine — invalid transitions throw
+  it('outreach state machine rejects invalid transitions', () => {
+    const profile = store.create(makeInput());
+
+    const outreach = store.addOutreach(profile.id, {
+      talentId: profile.id,
+      messagePreview: 'Test message',
+      status: 'pending',
+    });
+
+    // Valid: pending → approved
+    store.updateOutreach(outreach.id, { status: 'approved' });
+
+    // Valid: approved → sent
+    store.updateOutreach(outreach.id, { status: 'sent' });
+
+    // Invalid: sent → pending (terminal state)
+    expect(() => store.updateOutreach(outreach.id, { status: 'pending' }))
+      .toThrow('Invalid outreach status transition: sent → pending');
+  });
+
+  // 8c. outreach state machine — pending cannot jump directly to sent
+  it('outreach state machine rejects pending → sent (must go via approved)', () => {
+    const profile = store.create(makeInput({ displayName: 'Zara Tester' }));
+    const outreach = store.addOutreach(profile.id, {
+      talentId: profile.id,
+      messagePreview: 'Direct send attempt',
+      status: 'pending',
+    });
+
+    expect(() => store.updateOutreach(outreach.id, { status: 'sent' }))
+      .toThrow('Invalid outreach status transition: pending → sent');
+  });
+
   // 9. search with query string matches display_name
   it('searches by query string matching display_name', () => {
     store.create(makeInput({ displayName: 'Greta Garcia Plumbing' }));

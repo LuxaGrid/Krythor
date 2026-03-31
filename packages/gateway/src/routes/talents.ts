@@ -46,28 +46,14 @@ export function registerTalentRoutes(
   app.get('/api/talents/dashboard', async (_req, reply) => {
     const verdict = await guardCheck({ guard, approvalManager, reply, operation: 'memory:read', source: 'user' });
     if (verdict === false) return;
-    const now = Date.now();
-    const thirtyDaysAgo  = now - 30  * 24 * 60 * 60 * 1000;
-    const ninetyDaysAgo  = now - 90  * 24 * 60 * 60 * 1000;
-
-    const all       = store.search({ limit: 1000 });
-    const active    = all.filter(t => t.status === 'active');
-    const preferred = all.filter(t => t.preferred);
-    const recentlyUsed = all.filter(t =>
-      t.lastUsedAt !== undefined && t.lastUsedAt >= thirtyDaysAgo
-    );
-    const recentlyContacted = all.filter(t =>
-      t.lastContactedAt !== undefined && t.lastContactedAt >= ninetyDaysAgo
-    );
-    const pending = store.listPendingOutreach();
-
+    const stats = store.getDashboardStats();
     return reply.send({
-      totalActive:        active.length,
-      totalProfiles:      all.length,
-      preferredCount:     preferred.length,
-      recentlyUsedCount:  recentlyUsed.length,
-      recentlyContactedCount: recentlyContacted.length,
-      pendingOutreachCount: pending.length,
+      totalActive:             stats.totalActive,
+      totalProfiles:           stats.totalProfiles,
+      preferredCount:          stats.preferredCount,
+      recentlyUsedCount:       stats.recentlyUsedCount,
+      recentlyContactedCount:  stats.recentlyContactedCount,
+      pendingOutreachCount:    stats.pendingOutreachCount,
     });
   });
 
@@ -244,7 +230,11 @@ export function registerTalentRoutes(
     if (verdict === false) return;
     const q = req.query as Record<string, string>;
     const limit = q['limit'] ? Math.min(parseInt(q['limit'], 10), 1000) : 50;
-    const requests = store.listRequests(limit);
+    let resolved: boolean | undefined;
+    if (q['resolved'] === 'true') resolved = true;
+    else if (q['resolved'] === 'false') resolved = false;
+    // q['resolved'] === 'all' or absent => undefined (no filter)
+    const requests = store.listRequests(limit, resolved);
     return reply.send(requests);
   });
 
