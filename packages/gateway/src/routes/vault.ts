@@ -37,8 +37,15 @@ function classifyRisk(permissions: string[]): 'low' | 'medium' | 'high' {
 
 // Resolve the vault root — walks up from __dirname to find the vault/ directory
 function resolveVaultRoot(): string | null {
-  // In dist: packages/gateway/dist/routes/vault.js — vault/ is 4 levels up at repo root
+  // Binary install: ~/.krythor/vault (deployed by deploy-dist.js)
+  // Dev: repo root vault/ — walked up 4 levels from dist/routes/vault.js
+  const homeVault = resolve(
+    process.env['HOME'] ?? process.env['USERPROFILE'] ?? '',
+    '.krythor',
+    'vault',
+  );
   const candidates = [
+    homeVault,
     resolve(__dirname, '..', '..', '..', '..', 'vault'),
     resolve(__dirname, '..', '..', '..', 'vault'),
     resolve(__dirname, '..', '..', 'vault'),

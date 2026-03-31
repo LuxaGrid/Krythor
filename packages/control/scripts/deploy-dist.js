@@ -9,7 +9,7 @@
 //    (binary install location) so the running gateway always serves the
 //    latest UI without a manual copy step.
 
-import { existsSync, cpSync, readdirSync, rmSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, cpSync, readdirSync, rmSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
 import { fileURLToPath } from 'url';
@@ -69,6 +69,15 @@ if (existsSync(assetsDir)) {
 
 cpSync(srcDist, installDist, { recursive: true, force: true });
 console.log(`\x1b[32m✔ UI deployed to ~/.krythor\x1b[0m`);
+
+// ── 2b. Deploy vault catalog to ~/.krythor/vault ──────────────────────────────
+const vaultSrc = join(root, '..', '..', 'vault');
+const vaultDest = join(homedir(), '.krythor', 'vault');
+if (existsSync(vaultSrc)) {
+  mkdirSync(vaultDest, { recursive: true });
+  cpSync(vaultSrc, vaultDest, { recursive: true, force: true });
+  console.log(`\x1b[32m✔ Vault catalog deployed to ~/.krythor/vault\x1b[0m`);
+}
 
 // ── 3. Deploy all workspace package dists to ~/.krythor ───────────────────────
 // Gateway loads @krythor/* packages from the install location's node_modules at
