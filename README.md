@@ -48,6 +48,7 @@ This is not just chat. This is AI you can operate.
 - **Agent import/export** — share agent configs as JSON files
 - **Skills** — reusable task templates with structured routing hints, task profiles, and built-in templates (summarize, translate, explain)
 - **Krythor Vault** — a browsable skill library with 40 official skills across 6 collections (Real Estate Pack, Finance Pack, Productivity Pack, Communication Pack, Business Workflow Pack, Official Starter Pack); install, update, and remove skills directly from the Vault tab; filter by collection, category, source, or risk level; local JSON import for custom community skills with live risk analysis and category assignment before import
+- **Talent Marketplace** — private vendor and talent directory with AI-powered multi-dimension ranking (category fit, geography, trust score, response history, recency); full CRUD for talent profiles, interaction logs, and outreach queue; marketplace requests with AI-match resolution; trust score computed from response rate, job outcomes, and recency decay; 6-view Control UI (Dashboard, Directory, Detail, Matcher, Outreach Queue, Create/Edit form); native skill (`talent_marketplace`) for agent-driven talent workflows; 16 REST endpoints under `/api/talents/*` and `/api/marketplace-requests`
 - **Guard engine** — policy-based allow/deny/warn/require-approval control per operation with persistent SQLite audit trail and live test mode; three distinct safety modes (Guarded, Balanced, Power User)
 - **Approval flow** — `require-approval` guard actions pause execution and surface a modal in the UI; streaming approval integration sends `approval_required` SSE events mid-stream
 - **Tool system** — exec (local commands), web_search (DuckDuckGo), web_fetch (URL content), file tools (9 operations), memory tools, user-defined webhook tools with one-click test-fire
@@ -65,7 +66,7 @@ This is not just chat. This is AI you can operate.
 - **LAN discovery** — gateways on the same network find each other automatically via UDP multicast; manual peer registration for cross-network pairing
 - **Gateway identity** — stable UUID per installation; capability manifest at `GET /api/gateway/info`
 - **Command Center** — live animated operations view with a Cybernetic Brain Planet, mythic-tech agent entities, resizable panels, and real-time event-driven animation
-- **Customizable tab bar** — pin/unpin any of the 16 tabs into the top bar; persisted to localStorage
+- **Customizable tab bar** — pin/unpin any of the 27 available tabs into the top bar; persisted to localStorage
 - **Resizable sidebars** — every panel with a sidebar has a draggable resize handle; widths persist across sessions
 - **Ctrl+K command palette** — global fuzzy-search command palette for instant tab navigation, new chat, and more
 - **Slash commands** — type `/` in the chat input to autocomplete commands
@@ -321,6 +322,51 @@ Any valid skill JSON with `name` and `systemPrompt` fields is accepted and saved
 
 ---
 
+## 🧑‍💼 Talent Marketplace
+
+The Marketplace tab is a private talent and vendor directory with AI-powered ranking and outreach management.
+
+### Views
+
+| View | What it does |
+|------|-------------|
+| Dashboard | Stats grid (total talents, pending outreach, active requests, trust averages); quick action buttons |
+| Directory | Searchable, filterable table with trust score bars, status badges, and category labels; filter by category, state/city, status, tags, or preferred flag |
+| Detail | Full profile view — contact details, trust breakdown, interaction history, outreach history, action buttons |
+| Matcher | Paste a job description or role requirement; the ranking engine scores all matching talents across 7 dimensions and shows per-result explanations with expandable score breakdowns |
+| Outreach Queue | Approve or deny pending outreach items across all talents in one view |
+| Create / Edit | Form to add or update a talent profile — name, category, location, contact info, trust modifiers, tags, preferred flag |
+
+### Trust Score
+
+Each talent profile has a computed trust score (0–100) based on:
+- Response rate (how often they reply to outreach)
+- Job outcome history (completed vs. cancelled engagements)
+- Preferred flag bonus
+- Recency decay (recent activity weighted higher)
+
+### Ranking Engine
+
+The Matcher view uses a 7-dimension scoring engine:
+
+| Dimension | Max Score | What it measures |
+|-----------|-----------|-----------------|
+| Category fit | 30 | Talent's category vs. request category |
+| Geography fit | 20 | State and city proximity to request location |
+| Trust score | 25 | Normalised profile trust score |
+| Response history | 15 | Past interaction response rate |
+| Recency | 5 | How recently the talent was active |
+| Preferred bonus | 5 | Whether the talent is flagged as preferred |
+| Penalty | −varies | Applied for rejected/blocked status or poor outcomes |
+
+Each result includes a full per-dimension explanation that can be expanded in the UI.
+
+### Agent access
+
+The `talent_marketplace` native skill is registered automatically at startup. Any agent can use it to query the talent directory, run ranking, create outreach, and log interactions directly within an agent run.
+
+---
+
 ## 💬 Slash Commands
 
 Type `/` in the chat input to see the autocomplete dropdown. Arrow keys or Tab to select, Enter to apply, Escape to dismiss.
@@ -350,7 +396,7 @@ Type `/` in the chat input to see the autocomplete dropdown. Arrow keys or Tab t
 
 ---
 
-**Status:** Krythor is in active development and currently available as an early public preview. Current version: **v2.3.0**. The current release is intended for testers, technical users, and early adopters.
+**Status:** Krythor is in active development and currently available as an early public preview. Current version: **v2.3.0** (milestone v0.6.0). The current release is intended for testers, technical users, and early adopters.
 
 ---
 
@@ -740,6 +786,7 @@ The dashboard has a customizable tab bar — click **+ Tabs** to pin or unpin an
 | Command Center | Live animated scene with Cybernetic Brain Planet, agent entities, and command log |
 | Cron Jobs | Schedule agents with cron expressions, intervals, or one-shot timestamps |
 | Jobs | View the persistent job queue — status, retry history, cancel |
+| Marketplace | Talent Marketplace — manage trusted vendors and contractors; AI-powered ranking, outreach queue, and interaction history |
 | Settings | API key management, TLS/HTTPS configuration, Tailscale networking, full config export/import |
 
 ---
@@ -1077,6 +1124,22 @@ All API endpoints are served at `http://127.0.0.1:47200`. Most require a Bearer 
 | POST | `/api/conversation-groups/:id/conversations` | Required | Add a conversation to a group |
 | DELETE | `/api/conversation-groups/:id/conversations/:convId` | Required | Remove a conversation from a group |
 | GET | `/api/tailscale/status` | Required | Tailscale connection status and network info |
+| GET | `/api/talents` | Required | List talent profiles (filter by category, state, city, status, preferred, tag) |
+| POST | `/api/talents` | Required | Create a talent profile |
+| GET | `/api/talents/dashboard` | Required | Marketplace stats (totals, top categories, recent activity) |
+| GET | `/api/talents/pending-outreach` | Required | List outreach items awaiting approval |
+| GET | `/api/talents/:id` | Required | Get a talent profile |
+| PATCH | `/api/talents/:id` | Required | Update a talent profile |
+| DELETE | `/api/talents/:id` | Required | Delete a talent profile |
+| GET | `/api/talents/:id/interactions` | Required | List interaction history for a talent |
+| POST | `/api/talents/:id/interactions` | Required | Log a new interaction |
+| GET | `/api/talents/:id/outreach` | Required | List outreach items for a talent |
+| POST | `/api/talents/:id/outreach` | Required | Create an outreach item |
+| PATCH | `/api/talents/:id/outreach/:oid` | Required | Update an outreach item (approve/deny/status) |
+| POST | `/api/talents/rank` | Required | AI-powered ranking — returns scored and explained matches for a request |
+| GET | `/api/marketplace-requests` | Required | List marketplace requests |
+| POST | `/api/marketplace-requests` | Required | Create a marketplace request |
+| POST | `/api/marketplace-requests/:id/resolve` | Required | Resolve a marketplace request with a selected talent |
 | WS | `/ws/stream` | Required | Real-time event stream |
 
 ---
@@ -1412,7 +1475,7 @@ To uninstall: remove the application folder (`~/.krythor`) and the data folder a
 - ✅ Outbound webhook channels (HMAC signing, delivery stats)
 - ✅ LAN peer discovery (mDNS UDP multicast) + manual peer registry
 - ✅ Command Center — live animated agent scene with Cybernetic Brain Planet, distinct agent silhouettes, state machine, zone transitions, energy paths, ambient reactor, focus mode
-- ✅ Customizable tab bar — pin/unpin any of 16+ panels
+- ✅ Customizable tab bar — pin/unpin any of 27 panels
 - ✅ Resizable sidebars on all panels
 - ✅ Ctrl+K global command palette with fuzzy search
 - ✅ Slash commands in chat input
@@ -1449,6 +1512,7 @@ To uninstall: remove the application folder (`~/.krythor`) and the data folder a
 - ✅ Reverse-proxy support — `KRYTHOR_TRUSTED_PROXY`, `KRYTHOR_HOST`, `KRYTHOR_PORT`, `KRYTHOR_GATEWAY_TOKEN` env vars
 - ✅ Conversation groups — organize chats into named folders from the sidebar; group/ungroup, rename, drag-to-reorder, inline description editing
 - ✅ Tailscale networking — Serve (tailnet-only) and Funnel (public HTTPS) modes; configurable auth and bind mode
+- ✅ Talent Marketplace — private vendor/talent directory with AI-powered multi-dimension ranking, outreach queue, interaction history, and full 6-view Control UI; native `talent_marketplace` agent skill
 - ⬜ Code signing (OV certificate — eliminates SmartScreen warning)
 - ⬜ Auto-updater UI (download and replace in-place)
 - ⬜ macOS / Linux native installers
