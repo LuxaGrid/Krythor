@@ -37,7 +37,12 @@ export type GatewayEventName =
   | 'agent:run:started'
   | 'agent:run:completed'
   | 'agent:run:failed'
-  | 'message:received';
+  | 'message:received'
+  | 'talent:created'
+  | 'talent:updated'
+  | 'talent:deactivated'
+  | 'talent:contacted'
+  | 'talent:outcome';
 
 export interface GatewayEventPayload {
   'gateway:startup':      { version: string; dataDir: string; host: string; port: number };
@@ -50,6 +55,11 @@ export interface GatewayEventPayload {
   'agent:run:completed':  { runId: string; agentId: string; durationMs: number; modelUsed?: string };
   'agent:run:failed':     { runId: string; agentId: string; error: string };
   'message:received':     { channel: string; senderId: string; text: string; isGroup: boolean };
+  'talent:created':       { talentId: string; displayName: string; category: string };
+  'talent:updated':       { talentId: string; displayName: string };
+  'talent:deactivated':   { talentId: string; displayName: string };
+  'talent:contacted':     { talentId: string; displayName: string; outreachId: string; channel?: string };
+  'talent:outcome':       { talentId: string; displayName: string; interactionId: string; outcome: string };
 }
 
 export type GatewayEventHandler<E extends GatewayEventName> =

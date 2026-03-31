@@ -59,8 +59,11 @@ export class MemoryEngine {
   readonly dbDir: string;
   private _decayInterval: ReturnType<typeof setInterval> | null = null;
   private _startupImmediate: ReturnType<typeof setImmediate> | null = null;
+  private _lastTrustRecalc = 0;
+  private readonly _logFn?: LogFn;
 
   constructor(dataDir: string, logFn?: LogFn) {
+    this._logFn = logFn;
     // Open ONE shared connection for both MemoryStore and ConversationStore to
     // eliminate WAL contention from two separate writers on the same file.
     mkdirSync(dataDir, { recursive: true });
@@ -95,10 +98,25 @@ export class MemoryEngine {
       this.janitor.run();
     });
 
-    // Re-apply decay and prune every 24 hours so long-running sessions don't bypass it.
+    // Re-apply decay, prune, and recalculate talent trust scores every 24 hours
+    // so long-running sessions don't bypass decay enforcement.
     this._decayInterval = setInterval(() => {
       this.writer.applyDecay();
       this.writer.prune(MemoryEngine.MAX_ENTRIES);
+
+      // Recalculate talent trust scores daily
+      const oneDayMs = 24 * 60 * 60 * 1000;
+      if (Date.now() - this._lastTrustRecalc > oneDayMs) {
+        try {
+          const updated = this.talentStore.recalculateAllTrustScores();
+          this._lastTrustRecalc = Date.now();
+          if (updated > 0) {
+            this._logFn?.('info', `[Marketplace] Recalculated trust scores for ${updated} talent profiles`);
+          }
+        } catch (err) {
+          this._logFn?.('warn', `[Marketplace] Trust score recalculation failed: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
     }, 24 * 60 * 60 * 1000);
   }
 

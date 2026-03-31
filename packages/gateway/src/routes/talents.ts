@@ -30,6 +30,7 @@ import type { ApprovalManager } from '../ApprovalManager.js';
 import { guardCheck } from '../guardCheck.js';
 import { MarketplaceRankingEngine } from '../marketplace/MarketplaceRankingEngine.js';
 import type { RankInput } from '../marketplace/MarketplaceRankingEngine.js';
+import { gatewayEvents } from '../GatewayEventBus.js';
 
 // Simple timed cache for ranking results
 const rankCache = new Map<string, { result: unknown; expiresAt: number }>();
@@ -143,6 +144,7 @@ export function registerTalentRoutes(
     if (!allowed) return;
     try {
       const talent = store.create(req.body as import('@krythor/memory').CreateTalentInput);
+      gatewayEvents.emit('talent:created', { talentId: talent.id, displayName: talent.displayName, category: talent.category });
       return reply.code(201).send(talent);
     } catch (err) {
       return sendError(reply, 400, 'TALENT_CREATE_FAILED', err instanceof Error ? err.message : 'Create failed');
@@ -154,7 +156,13 @@ export function registerTalentRoutes(
     const allowed = await guardCheck({ guard, approvalManager, reply, operation: 'memory:write', source: 'user' });
     if (!allowed) return;
     try {
-      const talent = store.update(req.params.id, req.body as import('@krythor/memory').UpdateTalentInput);
+      const body = req.body as import('@krythor/memory').UpdateTalentInput;
+      const talent = store.update(req.params.id, body);
+      if (body.status === 'inactive') {
+        gatewayEvents.emit('talent:deactivated', { talentId: talent.id, displayName: talent.displayName });
+      } else {
+        gatewayEvents.emit('talent:updated', { talentId: talent.id, displayName: talent.displayName });
+      }
       return reply.send(talent);
     } catch (err) {
       return sendError(reply, 404, 'TALENT_NOT_FOUND', err instanceof Error ? err.message : 'Not found');
@@ -192,7 +200,16 @@ export function registerTalentRoutes(
     const talent = store.getById(req.params.id);
     if (!talent) return sendError(reply, 404, 'TALENT_NOT_FOUND', `Talent "${req.params.id}" not found`);
     try {
-      const interaction = store.addInteraction(req.params.id, req.body as Omit<import('@krythor/memory').TalentInteraction, 'id' | 'createdAt'>);
+      const body = req.body as Omit<import('@krythor/memory').TalentInteraction, 'id' | 'createdAt'>;
+      const interaction = store.addInteraction(req.params.id, body);
+      if (body.type === 'outcome' && interaction.outcome) {
+        gatewayEvents.emit('talent:outcome', {
+          talentId:      talent.id,
+          displayName:   talent.displayName,
+          interactionId: interaction.id,
+          outcome:       interaction.outcome,
+        });
+      }
       return reply.code(201).send(interaction);
     } catch (err) {
       return sendError(reply, 400, 'INTERACTION_FAILED', err instanceof Error ? err.message : 'Failed to add interaction');
@@ -220,21 +237,52 @@ export function registerTalentRoutes(
 
     const body = req.body as Omit<import('@krythor/memory').TalentOutreach, 'id' | 'createdAt'>;
 
-    // Guard check when attempting to immediately send
-    if (body.status === 'sent') {
-      const allowed = await guardCheck({
-        guard,
-        approvalManager,
-        reply,
-        operation: 'memory:write',
-        source: 'user',
-        actionSummary: `Send outreach to talent "${talent.displayName}" via ${body.channel ?? 'unknown channel'}`,
-      });
-      if (!allowed) return;
+    // Check the guard verdict for outreach operations
+    const verdict = guard.check({ operation: 'memory:write', source: 'user' });
+    if (!verdict.allowed) {
+      if (verdict.action !== 'require-approval') {
+        // Hard block — reject immediately
+        return sendError(reply, 403, 'OUTREACH_BLOCKED', verdict.reason ?? 'Outreach blocked by guard policy');
+      }
+      // require-approval falls through: create as pending and register for approval below
     }
 
     try {
-      const outreach = store.addOutreach(req.params.id, body);
+      // Always create outreach as pending — must be explicitly approved/sent
+      const outreach = store.addOutreach(req.params.id, { ...body, status: 'pending' });
+
+      // If guard requires approval, route through approvalManager
+      if (approvalManager && !verdict.allowed && verdict.action === 'require-approval') {
+        const approvalResponse = await approvalManager.requestApproval({
+          actionType:  'talent:outreach',
+          target:      talent.id,
+          reason:      verdict.reason ?? 'Policy requires approval for outreach.',
+          riskSummary: `Outreach to ${talent.displayName} via ${body.channel ?? 'unknown channel'}`,
+          context:     { talentId: talent.id, outreachId: outreach.id, channel: body.channel, messagePreview: body.messagePreview },
+        });
+
+        if (approvalResponse === 'deny') {
+          store.updateOutreach(outreach.id, { status: 'denied' });
+          return sendError(reply, 403, 'APPROVAL_DENIED', 'Outreach approval request denied.');
+        }
+
+        // Approval granted — mark outreach as approved, ready for explicit send
+        store.updateOutreach(outreach.id, { status: 'approved' });
+        gatewayEvents.emit('talent:contacted', {
+          talentId:   talent.id,
+          displayName: talent.displayName,
+          outreachId: outreach.id,
+          channel:    outreach.channel,
+        });
+        return reply.code(202).send({ ...outreach, status: 'approved', requiresApproval: true });
+      }
+
+      gatewayEvents.emit('talent:contacted', {
+        talentId:   talent.id,
+        displayName: talent.displayName,
+        outreachId: outreach.id,
+        channel:    outreach.channel,
+      });
       return reply.code(201).send(outreach);
     } catch (err) {
       return sendError(reply, 400, 'OUTREACH_FAILED', err instanceof Error ? err.message : 'Failed to create outreach');

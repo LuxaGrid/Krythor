@@ -498,6 +498,31 @@ export class TalentStore {
     return score;
   }
 
+  /**
+   * Recalculate trust scores for all non-blocked talent profiles.
+   * Only writes to the database when the score has changed by more than 0.01.
+   * Returns the number of profiles updated.
+   */
+  recalculateAllTrustScores(): number {
+    const profiles = this.db.prepare(
+      `SELECT id FROM talent_profiles WHERE status != 'blocked'`
+    ).all() as Array<{ id: string }>;
+
+    let updated = 0;
+    for (const { id } of profiles) {
+      const profile = this.getById(id);
+      if (!profile) continue;
+      const newScore = this.computeTrustScore(profile);
+      if (Math.abs(newScore - profile.trustScore) > 0.01) {
+        this.db.prepare(
+          `UPDATE talent_profiles SET trust_score = ?, updated_at = ? WHERE id = ?`
+        ).run(newScore, Date.now(), id);
+        updated++;
+      }
+    }
+    return updated;
+  }
+
   private computeTrustScore(p: {
     successfulJobsCount: number;
     responseRate: number;
