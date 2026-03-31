@@ -16,6 +16,7 @@ import { HeartbeatInsightStore } from './db/HeartbeatInsightStore.js';
 import { SessionStore } from './db/SessionStore.js';
 import { KnowledgeStore } from './db/KnowledgeStore.js';
 import { ConversationGroupStore } from './db/ConversationGroupStore.js';
+import { TalentStore } from './db/TalentStore.js';
 import type {
   CreateMemoryInput,
   UpdateMemoryInput,
@@ -53,6 +54,7 @@ export class MemoryEngine {
   readonly sessionStore: SessionStore;
   readonly knowledgeStore: KnowledgeStore;
   readonly conversationGroupStore: ConversationGroupStore;
+  readonly talentStore: TalentStore;
   /** Directory containing memory.db and any .bak backup files. */
   readonly dbDir: string;
   private _decayInterval: ReturnType<typeof setInterval> | null = null;
@@ -80,6 +82,7 @@ export class MemoryEngine {
     this.sessionStore = new SessionStore(this.db);
     this.knowledgeStore = new KnowledgeStore(this.db);
     this.conversationGroupStore = new ConversationGroupStore(this.db);
+    this.talentStore = new TalentStore(this.db);
 
     // Apply decay, clear session-scoped memories, and run retention janitor on
     // startup (non-blocking). Session scope is documented as "cleared on session

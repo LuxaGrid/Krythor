@@ -48,6 +48,22 @@ export { JobQueue } from './db/JobQueue.js';
 export type { Job, JobType, JobStatus } from './db/JobQueue.js';
 export { KnowledgeStore } from './db/KnowledgeStore.js';
 export type { KnowledgeDocument, KnowledgeChunk, CreateDocumentInput, CreateChunkInput, SearchChunksOptions } from './db/KnowledgeStore.js';
+export { TalentStore } from './db/TalentStore.js';
+export type {
+  TalentProfile,
+  TalentInteraction,
+  TalentOutreach,
+  MarketplaceRequest,
+  TalentStatus,
+  TalentSource,
+  InteractionType,
+  InteractionOutcome,
+  OutreachStatus,
+  CreateTalentInput,
+  UpdateTalentInput,
+  TalentSearchFilter,
+} from './db/TalentStore.js';
+
 export type {
   SessionEntry,
   SessionKind,
