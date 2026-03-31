@@ -41,6 +41,10 @@ export class SkillRegistry {
       runCount: 0,
       createdAt: now,
       updatedAt: now,
+      ...(input.inputSchema  !== undefined && { inputSchema:  input.inputSchema }),
+      ...(input.outputSchema !== undefined && { outputSchema: input.outputSchema }),
+      ...(input.returnFormat !== undefined && { returnFormat: input.returnFormat }),
+      ...(input.chainable    !== undefined && { chainable:    input.chainable }),
     };
     this.skills.set(skill.id, skill);
     this.save();
@@ -63,6 +67,10 @@ export class SkillRegistry {
       ...(input.timeoutMs !== undefined && { timeoutMs: input.timeoutMs || undefined }),
       ...(input.enabled !== undefined && { enabled: input.enabled }),
       ...(input.userInvocable !== undefined && { userInvocable: input.userInvocable }),
+      ...(input.inputSchema  !== undefined && { inputSchema:  input.inputSchema }),
+      ...(input.outputSchema !== undefined && { outputSchema: input.outputSchema }),
+      ...(input.returnFormat !== undefined && { returnFormat: input.returnFormat }),
+      ...(input.chainable    !== undefined && { chainable:    input.chainable }),
       version: (existing.version ?? 1) + 1,
       updatedAt: Date.now(),
     };

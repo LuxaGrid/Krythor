@@ -1,6 +1,6 @@
 {
   "name": "@krythor/core",
-  "version": "0.1.0",
+  "version": "0.7.0",
   "private": true,
   "description": "Krythor Core — orchestration runtime",
   "type": "commonjs",

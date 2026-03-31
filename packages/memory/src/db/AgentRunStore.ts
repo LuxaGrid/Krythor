@@ -30,6 +30,10 @@ export interface PersistedRun {
   promptTokens?: number;
   completionTokens?: number;
   parentRunId?: string;
+  // ── Hermes fields (v0.7.0) ──────────────────────────────────────────────────
+  plan?: unknown;               // AgentPlan — stored as JSON blob
+  trace?: unknown;              // ExecutionTrace — stored as JSON blob
+  verificationResult?: unknown; // VerificationResult — stored as JSON blob
 }
 
 interface RunRow {
@@ -51,6 +55,9 @@ interface RunRow {
   prompt_tokens: number | null;
   completion_tokens: number | null;
   parent_run_id: string | null;
+  plan_json: string | null;
+  trace_json: string | null;
+  verification_result_json: string | null;
 }
 
 export class AgentRunStore {
@@ -65,27 +72,32 @@ export class AgentRunStore {
         (id, agent_id, status, input, output, model_used, error_message,
          started_at, completed_at, messages_json, memory_ids_used, memory_ids_written,
          selection_reason, fallback_occurred, retry_count,
-         prompt_tokens, completion_tokens, parent_run_id)
+         prompt_tokens, completion_tokens, parent_run_id,
+         plan_json, trace_json, verification_result_json)
       VALUES
         (@id, @agentId, @status, @input, @output, @modelUsed, @errorMessage,
          @startedAt, @completedAt, @messagesJson, @memoryIdsUsed, @memoryIdsWritten,
          @selectionReason, @fallbackOccurred, @retryCount,
-         @promptTokens, @completionTokens, @parentRunId)
+         @promptTokens, @completionTokens, @parentRunId,
+         @planJson, @traceJson, @verificationResultJson)
       ON CONFLICT(id) DO UPDATE SET
-        status             = excluded.status,
-        output             = excluded.output,
-        model_used         = excluded.model_used,
-        error_message      = excluded.error_message,
-        completed_at       = excluded.completed_at,
-        messages_json      = excluded.messages_json,
-        memory_ids_used    = excluded.memory_ids_used,
-        memory_ids_written = excluded.memory_ids_written,
-        selection_reason   = excluded.selection_reason,
-        fallback_occurred  = excluded.fallback_occurred,
-        retry_count        = excluded.retry_count,
-        prompt_tokens      = excluded.prompt_tokens,
-        completion_tokens  = excluded.completion_tokens,
-        parent_run_id      = excluded.parent_run_id
+        status                   = excluded.status,
+        output                   = excluded.output,
+        model_used               = excluded.model_used,
+        error_message            = excluded.error_message,
+        completed_at             = excluded.completed_at,
+        messages_json            = excluded.messages_json,
+        memory_ids_used          = excluded.memory_ids_used,
+        memory_ids_written       = excluded.memory_ids_written,
+        selection_reason         = excluded.selection_reason,
+        fallback_occurred        = excluded.fallback_occurred,
+        retry_count              = excluded.retry_count,
+        prompt_tokens            = excluded.prompt_tokens,
+        completion_tokens        = excluded.completion_tokens,
+        parent_run_id            = excluded.parent_run_id,
+        plan_json                = excluded.plan_json,
+        trace_json               = excluded.trace_json,
+        verification_result_json = excluded.verification_result_json
     `);
 
     this.selectById = db.prepare(
@@ -123,6 +135,9 @@ export class AgentRunStore {
       promptTokens:     run.promptTokens ?? null,
       completionTokens: run.completionTokens ?? null,
       parentRunId:      run.parentRunId ?? null,
+      planJson:                run.plan !== undefined ? JSON.stringify(run.plan) : null,
+      traceJson:               run.trace !== undefined ? JSON.stringify(run.trace) : null,
+      verificationResultJson:  run.verificationResult !== undefined ? JSON.stringify(run.verificationResult) : null,
     });
   }
 
@@ -158,6 +173,9 @@ export class AgentRunStore {
       promptTokens:     row.prompt_tokens ?? undefined,
       completionTokens: row.completion_tokens ?? undefined,
       parentRunId:      row.parent_run_id ?? undefined,
+      plan:                 row.plan_json ? this.parseJson(row.plan_json, undefined) : undefined,
+      trace:                row.trace_json ? this.parseJson(row.trace_json, undefined) : undefined,
+      verificationResult:   row.verification_result_json ? this.parseJson(row.verification_result_json, undefined) : undefined,
     };
   }
 

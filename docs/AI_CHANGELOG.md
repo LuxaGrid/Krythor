@@ -2068,3 +2068,49 @@ All tests pass: 93 tests across 11 test files.
 - Node/device pairing — skip
 - Multi-tenant isolation — skip
 - Tailscale integration — skip
+
+---
+
+## 2026-03-31
+
+### Hermes Engine — Autonomous Reasoning Layer (v0.7.0)
+
+Adds a structured reasoning loop to Krythor's agent execution engine: Plan → Decide → Execute → Verify → Adapt → Complete.
+
+**Phase 2 — Reasoning Loop**
+- `AgentPlanner`: generates a structured execution plan (taskSummary, steps, complexity, estimatedTurns) via LLM before the main agent loop; graceful fallback to single-step plan on failure; never blocks execution
+- `ExecutionTracer`: tracks each step (plan, inference, tool_call, verify) with timing, token counts, and truncated I/O; attached to AgentRun as `run.trace`
+- `AgentVerifier`: validates final output against original task for moderate/complex plans; returns confidence + issues + suggestion; best-effort (never blocks)
+- `AgentRun` extended: `plan`, `trace`, `verificationResult` fields; `hermesEnabled` flag per agent (default true)
+- New API endpoints: `GET /api/agents/runs/:runId/plan`, `GET /api/agents/runs/:runId/trace`
+- `run:step` event emitted in SSE stream for real-time step visibility
+
+**Phase 3 — Guardrails**
+- Pre-plan guard check on `agent:run` operation before any execution begins
+- `GuardEngine.getModelPolicy()` — reads per-operation model policy (preferLocal, allowExternal) from policy config
+- Policy-based model routing: local providers sorted first when `preferLocal=true`; external blocked when `allowExternal=false`
+
+**Phase 4 — Structured Skills**
+- `Skill` interface extended: `inputSchema`, `outputSchema`, `returnFormat`, `chainable`
+- `SchemaValidator`: minimal JSON Schema validator (no external dep) for input/output validation
+- `SkillRunner` validates skill inputs/outputs against declared schemas; warnings on mismatch, never throws
+- `SkillComposer`: chains skills sequentially — each step's output feeds next step's input
+- `POST /api/skills/chain` endpoint for multi-skill composition
+- Built-in skills (Summarize, Translate, Explain) updated with schemas and returnFormat
+
+**Phase 5 — Memory Integration**
+- Planning is memory-aware: retrieved context passed into planner prompt
+- Plan summaries written to memory after non-simple runs (importance 0.5–0.7)
+- Execution trace summaries written to memory after completed non-trivial runs (importance 0.3)
+
+**Phase 6 — Model Routing Intelligence**
+- Extended thinking enabled automatically for `complexity=complex` runs on Anthropic providers
+- `AgentPlan.suggestedModelHint`: cost/speed tier hints derived from plan complexity
+- `ModelRouter` structured routing logs: every infer/inferStream call logs providerId, model, selectionReason, thinkingEnabled
+- `RoutingContext.policyHint` for per-request local/external preference
+
+**Phase 7 — Cleanup & Validation**
+- Zero lint errors, zero type errors across all Hermes-touched files
+- `AgentRun.plan`, `.trace`, `.verificationResult` serialized to SQLite via migration 018
+- `PersistedRun` and `AgentRunStore` updated with new JSON blob columns
+- Migration test counts updated to reflect 18 total migrations

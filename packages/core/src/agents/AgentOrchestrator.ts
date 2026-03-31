@@ -642,7 +642,10 @@ export class AgentOrchestrator extends EventEmitter {
           retryCount:       run.retryCount,
           promptTokens:     run.promptTokens,
           completionTokens: run.completionTokens,
-          parentRunId:      run.parentRunId,
+          parentRunId:         run.parentRunId,
+          plan:                run.plan,
+          trace:               run.trace,
+          verificationResult:  run.verificationResult,
         });
       } catch (err) {
         console.warn('[AgentOrchestrator] Failed to persist run to DB:', err instanceof Error ? err.message : err);
