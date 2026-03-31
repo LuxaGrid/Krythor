@@ -11,7 +11,6 @@ import { MemoryEngine, GuardDecisionStore, OllamaEmbeddingProvider, AuditStore, 
 import { ModelEngine, ModelRecommender, PreferenceStore } from '@krythor/models';
 import { GuardEngine, ModerationEngine } from '@krythor/guard';
 import { SkillRegistry, SkillRunner, SkillFileLoader } from '@krythor/skills';
-import type { SkillEvent } from '@krythor/skills';
 import { registerCommandRoute } from './routes/command.js';
 import { registerMemoryRoutes, type JanitorStatus } from './routes/memory.js';
 import { registerModelRoutes } from './routes/models.js';
@@ -72,7 +71,7 @@ import { registerMediaRoute } from './routes/media.js';
 import { registerSessionMaintenanceRoutes } from './routes/sessions.maintenance.js';
 import { ApprovalManager } from './ApprovalManager.js';
 import { AuditLogger } from './AuditLogger.js';
-import { HeartbeatEngine, type HeartbeatRunRecord, type HeartbeatInsight } from './heartbeat/HeartbeatEngine.js';
+import { HeartbeatEngine } from './heartbeat/HeartbeatEngine.js';
 import { logger } from './logger.js';
 import { loadOrCreateToken, verifyToken } from './auth.js';
 import { TailscaleService } from './TailscaleService.js';
@@ -1391,7 +1390,7 @@ Always show the score explanation when presenting ranked results.`,
         // Non-blocking: start the run in the background
         void (async () => {
           try {
-            let runPromise = orchestrator.runAgent(targetAgentId, {
+            const runPromise = orchestrator.runAgent(targetAgentId, {
               input: params.task,
               ...(params.model && { modelOverride: params.model }),
             }, { runId });

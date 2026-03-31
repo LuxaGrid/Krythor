@@ -143,7 +143,7 @@ export function loadPolicyFromYaml(filePath: string): PolicyConfig {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const jsYaml = require('js-yaml') as { load(s: string): unknown };
       doc = jsYaml.load(raw);
-    } catch (importErr) {
+    } catch (_importErr) {
       // js-yaml not available — try JSON fallback
       process.stderr.write('[guard/PolicyLoader] js-yaml not available, attempting JSON fallback\n');
       try {

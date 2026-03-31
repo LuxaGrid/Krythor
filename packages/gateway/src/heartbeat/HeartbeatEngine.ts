@@ -26,7 +26,7 @@ import type { DiskLogger } from '../logger.js';
 
 const HEARTBEAT_TIMEOUT_MS  = 60_000;      // hard ceiling per full run
 const MIN_STARTUP_DELAY_MS  = 30_000;     // don't run during first 30s of boot
-const CONCURRENCY_GUARD_MS  = 5_000;      // min gap between consecutive runs
+const _CONCURRENCY_GUARD_MS  = 5_000;      // min gap between consecutive runs
 const POLL_INTERVAL_BASE_MS = 50_000;     // jitter base: 50s
 const POLL_INTERVAL_JITTER_MS = 20_000;   // + up to 20s → 50–70s window
 const STALE_RUN_THRESHOLD_MS = 10 * 60 * 1000; // runs stuck > 10 min

@@ -214,7 +214,7 @@ export function registerChatChannelRoutes(
             resetTriggers, historyLimit, textChunkLimit, chunkMode, ackReaction } = req.body;
 
     // Merge credentials — incoming secret fields that are '***' keep the stored value
-    let mergedCredentials = { ...existing.credentials };
+    const mergedCredentials = { ...existing.credentials };
     if (credentials) {
       for (const [key, value] of Object.entries(credentials)) {
         // If the caller sent back the masked placeholder, keep the original secret

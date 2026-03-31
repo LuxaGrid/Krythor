@@ -318,7 +318,7 @@ if (args.includes('doctor')) {
 
           const agentList = Array.isArray(rawAgents) ? rawAgents : [];
           // Build a set of all known model IDs across all providers
-          let allModels: Set<string> = new Set();
+          const allModels: Set<string> = new Set();
           try {
             const providerArr = Array.isArray(rawProviders)
               ? rawProviders

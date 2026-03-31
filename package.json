@@ -26,6 +26,8 @@
     "setup": "node packages/setup/dist/bin/setup.js",
     "doctor": "node packages/setup/dist/bin/setup.js doctor",
     "test": "pnpm -r test",
+    "typecheck": "pnpm -r run typecheck",
+    "lint": "eslint .",
     "clean": "pnpm -r clean",
     "bundle": "node bundle.js",
     "build:bundle": "pnpm build && node bundle.js",
@@ -40,6 +42,9 @@
     "prepare": "pnpm build"
   },
   "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^8.58.0",
+    "@typescript-eslint/parser": "^8.58.0",
+    "eslint": "^10.1.0",
     "node-gyp": "^12.2.0"
   },
   "dependencies": {

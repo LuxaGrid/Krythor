@@ -18,7 +18,7 @@
  * This runs at gateway startup and is a no-op once the versioned file exists.
  */
 
-import { copyFileSync, statSync, existsSync, mkdirSync } from 'fs';
+import { copyFileSync, existsSync, mkdirSync } from 'fs';
 import { join, resolve } from 'path';
 
 const NMV      = process.versions.modules;

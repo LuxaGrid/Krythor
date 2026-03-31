@@ -17,7 +17,7 @@ import { guardCheck } from '../guardCheck.js';
 import { sendError } from '../errors.js';
 import { logger } from '../logger.js';
 import type { VaultRegistry } from '../VaultRegistry.js';
-import type { VaultManifest, VaultManifestEntry, VaultCollection, InstalledVaultSkill } from '../VaultRegistry.js';
+import type { VaultManifest, InstalledVaultSkill } from '../VaultRegistry.js';
 
 // Risk classification derived from declared permissions
 function classifyRisk(permissions: string[]): 'low' | 'medium' | 'high' {

@@ -30,7 +30,6 @@ import {
   parseFrame,
   makeRes,
   makeEvent,
-  type ReqFrame,
   type ConnectParams,
   type ConnectPayload,
 } from './protocol.js';

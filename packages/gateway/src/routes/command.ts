@@ -861,7 +861,7 @@ export function registerCommandRoute(
         return reply;
       }
 
-      const startTime = Date.now();
+      const _startTime = Date.now();
       const result = await core.handleCommand(input, modelId ? { agentModelId: modelId } : undefined);
 
       // Save to conversation

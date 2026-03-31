@@ -18,7 +18,7 @@ const GREEN   = '\x1b[32m';
 const YELLOW  = '\x1b[33m';
 const RED     = '\x1b[31m';
 const CYAN    = '\x1b[36m';
-const WHITE   = '\x1b[37m';
+const _WHITE   = '\x1b[37m';
 
 function clear(): void    { process.stdout.write('\x1b[2J\x1b[H'); }
 function moveTo(r: number, c: number): void { process.stdout.write(`${ESC}${r};${c}H`); }

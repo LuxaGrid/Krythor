@@ -18,7 +18,7 @@ export function registerRecommendRoutes(
   app: FastifyInstance,
   models: ModelEngine,
   recommender: ModelRecommender,
-  guard?: GuardEngine,
+  _guard?: GuardEngine,
 ): void {
 
   // GET /api/recommend?task=<text>

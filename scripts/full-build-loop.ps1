@@ -166,6 +166,46 @@ foreach ($a in $keyArtefacts) {
 }
 
 # =============================================================================
+#  STEP 2.5 — Typecheck + Lint
+# =============================================================================
+
+Write-Step "Step 2.5 · Typecheck"
+
+Push-Location $root
+$typecheckOut = pnpm run typecheck 2>&1
+$typecheckExit = $LASTEXITCODE
+Pop-Location
+
+if ($typecheckExit -ne 0) {
+    Add-Check 'typecheck' 'FAIL' "Exit code $typecheckExit"
+    Write-Host ""
+    Write-Host "  Typecheck output (last 20 lines):" -ForegroundColor DarkGray
+    $typecheckOut | Select-Object -Last 20 | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
+    Write-Host "`n  [FATAL] Typecheck failed — cannot continue." -ForegroundColor Red
+    exit 1
+} else {
+    Add-Check 'typecheck' 'PASS' 'all packages typecheck clean'
+}
+
+Write-Step "Step 2.6 · Lint"
+
+Push-Location $root
+$lintOut = pnpm run lint 2>&1
+$lintExit = $LASTEXITCODE
+Pop-Location
+
+if ($lintExit -ne 0) {
+    Add-Check 'lint' 'FAIL' "Exit code $lintExit"
+    Write-Host ""
+    Write-Host "  Lint output (last 30 lines):" -ForegroundColor DarkGray
+    $lintOut | Select-Object -Last 30 | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
+    Write-Host "`n  [FATAL] Lint failed — cannot continue." -ForegroundColor Red
+    exit 1
+} else {
+    Add-Check 'lint' 'PASS' 'no lint errors'
+}
+
+# =============================================================================
 #  STEP 3 — pnpm -r test
 # =============================================================================
 

@@ -2,7 +2,7 @@ import { readFileSync, existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { atomicWriteJSON } from './config/atomicWrite.js';
 import { randomUUID } from 'crypto';
-import type { Skill, CreateSkillInput, UpdateSkillInput, SkillPermission } from './types.js';
+import type { Skill, CreateSkillInput, UpdateSkillInput } from './types.js';
 
 // ─── SkillRegistry ────────────────────────────────────────────────────────────
 //

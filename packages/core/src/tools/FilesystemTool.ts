@@ -193,7 +193,7 @@ function applyUnifiedPatch(original: string, patch: string): PatchResult {
   const lines = original.split('\n');
   const patchLines = patch.split('\n');
 
-  let output: string[] = [...lines];
+  const output: string[] = [...lines];
   let offset = 0; // cumulative line shift from previous hunks
   let hunksApplied = 0;
 

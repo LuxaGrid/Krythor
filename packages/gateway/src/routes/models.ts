@@ -4,7 +4,7 @@ import { getCapabilities, PROVIDER_CAPABILITIES } from '@krythor/models';
 import type { MemoryEngine } from '@krythor/memory';
 import type { GuardEngine } from '@krythor/guard';
 import { OllamaEmbeddingProvider } from '@krythor/memory';
-import { validateString, validateUrl, MAX_NAME_LEN, MAX_ENDPOINT_LEN, MAX_API_KEY_LEN } from '../validate.js';
+import { validateString, MAX_NAME_LEN, MAX_ENDPOINT_LEN, MAX_API_KEY_LEN } from '../validate.js';
 import type { ApprovalManager } from '../ApprovalManager.js';
 import { guardCheck } from '../guardCheck.js';
 

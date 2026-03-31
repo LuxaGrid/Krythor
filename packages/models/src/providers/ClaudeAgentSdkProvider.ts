@@ -152,7 +152,7 @@ export class ClaudeAgentSdkProvider extends BaseProvider {
   }
 
   async *inferStream(request: InferenceRequest, signal?: AbortSignal): AsyncGenerator<StreamChunk> {
-    const start = Date.now();
+    const _start = Date.now();
     const query = await loadSdk();
     if (!query) throw new Error('ClaudeAgentSdkProvider: @anthropic-ai/claude-agent-sdk is not installed.');
 

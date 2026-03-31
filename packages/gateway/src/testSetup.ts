@@ -5,7 +5,7 @@
 // 2. Points KRYTHOR_DATA_DIR at a fresh per-run temp directory so tests never
 //    read from or write to the real user data directory.
 //
-import { mkdtempSync, rmSync, copyFileSync, statSync, existsSync } from 'fs';
+import { mkdtempSync, rmSync, copyFileSync, existsSync } from 'fs';
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
 
