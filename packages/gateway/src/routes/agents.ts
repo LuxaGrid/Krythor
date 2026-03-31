@@ -425,7 +425,7 @@ export function registerAgentRoutes(
     return reply.send(run);
   });
 
-  // GET /api/agents/runs/:runId/plan — return the Hermes plan for a run
+  // GET /api/agents/runs/:runId/plan — return the agent execution plan
   app.get<{ Params: { runId: string } }>('/api/agents/runs/:runId/plan', async (req, reply) => {
     const run = orchestrator.getRun(req.params.runId);
     if (!run) return reply.code(404).send({ error: 'Run not found' });
@@ -433,7 +433,7 @@ export function registerAgentRoutes(
     return reply.send(run.plan);
   });
 
-  // GET /api/agents/runs/:runId/trace — return the Hermes execution trace for a run
+  // GET /api/agents/runs/:runId/trace — return the agent execution trace
   app.get<{ Params: { runId: string } }>('/api/agents/runs/:runId/trace', async (req, reply) => {
     const run = orchestrator.getRun(req.params.runId);
     if (!run) return reply.code(404).send({ error: 'Run not found' });

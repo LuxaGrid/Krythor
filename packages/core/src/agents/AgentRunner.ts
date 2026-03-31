@@ -409,12 +409,12 @@ export class AgentRunner {
      * Default: 'once'.
      */
     private readonly bootstrapTruncationWarning?: 'off' | 'once' | 'always' | null,
-    /** AgentPlanner instance (Hermes). When null, a no-op planner using models is created lazily. */
+    /** AgentPlanner instance. When null, a no-op planner using models is created lazily. */
     planner?: AgentPlanner | null,
-    /** AgentVerifier instance (Hermes). When null, a no-op verifier using models is created lazily. */
+    /** AgentVerifier instance. When null, a no-op verifier using models is created lazily. */
     verifier?: AgentVerifier | null,
   ) {
-    // Hermes planner/verifier — always available so runs can use them when models are present.
+    // Reasoning planner/verifier — always available so runs can use them when models are present.
     // If models is null (no provider configured) they will gracefully fall back inside plan/verify.
     const effectiveModels = models ?? ({} as ModelEngine);
     this.planner  = planner  ?? new AgentPlanner(effectiveModels);
@@ -1021,9 +1021,9 @@ export class AgentRunner {
 
     emit({ type: 'run:started', runId, agentId: agent.id, timestamp: Date.now() });
 
-    // ── Hermes: declare tracer/plan before try so catch can access them ────────
-    const hermesEnabled = agent.hermesEnabled !== false; // default true
-    let hermesPlan: AgentPlan | undefined;
+    // ── Reasoning: declare tracer/plan before try so catch can access them ────
+    const reasoningEnabled = agent.reasoningEnabled !== false; // default true
+    let agentPlan: AgentPlan | undefined;
     const tracer = new ExecutionTracer(runId);
 
     try {
@@ -1034,12 +1034,12 @@ export class AgentRunner {
       const messages = this.buildMessages(agent, input, memoryContext, input.contextMessages, bootstrapContext);
       run.messages = messages;
 
-      // ── Hermes: Planning phase ──────────────────────────────────────────────
+      // ── Reasoning: Planning phase ────────────────────────────────────────────
 
-      if (hermesEnabled && this.models) {
+      if (reasoningEnabled && this.models) {
         const planStep = tracer.startStep('plan', 0, input.input);
         try {
-          hermesPlan = await this.planner.plan(
+          agentPlan = await this.planner.plan(
             input.input,
             {
               systemPrompt: agent.systemPrompt,
@@ -1054,8 +1054,8 @@ export class AgentRunner {
               memoryContext, // Phase 5A: pass retrieved memory context to planner
             },
           );
-          run.plan = hermesPlan;
-          tracer.completeStep(planStep.id, JSON.stringify(hermesPlan));
+          run.plan = agentPlan;
+          tracer.completeStep(planStep.id, JSON.stringify(agentPlan));
           emit({
             type:      'run:step',
             runId,
@@ -1063,7 +1063,7 @@ export class AgentRunner {
             payload:   tracer.getSteps().find(s => s.id === planStep.id),
             timestamp: Date.now(),
           });
-          console.debug(`[Hermes] Plan: ${hermesPlan.taskSummary} (${hermesPlan.steps.length} steps, ${hermesPlan.complexity})`);
+          console.debug(`[Reasoning] Plan: ${agentPlan.taskSummary} (${agentPlan.steps.length} steps, ${agentPlan.complexity})`);
         } catch (e) {
           tracer.failStep(planStep.id, (e as Error).message);
           // Planning failure is non-fatal — continue without plan
@@ -1094,7 +1094,7 @@ export class AgentRunner {
         );
         // Phase 6B: use extended thinking for complex plans when provider is Anthropic
         const thinkingConfig: import('@krythor/models').ThinkingConfig | undefined =
-          hermesPlan?.complexity === 'complex' && agent.providerId?.includes('anthropic')
+          agentPlan?.complexity === 'complex' && agent.providerId?.includes('anthropic')
             ? { enabled: true, level: 'medium' }
             : undefined;
 
@@ -1245,13 +1245,13 @@ export class AgentRunner {
         });
       }
 
-      // ── Hermes: Verify phase ────────────────────────────────────────────────
-      if (hermesEnabled && hermesPlan && hermesPlan.complexity !== 'simple' && run.output && !stopped) {
+      // ── Reasoning: Verify phase ──────────────────────────────────────────────
+      if (reasoningEnabled && agentPlan && agentPlan.complexity !== 'simple' && run.output && !stopped) {
         const verifyStep = tracer.startStep('verify', turn, run.output.slice(0, 200));
         try {
           const verification = await this.verifier.verify(
             input.input,
-            hermesPlan,
+            agentPlan,
             run.output,
             { modelId: agent.modelId, providerId: agent.providerId },
           );
@@ -1265,7 +1265,7 @@ export class AgentRunner {
             timestamp: Date.now(),
           });
           if (!verification.valid && verification.suggestion) {
-            console.warn(`[Hermes] Verify: output may be incomplete — ${verification.issues.join('; ')}`);
+            console.warn(`[Reasoning] Verify: output may be incomplete — ${verification.issues.join('; ')}`);
           }
         } catch (e) {
           tracer.failStep(verifyStep.id, (e as Error).message);
@@ -1275,15 +1275,15 @@ export class AgentRunner {
       run.trace = tracer.getTrace();
 
       // Phase 5B: store plan summary in memory for future context retrieval
-      if (hermesPlan && hermesPlan.complexity !== 'simple' && this.memory) {
+      if (agentPlan && agentPlan.complexity !== 'simple' && this.memory) {
         this.memory.create({
-          title: `Plan: ${agent.name} — ${hermesPlan.taskSummary.slice(0, 60)}`,
-          content: `Task: ${input.input}\nApproach: ${hermesPlan.taskSummary}\nSteps: ${hermesPlan.steps.map(s => s.objective).join(', ')}`,
+          title: `Plan: ${agent.name} — ${agentPlan.taskSummary.slice(0, 60)}`,
+          content: `Task: ${input.input}\nApproach: ${agentPlan.taskSummary}\nSteps: ${agentPlan.steps.map(s => s.objective).join(', ')}`,
           scope: agent.memoryScope,
           scope_id: agent.id,
           source: 'agent',
-          importance: hermesPlan.complexity === 'complex' ? 0.7 : 0.5,
-          tags: ['plan', agent.name, hermesPlan.complexity],
+          importance: agentPlan.complexity === 'complex' ? 0.7 : 0.5,
+          tags: ['plan', agent.name, agentPlan.complexity],
           source_type: 'agent_plan',
           source_reference: runId,
         });

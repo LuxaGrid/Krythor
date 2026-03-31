@@ -30,7 +30,7 @@ export interface PersistedRun {
   promptTokens?: number;
   completionTokens?: number;
   parentRunId?: string;
-  // ── Hermes fields (v0.7.0) ──────────────────────────────────────────────────
+  // ── Reasoning engine fields (v0.7.0) ────────────────────────────────────────
   plan?: unknown;               // AgentPlan — stored as JSON blob
   trace?: unknown;              // ExecutionTrace — stored as JSON blob
   verificationResult?: unknown; // VerificationResult — stored as JSON blob

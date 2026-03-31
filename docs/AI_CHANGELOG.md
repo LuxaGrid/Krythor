@@ -2073,7 +2073,7 @@ All tests pass: 93 tests across 11 test files.
 
 ## 2026-03-31
 
-### Hermes Engine — Autonomous Reasoning Layer (v0.7.0)
+### Reasoning Engine — Autonomous Execution Layer (v0.7.0)
 
 Adds a structured reasoning loop to Krythor's agent execution engine: Plan → Decide → Execute → Verify → Adapt → Complete.
 
@@ -2081,7 +2081,7 @@ Adds a structured reasoning loop to Krythor's agent execution engine: Plan → D
 - `AgentPlanner`: generates a structured execution plan (taskSummary, steps, complexity, estimatedTurns) via LLM before the main agent loop; graceful fallback to single-step plan on failure; never blocks execution
 - `ExecutionTracer`: tracks each step (plan, inference, tool_call, verify) with timing, token counts, and truncated I/O; attached to AgentRun as `run.trace`
 - `AgentVerifier`: validates final output against original task for moderate/complex plans; returns confidence + issues + suggestion; best-effort (never blocks)
-- `AgentRun` extended: `plan`, `trace`, `verificationResult` fields; `hermesEnabled` flag per agent (default true)
+- `AgentRun` extended: `plan`, `trace`, `verificationResult` fields; `reasoningEnabled` flag per agent (default true)
 - New API endpoints: `GET /api/agents/runs/:runId/plan`, `GET /api/agents/runs/:runId/trace`
 - `run:step` event emitted in SSE stream for real-time step visibility
 
@@ -2110,7 +2110,7 @@ Adds a structured reasoning loop to Krythor's agent execution engine: Plan → D
 - `RoutingContext.policyHint` for per-request local/external preference
 
 **Phase 7 — Cleanup & Validation**
-- Zero lint errors, zero type errors across all Hermes-touched files
+- Zero lint errors, zero type errors
 - `AgentRun.plan`, `.trace`, `.verificationResult` serialized to SQLite via migration 018
 - `PersistedRun` and `AgentRunStore` updated with new JSON blob columns
 - Migration test counts updated to reflect 18 total migrations

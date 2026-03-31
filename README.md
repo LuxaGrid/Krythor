@@ -45,7 +45,7 @@ This is not just chat. This is AI you can operate.
 - **Dual-auth support** — connect cloud providers with an API key; "Connect" button opens provider dashboard in a new tab
 - **Persistent memory** — BM25 + semantic hybrid retrieval across sessions with tagging, export/import, and bulk pruning
 - **Agent system** — custom prompts, memory scope, model preferences, tool permissions, chaining/handoff per agent
-- **Hermes Reasoning Engine** — structured Plan→Decide→Execute→Verify→Adapt loop for every agent run; `AgentPlanner` decomposes tasks into steps before execution; `ExecutionTracer` records each inference, tool call, and verification step with timing and token counts; `AgentVerifier` validates output against the original task for complex runs; extended thinking auto-enabled for complex plans on Anthropic providers; full execution trace accessible via API and SSE stream
+- **Reasoning Engine** — structured Plan→Decide→Execute→Verify→Adapt loop for every agent run; `AgentPlanner` decomposes tasks into steps before execution; `ExecutionTracer` records each inference, tool call, and verification step with timing and token counts; `AgentVerifier` validates output against the original task for complex runs; extended thinking auto-enabled for complex plans on Anthropic providers; full execution trace accessible via API and SSE stream
 - **Agent import/export** — share agent configs as JSON files
 - **Skills** — reusable task templates with structured routing hints, task profiles, and built-in templates (summarize, translate, explain)
 - **Krythor Vault** — a browsable skill library with 40 official skills across 6 collections (Real Estate Pack, Finance Pack, Productivity Pack, Communication Pack, Business Workflow Pack, Official Starter Pack); install, update, and remove skills directly from the Vault tab; filter by collection, category, source, or risk level; local JSON import for custom community skills with live risk analysis and category assignment before import
@@ -404,7 +404,7 @@ Type `/` in the chat input to see the autocomplete dropdown. Arrow keys or Tab t
 
 ---
 
-**Status:** Krythor is in active development and currently available as an early public preview. Current version: **v0.7.0** (Hermes Reasoning Engine milestone). The current release is intended for testers, technical users, and early adopters.
+**Status:** Krythor is in active development and currently available as an early public preview. Current version: **v0.7.0** (Reasoning Engine milestone). The current release is intended for testers, technical users, and early adopters.
 
 ---
 
