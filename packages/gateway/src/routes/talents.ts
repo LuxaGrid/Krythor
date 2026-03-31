@@ -31,6 +31,20 @@ import { guardCheck } from '../guardCheck.js';
 import { MarketplaceRankingEngine } from '../marketplace/MarketplaceRankingEngine.js';
 import type { RankInput } from '../marketplace/MarketplaceRankingEngine.js';
 
+// Simple timed cache for ranking results
+const rankCache = new Map<string, { result: unknown; expiresAt: number }>();
+const RANK_CACHE_TTL = 30_000; // 30 seconds
+
+function normalizeRankKey(input: RankInput): string {
+  return JSON.stringify({
+    category: input.category ?? '',
+    location: input.location ?? '',
+    urgency: input.urgency ?? 'medium',
+    tags: (input.tags ?? []).slice().sort(),
+    budget: input.budget ?? 0,
+  });
+}
+
 export function registerTalentRoutes(
   app: FastifyInstance,
   memory: MemoryEngine,
@@ -72,11 +86,24 @@ export function registerTalentRoutes(
       return sendError(reply, 400, 'VALIDATION_ERROR', 'query is required');
     }
 
+    const cacheKey = normalizeRankKey(body);
+    const now = Date.now();
+    const cached = rankCache.get(cacheKey);
+    if (cached && cached.expiresAt > now) {
+      return reply.send(cached.result);
+    }
+
+    // Evict expired entries on every cache miss
+    for (const [key, entry] of rankCache) {
+      if (entry.expiresAt < now) rankCache.delete(key);
+    }
+
     const filter: Record<string, unknown> = {};
     if (body.category) filter['category'] = body.category;
 
     const candidates = store.search({ limit: 500 });
     const results    = engine.rank(candidates, body);
+    rankCache.set(cacheKey, { result: results, expiresAt: now + RANK_CACHE_TTL });
     return reply.send(results);
   });
 
@@ -180,7 +207,9 @@ export function registerTalentRoutes(
     if (verdict === false) return;
     const talent = store.getById(req.params.id);
     if (!talent) return sendError(reply, 404, 'TALENT_NOT_FOUND', `Talent "${req.params.id}" not found`);
-    const items = store.listOutreach(req.params.id);
+    const q = req.query as Record<string, string>;
+    const limit = Math.min(parseInt(q['limit'] ?? '50', 10) || 50, 200);
+    const items = store.listOutreach(req.params.id, limit);
     return reply.send(items);
   });
 

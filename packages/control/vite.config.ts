@@ -13,5 +13,25 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    chunkSizeWarningLimit: 800,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom'],
+          'panel-marketplace': [
+            './src/components/TalentMarketplacePanel.tsx',
+          ],
+          'panel-vault': [
+            './src/components/VaultPanel.tsx',
+          ],
+          'panel-audit': [
+            './src/components/AuditPanel.tsx',
+          ],
+          'panel-workspace': [
+            './src/components/WorkspacePanel.tsx',
+          ],
+        },
+      },
+    },
   },
 });

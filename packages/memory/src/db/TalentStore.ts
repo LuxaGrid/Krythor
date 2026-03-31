@@ -330,7 +330,7 @@ export class TalentStore {
       WHERE id = @id
     `);
     this.selectOutreachByTalent = db.prepare(
-      'SELECT * FROM talent_outreach WHERE talent_id = ? ORDER BY created_at DESC'
+      'SELECT * FROM talent_outreach WHERE talent_id = ? ORDER BY created_at DESC LIMIT ?'
     );
     this.selectPendingOutreach = db.prepare(
       "SELECT * FROM talent_outreach WHERE status = 'pending' ORDER BY created_at ASC"
@@ -673,8 +673,8 @@ export class TalentStore {
     return updated;
   }
 
-  listOutreach(talentId: string): TalentOutreach[] {
-    const rows = this.selectOutreachByTalent.all(talentId) as OutreachRow[];
+  listOutreach(talentId: string, limit = 50): TalentOutreach[] {
+    const rows = this.selectOutreachByTalent.all(talentId, Math.min(limit, 200)) as OutreachRow[];
     return rows.map(r => this.rowToOutreach(r));
   }
 
