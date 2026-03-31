@@ -425,6 +425,22 @@ export function registerAgentRoutes(
     return reply.send(run);
   });
 
+  // GET /api/agents/runs/:runId/plan — return the Hermes plan for a run
+  app.get<{ Params: { runId: string } }>('/api/agents/runs/:runId/plan', async (req, reply) => {
+    const run = orchestrator.getRun(req.params.runId);
+    if (!run) return reply.code(404).send({ error: 'Run not found' });
+    if (!run.plan) return reply.code(404).send({ error: 'No plan available for this run' });
+    return reply.send(run.plan);
+  });
+
+  // GET /api/agents/runs/:runId/trace — return the Hermes execution trace for a run
+  app.get<{ Params: { runId: string } }>('/api/agents/runs/:runId/trace', async (req, reply) => {
+    const run = orchestrator.getRun(req.params.runId);
+    if (!run) return reply.code(404).send({ error: 'Run not found' });
+    if (!run.trace) return reply.code(404).send({ error: 'No trace available for this run' });
+    return reply.send(run.trace);
+  });
+
   // GET /api/agents/runs/:runId/stream — SSE stream for a specific run
   // Emits agent:event messages until the run completes or fails.
   app.get<{ Params: { runId: string } }>('/api/agents/runs/:runId/stream', async (req, reply) => {

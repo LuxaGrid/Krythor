@@ -10,6 +10,8 @@ import { AgentHealthGate } from './AgentHealthGate.js';
 import { SessionTranscriptStore } from './SessionTranscriptStore.js';
 import type { LearningRecorder, HandoffResolver, CustomToolDispatcher, SpawnAgentResolver, GuardLike } from './AgentRunner.js';
 import type { ContextEngine } from './ContextEngine.js';
+import { AgentPlanner } from './AgentPlanner.js';
+import { AgentVerifier } from './AgentVerifier.js';
 import type {
   AgentDefinition,
   AgentRun,
@@ -130,7 +132,7 @@ export class AgentOrchestrator extends EventEmitter {
     this.execToolInstance = execTool ?? null;
     const dir = configDir ?? getConfigDir();
     this.registry = new AgentRegistry(dir);
-    this.runner = new AgentRunner(memory, models, recordLearning, execTool ?? null, null, null, null, null, null);
+    this.runner = new AgentRunner(memory, models, recordLearning, execTool ?? null, null, null, null, null, null, null, null, null, null, models ? new AgentPlanner(models) : undefined, models ? new AgentVerifier(models) : undefined);
     // Wire the handoff resolver — dispatches {"handoff":"<id>","message":"..."} to another agent
     this.handoffResolver = async (targetAgentId: string, message: string): Promise<string | null> => {
       const agent = this.registry.getById(targetAgentId);
@@ -269,6 +271,8 @@ export class AgentOrchestrator extends EventEmitter {
 
   /** Rebuild runner with all current wired dependencies. */
   private rebuildRunner(): void {
+    const planner  = this.models ? new AgentPlanner(this.models)  : undefined;
+    const verifier = this.models ? new AgentVerifier(this.models) : undefined;
     this.runner = new AgentRunner(
       this.memory,
       this.models,
@@ -283,6 +287,8 @@ export class AgentOrchestrator extends EventEmitter {
       this.userTimezone,
       this.timeFormat,
       this.bootstrapTruncationWarning,
+      planner,
+      verifier,
     );
   }
 

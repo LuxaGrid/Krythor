@@ -8,6 +8,10 @@ import { FilesystemTool } from '../tools/FilesystemTool.js';
 import { browserTool } from '../tools/BrowserTool.js';
 import { WorkspaceBootstrapLoader } from '../workspace/WorkspaceBootstrapLoader.js';
 import type { ContextEngine } from './ContextEngine.js';
+import { AgentPlanner } from './AgentPlanner.js';
+import type { AgentPlan } from './AgentPlanner.js';
+import { AgentVerifier } from './AgentVerifier.js';
+import { ExecutionTracer } from './ExecutionTracer.js';
 import type {
   AgentDefinition,
   AgentRun,
@@ -369,6 +373,8 @@ export const NO_REPLY = 'NO_REPLY';
 export class AgentRunner {
   private activeRuns = new Map<string, { run: AgentRun; stop: () => void; controller: AbortController }>();
   private spawnCount = 0; // per-run counter, reset in run()
+  private readonly planner: AgentPlanner;
+  private readonly verifier: AgentVerifier;
 
   constructor(
     private readonly memory: MemoryEngine | null,
@@ -403,7 +409,17 @@ export class AgentRunner {
      * Default: 'once'.
      */
     private readonly bootstrapTruncationWarning?: 'off' | 'once' | 'always' | null,
-  ) {}
+    /** AgentPlanner instance (Hermes). When null, a no-op planner using models is created lazily. */
+    planner?: AgentPlanner | null,
+    /** AgentVerifier instance (Hermes). When null, a no-op verifier using models is created lazily. */
+    verifier?: AgentVerifier | null,
+  ) {
+    // Hermes planner/verifier — always available so runs can use them when models are present.
+    // If models is null (no provider configured) they will gracefully fall back inside plan/verify.
+    const effectiveModels = models ?? ({} as ModelEngine);
+    this.planner  = planner  ?? new AgentPlanner(effectiveModels);
+    this.verifier = verifier ?? new AgentVerifier(effectiveModels);
+  }
 
   // ── Private helpers ────────────────────────────────────────────────────────
 
@@ -1005,6 +1021,11 @@ export class AgentRunner {
 
     emit({ type: 'run:started', runId, agentId: agent.id, timestamp: Date.now() });
 
+    // ── Hermes: declare tracer/plan before try so catch can access them ────────
+    const hermesEnabled = agent.hermesEnabled !== false; // default true
+    let hermesPlan: AgentPlan | undefined;
+    const tracer = new ExecutionTracer(runId);
+
     try {
       const { memoryContext, memoryIdsUsed } = await this.buildMemoryContext(agent, input.input, runId);
       run.memoryIdsUsed = memoryIdsUsed;
@@ -1012,6 +1033,41 @@ export class AgentRunner {
       const bootstrapContext = this.buildBootstrapContext(agent, input);
       const messages = this.buildMessages(agent, input, memoryContext, input.contextMessages, bootstrapContext);
       run.messages = messages;
+
+      // ── Hermes: Planning phase ──────────────────────────────────────────────
+
+      if (hermesEnabled && this.models) {
+        const planStep = tracer.startStep('plan', 0, input.input);
+        try {
+          hermesPlan = await this.planner.plan(
+            input.input,
+            {
+              systemPrompt: agent.systemPrompt,
+              name:         agent.name,
+              tools:        agent.allowedTools,
+            },
+            runId,
+            {
+              modelId:    agent.modelId,
+              providerId: agent.providerId,
+              signal:     controller.signal,
+            },
+          );
+          run.plan = hermesPlan;
+          tracer.completeStep(planStep.id, JSON.stringify(hermesPlan));
+          emit({
+            type:      'run:step',
+            runId,
+            agentId:   agent.id,
+            payload:   tracer.getSteps().find(s => s.id === planStep.id),
+            timestamp: Date.now(),
+          });
+          console.debug(`[Hermes] Plan: ${hermesPlan.taskSummary} (${hermesPlan.steps.length} steps, ${hermesPlan.complexity})`);
+        } catch (e) {
+          tracer.failStep(planStep.id, (e as Error).message);
+          // Planning failure is non-fatal — continue without plan
+        }
+      }
 
       // Conversation loop
       if (!this.models || this.models.stats().providerCount === 0) {
@@ -1035,6 +1091,7 @@ export class AgentRunner {
         const assembled = trimLargeToolResults(
           this.contextEngine ? this.contextEngine.assemble(messages) : messages,
         );
+        const inferStep = tracer.startStep('inference', turn);
         const response = await this.models.infer(
           {
             messages: assembled.map(m => ({ role: m.role, content: m.content })),
@@ -1048,6 +1105,7 @@ export class AgentRunner {
           },
           turnSignal.signal,
         );
+        tracer.completeStep(inferStep.id, response.content.slice(0, 500), response.completionTokens);
         turnSignal.clear();
 
         const assistantMsg: AgentMessage = {
@@ -1099,6 +1157,7 @@ export class AgentRunner {
 
           // Call the model again with the tool result
           const toolTurnSignal = withTimeout(controller.signal, INFERENCE_TIMEOUT_MS);
+          const toolInferStep = tracer.startStep('inference', turn);
           const toolResponse = await this.models.infer(
             {
               messages: trimLargeToolResults(messages).map(m => ({ role: m.role, content: m.content })),
@@ -1110,6 +1169,7 @@ export class AgentRunner {
             { agentModelId: effectiveModel },
             toolTurnSignal.signal,
           );
+          tracer.completeStep(toolInferStep.id, toolResponse.content.slice(0, 500), toolResponse.completionTokens);
           toolTurnSignal.clear();
 
           if (typeof toolResponse.promptTokens === 'number')     run.promptTokens     = (run.promptTokens     ?? 0) + toolResponse.promptTokens;
@@ -1177,6 +1237,35 @@ export class AgentRunner {
         });
       }
 
+      // ── Hermes: Verify phase ────────────────────────────────────────────────
+      if (hermesEnabled && hermesPlan && hermesPlan.complexity !== 'simple' && run.output && !stopped) {
+        const verifyStep = tracer.startStep('verify', turn, run.output.slice(0, 200));
+        try {
+          const verification = await this.verifier.verify(
+            input.input,
+            hermesPlan,
+            run.output,
+            { modelId: agent.modelId, providerId: agent.providerId },
+          );
+          run.verificationResult = verification;
+          tracer.completeStep(verifyStep.id, JSON.stringify(verification));
+          emit({
+            type:      'run:step',
+            runId,
+            agentId:   agent.id,
+            payload:   tracer.getSteps().find(s => s.id === verifyStep.id),
+            timestamp: Date.now(),
+          });
+          if (!verification.valid && verification.suggestion) {
+            console.warn(`[Hermes] Verify: output may be incomplete — ${verification.issues.join('; ')}`);
+          }
+        } catch (e) {
+          tracer.failStep(verifyStep.id, (e as Error).message);
+        }
+      }
+
+      run.trace = tracer.getTrace();
+
       if (stopped) {
         run.status = 'stopped';
         run.completedAt = Date.now();
@@ -1202,6 +1291,7 @@ export class AgentRunner {
         this.emitLearning(agent, run, input, 'success', turn, now);
       }
     } catch (err) {
+      run.trace = tracer.getTrace();
       run.status = 'failed';
       run.completedAt = Date.now();
       run.errorMessage = err instanceof Error ? err.message : 'Unknown error';

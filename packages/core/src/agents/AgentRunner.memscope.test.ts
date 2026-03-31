@@ -27,6 +27,7 @@ function makeAgent(overrides: Partial<AgentDefinition> = {}): AgentDefinition {
     tags: [],
     createdAt: Date.now(),
     updatedAt: Date.now(),
+    hermesEnabled: false, // disable Hermes in unit tests for predictable mock call counts
     ...overrides,
   };
 }

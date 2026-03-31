@@ -57,6 +57,7 @@ export type {
   RunAgentInput,
   ToolLoopConfig,
 } from './agents/types.js';
+// Note: AgentPlan, ExecutionTrace, VerificationResult are exported from their own modules above.
 
 export { WorkspaceBootstrapLoader, BOOTSTRAP_MAX_CHARS, BOOTSTRAP_TOTAL_MAX_CHARS, BOOTSTRAP_FILES_FULL, BOOTSTRAP_FILES_MINIMAL } from './workspace/WorkspaceBootstrapLoader.js';
 export type { BootstrapFileResult, BootstrapResult, PromptMode } from './workspace/WorkspaceBootstrapLoader.js';
@@ -66,3 +67,9 @@ export { AgentAuthProfileStore } from './agents/AgentAuthProfileStore.js';
 export type { AuthProfile, AgentAuthProfiles } from './agents/AgentAuthProfileStore.js';
 export { DefaultContextEngine } from './agents/ContextEngine.js';
 export type { ContextEngine } from './agents/ContextEngine.js';
+export { AgentPlanner } from './agents/AgentPlanner.js';
+export type { AgentPlan, PlanStep } from './agents/AgentPlanner.js';
+export { ExecutionTracer } from './agents/ExecutionTracer.js';
+export type { ExecutionTrace, ExecutionStep, StepType, StepStatus } from './agents/ExecutionTracer.js';
+export { AgentVerifier } from './agents/AgentVerifier.js';
+export type { VerificationResult } from './agents/AgentVerifier.js';

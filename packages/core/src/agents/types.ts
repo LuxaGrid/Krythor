@@ -93,6 +93,13 @@ export interface AgentDefinition {
    * Controls how aggressively the runner limits repeated tool calls.
    */
   toolLoop?: ToolLoopConfig;
+  /**
+   * Whether the Hermes reasoning engine is enabled for this agent.
+   * When true (default), the runner will plan before execution and verify
+   * moderate/complex outputs after completion.
+   * Set to false to disable planning and verification for this agent.
+   */
+  hermesEnabled?: boolean;
   createdAt: number;
   updatedAt: number;
 }
@@ -127,6 +134,10 @@ export interface AgentRun {
   parentRunId?: string;        // run ID of the parent that spawned or handed off to this run
   spawnDepth?: number;         // nesting depth (0 = top-level, 1 = spawned by top-level, etc.)
   timeoutMs?: number;          // per-run timeout override (from RunAgentInput.timeoutMs)
+  // ── Hermes fields ──────────────────────────────────────────────────────────
+  plan?: import('./AgentPlanner.js').AgentPlan;                        // populated during planning phase
+  trace?: import('./ExecutionTracer.js').ExecutionTrace;               // populated during/after execution
+  verificationResult?: import('./AgentVerifier.js').VerificationResult; // populated after verify phase
 }
 
 // ─── Input types ──────────────────────────────────────────────────────────────
@@ -151,6 +162,7 @@ export interface CreateAgentInput {
   workspaceDir?: string;
   skipBootstrap?: boolean;
   toolLoop?: ToolLoopConfig;
+  hermesEnabled?: boolean;
 }
 
 export interface UpdateAgentInput {
@@ -173,6 +185,7 @@ export interface UpdateAgentInput {
   workspaceDir?: string | null;
   skipBootstrap?: boolean;
   toolLoop?: ToolLoopConfig | null;
+  hermesEnabled?: boolean;
 }
 
 export interface RunAgentInput {
@@ -217,6 +230,7 @@ export type AgentEventType =
   | 'run:turn'
   | 'run:stream:chunk'
   | 'run:spawn_announced'
+  | 'run:step'
   | 'run:completed'
   | 'run:failed'
   | 'run:stopped';
