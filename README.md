@@ -48,7 +48,7 @@ This is not just chat. This is AI you can operate.
 - **Agent import/export** — share agent configs as JSON files
 - **Skills** — reusable task templates with structured routing hints, task profiles, and built-in templates (summarize, translate, explain)
 - **Krythor Vault** — a browsable skill library with 40 official skills across 6 collections (Real Estate Pack, Finance Pack, Productivity Pack, Communication Pack, Business Workflow Pack, Official Starter Pack); install, update, and remove skills directly from the Vault tab; filter by collection, category, source, or risk level; local JSON import for custom community skills with live risk analysis and category assignment before import
-- **Talent Marketplace** — private vendor and talent directory with AI-powered multi-dimension ranking (category fit, geography, trust score, response history, recency); full CRUD for talent profiles, interaction logs, and outreach queue; marketplace requests with AI-match resolution; trust score computed from response rate, job outcomes, and recency decay; 6-view Control UI (Dashboard, Directory, Detail, Matcher, Outreach Queue, Create/Edit form); native skill (`talent_marketplace`) for agent-driven talent workflows; 16 REST endpoints under `/api/talents/*` and `/api/marketplace-requests`
+- **Talent Marketplace** — private vendor and talent directory with AI-powered multi-dimension ranking (category fit, geography, trust score, response history, recency, urgency); full CRUD for talent profiles, interaction logs, and outreach queue; marketplace requests with AI-match resolution; trust score computed from response rate, job outcomes, and recency decay, recalculated daily by a background cron; outreach creation is approval-gated (guard `require-approval` action) before sending; lifecycle events emitted to the gateway event bus on outreach state changes; 6-view Control UI (Dashboard, Directory, Detail, Matcher, Outreach Queue, Create/Edit form); native skill (`talent_marketplace`) for agent-driven talent workflows; 16 REST endpoints under `/api/talents/*` and `/api/marketplace-requests`
 - **Guard engine** — policy-based allow/deny/warn/require-approval control per operation with persistent SQLite audit trail and live test mode; three distinct safety modes (Guarded, Balanced, Power User)
 - **Approval flow** — `require-approval` guard actions pause execution and surface a modal in the UI; streaming approval integration sends `approval_required` SSE events mid-stream
 - **Tool system** — exec (local commands), web_search (DuckDuckGo), web_fetch (URL content), file tools (9 operations), memory tools, user-defined webhook tools with one-click test-fire
@@ -345,6 +345,8 @@ Each talent profile has a computed trust score (0–100) based on:
 - Preferred flag bonus
 - Recency decay (recent activity weighted higher)
 
+Trust scores are automatically recalculated daily by a background cron job that applies time-based decay to all profiles.
+
 ### Ranking Engine
 
 The Matcher view uses a 7-dimension scoring engine:
@@ -357,9 +359,14 @@ The Matcher view uses a 7-dimension scoring engine:
 | Response history | 15 | Past interaction response rate |
 | Recency | 5 | How recently the talent was active |
 | Preferred bonus | 5 | Whether the talent is flagged as preferred |
+| Urgency boost | +varies | Boosts talents with fast historical response times when the request is marked urgent |
 | Penalty | −varies | Applied for rejected/blocked status or poor outcomes |
 
 Each result includes a full per-dimension explanation that can be expanded in the UI.
+
+### Outreach approval
+
+Outreach creation is approval-gated: new outreach items trigger a `require-approval` guard action and are held in a pending state until approved or denied from the Outreach Queue view (or via `krythor approvals pending`). Approval/denial transitions emit lifecycle events to the gateway event bus, which can fan out to webhooks, channels, or other listeners.
 
 ### Agent access
 
@@ -626,6 +633,8 @@ Run these from the repository root with pnpm installed (`npm install -g pnpm`).
 | `pnpm build` | Build all packages (gateway + control UI + all libraries) and auto-bump version |
 | `pnpm dev` | Start gateway in watch mode with hot-reload; control UI auto-reloads on save |
 | `pnpm test` | Run the full test suite across all packages |
+| `pnpm typecheck` | Run TypeScript type-checking (`tsc --noEmit`) across all packages without emitting files |
+| `pnpm lint` | Run ESLint across all TypeScript source files in the workspace |
 | `pnpm doctor` | Run diagnostics via the pnpm script alias |
 
 ### Distribution / release commands
