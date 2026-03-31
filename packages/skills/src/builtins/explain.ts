@@ -35,4 +35,9 @@ export const EXPLAIN_SKILL: CreateSkillInput & { builtinId: string } = {
     localOk:        true,
     reasoningDepth: 'medium',
   },
+  inputSchema: {
+    type: 'string',
+  },
+  returnFormat: 'markdown',
+  chainable: false,
 };

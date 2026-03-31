@@ -1,4 +1,5 @@
 import type { Skill, SkillEvent, SkillPermission } from './types.js';
+import { validateSchema, validateJsonString } from './SchemaValidator.js';
 
 // ─── SkillRunner ──────────────────────────────────────────────────────────────
 //
@@ -69,6 +70,9 @@ export interface SkillRunResult {
   durationMs: number;
   modelId?: string;
   providerId?: string;
+  inputValid?: boolean;
+  outputValid?: boolean;
+  validationWarnings?: string[];
 }
 
 // The infer function shape — matches ModelEngine.infer's signature
@@ -152,6 +156,24 @@ export class SkillRunner {
 
     const start = Date.now();
     const truncatedInput = input.input.slice(0, MAX_INPUT_LENGTH);
+    const validationWarnings: string[] = [];
+    let inputValid: boolean | undefined;
+
+    // ── Input schema validation ───────────────────────────────────────────────
+    if (skill.inputSchema) {
+      // Attempt to parse as JSON first; if it fails, validate the raw string
+      // against the schema as a bare string value.
+      let parsed: unknown;
+      let isJson = false;
+      try { parsed = JSON.parse(truncatedInput); isJson = true; } catch { /* not JSON */ }
+      const result = isJson
+        ? validateSchema(parsed, skill.inputSchema)
+        : validateSchema(truncatedInput, skill.inputSchema);
+      inputValid = result.valid;
+      if (!result.valid) {
+        for (const e of result.errors) validationWarnings.push(`input: ${e}`);
+      }
+    }
 
     this.emit({ type: 'skill:run:started', skillId: skill.id, skillName: skill.name, timestamp: start });
 
@@ -198,6 +220,16 @@ export class SkillRunner {
       cleanup();
       const durationMs = Date.now() - start;
 
+      // ── Output schema validation ────────────────────────────────────────────
+      let outputValid: boolean | undefined;
+      if (skill.outputSchema && skill.returnFormat === 'json') {
+        const result = validateJsonString(response.content, skill.outputSchema);
+        outputValid = result.valid;
+        if (!result.valid) {
+          for (const e of result.errors) validationWarnings.push(`output: ${e}`);
+        }
+      }
+
       this.emit({
         type: 'skill:run:completed',
         skillId: skill.id,
@@ -214,6 +246,9 @@ export class SkillRunner {
         durationMs,
         modelId:    response.model,
         providerId: response.providerId,
+        ...(inputValid  !== undefined && { inputValid }),
+        ...(outputValid !== undefined && { outputValid }),
+        ...(validationWarnings.length > 0 && { validationWarnings }),
       };
     } catch (err) {
       cleanup();

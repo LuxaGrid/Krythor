@@ -58,6 +58,14 @@ export interface Skill {
   lastRunAt?: number;     // Unix ms of last execution
   createdAt: number;      // Unix ms
   updatedAt: number;      // Unix ms
+  /** JSON Schema describing the expected input. Used for validation and skill chaining. */
+  inputSchema?: Record<string, unknown>;
+  /** JSON Schema describing the expected output. Used for downstream skill chaining. */
+  outputSchema?: Record<string, unknown>;
+  /** Expected return format — affects how output is parsed and passed to chained skills. */
+  returnFormat?: 'text' | 'json' | 'markdown';
+  /** Whether this skill can accept input from another skill's output in a chain. */
+  chainable?: boolean;
 }
 
 export interface CreateSkillInput {
@@ -72,6 +80,10 @@ export interface CreateSkillInput {
   taskProfile?: SkillTaskProfile;
   enabled?: boolean;
   userInvocable?: boolean;
+  inputSchema?: Record<string, unknown>;
+  outputSchema?: Record<string, unknown>;
+  returnFormat?: 'text' | 'json' | 'markdown';
+  chainable?: boolean;
 }
 
 export interface UpdateSkillInput {
@@ -86,6 +98,10 @@ export interface UpdateSkillInput {
   taskProfile?: SkillTaskProfile;
   enabled?: boolean;
   userInvocable?: boolean;
+  inputSchema?: Record<string, unknown>;
+  outputSchema?: Record<string, unknown>;
+  returnFormat?: 'text' | 'json' | 'markdown';
+  chainable?: boolean;
 }
 
 // ─── Skill lifecycle events ───────────────────────────────────────────────────

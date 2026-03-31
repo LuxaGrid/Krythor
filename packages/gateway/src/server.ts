@@ -10,7 +10,7 @@ import { KrythorCore, AgentOrchestrator, ExecTool, CustomToolStore, WebhookTool,
 import { MemoryEngine, GuardDecisionStore, OllamaEmbeddingProvider, AuditStore, JobQueue } from '@krythor/memory';
 import { ModelEngine, ModelRecommender, PreferenceStore } from '@krythor/models';
 import { GuardEngine, ModerationEngine } from '@krythor/guard';
-import { SkillRegistry, SkillRunner, SkillFileLoader } from '@krythor/skills';
+import { SkillRegistry, SkillRunner, SkillFileLoader, SkillComposer } from '@krythor/skills';
 import { registerCommandRoute } from './routes/command.js';
 import { registerMemoryRoutes, type JanitorStatus } from './routes/memory.js';
 import { registerModelRoutes } from './routes/models.js';
@@ -1192,6 +1192,8 @@ Always show the score explanation when presenting ranked results.`,
     },
   );
 
+  const skillComposer = new SkillComposer(skillRunner, skillRegistry);
+
   // Exec tool — allows agents/users to run allowlisted local commands.
   // Guard engine is wired in so 'command:execute' operations are policy-checked.
   const execTool = new ExecTool(guard);
@@ -1564,7 +1566,7 @@ Always show the score explanation when presenting ranked results.`,
   registerConfigRoute(app, join(dataDir, 'config'), guard, orchestrator, memory, heartbeatRef, approvalManager);
   registerConversationRoutes(app, convStore, guard, channelEmit, memory ?? undefined, approvalManager, janitorStatus);
   if (memory) registerSessionMaintenanceRoutes(app, memory);
-  registerSkillRoutes(app, skillRegistry, guard, skillRunner, approvalManager, skillFileLoader);
+  registerSkillRoutes(app, skillRegistry, guard, skillRunner, approvalManager, skillFileLoader, skillComposer);
   registerVaultRoutes(app, skillRegistry, vaultRegistry, guard, approvalManager);
   registerRecommendRoutes(app, models, recommender, guard);
   registerToolRoutes(app, guard, execTool, core);

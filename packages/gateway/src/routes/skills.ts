@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { SkillRegistry, SkillRunner, SkillFileLoader, CreateSkillInput, UpdateSkillInput } from '@krythor/skills';
-import { SkillConcurrencyError, SkillPermissionError, SkillTimeoutError, BUILTIN_SKILLS } from '@krythor/skills';
+import { SkillConcurrencyError, SkillPermissionError, SkillTimeoutError, BUILTIN_SKILLS, SkillComposer } from '@krythor/skills';
+import type { SkillChainStep } from '@krythor/skills';
 import type { GuardEngine } from '@krythor/guard';
 import { sendError } from '../errors.js';
 import { logger } from '../logger.js';
@@ -14,6 +15,7 @@ export function registerSkillRoutes(
   runner: SkillRunner,
   approvalManager?: ApprovalManager,
   fileLoader?: SkillFileLoader,
+  composer?: SkillComposer,
 ): void {
 
   // GET /api/skills/builtins — list built-in skill templates (no user data required)
@@ -89,6 +91,10 @@ export function registerSkillRoutes(
             },
             additionalProperties: false,
           },
+          inputSchema:   { type: 'object' },
+          outputSchema:  { type: 'object' },
+          returnFormat:  { type: 'string', enum: ['text', 'json', 'markdown'] },
+          chainable:     { type: 'boolean' },
         },
         additionalProperties: false,
       },
@@ -129,6 +135,10 @@ export function registerSkillRoutes(
             },
             additionalProperties: false,
           },
+          inputSchema:   { type: 'object' },
+          outputSchema:  { type: 'object' },
+          returnFormat:  { type: 'string', enum: ['text', 'json', 'markdown'] },
+          chainable:     { type: 'boolean' },
         },
         additionalProperties: false,
       },
@@ -188,6 +198,66 @@ export function registerSkillRoutes(
       const message = err instanceof Error ? err.message : 'Skill run failed';
       logger.skillRunFailed(req.params.id, skill.name, message, req.id);
       return sendError(reply, 502, 'SKILL_RUN_FAILED', message, 'Check that a model provider is configured');
+    }
+  });
+
+  // POST /api/skills/chain — execute a chain of skills sequentially
+  app.post('/api/skills/chain', {
+    config: {
+      rateLimit: { max: 20, timeWindow: 60_000 },
+    },
+    schema: {
+      body: {
+        type: 'object',
+        required: ['steps', 'input'],
+        properties: {
+          steps: {
+            type: 'array',
+            minItems: 1,
+            maxItems: 20,
+            items: {
+              type: 'object',
+              required: ['skillId'],
+              properties: {
+                skillId:        { type: 'string', minLength: 1 },
+                inputOverride:  { type: 'string' },
+                inputTransform: { type: 'string' },
+              },
+              additionalProperties: false,
+            },
+          },
+          input:     { type: 'string', minLength: 1 },
+          timeoutMs: { type: 'integer', minimum: 1000, maximum: 600_000 },
+        },
+        additionalProperties: false,
+      },
+    },
+  }, async (req, reply) => {
+    const allowed = await guardCheck({ guard, approvalManager, reply, operation: 'skill:execute', source: 'user' });
+    if (!allowed) return;
+
+    if (!composer) {
+      return sendError(reply, 503, 'SKILL_COMPOSER_UNAVAILABLE', 'Skill composer is not configured');
+    }
+
+    const body = req.body as { steps: SkillChainStep[]; input: string; timeoutMs?: number };
+
+    try {
+      const result = await composer.compose(body.steps, body.input, { timeoutMs: body.timeoutMs });
+      return reply.send(result);
+    } catch (err) {
+      if (err instanceof SkillTimeoutError) {
+        return sendError(reply, 408, 'SKILL_TIMEOUT', err.message, 'Increase timeoutMs or check that model providers are responsive');
+      }
+      if (err instanceof SkillConcurrencyError) {
+        reply.header('Retry-After', '10');
+        return sendError(reply, 429, 'SKILL_CONCURRENCY_LIMIT', err.message, 'Wait for a running skill to finish');
+      }
+      if (err instanceof SkillPermissionError) {
+        return sendError(reply, 403, 'SKILL_PERMISSION_DENIED', err.message, 'Grant the required permission in the skill definition');
+      }
+      const message = err instanceof Error ? err.message : 'Chain execution failed';
+      return sendError(reply, 502, 'SKILL_CHAIN_FAILED', message, 'Check that model providers are configured');
     }
   });
 

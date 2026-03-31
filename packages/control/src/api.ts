@@ -759,6 +759,32 @@ export interface SkillRunResult {
   skillId: string; output: string; modelUsed?: string; durationMs: number; status: string;
 }
 
+// Skill chain
+export interface SkillChainStep {
+  skillId: string;
+  inputOverride?: string;
+  inputTransform?: string;
+}
+
+export interface SkillChainResult {
+  steps: Array<{
+    skillId: string;
+    skillName: string;
+    input: string;
+    output: string;
+    durationMs: number;
+    success: boolean;
+    error?: string;
+  }>;
+  finalOutput: string;
+  totalDurationMs: number;
+  success: boolean;
+  failedAtStep?: number;
+}
+
+export const runSkillChain = (steps: SkillChainStep[], input: string) =>
+  req<SkillChainResult>('POST', '/skills/chain', { steps, input });
+
 // ── Vault ─────────────────────────────────────────────────────────────────────
 
 export type VaultSource = 'official' | 'community';

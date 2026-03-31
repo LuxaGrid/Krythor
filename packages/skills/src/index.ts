@@ -7,3 +7,7 @@ export type { SkillRunInput, SkillRunResult, InferFn, SkillEventEmitter, Permiss
 export { SkillConcurrencyError, SkillPermissionError, SkillTimeoutError } from './SkillRunner.js';
 export { BUILTIN_SKILLS, SUMMARIZE_SKILL, TRANSLATE_SKILL, EXPLAIN_SKILL } from './builtins/index.js';
 export type { BuiltinSkillTemplate } from './builtins/index.js';
+export { SkillComposer } from './SkillComposer.js';
+export type { SkillChainStep, SkillChainResult } from './SkillComposer.js';
+export { validateSchema, validateJsonString } from './SchemaValidator.js';
+export type { ValidationResult } from './SchemaValidator.js';

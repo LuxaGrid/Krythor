@@ -29,4 +29,9 @@ export const SUMMARIZE_SKILL: CreateSkillInput & { builtinId: string } = {
     localOk:        true,
     reasoningDepth: 'shallow',
   },
+  inputSchema: {
+    type: 'string',
+  },
+  returnFormat: 'markdown',
+  chainable: true,
 };

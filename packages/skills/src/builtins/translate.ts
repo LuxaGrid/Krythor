@@ -31,4 +31,9 @@ export const TRANSLATE_SKILL: CreateSkillInput & { builtinId: string } = {
     localOk:        true,
     reasoningDepth: 'shallow',
   },
+  inputSchema: {
+    type: 'string',
+  },
+  returnFormat: 'text',
+  chainable: true,
 };
