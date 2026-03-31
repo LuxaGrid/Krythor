@@ -198,9 +198,11 @@ describe('ModelRouter — cross-provider fallback', () => {
 
     await router.infer({ messages: [] });
 
-    expect(loggedData[0]).toMatchObject({
+    // loggedData[0] is the initial routing decision log (Phase 6C).
+    // loggedData[1] is the fallback log when the primary provider fails.
+    expect(loggedData).toContainEqual(expect.objectContaining({
       primaryProviderId: 'primary',
       fallbackProviderId: 'secondary',
-    });
+    }));
   });
 });

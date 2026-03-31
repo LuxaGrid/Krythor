@@ -33,6 +33,7 @@ export class ModelRouter {
 
   async infer(request: InferenceRequest, context: RoutingContext = {}, signal?: AbortSignal): Promise<InferenceResponse> {
     const { provider, model, selectionReason } = this.resolve(request, context);
+    this.logRoutingDecision(provider.id, model, selectionReason, request.thinking?.enabled ?? false);
     try {
       const response = await this.inferWithRetry(provider, { ...request, model }, signal);
       return { ...response, selectionReason, fallbackOccurred: false };
@@ -87,6 +88,7 @@ export class ModelRouter {
     // sent, we can transparently fall back to the next provider — no partial output
     // has been delivered yet so the switch is safe.
     const { provider, model, selectionReason } = this.resolve(request, context);
+    this.logRoutingDecision(provider.id, model, selectionReason, request.thinking?.enabled ?? false);
     const breaker = this.getBreaker(provider.id);
 
     let resolvedProvider = provider;
@@ -179,9 +181,25 @@ export class ModelRouter {
     const configs = this.registry.listConfigs();
     const defaultProvider = this.registry.getDefaultProvider();
 
+    // Apply policy hint filtering (Phase 3C): if allowExternal=false, exclude non-local providers.
+    const isLocalProvider = (providerId: string): boolean => {
+      const cfg = configs.find(c => c.id === providerId);
+      return cfg?.type === 'ollama' || providerId.toLowerCase().includes('local');
+    };
+    const policyHint = context.policyHint;
+    const filteredEnabled = policyHint?.allowExternal === false
+      ? enabled.filter(p => isLocalProvider(p.id))
+      : enabled;
+
     // Build priority-sorted order: higher priority first.
     // When priorities are equal, the default provider wins; then stable insertion order.
-    const ordered = [...enabled].sort((a, b) => {
+    // If preferLocal=true, local providers are sorted to the front regardless of priority.
+    const ordered = [...filteredEnabled].sort((a, b) => {
+      if (policyHint?.preferLocal) {
+        const localA = isLocalProvider(a.id) ? 1 : 0;
+        const localB = isLocalProvider(b.id) ? 1 : 0;
+        if (localB !== localA) return localB - localA;         // local providers first
+      }
       const cfgA = configs.find(c => c.id === a.id);
       const cfgB = configs.find(c => c.id === b.id);
       const priA = cfgA?.priority ?? 0;
@@ -343,6 +361,16 @@ export class ModelRouter {
     }
 
     throw lastError;
+  }
+
+  /**
+   * Emit a structured log entry for each routing decision (Phase 6C).
+   * Records which provider was selected, why, and whether extended thinking is enabled.
+   */
+  private logRoutingDecision(providerId: string, model: string, selectionReason: string, thinkingEnabled: boolean): void {
+    if (this.infoFn) {
+      this.infoFn('[ModelRouter] Routing decision', { providerId, model, selectionReason, thinkingEnabled });
+    }
   }
 
   private findByModelId(modelId: string): { provider: BaseProvider; model: string } | null {

@@ -20,6 +20,11 @@ export interface AgentPlan {
   createdAt: number;
   model?: string;
   providerId?: string;
+  /**
+   * Suggested model routing hint derived from plan complexity (Phase 6A).
+   * The AgentRunner reads this after planning to adjust effectiveModel selection.
+   */
+  suggestedModelHint?: { preferCostTier?: 'low' | 'medium' | 'high'; preferSpeedTier?: 'fast' | 'balanced' | 'thorough' };
 }
 
 const PLANNING_SYSTEM_PROMPT = `You are a task planning assistant. Given a user request and agent context, produce a structured execution plan in JSON.
@@ -53,8 +58,13 @@ export class AgentPlanner {
     input: string,
     agentContext: { systemPrompt: string; name: string; tools?: string[] },
     runId: string,
-    options?: { modelId?: string; providerId?: string; signal?: AbortSignal },
+    options?: { modelId?: string; providerId?: string; signal?: AbortSignal; memoryContext?: string },
   ): Promise<AgentPlan> {
+    // Phase 5A: prepend memory context when available so planning uses relevant past context
+    const taskSection = options?.memoryContext
+      ? `Relevant context from memory:\n${options.memoryContext}\n---\nUser task:\n${input}`
+      : `User request: ${input}`;
+
     const userMessage = [
       `Agent name: ${agentContext.name}`,
       `Agent purpose: ${agentContext.systemPrompt.slice(0, 300)}`,
@@ -62,7 +72,7 @@ export class AgentPlanner {
         ? `Available tools: ${agentContext.tools.join(', ')}`
         : '',
       '',
-      `User request: ${input}`,
+      taskSection,
     ].filter(Boolean).join('\n');
 
     try {
@@ -123,6 +133,14 @@ export class AgentPlanner {
           ? Math.min(Math.round(parsed.estimatedTurns), 10)
           : 1;
 
+      // Phase 6A: attach model hint based on complexity
+      const suggestedModelHint: AgentPlan['suggestedModelHint'] =
+        complexity === 'simple'
+          ? { preferCostTier: 'low',  preferSpeedTier: 'fast'      }
+          : complexity === 'complex'
+            ? { preferCostTier: 'high', preferSpeedTier: 'thorough'  }
+            : { preferCostTier: 'medium', preferSpeedTier: 'balanced' };
+
       return {
         id:             randomUUID(),
         runId,
@@ -133,6 +151,7 @@ export class AgentPlanner {
         createdAt:      Date.now(),
         model:          response.model,
         providerId:     response.providerId,
+        suggestedModelHint,
       };
     } catch {
       // Graceful fallback — return a single-step plan so the run is never blocked

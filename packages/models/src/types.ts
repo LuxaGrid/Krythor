@@ -212,4 +212,10 @@ export interface RoutingContext {
    * taskType matches a configured taskFallbackChain entry.
    */
   fallbackChain?: string[];
+  /**
+   * Optional policy hint for model selection (Phase 3C / 6A).
+   * preferLocal:   when true, local providers (Ollama / local) are sorted to the front.
+   * allowExternal: when false, external (non-local) providers are excluded from selection.
+   */
+  policyHint?: { preferLocal?: boolean; allowExternal?: boolean };
 }

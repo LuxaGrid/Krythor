@@ -1048,9 +1048,10 @@ export class AgentRunner {
             },
             runId,
             {
-              modelId:    agent.modelId,
-              providerId: agent.providerId,
-              signal:     controller.signal,
+              modelId:       agent.modelId,
+              providerId:    agent.providerId,
+              signal:        controller.signal,
+              memoryContext, // Phase 5A: pass retrieved memory context to planner
             },
           );
           run.plan = hermesPlan;
@@ -1091,6 +1092,12 @@ export class AgentRunner {
         const assembled = trimLargeToolResults(
           this.contextEngine ? this.contextEngine.assemble(messages) : messages,
         );
+        // Phase 6B: use extended thinking for complex plans when provider is Anthropic
+        const thinkingConfig: import('@krythor/models').ThinkingConfig | undefined =
+          hermesPlan?.complexity === 'complex' && agent.providerId?.includes('anthropic')
+            ? { enabled: true, level: 'medium' }
+            : undefined;
+
         const inferStep = tracer.startStep('inference', turn);
         const response = await this.models.infer(
           {
@@ -1099,6 +1106,7 @@ export class AgentRunner {
             providerId: agent.providerId,
             temperature: agent.temperature,
             maxTokens: agent.maxTokens,
+            ...(thinkingConfig && { thinking: thinkingConfig }),
           },
           {
             agentModelId: effectiveModel,
@@ -1265,6 +1273,37 @@ export class AgentRunner {
       }
 
       run.trace = tracer.getTrace();
+
+      // Phase 5B: store plan summary in memory for future context retrieval
+      if (hermesPlan && hermesPlan.complexity !== 'simple' && this.memory) {
+        this.memory.create({
+          title: `Plan: ${agent.name} — ${hermesPlan.taskSummary.slice(0, 60)}`,
+          content: `Task: ${input.input}\nApproach: ${hermesPlan.taskSummary}\nSteps: ${hermesPlan.steps.map(s => s.objective).join(', ')}`,
+          scope: agent.memoryScope,
+          scope_id: agent.id,
+          source: 'agent',
+          importance: hermesPlan.complexity === 'complex' ? 0.7 : 0.5,
+          tags: ['plan', agent.name, hermesPlan.complexity],
+          source_type: 'agent_plan',
+          source_reference: runId,
+        });
+      }
+
+      // Phase 5C: store trace summary in memory for learning (only when not stopped)
+      if (run.trace && run.trace.stepCount > 1 && this.memory && !stopped) {
+        const traceSummary = `Agent run ${runId}: ${run.trace.stepCount} steps, ${run.trace.totalTokens} tokens, ${run.trace.totalDurationMs}ms`;
+        this.memory.create({
+          title: `Trace: ${agent.name} run ${runId.slice(0, 8)}`,
+          content: traceSummary,
+          scope: agent.memoryScope,
+          scope_id: agent.id,
+          source: 'agent',
+          importance: 0.3,
+          tags: ['trace', 'run-summary', agent.name],
+          source_type: 'agent_trace',
+          source_reference: runId,
+        });
+      }
 
       if (stopped) {
         run.status = 'stopped';

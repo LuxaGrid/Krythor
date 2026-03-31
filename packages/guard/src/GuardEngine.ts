@@ -115,6 +115,24 @@ export class GuardEngine extends EventEmitter {
       defaultAction: this.config.defaultAction,
     };
   }
+
+  /**
+   * Returns the model routing policy for a given operation.
+   * Reads from the policy config's modelPolicy map if present.
+   * Falls back to { preferLocal: false, allowExternal: true } when no specific rule exists.
+   */
+  getModelPolicy(operation: string): { preferLocal: boolean; allowExternal: boolean } {
+    const defaultPolicy = { preferLocal: false, allowExternal: true };
+    const modelPolicies = (this.config as unknown as Record<string, unknown>)['modelPolicies'];
+    if (!modelPolicies || typeof modelPolicies !== 'object') return defaultPolicy;
+    const opPolicy = (modelPolicies as Record<string, unknown>)[operation];
+    if (!opPolicy || typeof opPolicy !== 'object') return defaultPolicy;
+    const p = opPolicy as Record<string, unknown>;
+    return {
+      preferLocal:   typeof p['preferLocal']   === 'boolean' ? p['preferLocal']   : defaultPolicy.preferLocal,
+      allowExternal: typeof p['allowExternal']  === 'boolean' ? p['allowExternal'] : defaultPolicy.allowExternal,
+    };
+  }
 }
 
 // ─── GuardDeniedError ─────────────────────────────────────────────────────────
