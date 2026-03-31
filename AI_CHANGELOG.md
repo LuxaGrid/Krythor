@@ -25,6 +25,13 @@ A private, intelligent talent and vendor directory with AI-powered ranking, outr
 - API functions added to `api.ts`: `getTalentDashboard`, `listTalents`, `getTalent`, `createTalent`, `updateTalent`, `deleteTalent`, `getTalentInteractions`, `addTalentInteraction`, `getTalentOutreach`, `createTalentOutreach`, `updateTalentOutreach`, `getPendingOutreach`, `rankTalent`, `listMarketplaceRequests`, `createMarketplaceRequest`, `resolveMarketplaceRequest`
 - `talent-marketplace` tab wired into `App.tsx` under Advanced tabs
 
+### Marketplace Hardening (Phases A–E)
+- **Phase A — Security + Critical:** Guard checks on all GET /api/talents* routes; JSON deserialization safety (safeParseArray/safeParseObject) in TalentStore; migration 017 adds marketplace_requests indexes; outreach edit-nav bug fixed; console.error replaced with error state in TalentMarketplacePanel
+- **Phase B — Correctness:** Urgency-aware ranking (recency windows + response time bonus); outreach status transition state machine (pending→approved→sent, pending→denied, approved→denied); SQL COUNT dashboard stats (no memory scan); marketplace requests ?resolved= filter
+- **Phase C — Infrastructure:** Workspace-level `typecheck` script (pnpm -r run typecheck) across all 8 packages; ESLint flat config with @typescript-eslint; 68 lint errors fixed (prefer-const, unused imports); typecheck + lint added to full-build-loop.ps1
+- **Phase D — Performance:** Vite manual chunk splitting (vendor-react, panel-marketplace, panel-audit, panel-vault, panel-workspace); ?limit param on interactions/outreach GET routes (default 50, max 200); 30s in-memory cache on POST /api/talents/rank keyed on normalized structured fields
+- **Phase E — Automation:** Daily trust score recalculation via MemoryEngine._decayInterval (recalculateAllTrustScores); talent lifecycle events on GatewayEventBus (talent:created, talent:updated, talent:deactivated, talent:contacted, talent:outcome); approval-gated outreach (guard.check → hard block or require-approval → ApprovalManager → 202 pending)
+
 ---
 
 ## 2026-03-30 — v2.3.0: Agent Health Gate, Conversation Groups, Tailscale
