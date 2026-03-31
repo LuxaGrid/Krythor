@@ -32,6 +32,7 @@ import { StandingOrdersPanel } from './components/StandingOrdersPanel.tsx';
 import { PeersPanel } from './components/PeersPanel.tsx';
 import { TokenCostPanel } from './components/TokenCostPanel.tsx';
 import { VaultPanel } from './components/VaultPanel.tsx';
+import { TalentMarketplacePanel } from './components/TalentMarketplacePanel.tsx';
 
 // ── App Config Context ─────────────────────────────────────────────────────
 interface AppConfigCtx {
@@ -45,7 +46,7 @@ export const AppConfigContext = createContext<AppConfigCtx>({
 export const useAppConfig = () => useContext(AppConfigContext);
 
 // ── Tabs ──────────────────────────────────────────────────────────────────
-type Tab = 'command' | 'agents' | 'skills' | 'memory' | 'models' | 'guard' | 'events' | 'mission' | 'command-center' | 'workflow' | 'dashboard' | 'settings' | 'logs' | 'config-editor' | 'custom-tools' | 'channels' | 'chat-channels' | 'file-browser' | 'audit' | 'workspace' | 'devices' | 'cron' | 'standing-orders' | 'peers' | 'token-cost' | 'vault';
+type Tab = 'command' | 'agents' | 'skills' | 'memory' | 'models' | 'guard' | 'events' | 'mission' | 'command-center' | 'workflow' | 'dashboard' | 'settings' | 'logs' | 'config-editor' | 'custom-tools' | 'channels' | 'chat-channels' | 'file-browser' | 'audit' | 'workspace' | 'devices' | 'cron' | 'standing-orders' | 'peers' | 'token-cost' | 'vault' | 'talent-marketplace';
 
 // Primary tabs — always visible
 const PRIMARY_TABS: { id: Tab; label: string; hint: string }[] = [
@@ -79,6 +80,7 @@ const ADVANCED_TABS: { id: Tab; label: string; hint: string }[] = [
   { id: 'cron',            label: 'Cron Jobs',        hint: 'Schedule agents to run automatically on a time-based schedule' },
   { id: 'standing-orders', label: 'Standing Orders',  hint: 'Persistent agent authorization programs and structured instruction injection' },
   { id: 'peers',           label: 'Peers',             hint: 'Connected gateway peers — LAN mDNS discovery and manual registration' },
+  { id: 'talent-marketplace', label: 'Marketplace',     hint: 'Manage trusted vendors, talent, and contractors' },
 ];
 
 const ALL_TABS = [...PRIMARY_TABS, ...ADVANCED_TABS];
@@ -870,6 +872,7 @@ function AppInner({ onTokenReady }: { onTokenReady: (token: string) => void }) {
           <div className={`h-full ${tab === 'peers'            ? 'block' : 'hidden'}`}><PeersPanel /></div>
           <div className={`h-full ${tab === 'token-cost'      ? 'block' : 'hidden'}`}><TokenCostPanel /></div>
           <div className={`h-full ${tab === 'vault'           ? 'block' : 'hidden'}`}><VaultPanel /></div>
+          <div className={`h-full ${tab === 'talent-marketplace' ? 'block' : 'hidden'}`}><TalentMarketplacePanel /></div>
         </div>
       </div>
     </AppConfigContext.Provider>

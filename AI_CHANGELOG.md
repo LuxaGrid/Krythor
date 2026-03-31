@@ -4,6 +4,29 @@ Tracks all AI-assisted implementation work on this codebase.
 
 ---
 
+## 2026-03-30 — Talent Marketplace (v0.6.0)
+
+### Talent Marketplace (packages: memory, gateway, control)
+
+A private, intelligent talent and vendor directory with AI-powered ranking, outreach management, and a full 6-view Control UI.
+
+**Phase 2 — Data layer (migration 016, TalentStore, MemoryEngine)**
+- `016_talent_marketplace.sql` — 4 tables: `talent_profiles`, `talent_interactions`, `talent_outreach`, `marketplace_requests`
+- `TalentStore` — full CRUD for profiles, interactions, outreach, and marketplace requests; trust score formula (response rate, job outcomes, preferred bonus, recency); search with category/state/city/status/preferred/tag filters
+- `MemoryEngine.talentStore` property; all types exported from `@krythor/memory`
+
+**Phase 3 — Gateway routes + ranking engine + native skill**
+- `MarketplaceRankingEngine` — 7-dimension scoring (category fit 0–30, geography fit 0–20, trust score 0–25, response history 0–15, recency 0–5, preferred bonus 0–5, penalties); returns per-result explanation with per-dimension scores and reasons
+- `registerTalentRoutes` — 16 REST endpoints under `/api/talents/*` and `/api/marketplace-requests`; static routes registered before parameterized routes to satisfy Fastify radix router
+- `talent_marketplace` native skill registered at gateway startup (idempotent check); documents 13 available actions for agent use
+
+**Phase 4 — Control UI**
+- `TalentMarketplacePanel` — 6 sub-views: Dashboard (stats grid, quick actions), Directory (searchable/filterable table with trust bars and status badges), Detail (profile + trust breakdown + interaction/outreach history + action buttons), Matcher (AI-powered ranking with score bars and expandable explanation accordions), Outreach Queue (approve/deny pending outreach), Create/Edit form
+- API functions added to `api.ts`: `getTalentDashboard`, `listTalents`, `getTalent`, `createTalent`, `updateTalent`, `deleteTalent`, `getTalentInteractions`, `addTalentInteraction`, `getTalentOutreach`, `createTalentOutreach`, `updateTalentOutreach`, `getPendingOutreach`, `rankTalent`, `listMarketplaceRequests`, `createMarketplaceRequest`, `resolveMarketplaceRequest`
+- `talent-marketplace` tab wired into `App.tsx` under Advanced tabs
+
+---
+
 ## 2026-03-30 — v2.3.0: Agent Health Gate, Conversation Groups, Tailscale
 
 ### Agent Health Gate (packages: core, gateway, control)

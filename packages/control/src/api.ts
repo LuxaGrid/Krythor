@@ -1569,3 +1569,139 @@ export const updateStandingOrder = (id: string, patch: Partial<CreateStandingOrd
 export const deleteStandingOrder = (id: string) => req<{ ok: boolean }>('DELETE', `/standing-orders/${encodeURIComponent(id)}`);
 export const runStandingOrderNow = (id: string) => req<{ ok: boolean; runId?: string }>('POST', `/standing-orders/${encodeURIComponent(id)}/run`);
 export const getStandingOrderPrompt = (id: string) => req<{ prompt: string }>('GET', `/standing-orders/${encodeURIComponent(id)}/prompt`);
+
+// ── Talent Marketplace ────────────────────────────────────────────────────────
+
+export type TalentStatus = 'active' | 'inactive' | 'blocked';
+export type TalentSource = 'manual' | 'import' | 'referral' | 'agent';
+export type InteractionType = 'note' | 'outreach' | 'outcome' | 'availability_request';
+export type InteractionOutcome = 'success' | 'declined' | 'no_response' | 'pending';
+export type OutreachStatus = 'pending' | 'approved' | 'sent' | 'denied';
+
+export interface TalentProfile {
+  id: string;
+  displayName: string;
+  companyName?: string;
+  category: string;
+  subcategory?: string;
+  tags: string[];
+  description?: string;
+  serviceAreas: string[];
+  city?: string;
+  state?: string;
+  zip?: string;
+  contactMethods: Record<string, string>;
+  email?: string;
+  phone?: string;
+  website?: string;
+  preferredChannels: string[];
+  licensingInfo?: string;
+  insuranceInfo?: string;
+  availabilityNotes?: string;
+  pricingNotes?: string;
+  hourlyRateCents?: number;
+  costBand?: string;
+  specialties: string[];
+  languages: string[];
+  status: TalentStatus;
+  source: TalentSource;
+  notes?: string;
+  avgResponseTimeHours?: number;
+  responseRate: number;
+  successfulJobsCount: number;
+  declinedJobsCount: number;
+  noResponseCount: number;
+  userRatingInternal?: number;
+  trustScore: number;
+  lastUsedAt?: number;
+  lastContactedAt?: number;
+  internalOutcomeNotes?: string;
+  preferred: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface TalentInteraction {
+  id: string;
+  talentId: string;
+  type: InteractionType;
+  agentId?: string;
+  content: string;
+  outcome?: InteractionOutcome;
+  rating?: number;
+  createdAt: number;
+}
+
+export interface TalentOutreach {
+  id: string;
+  talentId: string;
+  channel?: string;
+  messagePreview: string;
+  status: OutreachStatus;
+  approvalId?: string;
+  approvedBy?: string;
+  sentAt?: number;
+  createdAt: number;
+}
+
+export interface MarketplaceRequest {
+  id: string;
+  query: string;
+  category?: string;
+  location?: string;
+  urgency?: string;
+  createdAt: number;
+  resolvedAt?: number;
+  resolvedTalentId?: string;
+}
+
+export interface TalentDashboard {
+  totalActive: number;
+  totalProfiles: number;
+  preferredCount: number;
+  recentlyUsedCount: number;
+  recentlyContactedCount: number;
+  pendingOutreachCount: number;
+}
+
+export interface RankDimension {
+  score: number;
+  reason: string;
+}
+
+export interface RankExplanation {
+  categoryFit: RankDimension;
+  geographyFit: RankDimension;
+  trustScore: RankDimension;
+  responseHistory: RankDimension;
+  recency: RankDimension;
+  preferredBonus: RankDimension;
+  penalties: { score: number; reasons: string[] };
+  summary: string;
+}
+
+export interface RankResult {
+  talent: TalentProfile;
+  score: number;
+  explanation: RankExplanation;
+}
+
+export const getTalentDashboard = () => req<TalentDashboard>('GET', '/talents/dashboard');
+export const listTalents = (filter?: Record<string, string>) =>
+  req<TalentProfile[]>('GET', '/talents' + (filter ? '?' + new URLSearchParams(filter).toString() : ''));
+export const getTalent = (id: string) => req<TalentProfile>('GET', `/talents/${id}`);
+export const createTalent = (input: unknown) => req<TalentProfile>('POST', '/talents', input);
+export const updateTalent = (id: string, patch: unknown) => req<TalentProfile>('PATCH', `/talents/${id}`, patch);
+export const deleteTalent = (id: string) => req<void>('DELETE', `/talents/${id}`);
+export const getTalentInteractions = (id: string) => req<TalentInteraction[]>('GET', `/talents/${id}/interactions`);
+export const addTalentInteraction = (id: string, data: unknown) => req<TalentInteraction>('POST', `/talents/${id}/interactions`, data);
+export const getTalentOutreach = (id: string) => req<TalentOutreach[]>('GET', `/talents/${id}/outreach`);
+export const createTalentOutreach = (id: string, data: unknown) => req<TalentOutreach>('POST', `/talents/${id}/outreach`, data);
+export const updateTalentOutreach = (talentId: string, outreachId: string, data: unknown) =>
+  req<TalentOutreach>('PATCH', `/talents/${talentId}/outreach/${outreachId}`, data);
+export const getPendingOutreach = () => req<TalentOutreach[]>('GET', '/talents/outreach/pending');
+export const rankTalent = (input: unknown) => req<RankResult[]>('POST', '/talents/rank', input);
+export const listMarketplaceRequests = () => req<MarketplaceRequest[]>('GET', '/marketplace-requests');
+export const createMarketplaceRequest = (data: unknown) => req<MarketplaceRequest>('POST', '/marketplace-requests', data);
+export const resolveMarketplaceRequest = (id: string, talentId: string) =>
+  req<MarketplaceRequest>('PATCH', `/marketplace-requests/${id}/resolve`, { talentId });

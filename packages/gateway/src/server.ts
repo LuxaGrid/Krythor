@@ -96,6 +96,7 @@ import { StandingOrderStore } from './StandingOrderStore.js';
 import { registerStandingOrderRoutes } from './routes/standingOrders.js';
 import { registerApiKeyRoutes } from './routes/apiKeys.js';
 import { registerJobRoutes } from './routes/jobs.js';
+import { registerTalentRoutes } from './routes/talents.js';
 import { registerErrorHandler } from './errors.js';
 import { redactErrorMessage } from './redact.js';
 import { checkReadiness } from './readiness.js';
@@ -810,6 +811,42 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   const skillRegistry = new SkillRegistry(join(dataDir, 'config'));
   const vaultRegistry = new VaultRegistry(join(dataDir, 'config'));
 
+  // Register native talent_marketplace skill if not already present
+  {
+    const existing = skillRegistry.list(undefined, true).find(s => s.name === 'talent_marketplace');
+    if (!existing) {
+      skillRegistry.create({
+        name: 'talent_marketplace',
+        description: 'Private talent and vendor marketplace — search, rank, and manage trusted contacts for real estate, events, referrals, and service needs',
+        systemPrompt: `You are the Talent Marketplace skill for Krythor. You help users manage a private directory of trusted vendors, contractors, service providers, referral agents, and event talent.
+
+Available actions (all routed through structured REST endpoints, not LLM text generation):
+
+1. LIST talents — GET /api/talents with optional filters: category, state, city, status, preferred, keywords, tags, limit, offset
+2. GET talent — GET /api/talents/:id — retrieve a single profile by ID
+3. CREATE talent — POST /api/talents — add a new profile (requires displayName, category, source)
+4. UPDATE talent — PATCH /api/talents/:id — update any profile fields
+5. DELETE talent — DELETE /api/talents/:id — remove a profile
+6. RANK for request — POST /api/talents/rank — score and rank talent against a request (query, category, location, urgency, budget, tags)
+7. DASHBOARD stats — GET /api/talents/dashboard — aggregate stats: total active, preferred count, recently used, pending outreach
+8. LIST interactions — GET /api/talents/:id/interactions — interaction history for a talent
+9. ADD interaction — POST /api/talents/:id/interactions — log a note, outcome, or availability request
+10. LIST outreach — GET /api/talents/:id/outreach — outreach records for a talent
+11. CREATE outreach — POST /api/talents/:id/outreach — draft or send outreach (status: pending|sent)
+12. UPDATE outreach status — PATCH /api/talents/:id/outreach/:outreachId — approve, deny, or mark sent
+13. PENDING outreach queue — GET /api/talents/outreach/pending — all pending outreach awaiting approval
+
+When a user asks to find talent, vendors, or service providers: use RANK for request to score candidates.
+When a user asks to see all vendors or contacts: use LIST talents.
+When a user asks about outreach: use the outreach endpoints.
+Always show the score explanation when presenting ranked results.`,
+        tags: ['marketplace', 'talent', 'vendors', 'native'],
+        userInvocable: true,
+        enabled: true,
+      });
+      logger.info('Native skill registered: talent_marketplace');
+    }
+  }
 
   // Wire Ollama embedding provider if any Ollama provider is configured and enabled.
   // Uses the first enabled Ollama provider's endpoint with the nomic-embed-text model,
@@ -1524,6 +1561,7 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   registerKeyPoolRoutes(app, apiKeyPool);
   if (memory) registerKnowledgeRoutes(app, memory);
   if (memory) registerConversationGroupRoutes(app, memory.conversationGroupStore, convStore);
+  if (memory) registerTalentRoutes(app, memory, guard, approvalManager);
   registerConfigRoute(app, join(dataDir, 'config'), guard, orchestrator, memory, heartbeatRef, approvalManager);
   registerConversationRoutes(app, convStore, guard, channelEmit, memory ?? undefined, approvalManager, janitorStatus);
   if (memory) registerSessionMaintenanceRoutes(app, memory);
