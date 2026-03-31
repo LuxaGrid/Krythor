@@ -107,14 +107,19 @@ Write-Step "Step 1.5 · Native module compatibility"
 
 $sysNodeVer    = (node --version 2>&1)
 $runtimeNodeVer = if (Test-Path $runtimeNode) { (& $runtimeNode --version 2>&1) } else { $sysNodeVer }
-$sqlitePath    = Join-Path $root '.pnvm\better-sqlite3@11.10.0\node_modules\better-sqlite3'
-$nodeGypPath   = Join-Path $root '.pnvm\node-gyp@12.2.0\node_modules\node-gyp\bin\node-gyp.js'
+$nativeDir     = Join-Path $root 'native'
 
-if ($sysNodeVer -ne $runtimeNodeVer -and (Test-Path $sqlitePath) -and (Test-Path $nodeGypPath)) {
-    Add-Check 'node-version-mismatch' 'WARN' "Dev node $sysNodeVer vs runtime $runtimeNodeVer — better-sqlite3 compiled for dev; runtime may fail"
-    Add-Check 'sqlite3-compat' 'INFO' "Run: `"$runtimeNode`" `"$nodeGypPath`" rebuild (in $sqlitePath) before deploying production"
+# nativeLoader.ts handles version selection automatically via node-pre-gyp versioned dirs.
+# Just verify the prebuilts are present for both Node versions.
+$prebuilts = @()
+if (Test-Path $nativeDir) { $prebuilts = @(Get-ChildItem $nativeDir -Filter 'better_sqlite3_napi*.node') }
+
+if ($prebuilts.Count -ge 2) {
+    Add-Check 'native-module-compat' 'PASS' "Dev $sysNodeVer / runtime $runtimeNodeVer — $($prebuilts.Count) prebuilt(s) in native/ (nativeLoader auto-selects)"
+} elseif ($prebuilts.Count -eq 1) {
+    Add-Check 'native-module-compat' 'WARN' "Only 1 prebuilt in native/ — add binary for the missing Node version"
 } else {
-    Add-Check 'native-module-compat' 'PASS' "Node version: $sysNodeVer (runtime: $runtimeNodeVer)"
+    Add-Check 'native-module-compat' 'WARN' "native/ prebuilts missing — if dev/runtime Node versions differ, better-sqlite3 may fail to load"
 }
 
 # =============================================================================

@@ -13,10 +13,11 @@
 - **Note:** Auth state persists in `~/.krythor/whatsapp-session/` — no re-scan needed after restart
 
 ### Node.js Version Mismatch (binary install)
-- **Status:** Known
-- **Impact:** Running gateway from `~/.krythor` with a different Node.js version than the one used to compile `better-sqlite3` causes `ERR_DLOPEN_FAILED`
-- **Fix:** Always use the bundled runtime at `~/.krythor/runtime/node.exe` (Windows) to start the installed gateway. The `Krythor.bat` launcher handles this automatically.
-- **Dev note:** The dev system may use a different Node version than the production runtime. Tests run against the dev node and require `better-sqlite3` compiled for it. Before starting the production gateway manually, rebuild: `cd .pnvm/better-sqlite3@11.10.0/node_modules/better-sqlite3 && ~/.krythor/runtime/node.exe /path/to/node-gyp rebuild`. `scripts/full-build-loop.ps1` will warn (step 1.5) when versions differ.
+- **Status:** Resolved — handled automatically
+- **Impact:** Running gateway from `~/.krythor` with a different Node.js version than the one used to compile `better-sqlite3` previously caused `ERR_DLOPEN_FAILED`
+- **Fix:** `packages/gateway/src/nativeLoader.ts` runs at startup and copies the correct prebuilt binary from `native/` into the node-pre-gyp versioned path (`.pnvm/.../lib/binding/node-v{NMV}-win32-x64/`) that `bindings` checks automatically. Each Node version gets its own directory — no lock conflicts. Self-healing: the directory is recreated on next start if wiped.
+- **Prebuilts:** `native/better_sqlite3_napi115.node` (Node v20) and `native/better_sqlite3_napi137.node` (Node v24) are committed to the repo.
+- **Adding a new Node version:** run `node-gyp rebuild` in `.pnvm/better-sqlite3@11.10.0/node_modules/better-sqlite3`, copy the resulting `build/Release/better_sqlite3.node` to `native/better_sqlite3_napi{NMV}.node`, and commit it.
 
 ### Bundle Size Warning (control)
 - **Status:** Non-blocking warning
