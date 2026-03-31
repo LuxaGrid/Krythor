@@ -44,6 +44,8 @@ export function registerTalentRoutes(
 
   // GET /api/talents/dashboard
   app.get('/api/talents/dashboard', async (_req, reply) => {
+    const verdict = await guardCheck({ guard, approvalManager, reply, operation: 'memory:read', source: 'user' });
+    if (verdict === false) return;
     const now = Date.now();
     const thirtyDaysAgo  = now - 30  * 24 * 60 * 60 * 1000;
     const ninetyDaysAgo  = now - 90  * 24 * 60 * 60 * 1000;
@@ -71,6 +73,8 @@ export function registerTalentRoutes(
 
   // GET /api/talents/outreach/pending — BEFORE /:id
   app.get('/api/talents/outreach/pending', async (_req, reply) => {
+    const verdict = await guardCheck({ guard, approvalManager, reply, operation: 'memory:read', source: 'user' });
+    if (verdict === false) return;
     const items = store.listPendingOutreach();
     return reply.send(items);
   });
@@ -94,6 +98,8 @@ export function registerTalentRoutes(
 
   // GET /api/talents
   app.get('/api/talents', async (req, reply) => {
+    const verdict = await guardCheck({ guard, approvalManager, reply, operation: 'memory:read', source: 'user' });
+    if (verdict === false) return;
     const q = req.query as Record<string, string>;
     const results = store.search({
       query:    q['keywords'] ?? q['query'],
@@ -111,6 +117,8 @@ export function registerTalentRoutes(
 
   // GET /api/talents/:id
   app.get<{ Params: { id: string } }>('/api/talents/:id', async (req, reply) => {
+    const verdict = await guardCheck({ guard, approvalManager, reply, operation: 'memory:read', source: 'user' });
+    if (verdict === false) return;
     const talent = store.getById(req.params.id);
     if (!talent) return sendError(reply, 404, 'TALENT_NOT_FOUND', `Talent "${req.params.id}" not found`);
     return reply.send(talent);
@@ -156,6 +164,8 @@ export function registerTalentRoutes(
 
   // GET /api/talents/:id/interactions
   app.get<{ Params: { id: string } }>('/api/talents/:id/interactions', async (req, reply) => {
+    const verdict = await guardCheck({ guard, approvalManager, reply, operation: 'memory:read', source: 'user' });
+    if (verdict === false) return;
     const talent = store.getById(req.params.id);
     if (!talent) return sendError(reply, 404, 'TALENT_NOT_FOUND', `Talent "${req.params.id}" not found`);
     const q = req.query as Record<string, string>;
@@ -180,6 +190,8 @@ export function registerTalentRoutes(
 
   // GET /api/talents/:id/outreach
   app.get<{ Params: { id: string } }>('/api/talents/:id/outreach', async (req, reply) => {
+    const verdict = await guardCheck({ guard, approvalManager, reply, operation: 'memory:read', source: 'user' });
+    if (verdict === false) return;
     const talent = store.getById(req.params.id);
     if (!talent) return sendError(reply, 404, 'TALENT_NOT_FOUND', `Talent "${req.params.id}" not found`);
     const items = store.listOutreach(req.params.id);
@@ -228,6 +240,8 @@ export function registerTalentRoutes(
 
   // GET /api/marketplace-requests
   app.get('/api/marketplace-requests', async (req, reply) => {
+    const verdict = await guardCheck({ guard, approvalManager, reply, operation: 'memory:read', source: 'user' });
+    if (verdict === false) return;
     const q = req.query as Record<string, string>;
     const limit = q['limit'] ? Math.min(parseInt(q['limit'], 10), 1000) : 50;
     const requests = store.listRequests(limit);

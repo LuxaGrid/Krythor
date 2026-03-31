@@ -9,6 +9,20 @@
 import type Database from 'better-sqlite3';
 import { randomUUID } from 'crypto';
 
+// ─── JSON deserialization helpers ─────────────────────────────────────────────
+
+function safeParseArray(val: unknown): string[] {
+  if (!val) return [];
+  try { const parsed = JSON.parse(val as string); return Array.isArray(parsed) ? parsed : []; }
+  catch { return []; }
+}
+
+function safeParseObject(val: unknown): Record<string, unknown> {
+  if (!val) return {};
+  try { const parsed = JSON.parse(val as string); return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}; }
+  catch { return {}; }
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type TalentStatus = 'active' | 'inactive' | 'blocked';
@@ -745,25 +759,25 @@ export class TalentStore {
       companyName:          row.company_name ?? undefined,
       category:             row.category,
       subcategory:          row.subcategory ?? undefined,
-      tags:                 this.parseJson<string[]>(row.tags, []),
+      tags:                 safeParseArray(row.tags),
       description:          row.description ?? undefined,
-      serviceAreas:         this.parseJson<string[]>(row.service_areas, []),
+      serviceAreas:         safeParseArray(row.service_areas),
       city:                 row.city ?? undefined,
       state:                row.state ?? undefined,
       zip:                  row.zip ?? undefined,
-      contactMethods:       this.parseJson<Record<string, string>>(row.contact_methods, {}),
+      contactMethods:       safeParseObject(row.contact_methods) as Record<string, string>,
       email:                row.email ?? undefined,
       phone:                row.phone ?? undefined,
       website:              row.website ?? undefined,
-      preferredChannels:    this.parseJson<string[]>(row.preferred_channels, []),
+      preferredChannels:    safeParseArray(row.preferred_channels),
       licensingInfo:        row.licensing_info ?? undefined,
       insuranceInfo:        row.insurance_info ?? undefined,
       availabilityNotes:    row.availability_notes ?? undefined,
       pricingNotes:         row.pricing_notes ?? undefined,
       hourlyRateCents:      row.hourly_rate_cents ?? undefined,
       costBand:             row.cost_band ?? undefined,
-      specialties:          this.parseJson<string[]>(row.specialties, []),
-      languages:            this.parseJson<string[]>(row.languages, []),
+      specialties:          safeParseArray(row.specialties),
+      languages:            safeParseArray(row.languages),
       status:               row.status as TalentStatus,
       source:               row.source as TalentSource,
       notes:                row.notes ?? undefined,

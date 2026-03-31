@@ -265,6 +265,7 @@ function DetailView({
   const [outreach, setOutreach]         = useState<TalentOutreach[]>([]);
   const [loading, setLoading]           = useState(true);
   const [error, setError]               = useState('');
+  const [actionError, setActionError]   = useState('');
   const [showNoteForm, setShowNoteForm] = useState(false);
   const [showOutreachForm, setShowOutreachForm] = useState(false);
 
@@ -294,7 +295,7 @@ function DetailView({
     try {
       const updated = await updateTalent(talent.id, { preferred: !talent.preferred });
       setTalent(updated as TalentProfile);
-    } catch (e) { console.error(e); }
+    } catch (e) { setActionError(e instanceof Error ? e.message : 'Failed to update preferred status'); }
   };
 
   const toggleBlock = async () => {
@@ -303,7 +304,7 @@ function DetailView({
     try {
       const updated = await updateTalent(talent.id, { status: newStatus });
       setTalent(updated as TalentProfile);
-    } catch (e) { console.error(e); }
+    } catch (e) { setActionError(e instanceof Error ? e.message : 'Failed to update block status'); }
   };
 
   const deactivate = async () => {
@@ -311,7 +312,7 @@ function DetailView({
     try {
       const updated = await updateTalent(talent.id, { status: 'inactive' });
       setTalent(updated as TalentProfile);
-    } catch (e) { console.error(e); }
+    } catch (e) { setActionError(e instanceof Error ? e.message : 'Failed to deactivate talent'); }
   };
 
   if (loading) return <div className="p-6 text-xs text-zinc-500">Loading...</div>;
@@ -340,6 +341,7 @@ function DetailView({
           {talent.status !== 'inactive' && <button className={BTN_GHOST} onClick={deactivate}>Deactivate</button>}
         </div>
       </div>
+      {actionError && <div className="px-4 pt-2 text-xs text-red-400">{actionError}</div>}
 
       <div className="p-4 space-y-5">
         {/* Profile Info */}
@@ -734,7 +736,7 @@ function OutreachQueueView({ onBack }: { onBack: () => void }) {
     try {
       await updateTalentOutreach(item.talentId, item.id, { status });
       await load();
-    } catch (e) { console.error(e); }
+    } catch (e) { setError(e instanceof Error ? e.message : 'Failed to update outreach status'); }
   };
 
   return (
