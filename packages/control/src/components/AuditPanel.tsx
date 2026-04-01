@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getGatewayToken } from '../api.ts';
 import { PanelHeader } from './PanelHeader.tsx';
+import { TrustPill } from './TrustPill.tsx';
 
 // ─── AuditPanel ───────────────────────────────────────────────────────────────
 //
@@ -269,8 +270,11 @@ export function AuditPanel() {
                       {new Date(event.timestamp).toLocaleTimeString()}
                     </td>
                     <td className="px-3 py-1.5 font-mono text-zinc-300">
-                      {event.actionType}
-                      {privacyBadge(event)}
+                      <span className="flex items-center gap-1.5">
+                        {event.actionType}
+                        <TrustPill actionType={event.actionType} target={event.target} />
+                        {privacyBadge(event)}
+                      </span>
                     </td>
                     <td className="px-3 py-1.5 text-zinc-400 truncate max-w-[100px]">
                       {event.agentName ?? event.agentId ?? '-'}

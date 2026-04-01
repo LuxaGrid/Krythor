@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { SafeCoreStatusCard } from './SafeCoreStatusCard.tsx';
 import {
   getSafeCoreDashboard,
   listSafeCoreExecutions,
@@ -420,8 +421,17 @@ function DashboardView({ onSelectExecution }: DashboardViewProps) {
 
   const modeOrder: SafeCoreMode[] = ['READ_ONLY', 'WORKSPACE', 'CONNECTOR_LIMITED', 'ELEVATED_HOST'];
 
+  // Derive evaluation state from dashboard data
+  const evalState = data.pendingApprovals > 0 ? 'pending' : data.blockedActions > 0 ? 'error' : 'complete';
+
   return (
     <div className="p-4 space-y-6 overflow-y-auto h-full">
+      {/* SafeCore status card */}
+      <SafeCoreStatusCard
+        evaluationState={evalState}
+        scopeSummary={`${data.totalRuns} total runs · ${data.pendingApprovals} pending approval${data.pendingApprovals !== 1 ? 's' : ''}`}
+      />
+
       {/* Stat cards */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {statCards.map(c => (

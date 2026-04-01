@@ -154,7 +154,7 @@ function AboutDialog({ health, onClose }: AboutDialogProps) {
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center gap-2">
               <span className="text-zinc-600 w-28 shrink-0">Version</span>
-              <span className="text-zinc-300 font-mono">{health?.version ?? '0.1.0'}</span>
+              <span className="text-zinc-300 font-mono">{health?.version ?? '—'}</span>
             </div>
             {health?.nodeVersion && (
               <div className="flex items-center gap-2">
