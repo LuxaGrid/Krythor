@@ -16,7 +16,7 @@ Every agent run is visible. Every model choice is explained. Every action is gua
 
 No subscriptions to what you can run. No hidden cloud layer processing your data. No vendor telling you which model to use. Just a powerful, self-hosted AI platform you fully control.
 
-**Current version: v0.8.0**
+**Current version: v0.9.0**
 
 ---
 
@@ -70,6 +70,15 @@ Krythor is a local-first AI command platform. Run agents, route across models, e
 - 6-view UI: Dashboard, Directory, Talent Detail, Request Matcher, Outreach Queue, Create/Edit form
 - Native `talent_marketplace` skill for agent-driven workflows
 
+**SafeCore**
+- Containment and execution control layer — run agents in sandboxed execution tiers before anything touches the host
+- Four execution modes: Read Only, Workspace, Connector Controlled, Elevated Access
+- Approval workflow — executions requiring elevated access pause for operator review before proceeding
+- Promotion workflow — completed runs stay contained until an operator approves promotion to host
+- Per-mode policy configuration: allowed paths, blocked commands, allowed hosts, retention rules
+- Full audit trail: every action, file touched, command run, network attempt, approval, and promotion logged
+- 5-view UI: SafeCore Dashboard, Runs, Review Queue, Promotion Review, Activity
+
 **Guardrails & Safety**
 - Policy engine with allow / deny / warn / require-approval per operation
 - Three safety modes: Guarded (deny-by-default), Balanced (warn), Power User (unrestricted)
@@ -84,7 +93,7 @@ Krythor is a local-first AI command platform. Run agents, route across models, e
 
 **UI & Control**
 - Command Center — live animated scene with a Cybernetic Brain Planet and five agent entities that react to real-time activity
-- 30 tabs covering every subsystem; customizable tab bar with pinning
+- 31 tabs covering every subsystem; customizable tab bar with pinning
 - Ctrl+K command palette — fuzzy-search navigation across all tabs
 - Slash commands — `/new`, `/clear`, `/model`, `/agent`, `/think`, `/fast`, `/verbose`, and more
 - Token Cost Feed — live view of every inference with model, tokens, and estimated cost

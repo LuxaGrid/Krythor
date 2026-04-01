@@ -308,8 +308,8 @@ export class HeartbeatEngine {
       try {
         const insights = await this.runCheck(checkId, ctx);
         const checkDurationMs = Date.now() - checkStart;
-        record.checksRan.push(checkId);
-        record.insights.push(...insights);
+        record?.checksRan?.push(checkId);
+        record?.insights?.push(...insights);
         this.lastRanAt.set(checkId, now);
         if (insights.length > 0) {
           for (const insight of insights) {

@@ -1,3 +1,56 @@
+# AI Changelog — Pass 2026-03-31 (v0.9.0 — Krythor SafeCore)
+
+**Model:** Claude Sonnet 4.6
+**Pass type:** Feature — new first-class containment and execution control subsystem
+
+---
+
+## Summary (this pass)
+
+Krythor SafeCore: a containment and execution control layer built end-to-end across data, services, API, and UI.
+
+### Data Layer
+- `migration 020` — `safecore_executions` table (mode, requested/approved action, policy result, filesystem/network/connector scope, approval state, promotion state, output, files touched, commands run, network attempts, timestamps, retention) + `safecore_policies` table with seeded defaults for all four modes
+- `SafeCoreStore` — full CRUD, dashboard stats, policy management, `pruneExpired()` for retention enforcement
+
+### SafeCoreEngine
+- `evaluate()` — guard check → policy enforcement → execution record creation; returns allowed/blocked/pending-approval
+- `approve()` / `deny()` — approval workflow for pending executions
+- `complete()` — record output, files, commands, network attempts; auto-set promotion state for promotable modes
+- `requestPromotion()` / `promoteToHost()` / `rejectPromotion()` — promotion workflow with guard check and full audit trail
+- All actions logged to AuditLogger with structured fields
+
+### Execution Modes
+- **Read Only** — no writes, no shell mutation, no external send
+- **Workspace** — read/write within containment scope
+- **Connector Controlled** — controlled connector/API usage with policy enforcement
+- **Elevated Access** — direct host impact; requires approval + safecore:elevate guard check
+
+### Guard Integration
+- Added `safecore:execute` (medium risk), `safecore:promote` (high), `safecore:elevate` (critical) to OperationType
+- All SafeCore operations gated through GuardEngine before execution
+
+### API Routes (12 endpoints under `/api/safecore/`)
+- `GET /dashboard`, `GET/POST /executions`, `GET /executions/:id`
+- `POST /executions/:id/approve`, `/deny`, `/complete`, `/promote`
+- `POST /executions/:id/promote/approve`, `/promote/reject`
+- `GET /policies`, `PATCH /policies/:mode`
+
+### UI — SafeCorePanel (5 sub-views)
+- **SafeCore Dashboard** — stat cards (total runs, pending approvals/promotions, blocked), runs-by-mode breakdown, recent 10 runs
+- **SafeCore Runs** — filterable list by mode and result state; click → full run detail
+- **SafeCore Review Queue** — pending approvals + pending promotions in two sections
+- **SafeCore Promotion Review** — executions awaiting promotion with inline output preview and approve/reject
+- **SafeCore Activity** — live feed of last 50 executions, auto-refreshes every 10s
+
+### Fixes
+- `HeartbeatEngine.runChecks` — `record?.checksRan?.push` and `record?.insights?.push` to guard against test-only direct invocation without a RunRecord
+
+### Version bump
+- All packages: 0.8.0 → 0.9.0
+
+---
+
 # AI Changelog — Pass 2026-03-30 (v0.8.0 — Controlled Skill Evolution, Fallback Chains, Operating Profiles)
 
 **Model:** Claude Sonnet 4.6
