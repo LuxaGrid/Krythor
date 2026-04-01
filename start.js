@@ -4,9 +4,36 @@
 // The bundled Node runtime in runtime/ is used automatically when present.
 
 const { spawn, execSync } = require('child_process');
-const { existsSync } = require('fs');
+const { existsSync, mkdirSync, cpSync, readFileSync } = require('fs');
 const { join } = require('path');
+const { homedir } = require('os');
 const net = require('net');
+
+// ── Vault deployment ───────────────────────────────────────────────────────
+// Ensures the vault catalog is present in the data directory so the gateway
+// can serve it. The deploy-dist.js build script handles dev installs; this
+// covers binary/production installs where that script never runs.
+function ensureVaultDeployed() {
+  try {
+    const vaultSrc  = join(__dirname, 'vault');
+    const vaultDest = join(homedir(), '.krythor', 'vault');
+    if (!existsSync(join(vaultSrc, 'vault.manifest.json'))) return; // no vault in this install
+    // Copy if destination is missing or manifest version differs
+    let needsCopy = !existsSync(join(vaultDest, 'vault.manifest.json'));
+    if (!needsCopy) {
+      try {
+        const srcV  = JSON.parse(readFileSync(join(vaultSrc,  'vault.manifest.json'), 'utf-8')).manifestVersion;
+        const destV = JSON.parse(readFileSync(join(vaultDest, 'vault.manifest.json'), 'utf-8')).manifestVersion;
+        if (srcV !== destV) needsCopy = true;
+      } catch { needsCopy = true; }
+    }
+    if (needsCopy) {
+      mkdirSync(vaultDest, { recursive: true });
+      cpSync(vaultSrc, vaultDest, { recursive: true, force: true });
+    }
+  } catch { /* never block startup for vault copy errors */ }
+}
+ensureVaultDeployed();
 
 // ── Resolve bundled Node binary ────────────────────────────────────────────
 // When running from the distribution folder, prefer the bundled Node runtime
