@@ -64,6 +64,11 @@ export type {
   TalentSearchFilter,
 } from './db/TalentStore.js';
 
+export { SkillVersionStore } from './db/SkillVersionStore.js';
+export type { SkillVersionRecord } from './db/SkillVersionStore.js';
+export { SkillEvolutionStore } from './db/SkillEvolutionStore.js';
+export type { SkillEvolutionProposal, CreateProposalInput, ProposalType, ProposalStatus } from './db/SkillEvolutionStore.js';
+
 export type {
   SessionEntry,
   SessionKind,

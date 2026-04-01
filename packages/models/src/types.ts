@@ -218,4 +218,10 @@ export interface RoutingContext {
    * allowExternal: when false, external (non-local) providers are excluded from selection.
    */
   policyHint?: { preferLocal?: boolean; allowExternal?: boolean };
+  /** Active operating profile ID — for observability only. */
+  activeProfileId?: string;
+  /** Filter candidates to only these provider IDs (from active profile). */
+  enabledProviders?: string[];
+  /** When true, only local providers are considered (from profile privacy_mode === 'local_only'). */
+  localOnly?: boolean;
 }

@@ -98,6 +98,11 @@ import { registerJobRoutes } from './routes/jobs.js';
 import { registerTalentRoutes } from './routes/talents.js';
 import { registerErrorHandler } from './errors.js';
 import { redactErrorMessage } from './redact.js';
+import { OperatingProfileStore } from './OperatingProfileStore.js';
+import { FallbackChainStore } from '@krythor/models';
+import { registerEvolutionRoutes } from './routes/evolution.js';
+import { registerFallbackChainRoutes } from './routes/fallbackChains.js';
+import { registerProfileRoutes } from './routes/profiles.js';
 import { checkReadiness } from './readiness.js';
 import { validateProvidersConfig } from './ConfigValidator.js';
 import { SessionRouter } from './SessionRouter.js';
@@ -807,8 +812,29 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
   // Initialise skills registry and runner.
   // The event emitter is wired after `broadcast` is defined — forward skill
   // lifecycle events to all connected WebSocket clients.
-  const skillRegistry = new SkillRegistry(join(dataDir, 'config'));
+  const skillRegistry = new SkillRegistry(join(dataDir, 'config'), {
+    onVersionSaved: (snapshot, _priorVersionId, createdBy, changelogNote) => {
+      try {
+        memory.skillVersionStore.save({
+          skillId: snapshot.id,
+          version: snapshot.version,
+          snapshot: snapshot as unknown as Record<string, unknown>,
+          priorVersionId: _priorVersionId,
+          createdBy,
+          changelogNote,
+        });
+      } catch (err) {
+        logger.warn('[SkillRegistry] Failed to save skill version snapshot', { error: err instanceof Error ? err.message : String(err) });
+      }
+    },
+  });
   const vaultRegistry = new VaultRegistry(join(dataDir, 'config'));
+
+  // FallbackChainStore — persists named fallback chains in the shared SQLite DB (migration 019)
+  const fallbackChainStore = new FallbackChainStore(memory.db);
+
+  // OperatingProfileStore — persists operating profiles and active-profile assignments
+  const operatingProfileStore = new OperatingProfileStore(memory.db);
 
   // Register native talent_marketplace skill if not already present
   {
@@ -1563,6 +1589,9 @@ Always show the score explanation when presenting ranked results.`,
   if (memory) registerKnowledgeRoutes(app, memory);
   if (memory) registerConversationGroupRoutes(app, memory.conversationGroupStore, convStore);
   if (memory) registerTalentRoutes(app, memory, guard, approvalManager);
+  if (memory) registerEvolutionRoutes(app, memory, skillRegistry, guard, approvalManager);
+  registerFallbackChainRoutes(app, fallbackChainStore, guard, approvalManager);
+  registerProfileRoutes(app, operatingProfileStore, guard, approvalManager);
   registerConfigRoute(app, join(dataDir, 'config'), guard, orchestrator, memory, heartbeatRef, approvalManager);
   registerConversationRoutes(app, convStore, guard, channelEmit, memory ?? undefined, approvalManager, janitorStatus);
   if (memory) registerSessionMaintenanceRoutes(app, memory);

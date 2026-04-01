@@ -19,6 +19,8 @@ export { ModelRouter } from './ModelRouter.js';
 export { getCapabilities, PROVIDER_CAPABILITIES } from './ProviderCapabilities.js';
 export { PrivacyRouter, PrivacyBlockedError } from './PrivacyRouter.js';
 export type { SensitivityLabel, PrivacyDecision, InferResultWithPrivacy } from './PrivacyRouter.js';
+export { FallbackChainStore } from './FallbackChainStore.js';
+export type { FallbackChain, CreateFallbackChainInput } from './FallbackChainStore.js';
 export { BaseProvider } from './providers/BaseProvider.js';
 export { OllamaProvider } from './providers/OllamaProvider.js';
 export { OpenAIProvider } from './providers/OpenAIProvider.js';

@@ -13,10 +13,17 @@ import type { Skill, CreateSkillInput, UpdateSkillInput } from './types.js';
 export class SkillRegistry {
   private configPath: string;
   private skills: Map<string, Skill> = new Map();
+  private onVersionSaved?: (snapshot: Skill, priorVersionId?: string, createdBy?: string, changelogNote?: string) => void;
 
-  constructor(configDir: string) {
+  constructor(
+    configDir: string,
+    options?: {
+      onVersionSaved?: (snapshot: Skill, priorVersionId?: string, createdBy?: string, changelogNote?: string) => void;
+    },
+  ) {
     this.configPath = join(configDir, 'skills.json');
     mkdirSync(configDir, { recursive: true });
+    this.onVersionSaved = options?.onVersionSaved;
     this.load();
   }
 
@@ -54,6 +61,8 @@ export class SkillRegistry {
   update(id: string, input: UpdateSkillInput): Skill {
     const existing = this.skills.get(id);
     if (!existing) throw new Error(`Skill "${id}" not found`);
+    // Capture snapshot of the existing skill before overwriting, for versioning
+    const priorSnapshot = { ...existing };
     const updated: Skill = {
       ...existing,
       ...(input.name !== undefined && { name: input.name }),
@@ -71,11 +80,18 @@ export class SkillRegistry {
       ...(input.outputSchema !== undefined && { outputSchema: input.outputSchema }),
       ...(input.returnFormat !== undefined && { returnFormat: input.returnFormat }),
       ...(input.chainable    !== undefined && { chainable:    input.chainable }),
+      ...(input.priorVersionId !== undefined && { priorVersionId: input.priorVersionId }),
+      ...(input.createdBy !== undefined && { createdBy: input.createdBy }),
+      ...(input.changelogNote !== undefined && { changelogNote: input.changelogNote }),
       version: (existing.version ?? 1) + 1,
       updatedAt: Date.now(),
     };
     this.skills.set(id, updated);
     this.save();
+    // Notify version store — pass the old snapshot so the version record captures the state prior to this update
+    if (this.onVersionSaved) {
+      this.onVersionSaved(priorSnapshot, input.priorVersionId, input.createdBy, input.changelogNote);
+    }
     return updated;
   }
 

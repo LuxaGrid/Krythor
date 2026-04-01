@@ -177,7 +177,15 @@ export class ModelRouter {
 
     // 5. Walk all enabled providers sorted by priority (desc), with default first
     //    when priorities are tied.  Skip providers with open circuits.
-    const enabled = this.registry.listEnabled();
+    let enabled = this.registry.listEnabled();
+
+    // Profile-aware filtering
+    if (context.enabledProviders && context.enabledProviders.length > 0) {
+      enabled = enabled.filter(p => context.enabledProviders!.includes(p.id));
+    }
+    if (context.localOnly) {
+      enabled = enabled.filter(p => p.type === 'ollama' || p.id.includes('local'));
+    }
     const configs = this.registry.listConfigs();
     const defaultProvider = this.registry.getDefaultProvider();
 

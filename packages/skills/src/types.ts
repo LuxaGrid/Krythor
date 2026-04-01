@@ -66,6 +66,12 @@ export interface Skill {
   returnFormat?: 'text' | 'json' | 'markdown';
   /** Whether this skill can accept input from another skill's output in a chain. */
   chainable?: boolean;
+  /** ID of the skill snapshot this version was forked/updated from. */
+  priorVersionId?: string;
+  /** Who created this version (user ID or agent ID). */
+  createdBy?: string;
+  /** Human-readable reason for this version. */
+  changelogNote?: string;
 }
 
 export interface CreateSkillInput {
@@ -84,6 +90,9 @@ export interface CreateSkillInput {
   outputSchema?: Record<string, unknown>;
   returnFormat?: 'text' | 'json' | 'markdown';
   chainable?: boolean;
+  priorVersionId?: string;
+  createdBy?: string;
+  changelogNote?: string;
 }
 
 export interface UpdateSkillInput {
@@ -102,6 +111,9 @@ export interface UpdateSkillInput {
   outputSchema?: Record<string, unknown>;
   returnFormat?: 'text' | 'json' | 'markdown';
   chainable?: boolean;
+  priorVersionId?: string;
+  createdBy?: string;
+  changelogNote?: string;
 }
 
 // ─── Skill lifecycle events ───────────────────────────────────────────────────
