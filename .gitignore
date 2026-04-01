@@ -142,6 +142,9 @@ vite.config.ts.timestamp-*
 !packages/control/dist/
 !packages/control/dist/**
 
+# Krythor runtime workspace (agent workspaces, created at runtime)
+workspace/
+
 # Krythor build artifacts
 krythor-dist/
 krythor-dist-win/

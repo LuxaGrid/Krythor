@@ -6,7 +6,7 @@
  * and promotion workflows.
  */
 
-import type { SafeCoreStore, SafeCoreMode, SafeCoreExecution, CreateSafeCoreExecutionInput } from '@krythor/memory';
+import type { SafeCoreStore, SafeCoreMode, SafeCoreExecution } from '@krythor/memory';
 import type { GuardEngine } from '@krythor/guard';
 import type { AuditLogger } from './AuditLogger.js';
 import type { ApprovalManager } from './ApprovalManager.js';
