@@ -2561,6 +2561,32 @@ else if (process.argv.includes('update')) {
     console.log('\x1b[36m╚══════════════════════════════════╝\x1b[0m');
     console.log('');
 
+    // ── Auto-stop gateway before updating ────────────────────────────────
+    // On Windows the installer moves ~/.krythor — it will fail with "Access
+    // denied" if the gateway process still holds file handles open.
+    if (await isKrythorRunning()) {
+      console.log('\x1b[33m▸ Stopping gateway before update…\x1b[0m');
+      try { await runStop(); } catch { /* ignore if already stopped */ }
+      // Give Windows time to release all file handles after SIGTERM
+      await new Promise(r => setTimeout(r, 2000));
+      // If still running, force-kill (Windows only)
+      if (process.platform === 'win32' && await isKrythorRunning()) {
+        try {
+          require('child_process').execSync(
+            `taskkill /F /IM node.exe /FI "WINDOWTITLE eq Krythor*"`,
+            { stdio: 'ignore' }
+          );
+          await new Promise(r => setTimeout(r, 1500));
+        } catch { /* process already gone */ }
+      }
+      if (await isKrythorRunning()) {
+        console.error('\x1b[31m✖ Gateway is still running. Close Krythor and try again.\x1b[0m');
+        process.exit(1);
+      }
+      console.log('\x1b[32m  Gateway stopped.\x1b[0m');
+      console.log('');
+    }
+
     if (isGitRepo) {
       // Source-clone install: git pull + pnpm install + pnpm build
       console.log('\x1b[33m▸ Source install detected — pulling latest code…\x1b[0m');
