@@ -16,7 +16,7 @@ Every agent run is visible. Every model choice is explained. Every action is gua
 
 No subscriptions to what you can run. No hidden cloud layer processing your data. No vendor telling you which model to use. Just a powerful, self-hosted AI platform you fully control.
 
-**Current version: v0.7.0**
+**Current version: v0.8.0**
 
 ---
 
@@ -45,12 +45,20 @@ Krythor is a local-first AI command platform. Run agents, route across models, e
 **Model Routing**
 - Connect any combination of OpenAI, Anthropic, Ollama, LM Studio, OpenRouter, Groq, Mistral, Google Gemini, AWS Bedrock, Venice, and any OpenAI-compatible API
 - Automatic fallback with circuit breaker and per-provider retry config
+- Named fallback chains — define ordered provider sequences scoped to a task type, agent, or skill
 - Provider priority ordering — configure which providers are tried first
 - Privacy routing — sensitive content automatically re-routed to local models
+
+**Operating Profiles**
+- Named operating modes that control which providers, skills, and tools are available
+- Three privacy modes: Local Only, Standard, and Unrestricted
+- Per-profile token caps and operation restrictions
+- Activate globally or per-agent; manage from the Profiles tab
 
 **Skills & Vault**
 - Reusable task templates with input/output schemas and structured routing hints
 - Skill chaining — chain skills sequentially, passing each step's output to the next
+- Skill evolution proposals — structured change proposals with approve/reject/apply workflow and full version history
 - Vault with 40 official skills across 6 collections: Real Estate, Finance, Productivity, Communication, Business Workflow, and Starter Pack
 - Local JSON import for community skills with live risk analysis before install
 
@@ -76,7 +84,7 @@ Krythor is a local-first AI command platform. Run agents, route across models, e
 
 **UI & Control**
 - Command Center — live animated scene with a Cybernetic Brain Planet and five agent entities that react to real-time activity
-- 27 tabs covering every subsystem; customizable tab bar with pinning
+- 30 tabs covering every subsystem; customizable tab bar with pinning
 - Ctrl+K command palette — fuzzy-search navigation across all tabs
 - Slash commands — `/new`, `/clear`, `/model`, `/agent`, `/think`, `/fast`, `/verbose`, and more
 - Token Cost Feed — live view of every inference with model, tokens, and estimated cost

@@ -1,3 +1,43 @@
+# AI Changelog — Pass 2026-03-30 (v0.8.0 — Controlled Skill Evolution, Fallback Chains, Operating Profiles)
+
+**Model:** Claude Sonnet 4.6
+**Pass type:** Feature — new subsystems across backend, persistence, and UI
+
+---
+
+## Summary (this pass)
+
+Three new subsystems added end-to-end (migration → store → routes → UI panel):
+
+### Controlled Skill Evolution Layer
+- `migration 019` — `skill_versions` and `skill_evolution_proposals` tables
+- `SkillVersionStore` — immutable snapshots of every skill at each version; snapshotted automatically on `SkillRegistry.update()`
+- `SkillEvolutionStore` — full proposal lifecycle: create → review (approve/reject) → apply → superseded
+- `evolution.ts` routes — CRUD proposals, review, apply, skill version list and restore
+- `SkillEvolutionPanel.tsx` — proposal list with status filter, detail view with before/after, approve/reject/apply actions, version history with restore per version
+
+### Provider Fallback Chains
+- `migration 019` — `fallback_chains` table
+- `FallbackChainStore` (`packages/models`) — named ordered provider chains; `findByScope()` resolves by specificity (skillId > agentId > taskType)
+- `ModelRouter` — profile-aware filtering: `enabledProviders` allowlist and `localOnly` from `RoutingContext`
+- `fallbackChains.ts` routes — full CRUD with guard checks on writes
+- `FallbackChainsPanel.tsx` — chain list, detail/edit with dynamic provider ordering, delete with confirm, create form with scoping
+
+### Operating Profiles
+- `migration 019` — `operating_profiles` and `active_profiles` tables
+- `OperatingProfileStore` (`packages/gateway`) — profiles with privacy mode, per-profile provider/skill/tool allowlists, per-context active profile tracking
+- `profiles.ts` routes — CRUD + `/active` + `/activate`; static routes registered before `/:id`
+- `ProfilesPanel.tsx` — list with active indicator, detail with activate/edit/delete, create/edit form with auto-slugify
+
+### Infrastructure fixes
+- `GuardEngine` — `getModelPolicy()` method for privacy-based routing decisions
+- `guard/types.ts` — added `skill:write` to `OperationType` union (was missing, caused typecheck failures in Evolution/Chain/Profile routes)
+
+### Version bump
+- All packages: 0.7.0 → 0.8.0
+
+---
+
 # AI Changelog — Pass 2026-03-28 (UI Bug Fixes + Auth Hardening)
 
 **Model:** Claude Sonnet 4.6
