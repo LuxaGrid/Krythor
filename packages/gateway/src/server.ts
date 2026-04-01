@@ -1764,6 +1764,11 @@ Always show the score explanation when presenting ranked results.`,
           pending:  allDevices.filter(d => d.status === 'pending').length,
         };
       })(),
+      safecore: {
+        totalRuns:        safeCoreStore.getDashboardStats().totalRuns,
+        pendingApprovals: safeCoreStore.getDashboardStats().pendingApprovals,
+        blockedActions:   safeCoreStore.getDashboardStats().blockedActions,
+      },
       // Location fields help users find their data — safe to expose on loopback-only endpoint.
       dataDir,
       configDir: join(dataDir, 'config'),

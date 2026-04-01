@@ -55,7 +55,7 @@ interface Props {
   onComplete: () => void;
 }
 
-type Step = 'welcome' | 'provider' | 'channels' | 'security_profile' | 'guard_policy' | 'privacy_routing' | 'workspace' | 'done';
+type Step = 'welcome' | 'provider' | 'channels' | 'security_profile' | 'guard_policy' | 'privacy_routing' | 'workspace' | 'safecore' | 'done';
 
 // ─── Provider metadata ────────────────────────────────────────────────────────
 //
@@ -930,7 +930,7 @@ export function OnboardingWizard({ onComplete }: Props) {
         if (workspacePath.trim()) {
           await patchAppConfig({ workspacePath: workspacePath.trim() });
         }
-        setStep('done');
+        setStep('safecore');
       } catch (err) {
         setSecurityError(err instanceof Error ? err.message : 'Failed to save workspace path');
       } finally {
@@ -973,7 +973,7 @@ export function OnboardingWizard({ onComplete }: Props) {
               {securitySaving ? 'Saving…' : 'Finish Setup →'}
             </button>
             <button
-              onClick={() => setStep('done')}
+              onClick={() => setStep('safecore')}
               className="px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 text-sm rounded-lg"
             >
               Skip
@@ -982,6 +982,52 @@ export function OnboardingWizard({ onComplete }: Props) {
           <p className="text-zinc-700 text-[10px] text-center">
             You can change the workspace path in Settings at any time.
           </p>
+        </div>
+      </div>
+    );
+  }
+
+  // ── safecore step ──────────────────────────────────────────────────────────
+  if (step === 'safecore') {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/95">
+        <div className="animate-[fadeIn_0.2s_ease-in] w-full max-w-md mx-4 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl p-8 space-y-6">
+          {/* Header */}
+          <div className="text-center space-y-2">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-950/60 border border-emerald-800/50 mb-2">
+              <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
+              <span className="text-[11px] font-semibold tracking-widest text-emerald-300 uppercase">Krythor SafeCore&#x2122;</span>
+            </div>
+            <h2 className="text-zinc-100 font-semibold text-lg">Every action is protected</h2>
+            <p className="text-zinc-500 text-sm">SafeCore evaluates every action before it runs — so you always know what's happening on your machine.</p>
+          </div>
+
+          {/* Four guarantees */}
+          <div className="space-y-3">
+            {[
+              { dot: 'bg-emerald-500', text: 'Every action is evaluated' },
+              { dot: 'bg-emerald-500', text: 'Every action is visible' },
+              { dot: 'bg-amber-400',   text: 'Every action can be approved' },
+              { dot: 'bg-zinc-400',    text: 'Nothing runs silently' },
+            ].map(({ dot, text }) => (
+              <div key={text} className="flex items-center gap-3 px-4 py-2.5 bg-zinc-800/60 border border-zinc-700/50 rounded-lg">
+                <span className={`inline-block w-2 h-2 rounded-full shrink-0 ${dot}`} />
+                <span className="text-sm text-zinc-300">{text}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Context note */}
+          <p className="text-[11px] text-zinc-600 text-center">
+            High-risk actions require your approval. Your data stays on your machine.
+          </p>
+
+          <button
+            onClick={() => setStep('done')}
+            className="w-full px-4 py-2.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-sm font-medium transition-colors border border-zinc-700"
+          >
+            Got it &#x2014; let's go
+          </button>
         </div>
       </div>
     );

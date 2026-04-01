@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { listAgents, listModels, type Health, type ModelInfo } from '../api.ts';
+import { listAgents, listModels, getSafeCoreDashboard, type Health, type ModelInfo, type SafeCoreDashboard } from '../api.ts';
 import { useAppConfig } from '../App.tsx';
 import { NotificationFeed } from './NotificationFeed.tsx';
 
@@ -10,9 +10,10 @@ interface Props {
   connected: boolean;
   onTabChange: (tab: Tab) => void;
   onAbout: () => void;
+  onSafeCoreClick?: () => void;
 }
 
-export function StatusBar({ health, connected, onTabChange, onAbout }: Props) {
+export function StatusBar({ health, connected, onTabChange, onAbout, onSafeCoreClick }: Props) {
   const { config, setConfig } = useAppConfig();
   const [agentName, setAgentName]           = useState<string | null>(null);
   const [showAgentPicker, setShowAgentPicker] = useState(false);
@@ -29,6 +30,16 @@ export function StatusBar({ health, connected, onTabChange, onAbout }: Props) {
       setAgentName(found?.name ?? null);
     }).catch(() => {});
   }, [config.selectedAgentId]);
+
+  const [safecoreDash, setSafecoreDash] = useState<SafeCoreDashboard | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetch = () => getSafeCoreDashboard().then(d => { if (!cancelled) setSafecoreDash(d); }).catch(() => {});
+    fetch();
+    const id = setInterval(fetch, 10_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
 
   const guardMode = health?.guard.defaultAction ?? 'allow';
   const noModel = health ? health.models.providerCount === 0 : false;
@@ -159,6 +170,34 @@ export function StatusBar({ health, connected, onTabChange, onAbout }: Props) {
           {guardMode.toUpperCase()}
         </span>
       </button>
+
+      {/* SafeCore chip */}
+      {(() => {
+        const pending  = safecoreDash?.pendingApprovals ?? 0;
+        const blocked  = safecoreDash?.blockedActions   ?? 0;
+        const dotCls   = pending > 0
+          ? 'bg-amber-400 animate-pulse'
+          : blocked > 0
+            ? 'bg-red-500'
+            : 'bg-emerald-500';
+        const label    = pending > 0
+          ? `SafeCore\u2122 \u00B7 ${pending} pending`
+          : blocked > 0
+            ? 'SafeCore\u2122 \u00B7 blocked'
+            : 'SafeCore\u2122';
+        const textCls  = pending > 0 ? 'text-amber-300' : blocked > 0 ? 'text-red-400' : 'text-zinc-400';
+        const borderCls = pending > 0 ? 'border-amber-800/60' : blocked > 0 ? 'border-red-800/60' : 'border-zinc-700';
+        return (
+          <button
+            onClick={onSafeCoreClick}
+            title="Krythor SafeCore\u2122 \u2014 Every action is evaluated"
+            className={`flex items-center gap-1.5 px-1.5 py-0.5 rounded border ${borderCls} bg-zinc-900 hover:opacity-80 transition-opacity focus:outline-none focus:ring-1 focus:ring-brand-600/50 shrink-0`}
+          >
+            <span className={`inline-block w-1.5 h-1.5 rounded-full ${dotCls}`} />
+            <span className={`text-[10px] font-medium ${textCls}`}>{label}</span>
+          </button>
+        );
+      })()}
 
       {/* Right side */}
       <div className="ml-auto flex items-center gap-2 shrink-0">

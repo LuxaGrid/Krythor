@@ -636,6 +636,28 @@ export function SettingsPanel() {
         {gatewayInfo?.capabilities && (
           <Row label="Capabilities" value={gatewayInfo.capabilities.join(', ')} />
         )}
+        {/* SafeCore */}
+        <div className="pt-2 border-t border-zinc-800/60 mt-2">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500" />
+            <span className="text-[10px] font-semibold tracking-widest text-zinc-500 uppercase">Krythor SafeCore&#x2122;</span>
+          </div>
+          <div className="space-y-1 text-[11px] text-zinc-500">
+            <div>Every action is evaluated before it runs.</div>
+            <div>High-risk actions require approval. Full audit trail. Nothing runs silently.</div>
+          </div>
+          {healthData?.safecore && (
+            <div className="mt-2 flex gap-3 text-[11px]">
+              <span className="text-zinc-500">{healthData.safecore.totalRuns} total runs</span>
+              {healthData.safecore.pendingApprovals > 0 && (
+                <span className="text-amber-400">{healthData.safecore.pendingApprovals} pending</span>
+              )}
+              {healthData.safecore.blockedActions > 0 && (
+                <span className="text-red-400">{healthData.safecore.blockedActions} blocked</span>
+              )}
+            </div>
+          )}
+        </div>
       </Section>
 
       {/* Plugins */}

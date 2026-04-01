@@ -141,6 +141,11 @@ export interface Health {
     lastRun?:   HeartbeatLastRun;
     warnings:   HeartbeatInsight[];
   };
+  safecore?: {
+    totalRuns:        number;
+    pendingApprovals: number;
+    blockedActions:   number;
+  };
 }
 
 // ── App Config ─────────────────────────────────────────────────────────────
