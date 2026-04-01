@@ -771,6 +771,19 @@ export class ChatChannelRegistry {
           }
         }
 
+        case 'webchat': {
+          // WebChat is built-in — just check that an agentId is set
+          const agentId = config.agentId ?? config.credentials['agentId'];
+          const latencyMs = Date.now() - start;
+          if (!agentId) {
+            const error = 'agentId not set — configure the agent for this webchat channel';
+            this.recordHealthCheck(channelId, false, error);
+            return { ok: false, latencyMs, error };
+          }
+          this.recordHealthCheck(channelId, true);
+          return { ok: true, latencyMs };
+        }
+
         default: {
           return { ok: false, latencyMs: 0, error: `Unsupported channel type: ${config.type}` };
         }

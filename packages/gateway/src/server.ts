@@ -63,6 +63,7 @@ import { nodeRegistry } from './ws/NodeRegistry.js';
 import { registerAgentAuthRoutes } from './routes/agentAuth.js';
 import { WebChatPairingStore } from './WebChatPairingStore.js';
 import { registerWebChatPairingRoutes } from './routes/webchatPairing.js';
+import { registerWebChatMessageRoute } from './routes/webchatMessage.js';
 import { registerTtsRoute } from './routes/tts.js';
 import { registerCanvasRoute } from './routes/canvas.js';
 import { registerUpdateRoute } from './routes/update.js';
@@ -2007,6 +2008,9 @@ Always show the score explanation when presenting ranked results.`,
 
   // Chat channel routes (inbound bot channels)
   registerChatChannelRoutes(app, chatChannelRegistry, inboundMgr);
+
+  // WebChat message route — dispatches /chat page messages through the webchat channel
+  registerWebChatMessageRoute(app, inboundMgr);
 
   // Discord inbound channel — legacy standalone wiring kept for /api/discord routes
   // and env-var-based configuration (env vars take precedence over registry).

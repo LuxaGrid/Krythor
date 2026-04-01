@@ -27,12 +27,13 @@ import { MattermostInbound } from './MattermostInbound.js';
 import { GoogleChatInbound } from './GoogleChatInbound.js';
 import { BlueBubblesInbound } from './BlueBubblesInbound.js';
 import { IMessageInbound } from './IMessageInbound.js';
+import { WebChatInbound } from './WebChatInbound.js';
 import type { SessionRouter } from './SessionRouter.js';
 import { AgentBindingRouter } from './AgentBindingRouter.js';
 import type { AgentBinding } from './AgentBindingRouter.js';
 import { logger } from './logger.js';
 
-type AnyInbound = DiscordInbound | TelegramInbound | WhatsAppInbound | SlackInbound | SignalInbound | MattermostInbound | GoogleChatInbound | BlueBubblesInbound | IMessageInbound;
+type AnyInbound = DiscordInbound | TelegramInbound | WhatsAppInbound | SlackInbound | SignalInbound | MattermostInbound | GoogleChatInbound | BlueBubblesInbound | IMessageInbound | WebChatInbound;
 
 export class InboundChannelManager {
   private readonly registry: ChatChannelRegistry;
@@ -417,6 +418,28 @@ export class InboundChannelManager {
           break;
         }
 
+        case 'webchat': {
+          const agentId = config.agentId ?? config.credentials['agentId'] ?? '';
+          if (!agentId) {
+            const err = 'WebChat channel missing required agentId';
+            this.errors.set(configId, err);
+            this.registry.recordHealthCheck(configId, false, err);
+            return { ok: false, error: err };
+          }
+          const webchat = new WebChatInbound(this.orchestrator, this.convStore, this.sessionRouter);
+          webchat.configure({
+            agentId,
+            enabled: true,
+            resetTriggers:  config.resetTriggers,
+            historyLimit:   config.historyLimit,
+            textChunkLimit: config.textChunkLimit,
+            chunkMode:      config.chunkMode,
+            senderRateLimit: config.senderRateLimit,
+          });
+          instance = webchat;
+          break;
+        }
+
         default: {
           const err = `Unknown channel type: ${(config as { type: string }).type}`;
           this.errors.set(configId, err);
@@ -459,6 +482,20 @@ export class InboundChannelManager {
     if (instance instanceof GoogleChatInbound) return instance.isRunning();
     if (instance instanceof BlueBubblesInbound) return instance.isRunning();
     if (instance instanceof IMessageInbound) return instance.isRunning();
+    if (instance instanceof WebChatInbound) return instance.isRunning();
     return false;
+  }
+
+  /**
+   * Return the active WebChatInbound instance, if one is running.
+   * Used by the /api/webchat/message route to dispatch messages.
+   */
+  getWebChatInbound(): WebChatInbound | null {
+    for (const instance of this.instances.values()) {
+      if (instance instanceof WebChatInbound && instance.isRunning()) {
+        return instance;
+      }
+    }
+    return null;
   }
 }
