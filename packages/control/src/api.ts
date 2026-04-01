@@ -1848,3 +1848,92 @@ export const getActiveProfile = (contextId?: string) =>
   req<{ active: OperatingProfile | null; profileId?: string }>('GET', `/profiles/active${contextId ? '?contextId=' + contextId : ''}`);
 export const activateProfile = (profileId: string, contextId?: string) =>
   req<{ ok: boolean; activeProfileId: string; contextId: string; profile: OperatingProfile }>('POST', '/profiles/activate', { profileId, contextId: contextId ?? 'global' });
+
+// ── SafeCore ───────────────────────────────────────────────────────────────
+export type SafeCoreMode = 'READ_ONLY' | 'WORKSPACE' | 'CONNECTOR_LIMITED' | 'ELEVATED_HOST';
+export type SafeCoreApprovalState = 'none' | 'pending' | 'approved' | 'denied';
+export type SafeCorePromotionState = 'none' | 'pending' | 'approved' | 'promoted' | 'rejected';
+export type SafeCoreResultState = 'pending' | 'running' | 'completed' | 'failed' | 'blocked' | 'promoted';
+export type SafeCorePolicyResult = 'allow' | 'deny' | 'warn' | 'require-approval';
+
+export interface SafeCoreExecution {
+  id: string;
+  runId?: string;
+  agentId?: string;
+  mode: SafeCoreMode;
+  requestedAction: string;
+  approvedAction?: string;
+  policyResult: SafeCorePolicyResult;
+  policyReason?: string;
+  filesystemScope?: { allowedPaths: string[]; workspaceDir?: string };
+  networkScope?: { allowedHosts: string[]; blockedHosts: string[] };
+  connectorScope?: { allowedConnectors: string[] };
+  approvalState: SafeCoreApprovalState;
+  promotionState: SafeCorePromotionState;
+  promotedAt?: number;
+  promotedBy?: string;
+  resultState: SafeCoreResultState;
+  output?: string;
+  filesTouched?: string[];
+  commandsRun?: { cmd: string; args: string[]; exitCode?: number }[];
+  networkAttempts?: { url: string; blocked: boolean }[];
+  errorMessage?: string;
+  startedAt: number;
+  completedAt?: number;
+  retainedUntil?: number;
+  createdAt: number;
+}
+
+export interface SafeCorePolicy {
+  mode: SafeCoreMode;
+  enabled: boolean;
+  requireApproval: boolean;
+  requirePromotionApproval: boolean;
+  allowedPaths: string[];
+  blockedCommands: string[];
+  allowedHosts: string[];
+  blockedHosts: string[];
+  allowedConnectors: string[];
+  retentionDays: number;
+  ephemeral: boolean;
+  updatedAt: number;
+}
+
+export interface SafeCoreDashboard {
+  totalRuns: number;
+  runsByMode: Record<SafeCoreMode, number>;
+  pendingApprovals: number;
+  pendingPromotions: number;
+  blockedActions: number;
+  recentRuns: SafeCoreExecution[];
+}
+
+export const getSafeCoreDashboard = () => req<SafeCoreDashboard>('GET', '/safecore/dashboard');
+export const listSafeCoreExecutions = (filter?: {
+  mode?: SafeCoreMode;
+  resultState?: SafeCoreResultState;
+  approvalState?: SafeCoreApprovalState;
+  promotionState?: SafeCorePromotionState;
+  limit?: number;
+}) => {
+  const params = filter ? new URLSearchParams(
+    Object.fromEntries(Object.entries(filter).filter(([, v]) => v != null).map(([k, v]) => [k, String(v)]))
+  ).toString() : '';
+  return req<{ executions: SafeCoreExecution[] }>('GET', `/safecore/executions${params ? '?' + params : ''}`);
+};
+export const getSafeCoreExecution = (id: string) =>
+  req<SafeCoreExecution>('GET', `/safecore/executions/${id}`);
+export const approveSafeCoreExecution = (id: string) =>
+  req<SafeCoreExecution>('POST', `/safecore/executions/${id}/approve`);
+export const denySafeCoreExecution = (id: string, reason?: string) =>
+  req<SafeCoreExecution>('POST', `/safecore/executions/${id}/deny`, reason ? { reason } : {});
+export const promoteSafeCoreExecution = (id: string) =>
+  req<SafeCoreExecution>('POST', `/safecore/executions/${id}/promote`);
+export const approvePromotion = (id: string) =>
+  req<SafeCoreExecution>('POST', `/safecore/executions/${id}/promote/approve`);
+export const rejectPromotion = (id: string, reason?: string) =>
+  req<SafeCoreExecution>('POST', `/safecore/executions/${id}/promote/reject`, reason ? { reason } : {});
+export const listSafeCorePolicies = () =>
+  req<{ policies: SafeCorePolicy[] }>('GET', '/safecore/policies');
+export const updateSafeCorePolicy = (mode: SafeCoreMode, patch: Partial<SafeCorePolicy>) =>
+  req<SafeCorePolicy>('PATCH', `/safecore/policies/${mode}`, patch);

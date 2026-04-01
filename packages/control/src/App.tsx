@@ -36,6 +36,7 @@ import { TalentMarketplacePanel } from './components/TalentMarketplacePanel.tsx'
 import { SkillEvolutionPanel } from './components/SkillEvolutionPanel.tsx';
 import { FallbackChainsPanel } from './components/FallbackChainsPanel.tsx';
 import { ProfilesPanel } from './components/ProfilesPanel.tsx';
+import { SafeCorePanel } from './components/SafeCorePanel.tsx';
 
 // ── App Config Context ─────────────────────────────────────────────────────
 interface AppConfigCtx {
@@ -49,7 +50,7 @@ export const AppConfigContext = createContext<AppConfigCtx>({
 export const useAppConfig = () => useContext(AppConfigContext);
 
 // ── Tabs ──────────────────────────────────────────────────────────────────
-type Tab = 'command' | 'agents' | 'skills' | 'memory' | 'models' | 'guard' | 'events' | 'mission' | 'command-center' | 'workflow' | 'dashboard' | 'settings' | 'logs' | 'config-editor' | 'custom-tools' | 'channels' | 'chat-channels' | 'file-browser' | 'audit' | 'workspace' | 'devices' | 'cron' | 'standing-orders' | 'peers' | 'token-cost' | 'vault' | 'talent-marketplace' | 'skill-evolution' | 'fallback-chains' | 'profiles';
+type Tab = 'command' | 'agents' | 'skills' | 'memory' | 'models' | 'guard' | 'events' | 'mission' | 'command-center' | 'workflow' | 'dashboard' | 'settings' | 'logs' | 'config-editor' | 'custom-tools' | 'channels' | 'chat-channels' | 'file-browser' | 'audit' | 'workspace' | 'devices' | 'cron' | 'standing-orders' | 'peers' | 'token-cost' | 'vault' | 'talent-marketplace' | 'skill-evolution' | 'fallback-chains' | 'profiles' | 'safecore';
 
 // Primary tabs — always visible
 const PRIMARY_TABS: { id: Tab; label: string; hint: string }[] = [
@@ -87,6 +88,7 @@ const ADVANCED_TABS: { id: Tab; label: string; hint: string }[] = [
   { id: 'skill-evolution',   label: 'Skill Evolution',  hint: 'Review and apply skill improvement proposals' },
   { id: 'fallback-chains',   label: 'Fallback Chains',  hint: 'Configure provider fallback chains for routing' },
   { id: 'profiles',          label: 'Profiles',         hint: 'Operating modes — control which providers and tools are available' },
+  { id: 'safecore',          label: 'SafeCore',         hint: 'Containment and execution control — review, approve, and promote contained runs' },
 ];
 
 const ALL_TABS = [...PRIMARY_TABS, ...ADVANCED_TABS];
@@ -882,6 +884,7 @@ function AppInner({ onTokenReady }: { onTokenReady: (token: string) => void }) {
           <div className={`h-full ${tab === 'skill-evolution'    ? 'block' : 'hidden'}`}><SkillEvolutionPanel /></div>
           <div className={`h-full ${tab === 'fallback-chains'    ? 'block' : 'hidden'}`}><FallbackChainsPanel /></div>
           <div className={`h-full ${tab === 'profiles'           ? 'block' : 'hidden'}`}><ProfilesPanel /></div>
+          <div className={`h-full ${tab === 'safecore'           ? 'block' : 'hidden'}`}><SafeCorePanel /></div>
         </div>
       </div>
     </AppConfigContext.Provider>
