@@ -142,6 +142,13 @@ export class HeartbeatEngine {
     }
     if (this.timer) return; // already running
 
+    // Seed lastRanAt so checks don't all fire on the very first tick (50–70s after start).
+    // Each check waits its full interval before running for the first time.
+    const now = Date.now();
+    for (const checkId of Object.keys(this.config.checks)) {
+      if (!this.lastRanAt.has(checkId)) this.lastRanAt.set(checkId, now);
+    }
+
     // Schedule first tick with jitter, then reschedule after each tick.
     const scheduleNext = (): void => {
       const intervalMs = POLL_INTERVAL_BASE_MS + Math.random() * POLL_INTERVAL_JITTER_MS;
