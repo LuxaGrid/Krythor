@@ -79,3 +79,6 @@ export type {
   SendPolicyConfig,
   ResolveSessionKeyParams,
 } from './db/SessionStore.js';
+
+export { SafeCoreStore } from './db/SafeCoreStore.js';
+export type { SafeCoreExecution, SafeCoreMode, SafeCorePolicy, SafeCoreDashboardStats, CreateSafeCoreExecutionInput, ApprovalState, PromotionState, ResultState, PolicyResult } from './db/SafeCoreStore.js';

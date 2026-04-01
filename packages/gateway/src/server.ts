@@ -103,6 +103,8 @@ import { FallbackChainStore } from '@krythor/models';
 import { registerEvolutionRoutes } from './routes/evolution.js';
 import { registerFallbackChainRoutes } from './routes/fallbackChains.js';
 import { registerProfileRoutes } from './routes/profiles.js';
+import { SafeCoreEngine } from './SafeCoreEngine.js';
+import { registerSafeCoreRoutes } from './routes/safecore.js';
 import { checkReadiness } from './readiness.js';
 import { validateProvidersConfig } from './ConfigValidator.js';
 import { SessionRouter } from './SessionRouter.js';
@@ -835,6 +837,11 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
 
   // OperatingProfileStore — persists operating profiles and active-profile assignments
   const operatingProfileStore = new OperatingProfileStore(memory.db);
+
+  // SafeCore — containment and execution control layer
+  const safeCoreStore = memory.safeCoreStore;
+  const safeCoreEngine = new SafeCoreEngine(safeCoreStore, guard, auditLogger, approvalManager,
+    (level, msg, meta) => logger[level](msg, meta ?? {}));
 
   // Register native talent_marketplace skill if not already present
   {
@@ -1592,6 +1599,7 @@ Always show the score explanation when presenting ranked results.`,
   if (memory) registerEvolutionRoutes(app, memory, skillRegistry, guard, approvalManager);
   registerFallbackChainRoutes(app, fallbackChainStore, guard, approvalManager);
   registerProfileRoutes(app, operatingProfileStore, guard, approvalManager);
+  registerSafeCoreRoutes(app, safeCoreStore, safeCoreEngine, guard, approvalManager);
   registerConfigRoute(app, join(dataDir, 'config'), guard, orchestrator, memory, heartbeatRef, approvalManager);
   registerConversationRoutes(app, convStore, guard, channelEmit, memory ?? undefined, approvalManager, janitorStatus);
   if (memory) registerSessionMaintenanceRoutes(app, memory);

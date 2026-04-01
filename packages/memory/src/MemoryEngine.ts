@@ -19,6 +19,7 @@ import { ConversationGroupStore } from './db/ConversationGroupStore.js';
 import { TalentStore } from './db/TalentStore.js';
 import { SkillVersionStore } from './db/SkillVersionStore.js';
 import { SkillEvolutionStore } from './db/SkillEvolutionStore.js';
+import { SafeCoreStore } from './db/SafeCoreStore.js';
 import type {
   CreateMemoryInput,
   UpdateMemoryInput,
@@ -59,6 +60,7 @@ export class MemoryEngine {
   readonly talentStore: TalentStore;
   readonly skillVersionStore: SkillVersionStore;
   readonly skillEvolutionStore: SkillEvolutionStore;
+  readonly safeCoreStore: SafeCoreStore;
   /** Directory containing memory.db and any .bak backup files. */
   readonly dbDir: string;
   private _decayInterval: ReturnType<typeof setInterval> | null = null;
@@ -92,6 +94,7 @@ export class MemoryEngine {
     this.talentStore = new TalentStore(this.db);
     this.skillVersionStore = new SkillVersionStore(this.db);
     this.skillEvolutionStore = new SkillEvolutionStore(this.db);
+    this.safeCoreStore = new SafeCoreStore(this.db);
 
     // Apply decay, clear session-scoped memories, and run retention janitor on
     // startup (non-blocking). Session scope is documented as "cleared on session

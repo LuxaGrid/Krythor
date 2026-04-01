@@ -37,7 +37,10 @@ export type OperationType =
   | 'skill:permission:memory:read'
   | 'skill:permission:skill:invoke'
   | 'skill:permission:internet:read'
-  | 'skill:write';
+  | 'skill:write'
+  | 'safecore:execute'
+  | 'safecore:promote'
+  | 'safecore:elevate';
 
 export type RiskLevel = 'low' | 'medium' | 'high' | 'critical';
 
@@ -150,6 +153,9 @@ export const OPERATION_RISK: Record<OperationType, RiskLevel> = {
   'skill:permission:skill:invoke':   'medium',
   'skill:permission:internet:read':  'low',
   'skill:write':                     'medium',
+  'safecore:execute':                'medium',
+  'safecore:promote':                'high',
+  'safecore:elevate':                'critical',
 };
 
 export const RISK_ORDER: Record<RiskLevel, number> = {
