@@ -37,7 +37,7 @@ Krythor is a local-first AI command platform. Run agents, route across models, e
 - Extended thinking — automatically enabled for complex runs on Anthropic providers
 
 **Memory**
-- Persistent semantic memory with BM25 + vector hybrid retrieval across sessions
+- Persistent semantic memory with TF-IDF retrieval across sessions; auto-upgrades to neural embeddings if Ollama is running locally
 - Importance scoring, recency decay, and automatic pruning
 - Named knowledge base, session memory, and agent-scoped memory
 - Memory janitor runs every 6 hours; configurable from the UI
@@ -73,10 +73,10 @@ Krythor is a local-first AI command platform. Run agents, route across models, e
 **SafeCore**
 - Containment and execution control layer — run agents in sandboxed execution tiers before anything touches the host
 - Four execution modes: Read Only, Workspace, Connector Controlled, Elevated Access
-- Approval workflow — executions requiring elevated access pause for operator review before proceeding
+- Approval workflow — executions requiring elevated access pause for operator review before proceeding; trust level (Safe / Needs Approval / High Risk) is inferred automatically from the action type and shown prominently in every approval modal
 - Promotion workflow — completed runs stay contained until an operator approves promotion to host
 - Per-mode policy configuration: allowed paths, blocked commands, allowed hosts, retention rules
-- Full audit trail: every action, file touched, command run, network attempt, approval, and promotion logged
+- Full audit trail: every action, file touched, command run, network attempt, approval, and promotion logged with trust-level indicators
 - 5-view UI: SafeCore Dashboard, Runs, Review Queue, Promotion Review, Activity
 
 **Guardrails & Safety**
@@ -87,7 +87,7 @@ Krythor is a local-first AI command platform. Run agents, route across models, e
 - External content isolation — web search and fetch results wrapped in safe markers to prevent prompt injection
 
 **Communication**
-- Chat channels: Telegram, Discord, WhatsApp, Slack, Signal, Mattermost, Google Chat, BlueBubbles, iMessage
+- Chat channels: Telegram, Discord, WhatsApp, Slack, Signal, Mattermost, Google Chat, BlueBubbles, iMessage, Web Chat (browser-based, session-persistent)
 - Outbound webhooks with HMAC-SHA256 signing; compatible with Zapier, n8n, Discord/Slack
 - Peer networking — gateway-to-gateway over LAN (UDP multicast) or Tailscale
 
@@ -136,7 +136,7 @@ pnpm install && pnpm run build
 node start.js
 ```
 
-Requires Node.js 20+ and pnpm (`npm install -g pnpm`).
+Requires Node.js 22+ and pnpm (`npm install -g pnpm`).
 
 ### Docker
 
@@ -271,6 +271,8 @@ pnpm run test       # run all tests
 pnpm run typecheck  # type-check all packages
 pnpm run lint       # lint all packages
 ```
+
+CI runs lint, typecheck, and the full test suite automatically on every push and PR to `main`.
 
 ---
 
