@@ -9,6 +9,9 @@
 import type Database from 'better-sqlite3';
 import { randomUUID } from 'crypto';
 
+/** Shape of a SQLite COUNT(*) result row. */
+interface CountRow { c: number }
+
 // ─── JSON deserialization helpers ─────────────────────────────────────────────
 
 function safeParseArray(val: unknown): string[] {
@@ -717,15 +720,15 @@ export class TalentStore {
     pendingOutreachCount: number;
     blockedCount: number;
   } {
-    const totalActive = (this.db.prepare(`SELECT COUNT(*) as c FROM talent_profiles WHERE status = 'active'`).get() as any).c;
-    const totalProfiles = (this.db.prepare(`SELECT COUNT(*) as c FROM talent_profiles`).get() as any).c;
-    const preferredCount = (this.db.prepare(`SELECT COUNT(*) as c FROM talent_profiles WHERE preferred = 1 AND status = 'active'`).get() as any).c;
+    const totalActive = (this.db.prepare(`SELECT COUNT(*) as c FROM talent_profiles WHERE status = 'active'`).get() as CountRow).c;
+    const totalProfiles = (this.db.prepare(`SELECT COUNT(*) as c FROM talent_profiles`).get() as CountRow).c;
+    const preferredCount = (this.db.prepare(`SELECT COUNT(*) as c FROM talent_profiles WHERE preferred = 1 AND status = 'active'`).get() as CountRow).c;
     const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
     const ninetyDaysAgo = Date.now() - 90 * 24 * 60 * 60 * 1000;
-    const recentlyUsedCount = (this.db.prepare(`SELECT COUNT(*) as c FROM talent_profiles WHERE last_used_at > ? AND status = 'active'`).get(thirtyDaysAgo) as any).c;
-    const recentlyContactedCount = (this.db.prepare(`SELECT COUNT(*) as c FROM talent_profiles WHERE last_contacted_at > ?`).get(ninetyDaysAgo) as any).c;
-    const pendingOutreachCount = (this.db.prepare(`SELECT COUNT(*) as c FROM talent_outreach WHERE status = 'pending'`).get() as any).c;
-    const blockedCount = (this.db.prepare(`SELECT COUNT(*) as c FROM talent_profiles WHERE status = 'blocked'`).get() as any).c;
+    const recentlyUsedCount = (this.db.prepare(`SELECT COUNT(*) as c FROM talent_profiles WHERE last_used_at > ? AND status = 'active'`).get(thirtyDaysAgo) as CountRow).c;
+    const recentlyContactedCount = (this.db.prepare(`SELECT COUNT(*) as c FROM talent_profiles WHERE last_contacted_at > ?`).get(ninetyDaysAgo) as CountRow).c;
+    const pendingOutreachCount = (this.db.prepare(`SELECT COUNT(*) as c FROM talent_outreach WHERE status = 'pending'`).get() as CountRow).c;
+    const blockedCount = (this.db.prepare(`SELECT COUNT(*) as c FROM talent_profiles WHERE status = 'blocked'`).get() as CountRow).c;
     return { totalActive, totalProfiles, preferredCount, recentlyUsedCount, recentlyContactedCount, pendingOutreachCount, blockedCount };
   }
 
@@ -769,7 +772,7 @@ export class TalentStore {
     else if (resolved === false) { sql += ` WHERE resolved_at IS NULL`; }
     sql += ` ORDER BY created_at DESC LIMIT ?`;
     params.push(Math.min(limit, 1000));
-    return (this.db.prepare(sql).all(...params) as any[]).map(this.rowToRequest.bind(this));
+    return (this.db.prepare(sql).all(...params) as RequestRow[]).map(this.rowToRequest.bind(this));
   }
 
   // ── Row mappers ───────────────────────────────────────────────────────────

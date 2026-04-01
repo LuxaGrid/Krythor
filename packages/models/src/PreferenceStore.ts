@@ -66,7 +66,7 @@ export class PreferenceStore {
           map.set(pref.taskType, pref);
         }
       }
-      console.info(`[PreferenceStore] Loaded ${map.size} preferences from ${this.path}`);
+      process.stderr.write(`[PreferenceStore] Loaded ${map.size} preferences from ${this.path}\n`);
       return map;
     } catch (err) {
       console.warn('[PreferenceStore] Failed to load preferences:', err instanceof Error ? err.message : err);

@@ -1,4 +1,5 @@
 import type { EmbeddingProvider, EmbeddingVector } from '../types.js';
+import { TfIdfEmbeddingProvider } from './TfIdfEmbeddingProvider.js';
 
 // ─── Stub Embedding Provider ──────────────────────────────────────────────────
 //
@@ -49,10 +50,15 @@ export class StubEmbeddingProvider implements EmbeddingProvider {
 
 export class EmbeddingRegistry {
   private providers = new Map<string, EmbeddingProvider>();
-  private activeKey = 'stub';
+  private activeKey = 'tfidf';
 
   constructor() {
+    // Register the stub (kept for backwards-compat / testing) but default to tfidf
     this.register(new StubEmbeddingProvider());
+    // TF-IDF provider: pure offline JS/TS, no external service required.
+    // Provides real term-frequency/IDF-based similarity rather than a hash pseudo-vector.
+    const tfidf = new TfIdfEmbeddingProvider();
+    this.register(tfidf);
   }
 
   register(provider: EmbeddingProvider): void {

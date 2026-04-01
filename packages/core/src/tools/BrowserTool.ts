@@ -62,7 +62,6 @@ function validateUrl(raw: string): { ok: boolean; reason?: string } {
 async function renderWithPuppeteer(url: string): Promise<string | null> {
   try {
     // Dynamic require so missing puppeteer doesn't crash the module
-    // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-assignment
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const puppeteer = require('puppeteer') as any;
     const browser = await puppeteer.launch({

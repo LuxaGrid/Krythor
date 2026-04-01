@@ -1,6 +1,31 @@
 import { randomUUID } from 'crypto';
 import type Database from 'better-sqlite3';
 
+/** Raw SQLite row shape for the operating_profiles table. */
+interface ProfileRow {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  icon: string | null;
+  color: string | null;
+  is_default: number;
+  enabled_providers: string | null;
+  enabled_skills: string | null;
+  enabled_tools: string | null;
+  fallback_chain_id: string | null;
+  privacy_mode: string;
+  restrictions: string | null;
+  status: string;
+  created_at: number;
+  updated_at: number;
+}
+
+/** Raw SQLite row shape for the active_profiles table. */
+interface ActiveProfileRow {
+  profile_id: string;
+}
+
 export interface OperatingProfile {
   id: string;
   name: string;
@@ -66,12 +91,12 @@ export class OperatingProfileStore {
   }
 
   getById(id: string): OperatingProfile | null {
-    const row = this.db.prepare(`SELECT * FROM operating_profiles WHERE id = ?`).get(id) as any;
+    const row = this.db.prepare(`SELECT * FROM operating_profiles WHERE id = ?`).get(id) as ProfileRow | undefined;
     return row ? this.rowToRecord(row) : null;
   }
 
   getBySlug(slug: string): OperatingProfile | null {
-    const row = this.db.prepare(`SELECT * FROM operating_profiles WHERE slug = ?`).get(slug) as any;
+    const row = this.db.prepare(`SELECT * FROM operating_profiles WHERE slug = ?`).get(slug) as ProfileRow | undefined;
     return row ? this.rowToRecord(row) : null;
   }
 
@@ -79,7 +104,7 @@ export class OperatingProfileStore {
     const sql = activeOnly
       ? `SELECT * FROM operating_profiles WHERE status = 'active' ORDER BY name`
       : `SELECT * FROM operating_profiles ORDER BY name`;
-    return (this.db.prepare(sql).all() as any[]).map(this.rowToRecord);
+    return (this.db.prepare(sql).all() as ProfileRow[]).map(this.rowToRecord);
   }
 
   update(id: string, patch: Partial<CreateProfileInput>): OperatingProfile {
@@ -132,7 +157,7 @@ export class OperatingProfileStore {
   // ── Active profile management ──────────────────────────────────────────────
 
   getActive(contextId: string): string | null {
-    const row = this.db.prepare(`SELECT profile_id FROM active_profiles WHERE context_id = ?`).get(contextId) as any;
+    const row = this.db.prepare(`SELECT profile_id FROM active_profiles WHERE context_id = ?`).get(contextId) as ActiveProfileRow | undefined;
     return row ? row.profile_id : null;
   }
 
@@ -148,7 +173,7 @@ export class OperatingProfileStore {
     this.db.prepare(`DELETE FROM active_profiles WHERE context_id = ?`).run(contextId);
   }
 
-  private rowToRecord(row: any): OperatingProfile {
+  private rowToRecord(row: ProfileRow): OperatingProfile {
     return {
       id: row.id,
       name: row.name,

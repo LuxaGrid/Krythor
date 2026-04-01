@@ -93,7 +93,6 @@ function loadPolicyFile(filePath: string): { ok: boolean; data: unknown; error?:
 
   // YAML — try js-yaml if available, else basic structural check
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const yaml = require('js-yaml') as { load: (s: string) => unknown };
     return { ok: true, data: yaml.load(raw) };
   } catch {

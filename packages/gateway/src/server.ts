@@ -268,7 +268,6 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
       try {
         if (selfSigned && (!existsSync(certPath) || !existsSync(keyPath))) {
           // Generate self-signed cert using selfsigned package
-          // eslint-disable-next-line @typescript-eslint/no-require-imports
           const selfsigned = require('selfsigned') as {
             generate: (attrs: Array<{ name: string; value: string }>, opts: Record<string, unknown>) => { cert: string; private: string };
           };
@@ -1071,7 +1070,14 @@ Always show the score explanation when presenting ranked results.`,
   //   <dataDir>/agents/<agentId>/auth-profiles.json
   const agentAuthStore = new AgentAuthProfileStore(dataDir);
 
-  const core = new KrythorCore([join(__dirname, '..', '..', '..', '..', 'SOUL.md')]);
+  const core = new KrythorCore([
+    // Installed mode: ~/.krythor/SOUL.md (user-customisable identity file)
+    join(homedir(), '.krythor', 'SOUL.md'),
+    // Dev mode: repo root SOUL.md — dist/ is 3 levels below the monorepo root
+    join(__dirname, '..', '..', '..', 'SOUL.md'),
+    // Data-dir fallback: Windows %LOCALAPPDATA%\Krythor\SOUL.md
+    join(dataDir, 'SOUL.md'),
+  ]);
   core.attachMemory(memory);
   core.attachModels(models);
   core.attachOrchestrator(orchestrator);

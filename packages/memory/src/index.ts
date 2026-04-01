@@ -22,6 +22,7 @@ export type { JanitorResult, DbJanitorConfig, LogFn } from './db/DbJanitor.js';
 export { applySchema } from './db/schema.js';
 export type { StartupCheckResult } from './db/schema.js';
 export { OllamaEmbeddingProvider } from './embedding/OllamaEmbeddingProvider.js';
+export { TfIdfEmbeddingProvider } from './embedding/TfIdfEmbeddingProvider.js';
 
 export type {
   MemoryEntry,

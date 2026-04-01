@@ -14,8 +14,18 @@ function makeMemory(): MemoryEngine {
 }
 
 describe('Embedding status detection', () => {
-  it('reports degraded when only stub provider is active', () => {
+  it('reports semantic when the default tfidf provider is active', () => {
     const mem = makeMemory();
+    const status = mem.embeddingStatus();
+    expect(status.degraded).toBe(false);
+    expect(status.semantic).toBe(true);
+    expect(status.providerName).toBe('tfidf');
+    mem.close();
+  });
+
+  it('reports degraded when stub provider is explicitly activated', () => {
+    const mem = makeMemory();
+    mem.setActiveEmbeddingProvider('stub');
     const status = mem.embeddingStatus();
     expect(status.degraded).toBe(true);
     expect(status.semantic).toBe(false);

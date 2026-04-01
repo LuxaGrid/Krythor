@@ -1,6 +1,18 @@
 import { randomUUID } from 'crypto';
 import type Database from 'better-sqlite3';
 
+/** Raw SQLite row for the skill_versions table. */
+interface SkillVersionRow {
+  id: string;
+  skill_id: string;
+  version: number;
+  snapshot: string;
+  prior_version_id: string | null;
+  created_by: string | null;
+  changelog_note: string | null;
+  created_at: number;
+}
+
 export interface SkillVersionRecord {
   id: string;
   skillId: string;
@@ -25,16 +37,16 @@ export class SkillVersionStore {
   }
 
   list(skillId: string): SkillVersionRecord[] {
-    return (this.db.prepare(`SELECT * FROM skill_versions WHERE skill_id = ? ORDER BY version DESC`).all(skillId) as any[])
+    return (this.db.prepare(`SELECT * FROM skill_versions WHERE skill_id = ? ORDER BY version DESC`).all(skillId) as SkillVersionRow[])
       .map(this.rowToRecord);
   }
 
   getByVersion(skillId: string, version: number): SkillVersionRecord | null {
-    const row = this.db.prepare(`SELECT * FROM skill_versions WHERE skill_id = ? AND version = ?`).get(skillId, version) as any;
+    const row = this.db.prepare(`SELECT * FROM skill_versions WHERE skill_id = ? AND version = ?`).get(skillId, version) as SkillVersionRow | undefined;
     return row ? this.rowToRecord(row) : null;
   }
 
-  private rowToRecord(row: any): SkillVersionRecord {
+  private rowToRecord(row: SkillVersionRow): SkillVersionRecord {
     return {
       id: row.id,
       skillId: row.skill_id,

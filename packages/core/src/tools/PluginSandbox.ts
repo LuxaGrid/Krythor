@@ -104,7 +104,6 @@ export class PluginSandbox {
 
   /** Fallback: run the plugin directly in-process (no sandbox). */
   private async runDirect(pluginPath: string, input: string): Promise<string> {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const plugin = require(pluginPath) as { run: (input: string) => Promise<string> };
     if (typeof plugin?.run !== 'function') {
       throw new Error('Plugin does not export a run() function');

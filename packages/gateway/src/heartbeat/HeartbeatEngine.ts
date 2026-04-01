@@ -597,8 +597,9 @@ export class HeartbeatEngine {
       // Fallback when no logger injected (e.g. in tests)
       const prefix = `[HeartbeatEngine] ${new Date().toISOString()}`;
       switch (level) {
-        case 'debug': console.debug(`${prefix} DEBUG ${message}`); break;
-        case 'info':  console.info(`${prefix} INFO  ${message}`); break;
+        case 'debug':
+        case 'info':
+          process.stderr.write(`${prefix} ${level.toUpperCase()} ${message}\n`); break;
         case 'warn':  console.warn(`${prefix} WARN  ${message}`); break;
         case 'error': console.error(`${prefix} ERROR ${message}`); break;
       }

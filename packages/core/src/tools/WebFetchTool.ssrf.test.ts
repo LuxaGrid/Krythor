@@ -1,8 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { WebFetchTool, checkSsrf, isPrivateIp, BLOCKED_HOSTNAMES } from './WebFetchTool.js'
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-
 // ─── SSRF protection unit tests ───────────────────────────────────────────────
 //
 // Tests for the SSRF guard added in ITEM C.

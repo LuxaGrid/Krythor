@@ -249,6 +249,8 @@ export class MemoryEngine {
    */
   embeddingStatus(): { semantic: boolean; providerName: string; degraded: boolean } {
     const provider = this.embeddings.getActive();
+    // 'stub' is the non-semantic hash-based placeholder; all other providers
+    // (tfidf, ollama:*, etc.) provide real similarity scoring.
     const isSemantic = provider.name !== 'stub' && provider.isAvailable();
     return {
       semantic:     isSemantic,

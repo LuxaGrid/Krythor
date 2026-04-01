@@ -11,8 +11,6 @@
  * kills the child if it exceeds the configured timeout.
  */
 
-/* eslint-disable @typescript-eslint/no-var-requires */
-
 import { resolve } from 'path';
 
 interface RunMessage {

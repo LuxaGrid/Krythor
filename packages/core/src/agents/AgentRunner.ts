@@ -1063,7 +1063,7 @@ export class AgentRunner {
             payload:   tracer.getSteps().find(s => s.id === planStep.id),
             timestamp: Date.now(),
           });
-          console.debug(`[Reasoning] Plan: ${agentPlan.taskSummary} (${agentPlan.steps.length} steps, ${agentPlan.complexity})`);
+          // debug trace — omitted at runtime to avoid console noise
         } catch (e) {
           tracer.failStep(planStep.id, (e as Error).message);
           // Planning failure is non-fatal — continue without plan

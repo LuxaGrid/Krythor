@@ -52,7 +52,7 @@ export function applySchema(db: Database.Database, dbFilePath?: string): Startup
       messages.map(m => `  ${m}`).join('\n')
     );
   } else {
-    console.log(`[db] Integrity check passed. Schema version: ${migration.userVersion}`);
+    process.stderr.write(`[db] Integrity check passed. Schema version: ${migration.userVersion}\n`);
   }
 
   return {

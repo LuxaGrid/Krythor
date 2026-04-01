@@ -174,7 +174,7 @@ export class LearningRecordStore {
 
     const total = byAge.changes + byCap.changes;
     if (total > 0) {
-      console.info(`[LearningRecordStore] Pruned ${total} records (age: ${byAge.changes}, cap: ${byCap.changes}).`);
+      process.stderr.write(`[LearningRecordStore] Pruned ${total} records (age: ${byAge.changes}, cap: ${byCap.changes}).\n`);
     }
   }
 

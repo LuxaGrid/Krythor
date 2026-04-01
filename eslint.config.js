@@ -48,4 +48,11 @@ module.exports = [
       '@typescript-eslint/no-unused-vars': 'off',
     },
   },
+  // Setup / wizard / CLI files — all console output is intentional terminal UI
+  {
+    files: ['packages/setup/src/**/*.ts'],
+    rules: {
+      'no-console': 'off',
+    },
+  },
 ];

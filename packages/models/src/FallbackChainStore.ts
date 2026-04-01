@@ -1,6 +1,20 @@
 import { randomUUID } from 'crypto';
 import type Database from 'better-sqlite3';
 
+/** Raw SQLite row for the fallback_chains table. */
+interface FallbackChainRow {
+  id: string;
+  name: string;
+  description: string | null;
+  task_type: string | null;
+  agent_id: string | null;
+  skill_id: string | null;
+  providers: string;
+  created_by: string | null;
+  created_at: number;
+  updated_at: number;
+}
+
 export interface FallbackChain {
   id: string;
   name: string;
@@ -49,7 +63,7 @@ export class FallbackChainStore {
   }
 
   getById(id: string): FallbackChain | null {
-    const row = this.db.prepare(`SELECT * FROM fallback_chains WHERE id = ?`).get(id) as any;
+    const row = this.db.prepare(`SELECT * FROM fallback_chains WHERE id = ?`).get(id) as FallbackChainRow | undefined;
     return row ? this.rowToRecord(row) : null;
   }
 
@@ -69,7 +83,7 @@ export class FallbackChainStore {
       params.push(filter.skillId);
     }
     sql += ` ORDER BY updated_at DESC`;
-    return (this.db.prepare(sql).all(...params) as any[]).map(this.rowToRecord);
+    return (this.db.prepare(sql).all(...params) as FallbackChainRow[]).map(this.rowToRecord);
   }
 
   /**
@@ -78,15 +92,15 @@ export class FallbackChainStore {
    */
   findByScope(scope: { taskType?: string; agentId?: string; skillId?: string }): FallbackChain | null {
     if (scope.skillId) {
-      const row = this.db.prepare(`SELECT * FROM fallback_chains WHERE skill_id = ? LIMIT 1`).get(scope.skillId) as any;
+      const row = this.db.prepare(`SELECT * FROM fallback_chains WHERE skill_id = ? LIMIT 1`).get(scope.skillId) as FallbackChainRow | undefined;
       if (row) return this.rowToRecord(row);
     }
     if (scope.agentId) {
-      const row = this.db.prepare(`SELECT * FROM fallback_chains WHERE agent_id = ? LIMIT 1`).get(scope.agentId) as any;
+      const row = this.db.prepare(`SELECT * FROM fallback_chains WHERE agent_id = ? LIMIT 1`).get(scope.agentId) as FallbackChainRow | undefined;
       if (row) return this.rowToRecord(row);
     }
     if (scope.taskType) {
-      const row = this.db.prepare(`SELECT * FROM fallback_chains WHERE task_type = ? LIMIT 1`).get(scope.taskType) as any;
+      const row = this.db.prepare(`SELECT * FROM fallback_chains WHERE task_type = ? LIMIT 1`).get(scope.taskType) as FallbackChainRow | undefined;
       if (row) return this.rowToRecord(row);
     }
     return null;
@@ -117,7 +131,7 @@ export class FallbackChainStore {
     this.db.prepare(`DELETE FROM fallback_chains WHERE id = ?`).run(id);
   }
 
-  private rowToRecord(row: any): FallbackChain {
+  private rowToRecord(row: FallbackChainRow): FallbackChain {
     return {
       id: row.id,
       name: row.name,

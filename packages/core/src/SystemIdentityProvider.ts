@@ -76,7 +76,7 @@ export class SystemIdentityProvider {
           loadedFrom: candidate,
           loadedAt: Date.now(),
         };
-        console.info(`[SystemIdentityProvider] Loaded SOUL.md v${this._meta.version} from ${candidate}`);
+        process.stderr.write(`[SystemIdentityProvider] Loaded SOUL.md v${this._meta.version} from ${candidate}\n`);
         return;
       } catch (err) {
         console.warn(

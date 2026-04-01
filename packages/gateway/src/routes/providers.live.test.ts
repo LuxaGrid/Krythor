@@ -47,7 +47,7 @@ describe('Live provider tests', () => {
     const content = data.content as Array<{ type: string; text?: string }>
     expect(Array.isArray(content)).toBe(true)
     expect(content.length).toBeGreaterThan(0)
-    console.log(`[live] Anthropic OK — ${latencyMs}ms, reply: "${content[0]?.text?.slice(0, 50)}"`)
+    console.warn(`[live] Anthropic OK — ${latencyMs}ms, reply: "${content[0]?.text?.slice(0, 50)}"`)
   }, TIMEOUT_MS + 5_000)
 
   it.skipIf(!OPENAI_KEY)('OpenAI — completes a minimal inference call', async () => {
@@ -73,7 +73,7 @@ describe('Live provider tests', () => {
     const choices = data.choices as Array<{ message: { content: string } }>
     expect(Array.isArray(choices)).toBe(true)
     expect(choices.length).toBeGreaterThan(0)
-    console.log(`[live] OpenAI OK — ${latencyMs}ms, reply: "${choices[0]?.message?.content?.slice(0, 50)}"`)
+    console.warn(`[live] OpenAI OK — ${latencyMs}ms, reply: "${choices[0]?.message?.content?.slice(0, 50)}"`)
   }, TIMEOUT_MS + 5_000)
 
   it.skipIf(!OLLAMA_URL)('Ollama — lists installed models and verifies API is reachable', async () => {
@@ -86,7 +86,7 @@ describe('Live provider tests', () => {
     expect(res.ok).toBe(true)
     const data = await res.json() as { models?: Array<{ name: string }> }
     expect(Array.isArray(data.models)).toBe(true)
-    console.log(`[live] Ollama OK — ${latencyMs}ms, ${data.models?.length ?? 0} model(s) installed`)
+    console.warn(`[live] Ollama OK — ${latencyMs}ms, ${data.models?.length ?? 0} model(s) installed`)
 
     // If at least one model is installed, run a quick inference
     if (data.models && data.models.length > 0) {
@@ -104,7 +104,7 @@ describe('Live provider tests', () => {
       expect(inferRes.ok).toBe(true)
       const inferData = await inferRes.json() as { message?: { content?: string } }
       expect(typeof inferData.message?.content).toBe('string')
-      console.log(`[live] Ollama inference OK — model=${modelName}, reply: "${inferData.message?.content?.slice(0, 50)}"`)
+      console.warn(`[live] Ollama inference OK — model=${modelName}, reply: "${inferData.message?.content?.slice(0, 50)}"`)
     }
   }, TIMEOUT_MS * 2)
 })

@@ -207,7 +207,7 @@ export class PluginLoader {
       this.loaded.push(loadedPlugin);
       this.records.push({ file, status: 'loaded', name, description: loadedPlugin.description, format: 'legacy' });
 
-      console.info(`[PluginLoader] Loaded plugin "${name}" from ${file}`);
+      process.stderr.write(`[PluginLoader] Loaded plugin "${name}" from ${file}\n`);
     }
 
     return this.loaded;
@@ -285,7 +285,7 @@ export class PluginLoader {
       format: 'sdk',
     });
 
-    console.info(`[PluginLoader] Loaded SDK plugin "${entry.id}" from ${file} (${toolsRegistered} tools, ${channels.length} channels, ${services.length} services)`);
+    process.stderr.write(`[PluginLoader] Loaded SDK plugin "${entry.id}" from ${file} (${toolsRegistered} tools, ${channels.length} channels, ${services.length} services)\n`);
   }
 
   /** Returns all currently loaded plugins (without reloading). */

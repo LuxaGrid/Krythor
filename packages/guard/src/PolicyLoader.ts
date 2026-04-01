@@ -140,7 +140,6 @@ export function loadPolicyFromYaml(filePath: string): PolicyConfig {
   if (filePath.endsWith('.yaml') || filePath.endsWith('.yml')) {
     // Try js-yaml; fall back to JSON if not available
     try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const jsYaml = require('js-yaml') as { load(s: string): unknown };
       doc = jsYaml.load(raw);
     } catch (_importErr) {

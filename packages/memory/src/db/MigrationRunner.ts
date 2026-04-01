@@ -62,7 +62,7 @@ export class MigrationRunner {
       backupPath = `${dbFilePath}.${ts}.bak`;
       try {
         copyFileSync(dbFilePath, backupPath);
-        console.log(`[migrations] Backup created: ${backupPath}`);
+        process.stderr.write(`[migrations] Backup created: ${backupPath}\n`);
       } catch (err) {
         // Backup failure is a hard stop — never migrate without a safety net.
         // If the backup cannot be written (disk full, permissions, etc.) it is safer
@@ -104,7 +104,7 @@ export class MigrationRunner {
         });
         apply();
         newlyApplied++;
-        console.log(`[migrations] Applied migration ${version}: ${name}`);
+        process.stderr.write(`[migrations] Applied migration ${version}: ${name}\n`);
       } catch (err) {
         throw new Error(
           `[migrations] Failed to apply migration ${version} (${name}): ${err instanceof Error ? err.message : String(err)}`

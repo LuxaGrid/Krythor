@@ -1,6 +1,27 @@
 import { randomUUID } from 'crypto';
 import type Database from 'better-sqlite3';
 
+/** Raw SQLite row for the skill_evolution_proposals table. */
+interface EvolutionProposalRow {
+  id: string;
+  source_skill_id: string | null;
+  proposed_name: string;
+  proposal_type: string;
+  summary: string;
+  rationale: string;
+  changes: string;
+  evidence: string | null;
+  confidence: number | null;
+  status: string;
+  created_by: string;
+  created_at: number;
+  reviewed_by: string | null;
+  reviewed_at: number | null;
+  review_note: string | null;
+  applied_at: number | null;
+  applied_skill_version: number | null;
+}
+
 export type ProposalType = 'new_skill' | 'update_skill' | 'prompt_refinement' | 'workflow_refinement' | 'parameter_tuning';
 export type ProposalStatus = 'pending' | 'approved' | 'rejected' | 'superseded' | 'applied';
 
@@ -63,7 +84,7 @@ export class SkillEvolutionStore {
   }
 
   getById(id: string): SkillEvolutionProposal | null {
-    const row = this.db.prepare(`SELECT * FROM skill_evolution_proposals WHERE id = ?`).get(id) as any;
+    const row = this.db.prepare(`SELECT * FROM skill_evolution_proposals WHERE id = ?`).get(id) as EvolutionProposalRow | undefined;
     return row ? this.rowToRecord(row) : null;
   }
 
@@ -79,7 +100,7 @@ export class SkillEvolutionStore {
       params.push(filter.sourceSkillId);
     }
     sql += ` ORDER BY created_at DESC`;
-    return (this.db.prepare(sql).all(...params) as any[]).map(this.rowToRecord);
+    return (this.db.prepare(sql).all(...params) as EvolutionProposalRow[]).map(this.rowToRecord);
   }
 
   review(id: string, decision: 'approved' | 'rejected', reviewedBy: string, reviewNote?: string): SkillEvolutionProposal {
@@ -111,7 +132,7 @@ export class SkillEvolutionStore {
     `).run(id);
   }
 
-  private rowToRecord(row: any): SkillEvolutionProposal {
+  private rowToRecord(row: EvolutionProposalRow): SkillEvolutionProposal {
     return {
       id: row.id,
       sourceSkillId: row.source_skill_id ?? undefined,

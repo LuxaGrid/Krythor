@@ -112,9 +112,10 @@ export class DbJanitor {
     if (this.logFn) {
       this.logFn(level, message, data);
     } else {
-      // Fallback to console when no logger injected (e.g. standalone use)
+      // Fallback when no logger injected (e.g. standalone use)
       if (level === 'error') console.error(message, data ?? '');
-      else console.log(message, data ?? '');
+      else if (level === 'warn') console.warn(message, data ?? '');
+      else process.stderr.write(`${message}${data ? ' ' + JSON.stringify(data) : ''}\n`);
     }
   }
 
