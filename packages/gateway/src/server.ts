@@ -411,7 +411,7 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
     if (!url.startsWith('/api/') && !url.startsWith('/ws/') && !url.startsWith('/v1/')) return;
     const host = req.headers['host'] ?? '';
     if (!allowedHosts.has(host)) {
-      reply.code(400).send({ error: 'Invalid Host header — requests must come from a known host' });
+      return reply.code(400).send({ error: 'Invalid Host header — requests must come from a known host' });
     }
   });
 
