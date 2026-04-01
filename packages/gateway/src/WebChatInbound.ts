@@ -198,7 +198,7 @@ export class WebChatInbound {
 
     try {
       // Slash command handling
-      const slashResult = await handleSlashCommand(text, {
+      const slashResult = handleSlashCommand(text, {
         agentId:       this.config.agentId,
         channel:       'webchat',
         senderId:      clientId,

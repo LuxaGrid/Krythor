@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { Fragment, useState, useEffect, useCallback, useRef } from 'react';
 import { getGatewayToken } from '../api.ts';
 import { PanelHeader } from './PanelHeader.tsx';
 import { TrustPill } from './TrustPill.tsx';
@@ -260,9 +260,8 @@ export function AuditPanel() {
             </thead>
             <tbody>
               {events.map(event => (
-                <>
+                <Fragment key={event.id}>
                   <tr
-                    key={event.id}
                     className="border-b border-zinc-900 hover:bg-zinc-800/30 cursor-pointer transition-colors"
                     onClick={() => setExpandedId(id => id === event.id ? null : event.id)}
                   >
@@ -293,7 +292,7 @@ export function AuditPanel() {
                     </td>
                   </tr>
                   {expandedId === event.id && (
-                    <tr key={`${event.id}-exp`} className="bg-zinc-900/60">
+                    <tr className="bg-zinc-900/60">
                       <td colSpan={6} className="px-4 py-3">
                         <pre className="text-[11px] text-zinc-300 font-mono whitespace-pre-wrap break-all overflow-auto max-h-64">
                           {JSON.stringify(event, null, 2)}
@@ -301,7 +300,7 @@ export function AuditPanel() {
                       </td>
                     </tr>
                   )}
-                </>
+                </Fragment>
               ))}
             </tbody>
           </table>
