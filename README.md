@@ -4,11 +4,17 @@
 
 <h1 align="center">Krythor</h1>
 
-<p align="center">Local-first AI command platform — agents, memory, model routing, guardrails, and a live Command Center.</p>
+<p align="center">Your AI. Your machine. Your rules.</p>
 
 ---
 
-Krythor runs entirely on your machine. No lock-in. No hidden cloud layer. Full visibility into everything your AI does.
+Most AI tools are black boxes. You send a message, something happens somewhere, and you get an answer back. You have no idea which model ran it, why it chose that response, what it remembered, or what it's allowed to do.
+
+**Krythor is the opposite.**
+
+Every agent run is visible. Every model choice is explained. Every action is guarded by rules you define. Memory persists across sessions and improves over time. You can connect any model — local or cloud — route between them automatically, and watch it all happen in real time inside a live Command Center running entirely on your machine.
+
+No subscriptions to what you can run. No hidden cloud layer processing your data. No vendor telling you which model to use. Just a powerful, self-hosted AI platform you fully control.
 
 **Current version: v0.7.0**
 
@@ -16,9 +22,7 @@ Krythor runs entirely on your machine. No lock-in. No hidden cloud layer. Full v
 
 ## What is Krythor?
 
-Krythor is a local-first AI system that gives you full control over how AI runs, remembers, and executes tasks.
-
-Run agents. Route across models. Persist memory. Enforce rules. Watch it all happen in real time inside a live animated Command Center — all from a single interface running entirely on your machine.
+Krythor is a local-first AI command platform. Run agents, route across models, enforce guardrails, and persist memory — all from a single interface on your own machine.
 
 ---
 
