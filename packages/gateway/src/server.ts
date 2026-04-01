@@ -891,6 +891,24 @@ Always show the score explanation when presenting ranked results.`,
     memory.setActiveEmbeddingProvider(embeddingProvider.name);
     logger.info('Ollama embedding provider wired', { endpoint: ollamaEndpoint, model: 'nomic-embed-text' });
     logger.info('Embedding provider registered', { provider: embeddingProvider.name });
+  } else {
+    // No Ollama model provider configured — still attempt a passive probe at the default
+    // Ollama URL. If Ollama is running locally we can upgrade to semantic embeddings
+    // without the user needing to configure an Ollama model provider. This is fire-and-forget
+    // and never blocks startup or throws.
+    const defaultOllamaUrl = 'http://localhost:11434';
+    const probeProvider = new OllamaEmbeddingProvider(defaultOllamaUrl, 'nomic-embed-text');
+    memory.registerEmbeddingProvider(probeProvider);
+    void probeProvider.probe().then((available) => {
+      if (available) {
+        memory.setActiveEmbeddingProvider(probeProvider.name);
+        logger.info('[embedding] Upgraded to Ollama nomic-embed-text', { endpoint: defaultOllamaUrl });
+      } else {
+        logger.info('[embedding] Ollama not available, using tfidf', { probedUrl: defaultOllamaUrl });
+      }
+    }).catch(() => {
+      logger.info('[embedding] Ollama not available, using tfidf', { probedUrl: defaultOllamaUrl });
+    });
   }
 
   // Log provider load status at startup — surface actionable warnings when no providers
