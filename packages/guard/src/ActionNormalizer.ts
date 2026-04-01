@@ -59,7 +59,7 @@ const KNOWN_OPERATIONS = new Set<string>([
   'agent:run', 'agent:create', 'agent:delete',
   'command:execute',
   'provider:add', 'provider:delete',
-  'skill:execute', 'skill:create', 'skill:delete',
+  'skill:execute', 'skill:create', 'skill:delete', 'skill:write',
   'network:fetch', 'network:search',
   'webhook:call',
 ]);

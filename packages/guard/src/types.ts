@@ -36,7 +36,8 @@ export type OperationType =
   | 'skill:permission:memory:write'
   | 'skill:permission:memory:read'
   | 'skill:permission:skill:invoke'
-  | 'skill:permission:internet:read';
+  | 'skill:permission:internet:read'
+  | 'skill:write';
 
 export type RiskLevel = 'low' | 'medium' | 'high' | 'critical';
 
@@ -148,6 +149,7 @@ export const OPERATION_RISK: Record<OperationType, RiskLevel> = {
   'skill:permission:memory:read':    'low',
   'skill:permission:skill:invoke':   'medium',
   'skill:permission:internet:read':  'low',
+  'skill:write':                     'medium',
 };
 
 export const RISK_ORDER: Record<RiskLevel, number> = {

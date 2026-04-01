@@ -33,6 +33,9 @@ import { PeersPanel } from './components/PeersPanel.tsx';
 import { TokenCostPanel } from './components/TokenCostPanel.tsx';
 import { VaultPanel } from './components/VaultPanel.tsx';
 import { TalentMarketplacePanel } from './components/TalentMarketplacePanel.tsx';
+import { SkillEvolutionPanel } from './components/SkillEvolutionPanel.tsx';
+import { FallbackChainsPanel } from './components/FallbackChainsPanel.tsx';
+import { ProfilesPanel } from './components/ProfilesPanel.tsx';
 
 // ── App Config Context ─────────────────────────────────────────────────────
 interface AppConfigCtx {
@@ -46,7 +49,7 @@ export const AppConfigContext = createContext<AppConfigCtx>({
 export const useAppConfig = () => useContext(AppConfigContext);
 
 // ── Tabs ──────────────────────────────────────────────────────────────────
-type Tab = 'command' | 'agents' | 'skills' | 'memory' | 'models' | 'guard' | 'events' | 'mission' | 'command-center' | 'workflow' | 'dashboard' | 'settings' | 'logs' | 'config-editor' | 'custom-tools' | 'channels' | 'chat-channels' | 'file-browser' | 'audit' | 'workspace' | 'devices' | 'cron' | 'standing-orders' | 'peers' | 'token-cost' | 'vault' | 'talent-marketplace';
+type Tab = 'command' | 'agents' | 'skills' | 'memory' | 'models' | 'guard' | 'events' | 'mission' | 'command-center' | 'workflow' | 'dashboard' | 'settings' | 'logs' | 'config-editor' | 'custom-tools' | 'channels' | 'chat-channels' | 'file-browser' | 'audit' | 'workspace' | 'devices' | 'cron' | 'standing-orders' | 'peers' | 'token-cost' | 'vault' | 'talent-marketplace' | 'skill-evolution' | 'fallback-chains' | 'profiles';
 
 // Primary tabs — always visible
 const PRIMARY_TABS: { id: Tab; label: string; hint: string }[] = [
@@ -81,6 +84,9 @@ const ADVANCED_TABS: { id: Tab; label: string; hint: string }[] = [
   { id: 'standing-orders', label: 'Standing Orders',  hint: 'Persistent agent authorization programs and structured instruction injection' },
   { id: 'peers',           label: 'Peers',             hint: 'Connected gateway peers — LAN mDNS discovery and manual registration' },
   { id: 'talent-marketplace', label: 'Marketplace',     hint: 'Manage trusted vendors, talent, and contractors' },
+  { id: 'skill-evolution',   label: 'Skill Evolution',  hint: 'Review and apply skill improvement proposals' },
+  { id: 'fallback-chains',   label: 'Fallback Chains',  hint: 'Configure provider fallback chains for routing' },
+  { id: 'profiles',          label: 'Profiles',         hint: 'Operating modes — control which providers and tools are available' },
 ];
 
 const ALL_TABS = [...PRIMARY_TABS, ...ADVANCED_TABS];
@@ -873,6 +879,9 @@ function AppInner({ onTokenReady }: { onTokenReady: (token: string) => void }) {
           <div className={`h-full ${tab === 'token-cost'      ? 'block' : 'hidden'}`}><TokenCostPanel /></div>
           <div className={`h-full ${tab === 'vault'           ? 'block' : 'hidden'}`}><VaultPanel /></div>
           <div className={`h-full ${tab === 'talent-marketplace' ? 'block' : 'hidden'}`}><TalentMarketplacePanel /></div>
+          <div className={`h-full ${tab === 'skill-evolution'    ? 'block' : 'hidden'}`}><SkillEvolutionPanel /></div>
+          <div className={`h-full ${tab === 'fallback-chains'    ? 'block' : 'hidden'}`}><FallbackChainsPanel /></div>
+          <div className={`h-full ${tab === 'profiles'           ? 'block' : 'hidden'}`}><ProfilesPanel /></div>
         </div>
       </div>
     </AppConfigContext.Provider>

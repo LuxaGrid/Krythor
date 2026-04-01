@@ -1731,3 +1731,120 @@ export const listMarketplaceRequests = () => req<MarketplaceRequest[]>('GET', '/
 export const createMarketplaceRequest = (data: unknown) => req<MarketplaceRequest>('POST', '/marketplace-requests', data);
 export const resolveMarketplaceRequest = (id: string, talentId: string) =>
   req<MarketplaceRequest>('PATCH', `/marketplace-requests/${id}/resolve`, { talentId });
+
+// ── Skill Evolution ────────────────────────────────────────────────────────
+export type ProposalType = 'new_skill' | 'update_skill' | 'prompt_refinement' | 'workflow_refinement' | 'parameter_tuning';
+export type ProposalStatus = 'pending' | 'approved' | 'rejected' | 'superseded' | 'applied';
+
+export interface SkillEvolutionProposal {
+  id: string;
+  sourceSkillId?: string;
+  proposedName: string;
+  proposalType: ProposalType;
+  summary: string;
+  rationale: string;
+  changes: Record<string, unknown>;
+  evidence?: Record<string, unknown>;
+  confidence?: number;
+  status: ProposalStatus;
+  createdBy: string;
+  createdAt: number;
+  reviewedBy?: string;
+  reviewedAt?: number;
+  appliedAt?: number;
+  appliedSkillVersion?: number;
+  reviewNote?: string;
+}
+
+export interface SkillVersion {
+  id: string;
+  skillId: string;
+  version: number;
+  snapshot: Record<string, unknown>;
+  createdAt: number;
+  createdBy?: string;
+  changelogNote?: string;
+}
+
+export const listEvolutionProposals = (filter?: { status?: ProposalStatus; skillId?: string }) => {
+  const params = new URLSearchParams();
+  if (filter?.status) params.set('status', filter.status);
+  if (filter?.skillId) params.set('skillId', filter.skillId);
+  const qs = params.toString();
+  return req<{ proposals: SkillEvolutionProposal[] }>('GET', `/skills/evolution/proposals${qs ? '?' + qs : ''}`);
+};
+export const getEvolutionProposal = (id: string) =>
+  req<SkillEvolutionProposal>('GET', `/skills/evolution/proposals/${id}`);
+export const createEvolutionProposal = (data: unknown) =>
+  req<SkillEvolutionProposal>('POST', '/skills/evolution/proposals', data);
+export const reviewEvolutionProposal = (id: string, decision: 'approved' | 'rejected', reviewNote?: string) =>
+  req<SkillEvolutionProposal>('POST', `/skills/evolution/proposals/${id}/review`, { decision, reviewNote, reviewedBy: 'user' });
+export const applyEvolutionProposal = (id: string) =>
+  req<{ proposal: SkillEvolutionProposal; skill: unknown }>('POST', `/skills/evolution/proposals/${id}/apply`);
+export const listSkillVersions = (skillId: string) =>
+  req<{ versions: SkillVersion[] }>('GET', `/skills/${skillId}/versions`);
+export const restoreSkillVersion = (skillId: string, version: number) =>
+  req<{ skill: unknown; restoredFromVersion: number }>('POST', `/skills/${skillId}/versions/${version}/restore`);
+
+// ── Fallback Chains ────────────────────────────────────────────────────────
+export interface FallbackProvider {
+  providerId: string;
+  modelId?: string;
+  priority: number;
+  conditions?: Record<string, unknown>;
+}
+
+export interface FallbackChain {
+  id: string;
+  name: string;
+  description?: string;
+  providers: FallbackProvider[];
+  taskType?: string;
+  agentId?: string;
+  skillId?: string;
+  isDefault: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export const listFallbackChains = (filter?: { taskType?: string; agentId?: string; skillId?: string }) => {
+  const params = filter ? new URLSearchParams(Object.fromEntries(Object.entries(filter).filter(([, v]) => v != null) as [string, string][])).toString() : '';
+  return req<{ chains: FallbackChain[] }>('GET', `/fallback-chains${params ? '?' + params : ''}`);
+};
+export const getFallbackChain = (id: string) => req<FallbackChain>('GET', `/fallback-chains/${id}`);
+export const createFallbackChain = (data: unknown) => req<FallbackChain>('POST', '/fallback-chains', data);
+export const updateFallbackChain = (id: string, data: unknown) => req<FallbackChain>('PATCH', `/fallback-chains/${id}`, data);
+export const deleteFallbackChain = (id: string) => req<void>('DELETE', `/fallback-chains/${id}`);
+
+// ── Operating Profiles ─────────────────────────────────────────────────────
+export type PrivacyMode = 'local_only' | 'standard' | 'unrestricted';
+
+export interface OperatingProfile {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  icon?: string;
+  color?: string;
+  isDefault: boolean;
+  enabledProviders?: string[];
+  enabledSkills?: string[];
+  enabledTools?: string[];
+  fallbackChainId?: string;
+  privacyMode: PrivacyMode;
+  restrictions?: { maxTokensPerRequest?: number; disallowedOperations?: string[] };
+  status: 'active' | 'inactive';
+  createdAt: number;
+  updatedAt: number;
+}
+
+export const listProfiles = (activeOnly?: boolean) =>
+  req<{ profiles: OperatingProfile[] }>('GET', `/profiles${activeOnly ? '?activeOnly=true' : ''}`);
+export const getProfile = (id: string) => req<OperatingProfile>('GET', `/profiles/${id}`);
+export const createProfile = (data: unknown) => req<OperatingProfile>('POST', '/profiles', data);
+export const updateProfile = (id: string, data: unknown) => req<OperatingProfile>('PATCH', `/profiles/${id}`, data);
+export const deleteProfile = (id: string) => req<void>('DELETE', `/profiles/${id}`);
+export const getActiveProfile = (contextId?: string) =>
+  req<{ active: OperatingProfile | null; profileId?: string }>('GET', `/profiles/active${contextId ? '?contextId=' + contextId : ''}`);
+export const activateProfile = (profileId: string, contextId?: string) =>
+  req<{ ok: boolean; activeProfileId: string; contextId: string; profile: OperatingProfile }>('POST', '/profiles/activate', { profileId, contextId: contextId ?? 'global' });
