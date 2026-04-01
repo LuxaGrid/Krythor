@@ -14,71 +14,138 @@ Krythor runs entirely on your machine. No lock-in. No hidden cloud layer. Full v
 
 ---
 
-## What it does
+## What is Krythor?
 
-- **Agents** — create, run, and monitor AI agents with configurable models, memory, tools, and safety profiles
-- **Reasoning Engine** — structured plan → execute → verify loop; every agent run is decomposed into observable steps with timing and token tracking
-- **Memory** — persistent semantic memory with importance scoring, decay, and recall across sessions
-- **Model Routing** — connect any combination of OpenAI, Anthropic, Ollama, and other providers; automatic fallback and circuit breaking
-- **Guardrails** — policy engine with approval flows, audit logging, and per-operation risk classification
-- **Skills** — reusable task templates with input/output schemas and multi-skill chaining
-- **Vault** — 40 official skills across 6 collections (Real Estate, Finance, Productivity, Communication, Business Workflow, Starter Pack)
-- **Talent Marketplace** — private directory for vendors, contractors, referral agents, and service providers with trust scoring and explainable ranking
-- **Chat Channels** — WhatsApp, webhooks, and other inbound/outbound communication channels
-- **Peers** — gateway-to-gateway networking over LAN or Tailscale
-- **Devices** — managed device registry with approval-based pairing
-- **Command Center** — live animated dashboard showing agents, memory, models, and system health in real time
+Krythor is a local-first AI system that gives you full control over how AI runs, remembers, and executes tasks.
+
+Run agents. Route across models. Persist memory. Enforce rules. Watch it all happen in real time inside a live animated Command Center — all from a single interface running entirely on your machine.
+
+---
+
+## Features
+
+**Agents & Reasoning**
+- Custom agents with configurable system prompts, model preferences, memory scope, tool permissions, and safety profiles
+- Structured reasoning loop — every agent run is decomposed into a plan before execution; each step is tracked with timing and token counts; output is verified against the original task for complex runs
+- Agent chaining and handoffs — agents can spawn sub-agents and delegate tasks
+- Agent health monitoring — automatic pausing when stability drops; auto-recovery after a configurable window
+- Per-agent token budgets — daily and per-session caps with clean error responses when exceeded
+- Extended thinking — automatically enabled for complex runs on Anthropic providers
+
+**Memory**
+- Persistent semantic memory with BM25 + vector hybrid retrieval across sessions
+- Importance scoring, recency decay, and automatic pruning
+- Named knowledge base, session memory, and agent-scoped memory
+- Memory janitor runs every 6 hours; configurable from the UI
+
+**Model Routing**
+- Connect any combination of OpenAI, Anthropic, Ollama, LM Studio, OpenRouter, Groq, Mistral, Google Gemini, AWS Bedrock, Venice, and any OpenAI-compatible API
+- Automatic fallback with circuit breaker and per-provider retry config
+- Provider priority ordering — configure which providers are tried first
+- Privacy routing — sensitive content automatically re-routed to local models
+
+**Skills & Vault**
+- Reusable task templates with input/output schemas and structured routing hints
+- Skill chaining — chain skills sequentially, passing each step's output to the next
+- Vault with 40 official skills across 6 collections: Real Estate, Finance, Productivity, Communication, Business Workflow, and Starter Pack
+- Local JSON import for community skills with live risk analysis before install
+
+**Talent Marketplace**
+- Private directory for vendors, contractors, referral agents, and service providers
+- AI-powered ranking across 7 dimensions: category fit, geography, trust score, response history, recency, urgency boost, and preferred status — every result is fully explained
+- Trust scores computed from response rate, job outcomes, recency, and preferred flag; automatically recalculated daily
+- Outreach queue with approval-gated sending; full interaction and outcome logging
+- 6-view UI: Dashboard, Directory, Talent Detail, Request Matcher, Outreach Queue, Create/Edit form
+- Native `talent_marketplace` skill for agent-driven workflows
+
+**Guardrails & Safety**
+- Policy engine with allow / deny / warn / require-approval per operation
+- Three safety modes: Guarded (deny-by-default), Balanced (warn), Power User (unrestricted)
+- Approval flow — pauses execution and surfaces a modal; streaming-compatible
+- Audit log — append-only NDJSON + SQLite; queryable via CLI and Audit tab
+- External content isolation — web search and fetch results wrapped in safe markers to prevent prompt injection
+
+**Communication**
+- Chat channels: Telegram, Discord, WhatsApp, Slack, Signal, Mattermost, Google Chat, BlueBubbles, iMessage
+- Outbound webhooks with HMAC-SHA256 signing; compatible with Zapier, n8n, Discord/Slack
+- Peer networking — gateway-to-gateway over LAN (UDP multicast) or Tailscale
+
+**UI & Control**
+- Command Center — live animated scene with a Cybernetic Brain Planet and five agent entities that react to real-time activity
+- 27 tabs covering every subsystem; customizable tab bar with pinning
+- Ctrl+K command palette — fuzzy-search navigation across all tabs
+- Slash commands — `/new`, `/clear`, `/model`, `/agent`, `/think`, `/fast`, `/verbose`, and more
+- Token Cost Feed — live view of every inference with model, tokens, and estimated cost
+- Real-time event stream, live log viewer, config editor, and file browser
+
+**Infrastructure**
+- Cron job scheduler with cron expressions, fixed intervals, and one-shot timestamps
+- Standing orders — persistent directives injected into every matching agent run
+- Named API keys with scoped permissions
+- Full config export/import — agents, guard policies, cron jobs, channels, skills (keys redacted)
+- Daemon mode, auto-update checks, backup command, and Doctor + Repair diagnostics
+- Docker support with health endpoints
 
 ---
 
 ## Install
 
-**One-line install (recommended):**
+### One-line install (recommended)
 
+No Node.js required — the installer includes a bundled runtime.
+
+**Mac / Linux:**
 ```bash
-# Mac / Linux
 curl -fsSL https://raw.githubusercontent.com/LuxaGrid/Krythor/main/install.sh | bash
-
-# Windows (PowerShell)
-irm https://raw.githubusercontent.com/LuxaGrid/Krythor/main/install.ps1 | iex
 ```
 
-No Node.js required — the installer handles everything.
+**Windows (PowerShell):**
+```powershell
+iwr https://raw.githubusercontent.com/LuxaGrid/Krythor/main/install.ps1 | iex
+```
 
-**From source:**
+Then start Krythor and open `http://localhost:47200`.
+
+### From source
 
 ```bash
 git clone https://github.com/LuxaGrid/Krythor
 cd Krythor
-pnpm install
-pnpm run build
-pnpm start
+pnpm install && pnpm run build
+node start.js
 ```
 
-Requires Node.js 20+ and pnpm.
+Requires Node.js 20+ and pnpm (`npm install -g pnpm`).
+
+### Docker
+
+```bash
+docker compose up -d
+```
+
+### Updates
+
+```bash
+krythor update
+```
+
+Settings, memory, and data are always preserved.
 
 ---
 
 ## Getting started
 
-1. Install and run `pnpm start` (or use the installed launcher)
-2. Open `http://localhost:47200` in your browser
-3. Go to **Models** → add at least one provider (Ollama for local, or paste an API key for cloud)
-4. Open **Chat** and send your first message
+1. Install using the one-line installer above
+2. Run `krythor` (or `Krythor.bat` on Windows)
+3. Open `http://localhost:47200`
+4. Go to **Models** → add at least one provider (Ollama for free local use, or paste an API key for cloud)
+5. Open **Chat** and send your first message
 
 ---
 
-## Requirements
+## Supported providers
 
-- Node.js 20 or 24 (auto-managed by installer)
-- Windows, Mac, or Linux
-- 4 GB RAM minimum; 8 GB recommended for local models
-
----
-
-## Providers
-
-| Provider | Type | Key required |
+| Provider | Type | API key |
 |---|---|---|
 | Ollama | Local | No |
 | LM Studio | Local | No |
@@ -86,8 +153,72 @@ Requires Node.js 20+ and pnpm.
 | Anthropic | Cloud | Yes |
 | Google Gemini | Cloud | Yes |
 | Mistral | Cloud | Yes |
+| Groq | Cloud | Yes |
 | OpenRouter | Cloud | Yes |
+| Venice | Cloud | Yes |
+| AWS Bedrock | Cloud | Yes |
 | Any OpenAI-compatible | Local/Cloud | Optional |
+
+---
+
+## Keyboard shortcuts
+
+| Shortcut | Action |
+|---|---|
+| Ctrl+K | Open command palette |
+| Enter | Send message |
+| Shift+Enter | New line in message input |
+| `/` | Begin a slash command |
+| Escape | Dismiss palette or dropdown |
+| Ctrl+S | Save in Config Editor |
+
+---
+
+## Slash commands
+
+| Command | Action |
+|---|---|
+| `/new` | Start a new conversation |
+| `/clear` | Clear the current conversation |
+| `/compact` | Summarize and compact old turns |
+| `/model [id]` | Switch the active model |
+| `/agent [id]` | Switch the active agent |
+| `/think [level]` | Set extended thinking: off · minimal · low · medium · high · xhigh · adaptive |
+| `/fast [on\|off]` | Toggle fast routing preference |
+| `/verbose [on\|full\|off]` | Control tool-call verbosity |
+| `/subagents` | List or manage spawned sub-agents |
+| `/devices` | List connected peer devices |
+
+---
+
+## Troubleshooting
+
+**"krythor: command not found"**
+Open a new terminal window. The PATH update requires a fresh session. On Mac/Linux you can also run `source ~/.bashrc` (or `~/.zshrc`).
+
+**Dashboard won't load at http://localhost:47200**
+Make sure Krythor is running — you should see activity in the terminal. If it crashed, re-run `krythor`.
+
+**"No AI provider configured"**
+Add at least one provider in the **Models** tab before sending commands.
+
+**Windows SmartScreen warning on the .exe installer**
+Expected — the installer is unsigned. Click "More info" → "Run anyway". The PowerShell one-liner is a more transparent alternative.
+
+**"Gateway did not start"**
+Run the built-in repair check:
+```bash
+krythor repair
+```
+
+**Command Center shows "DEMO MODE"**
+Normal when no real agent runs are active. Switches to live data automatically once the gateway processes events.
+
+**Moving to a new machine**
+```bash
+krythor backup        # on the old machine
+krythor repair --fix  # on the new machine after install and restore
+```
 
 ---
 
@@ -104,7 +235,7 @@ packages/
   skills/    — Skill registry, runner, composer, vault
   setup/     — Installer and first-run wizard
 vault/       — Official skill catalog (40 skills)
-native/      — Platform-specific native binaries
+docs/        — Full documentation
 ```
 
 ---
@@ -112,12 +243,12 @@ native/      — Platform-specific native binaries
 ## Development
 
 ```bash
-pnpm install       # install dependencies
-pnpm run build     # build all packages
-pnpm run dev       # start gateway in dev mode
-pnpm run test      # run all tests
-pnpm run typecheck # type-check all packages
-pnpm run lint      # lint all packages
+pnpm install        # install dependencies
+pnpm run build      # build all packages
+pnpm run dev        # start gateway in dev mode
+pnpm run test       # run all tests
+pnpm run typecheck  # type-check all packages
+pnpm run lint       # lint all packages
 ```
 
 ---
