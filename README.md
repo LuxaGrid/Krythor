@@ -70,14 +70,20 @@ Krythor is a local-first AI command platform. Run agents, route across models, e
 - 6-view UI: Dashboard, Directory, Talent Detail, Request Matcher, Outreach Queue, Create/Edit form
 - Native `talent_marketplace` skill for agent-driven workflows
 
-**SafeCore**
+**Krythor SafeCore™**
+
+*Every action is evaluated. Every action is visible. Every action can be approved. Nothing runs silently.*
+
 - Containment and execution control layer — run agents in sandboxed execution tiers before anything touches the host
 - Four execution modes: Read Only, Workspace, Connector Controlled, Elevated Access
-- Approval workflow — executions requiring elevated access pause for operator review before proceeding; trust level (Safe / Needs Approval / High Risk) is inferred automatically from the action type and shown prominently in every approval modal
+- Trust level inferred automatically on every action — Safe, Needs Approval, or High Risk — shown throughout the UI
+- Approval workflow — high-risk and policy-flagged actions pause for operator review before proceeding; approval modal shows exactly what will happen and why
 - Promotion workflow — completed runs stay contained until an operator approves promotion to host
 - Per-mode policy configuration: allowed paths, blocked commands, allowed hosts, retention rules
 - Full audit trail: every action, file touched, command run, network attempt, approval, and promotion logged with trust-level indicators
-- 5-view UI: SafeCore Dashboard, Runs, Review Queue, Promotion Review, Activity
+- Persistent SafeCore™ status chip in the UI status bar — live state always visible
+- SafeCore health included in `/health` endpoint: total runs, pending approvals, blocked actions
+- 5-view SafeCore Console: Dashboard, Runs, Review Queue, Promotion Review, Activity
 
 **Guardrails & Safety**
 - Policy engine with allow / deny / warn / require-approval per operation
