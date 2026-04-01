@@ -208,6 +208,13 @@ function MessageBubble({ msg, isLast, onRegenerate }: MessageBubbleProps) {
 
         {/* Meta row */}
         <div className={`flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
+          {/* SafeCore evaluation indicator — left side of meta row */}
+          {msg.role === 'assistant' && !msg.streaming && (
+            <span className="text-[10px] text-zinc-600 flex items-center gap-1 mr-2">
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500/70" />
+              SafeCore™
+            </span>
+          )}
           <MessageTime ts={msg.createdAt} />
           {msg.modelId && <span className="text-zinc-700 text-xs">[{msg.modelId}]</span>}
           {!isUser && msg.selectionReason && !msg.streaming && (

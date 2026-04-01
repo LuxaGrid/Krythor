@@ -855,6 +855,21 @@ export function SafeCorePanel() {
 
   return (
     <div className="flex flex-col h-full bg-zinc-950 text-white overflow-hidden">
+      {/* SafeCore Console brand header */}
+      <div className="px-4 pt-4 pb-3 border-b border-zinc-800/60">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
+              <span className="text-[11px] font-semibold tracking-widest text-zinc-400 uppercase">Krythor SafeCore™</span>
+            </div>
+            <p className="text-[11px] text-zinc-600">
+              Every action is evaluated · Every action is visible · Every action can be approved · Nothing runs silently
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* Inner tab bar */}
       <div className="flex items-stretch border-b border-zinc-800 shrink-0 px-4 pt-2">
         {INNER_TABS.map(t => (

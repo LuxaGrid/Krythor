@@ -88,7 +88,7 @@ const ADVANCED_TABS: { id: Tab; label: string; hint: string }[] = [
   { id: 'skill-evolution',   label: 'Skill Evolution',  hint: 'Review and apply skill improvement proposals' },
   { id: 'fallback-chains',   label: 'Fallback Chains',  hint: 'Configure provider fallback chains for routing' },
   { id: 'profiles',          label: 'Profiles',         hint: 'Operating modes — control which providers and tools are available' },
-  { id: 'safecore',          label: 'SafeCore',         hint: 'Containment and execution control — review, approve, and promote contained runs' },
+  { id: 'safecore',          label: 'SafeCore™',        hint: 'Krythor SafeCore™ — Every action is evaluated, visible, and approvable. Nothing runs silently.' },
 ];
 
 const ALL_TABS = [...PRIMARY_TABS, ...ADVANCED_TABS];
@@ -834,6 +834,7 @@ function AppInner({ onTokenReady }: { onTokenReady: (token: string) => void }) {
           connected={connected}
           onTabChange={setTab}
           onAbout={() => setShowAbout(s => !s)}
+          onSafeCoreClick={() => setTab('safecore')}
         />
         <DegradedBanner />
 
