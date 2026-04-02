@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   listChatChannelProviders,
   listChatChannels,
+  listAgents,
   saveChatChannel,
   updateChatChannel,
   deleteChatChannel,
@@ -10,6 +11,7 @@ import {
   type ChatChannelProviderMeta,
   type ChatChannelWithStatus,
   type ChatChannelStatus,
+  type Agent,
 } from '../api.ts';
 import { PanelHeader } from './PanelHeader.tsx';
 import { ChannelPolicyPanel } from './ChannelPolicyPanel.tsx';
@@ -87,12 +89,13 @@ interface ModalState {
 
 interface AddEditModalProps {
   providers: ChatChannelProviderMeta[];
+  agents: Agent[];
   initial: ModalState;
   onClose: () => void;
   onSave: (state: ModalState) => Promise<void>;
 }
 
-function AddEditModal({ providers, initial, onClose, onSave }: AddEditModalProps) {
+function AddEditModal({ providers, agents, initial, onClose, onSave }: AddEditModalProps) {
   const [state, setState] = useState<ModalState>(initial);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -225,6 +228,21 @@ function AddEditModal({ providers, initial, onClose, onSave }: AddEditModalProps
               ))}
             </div>
           )}
+
+          {/* Agent selector */}
+          <div>
+            <label className="text-xs text-zinc-500 block mb-1">Agent</label>
+            <select
+              value={state.agentId}
+              onChange={e => setState(s => ({ ...s, agentId: e.target.value }))}
+              className={INPUT_CLS}
+            >
+              <option value="">— select agent —</option>
+              {agents.map(a => (
+                <option key={a.id} value={a.id}>{a.name}</option>
+              ))}
+            </select>
+          </div>
 
           {/* Enabled toggle */}
           <div className="flex items-center gap-2">
@@ -461,6 +479,7 @@ function EmptyStateProviders({ providers, onAddForProvider }: EmptyStateProps) {
 export function ChatChannelsPanel() {
   const [providers, setProviders] = useState<ChatChannelProviderMeta[]>([]);
   const [channels, setChannels]   = useState<ChatChannelWithStatus[]>([]);
+  const [agents, setAgents]       = useState<Agent[]>([]);
   const [loading, setLoading]     = useState(true);
 
   // Modal
@@ -482,12 +501,14 @@ export function ChatChannelsPanel() {
 
   const load = useCallback(async () => {
     try {
-      const [{ providers: prov }, { channels: ch }] = await Promise.all([
+      const [{ providers: prov }, { channels: ch }, agentList] = await Promise.all([
         listChatChannelProviders(),
         listChatChannels(),
+        listAgents(),
       ]);
       setProviders(prov);
       setChannels(ch);
+      setAgents(agentList);
     } catch { /* ignore */ }
     finally { setLoading(false); }
   }, []);
@@ -660,6 +681,7 @@ export function ChatChannelsPanel() {
       {modal && (
         <AddEditModal
           providers={providers}
+          agents={agents}
           initial={modal}
           onClose={() => setModal(null)}
           onSave={handleSave}
