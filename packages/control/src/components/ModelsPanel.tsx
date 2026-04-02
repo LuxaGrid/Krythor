@@ -47,9 +47,37 @@ interface ProviderPreset {
   dashboardUrl?: string;
   dashboardLabel?: string;
   color: string;
+  /** Use a native provider type instead of 'openai-compat' when saving */
+  nativeType?: string;
 }
 
 const PROVIDER_PRESETS: ProviderPreset[] = [
+  {
+    id: 'openai',
+    label: 'OpenAI',
+    tagline: 'GPT-4o, o3, o1 — OpenAI\'s flagship models',
+    endpoint: 'https://api.openai.com/v1',
+    authMethod: 'api_key',
+    models: ['gpt-4o', 'gpt-4o-mini', 'o3-mini', 'o1', 'gpt-4-turbo'],
+    keyHint: 'Starts with sk-',
+    dashboardUrl: 'https://platform.openai.com/api-keys',
+    dashboardLabel: 'Open OpenAI Platform ↗',
+    color: '#10b981',
+    nativeType: 'openai',
+  },
+  {
+    id: 'anthropic',
+    label: 'Anthropic',
+    tagline: 'Claude Opus, Sonnet, Haiku — best for reasoning and code',
+    endpoint: 'https://api.anthropic.com',
+    authMethod: 'api_key',
+    models: ['claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001'],
+    keyHint: 'Starts with sk-ant-',
+    dashboardUrl: 'https://console.anthropic.com/settings/keys',
+    dashboardLabel: 'Open Anthropic Console ↗',
+    color: '#f97316',
+    nativeType: 'anthropic',
+  },
   {
     id: 'groq',
     label: 'Groq',
@@ -267,7 +295,7 @@ export function ModelsPanel({ health }: Props) {
     try {
       const p = await addProvider({
         name:       presetModal.label,
-        type:       'openai-compat',
+        type:       (presetModal.nativeType ?? 'openai-compat') as Provider['type'],
         endpoint:   presetModal.endpoint,
         authMethod: 'api_key',
         apiKey:     trimmed,
