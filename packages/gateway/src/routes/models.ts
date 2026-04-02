@@ -173,6 +173,8 @@ export function registerModelRoutes(
       memory.registerEmbeddingProvider(ep);
       memory.setActiveEmbeddingProvider(ep.name);
     }
+    // Fetch the live model list immediately after adding — fire-and-forget
+    models.refreshModels(config.id).catch(() => {});
     emit?.('provider_added', { id: config.id, name: config.name, type: config.type });
     return reply.code(201).send(maskProviderConfig(config));
   });
@@ -339,19 +341,6 @@ export function registerModelRoutes(
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Not found';
       return reply.code(404).send({ error: msg });
-    }
-  });
-
-  // ── Existing provider utility routes ──────────────────────────────────────
-
-  // POST /api/models/providers/:id/refresh — re-query available models from provider
-  app.post<{ Params: { id: string } }>('/api/models/providers/:id/refresh', async (req, reply) => {
-    try {
-      const modelList = await models.refreshModels(req.params.id);
-      return reply.send({ models: modelList });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Error';
-      return reply.code(500).send({ error: msg });
     }
   });
 

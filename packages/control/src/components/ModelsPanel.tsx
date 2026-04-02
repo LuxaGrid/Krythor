@@ -302,9 +302,11 @@ export function ModelsPanel({ health }: Props) {
         isDefault:  false,
         models:     presetModal.models,
       } as Omit<Provider, 'id'>);
-      setProviders(prev => [...prev, p]);
       setPresetModal(null);
       setPresetKey('');
+      // Fetch live model list then reload so the full catalog appears immediately
+      await refreshModels(p.id).catch(() => {});
+      await load();
     } catch (err) {
       setPresetError(err instanceof Error ? err.message : 'Failed to add provider');
     } finally {
@@ -332,9 +334,11 @@ export function ModelsPanel({ health }: Props) {
         ...(form.authMethod === 'api_key' && form.apiKey && { apiKey: form.apiKey }),
         isDefault:  form.isDefault,
       } as Omit<Provider, 'id'>);
-      setProviders(prev => [...prev, p]);
       setForm({ name: '', type: 'ollama', endpoint: '', authMethod: 'none', apiKey: '', isDefault: false });
       setShowAdd(false);
+      // Fetch live model list then reload so the full catalog appears immediately
+      await refreshModels(p.id).catch(() => {});
+      await load();
     } catch (err) {
       setAddError(err instanceof Error ? err.message : 'Failed to add provider');
     } finally {
