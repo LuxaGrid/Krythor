@@ -1798,6 +1798,15 @@ Always show the score explanation when presenting ranked results.`,
     reply.code(result.ready ? 200 : 503).send(result);
   });
 
+  // POST /api/shutdown — graceful self-termination.
+  // Auth-gated. Used by the installer/updater to stop the gateway before
+  // renaming the install directory on Windows (avoids "Access denied" errors).
+  app.post('/api/shutdown', async (_req, reply) => {
+    await reply.send({ ok: true, message: 'Shutting down' });
+    logger.info('[gateway] Graceful shutdown requested via API');
+    setTimeout(() => process.exit(0), 300);
+  });
+
   // GET /api/presence — list connected clients and nodes.
   app.get('/api/presence', async () => {
     const entries = presenceStore.list();
