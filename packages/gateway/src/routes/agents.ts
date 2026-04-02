@@ -650,10 +650,14 @@ export function registerAgentRoutes(
   app.get<{ Params: { id: string } }>('/api/agents/:id/health', async (req, reply) => {
     const agent = orchestrator.getAgent(req.params.id);
     if (!agent) return reply.code(404).send({ error: 'Agent not found' });
-    return reply.send({
-      ...orchestrator.healthGate.snapshot(req.params.id),
-      thresholds: orchestrator.healthGate.thresholds(),
-    });
+    try {
+      return reply.send({
+        ...orchestrator.healthGate.snapshot(req.params.id),
+        thresholds: orchestrator.healthGate.thresholds(),
+      });
+    } catch {
+      return reply.code(500).send({ error: 'Failed to retrieve agent health snapshot' });
+    }
   });
 
   // POST /api/agents/:id/health/unpause — operator override to clear a pause

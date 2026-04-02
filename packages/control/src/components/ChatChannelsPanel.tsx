@@ -529,7 +529,7 @@ export function ChatChannelsPanel() {
     const provider = providers.find(p => p.type === state.selectedType || p.id === state.selectedType);
     if (state.mode === 'add') {
       const saved = await saveChatChannel({
-        id: crypto.randomUUID(),
+        id: provider?.id ?? state.selectedType,
         type: state.selectedType,
         displayName: state.name,
         credentials: state.credentials,
