@@ -541,6 +541,15 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
       (reply as unknown as ChainableReply).type('text/html').send(injected);
     };
 
+    // sw.js must never be cached by the browser — always fetch fresh so the
+    // service worker update cycle fires on every page load.
+    app.get('/sw.js', (_req, reply) => {
+      const swPath = join(uiDist, 'sw.js');
+      if (!existsSync(swPath)) { reply.code(404).send('sw.js not found'); return; }
+      (reply as unknown as { header: (k: string, v: string) => unknown }).header('Cache-Control', 'no-store, no-cache, must-revalidate');
+      (reply as unknown as { type: (t: string) => { send: (b: unknown) => void } }).type('application/javascript').send(readFileSync(swPath, 'utf-8'));
+    });
+
     // Explicit root route
     app.get('/', (req, reply) => serveIndex(req, reply as unknown as Parameters<typeof serveIndex>[1]));
 
