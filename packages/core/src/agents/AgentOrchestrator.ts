@@ -374,7 +374,9 @@ export class AgentOrchestrator extends EventEmitter {
     this.checkRateLimit(agentId);
     this.healthGate.check(agentId);
     await this.acquireSlot();
-    const agent = this.registry.getById(agentId);
+    const agent = this.registry.getById(agentId)
+      ?? this.registry.list().find(a => a.name === agentId)
+      ?? null;
     if (!agent) throw new Error(`Agent "${agentId}" not found`);
 
     const emit = (event: AgentEvent): void => {
@@ -411,7 +413,9 @@ export class AgentOrchestrator extends EventEmitter {
     this.checkRateLimit(agentId);
     this.healthGate.check(agentId);
     await this.acquireSlot();
-    const agent = this.registry.getById(agentId);
+    const agent = this.registry.getById(agentId)
+      ?? this.registry.list().find(a => a.name === agentId)
+      ?? null;
     if (!agent) throw new Error(`Agent "${agentId}" not found`);
 
     const emit = (event: AgentEvent): void => {
