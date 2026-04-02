@@ -228,6 +228,17 @@ export function registerModelRoutes(
     }
   });
 
+  // POST /api/models/providers/:id/refresh — fetch live model list from provider API
+  app.post<{ Params: { id: string } }>('/api/models/providers/:id/refresh', async (req, reply) => {
+    try {
+      const refreshed = await models.refreshModels(req.params.id);
+      return reply.send({ models: refreshed, count: refreshed.length });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Refresh failed';
+      return reply.code(400).send({ error: msg });
+    }
+  });
+
   // DELETE /api/models/providers/:id
   app.delete<{ Params: { id: string } }>('/api/models/providers/:id', async (req, reply) => {
     try {

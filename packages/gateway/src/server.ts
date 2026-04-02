@@ -2205,6 +2205,15 @@ Always show the score explanation when presenting ranked results.`,
       host: GATEWAY_HOST,
       port: GATEWAY_PORT,
     });
+
+    // Refresh model lists from all providers on startup (non-blocking).
+    // This ensures the dropdown always shows the full live catalog rather
+    // than only the models that were configured at provider-add time.
+    setImmediate(() => {
+      for (const provider of models.listProviders()) {
+        models.refreshModels(provider.id).catch(() => {});
+      }
+    });
   });
 
   // Expose a checkReady helper so index.ts can log readiness after listen()
