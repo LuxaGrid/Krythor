@@ -430,7 +430,7 @@ interface EmptyStateProps {
 
 function EmptyStateProviders({ providers, onAddForProvider }: EmptyStateProps) {
   return (
-    <div className="flex flex-col items-center justify-center h-full gap-6 px-8 py-12">
+    <div className="flex flex-col items-center gap-6 px-8 py-8 overflow-y-auto">
       <div className="text-center">
         <p className="text-zinc-400 text-sm font-medium">No chat channels configured</p>
         <p className="text-zinc-600 text-xs mt-1">Connect a bot to let users chat through Telegram, Discord, or WhatsApp.</p>
