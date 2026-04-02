@@ -73,7 +73,9 @@ async function req<T>(method: string, path: string, body?: unknown, baseOverride
   const data = await res.json();
   if (!res.ok) {
     // Surface structured hint if available
-    const msg = data?.hint ? `${data.error}: ${data.hint}` : (data?.error ?? `HTTP ${res.status}`);
+    const msg = data?.hint
+      ? `${data.error}: ${data.hint}`
+      : (data?.message ?? data?.error ?? `HTTP ${res.status}`);
     throw new Error(msg);
   }
   return data as T;
