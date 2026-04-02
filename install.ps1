@@ -122,7 +122,7 @@ if (Test-Path $InstallDir) {
   $InstallDirNorm = $InstallDir.ToLower().TrimEnd('\')
   $procs = Get-WmiObject Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue
   foreach ($proc in $procs) {
-    $cmdLine = ($proc.CommandLine ?? '').ToLower()
+    $cmdLine = if ($proc.CommandLine) { $proc.CommandLine.ToLower() } else { '' }
     if ($cmdLine -like "*$InstallDirNorm*") {
       try {
         Stop-Process -Id $proc.ProcessId -Force -ErrorAction SilentlyContinue
@@ -217,7 +217,7 @@ if "%1"=="update" (
   timeout /t 3 /nobreak >nul 2>&1
   :: 2. Force-kill any remaining node.exe holding the install dir
   powershell -NoProfile -Command ^
-    "$dir = '%~dp0'.TrimEnd('\').ToLower(); $procs = Get-WmiObject Win32_Process -Filter 'Name=''node.exe''' -EA SilentlyContinue; foreach ($p in $procs) { if (($p.CommandLine ?? '').ToLower() -like ('*' + $dir + '*')) { Stop-Process -Id $p.ProcessId -Force -EA SilentlyContinue } }; Start-Sleep -Seconds 1"
+    "$dir = '%~dp0'.TrimEnd('\').ToLower(); $procs = Get-WmiObject Win32_Process -Filter 'Name=''node.exe''' -EA SilentlyContinue; foreach ($p in $procs) { $cl = if ($p.CommandLine) { $p.CommandLine.ToLower() } else { '' }; if ($cl -like ('*' + $dir + '*')) { Stop-Process -Id $p.ProcessId -Force -EA SilentlyContinue } }; Start-Sleep -Seconds 1"
   set KRYTHOR_UPDATE=1
   powershell -NoProfile -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/LuxaGrid/Krythor/main/install.ps1 | iex"
   exit /b 0
