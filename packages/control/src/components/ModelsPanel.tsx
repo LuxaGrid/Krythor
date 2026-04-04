@@ -58,7 +58,7 @@ const PROVIDER_PRESETS: ProviderPreset[] = [
     tagline: 'GPT-4o, o3, o1 — OpenAI\'s flagship models',
     endpoint: 'https://api.openai.com/v1',
     authMethod: 'api_key',
-    models: ['gpt-4o', 'gpt-4o-mini', 'o3-mini', 'o1', 'gpt-4-turbo'],
+    models: ['gpt-4.1', 'gpt-4.1-mini', 'gpt-4o', 'gpt-4o-mini', 'o4-mini', 'o3', 'o3-mini', 'o1'],
     keyHint: 'Starts with sk-',
     dashboardUrl: 'https://platform.openai.com/api-keys',
     dashboardLabel: 'Open OpenAI Platform ↗',

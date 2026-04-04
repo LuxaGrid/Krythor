@@ -27,7 +27,18 @@ export class OpenAIProvider extends BaseProvider {
       const data = await this.httpGet(`${this.config.endpoint}/models`, this.headers) as {
         data?: Array<{ id: string }>;
       };
-      return (data.data ?? []).map(m => m.id);
+      const all = (data.data ?? []).map(m => m.id);
+      // Keep only chat-completion-capable models. The OpenAI /models endpoint
+      // returns everything — embeddings, TTS, Whisper, DALL-E, moderation, etc.
+      // None of those work in the chat/completions flow and cluttering the list
+      // confuses model selection. Filter to known chat prefixes only.
+      const chatPrefixes = ['gpt-', 'o1', 'o3', 'o4', 'chatgpt-'];
+      const chatModels = all.filter(id =>
+        chatPrefixes.some(p => id.startsWith(p)) &&
+        !id.includes('instruct') &&   // gpt-3.5-turbo-instruct uses completions, not chat
+        !id.includes('realtime'),     // realtime preview models — different API
+      );
+      return chatModels.length > 0 ? chatModels : this.config.models;
     } catch {
       return this.config.models;
     }
