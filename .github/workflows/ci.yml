@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [main]
 
+# Cancel any in-progress run for the same branch when a new push arrives.
+# Prevents stale runs from an older commit reporting failures after the fix lands.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint-typecheck:
     name: Lint & Typecheck
