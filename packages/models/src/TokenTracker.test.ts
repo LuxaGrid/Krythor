@@ -93,8 +93,8 @@ describe('TokenTracker', () => {
     tracker.record({ providerId: 'openai', model: 'gpt-4o', inputTokens: 1_000_000, outputTokens: 0 });
     const snap = tracker.snapshot();
     const p = snap.session.providers.find(x => x.model === 'gpt-4o')!;
-    // 1M input * $5/M = $5
-    expect(p.estimatedCostUSD).toBeCloseTo(5, 2);
+    // 1M input * $2.5/M = $2.50 (current gpt-4o pricing)
+    expect(p.estimatedCostUSD).toBeCloseTo(2.5, 2);
   });
 
   it('returns undefined cost for local/unknown models', () => {
@@ -103,9 +103,9 @@ describe('TokenTracker', () => {
   });
 
   it('estimateCostUSD works for known models', () => {
-    // gpt-4o: $5/M input, $15/M output
+    // gpt-4o: $2.5/M input, $10/M output (current pricing)
     const cost = estimateCostUSD('gpt-4o', 100_000, 50_000);
-    expect(cost).toBeCloseTo(0.5 + 0.75, 4); // $0.50 + $0.75 = $1.25
+    expect(cost).toBeCloseTo(0.25 + 0.5, 4); // $0.25 + $0.50 = $0.75
   });
 
   it('estimateCostUSD is case-insensitive', () => {
