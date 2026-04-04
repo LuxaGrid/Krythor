@@ -37,7 +37,23 @@ export class AnthropicProvider extends BaseProvider {
   }
 
   async listModels(): Promise<string[]> {
-    return this.config.models;
+    try {
+      const signal = AbortSignal.timeout(8000);
+      const res = await fetch(`${this.config.endpoint}/v1/models`, {
+        method: 'GET',
+        headers: {
+          'x-api-key': this.getBearerToken(),
+          'anthropic-version': '2023-06-01',
+        },
+        signal,
+      });
+      if (!res.ok) return this.config.models;
+      const data = await res.json() as { data?: Array<{ id: string }> };
+      const ids = (data.data ?? []).map((m: { id: string }) => m.id).filter(Boolean);
+      return ids.length > 0 ? ids : this.config.models;
+    } catch {
+      return this.config.models;
+    }
   }
 
   async infer(request: InferenceRequest, signal?: AbortSignal): Promise<InferenceResponse> {
