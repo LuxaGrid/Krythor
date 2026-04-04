@@ -1092,9 +1092,9 @@ export class AgentRunner {
         const assembled = trimLargeToolResults(
           this.contextEngine ? this.contextEngine.assemble(messages) : messages,
         );
-        // Phase 6B: use extended thinking for complex plans when provider is Anthropic
+        // Phase 6B: use extended thinking for complex plans when provider supports it
         const thinkingConfig: import('@krythor/models').ThinkingConfig | undefined =
-          agentPlan?.complexity === 'complex' && agent.providerId?.includes('anthropic')
+          agentPlan?.complexity === 'complex' && this.models.supportsThinking(agent.providerId)
             ? { enabled: true, level: 'medium' }
             : undefined;
 

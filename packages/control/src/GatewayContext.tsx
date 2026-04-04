@@ -86,7 +86,8 @@ export function GatewayProvider({ children, token }: { children: React.ReactNode
     ws.onclose = () => {
       setConnected(false);
       // Only reconnect if we have a token — avoids tight loop on auth failure.
-      if (getGatewayToken()) {
+      const currentToken = getGatewayToken();
+      if (currentToken) {
         attemptsRef.current++;
         setReconnectAttempts(attemptsRef.current);
         if (attemptsRef.current >= RECONNECT_MAX_TRIES) {
@@ -96,7 +97,7 @@ export function GatewayProvider({ children, token }: { children: React.ReactNode
           setConnectionState('reconnecting');
         }
         const backoffMs = Math.min(RECONNECT_BASE_MS * 2 ** (attemptsRef.current - 1), RECONNECT_MAX_MS);
-        reconnectTimer.current = setTimeout(() => connect(), backoffMs);
+        reconnectTimer.current = setTimeout(() => connect(currentToken), backoffMs);
       } else {
         setConnectionState('disconnected');
       }

@@ -102,6 +102,13 @@ export class ModelEngine {
     return this.registry.listConfigs();
   }
 
+  /** Returns true when the given provider supports Anthropic extended thinking. */
+  supportsThinking(providerId?: string): boolean {
+    if (!providerId) return false;
+    const cfg = this.registry.listConfigs().find(c => c.id === providerId);
+    return cfg?.type === 'anthropic';
+  }
+
   // ── Model queries ─────────────────────────────────────────────────────────
 
   listModels(): ModelInfo[] {

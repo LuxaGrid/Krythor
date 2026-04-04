@@ -26,7 +26,11 @@ const DEFAULT_TIMEOUT_MS = 30_000;
 export class LocalSandboxProvider implements SandboxProvider {
   readonly id = 'local';
 
+  /** Declares the isolation level of this provider. 'none' means no OS-level containment. */
+  static readonly ISOLATION_LEVEL = 'none' as const;
+
   private activeSandboxes = new Set<string>();
+  private _isolationWarned = false;
 
   getCapabilities(): SandboxCapabilities {
     return {
@@ -46,6 +50,11 @@ export class LocalSandboxProvider implements SandboxProvider {
   async execInSandbox(sandboxId: string, options: SandboxExecOptions): Promise<SandboxExecResult> {
     if (!this.activeSandboxes.has(sandboxId)) {
       throw new SandboxNotFoundError(sandboxId);
+    }
+
+    if (!this._isolationWarned) {
+      console.warn('[LocalSandboxProvider] WARNING: Executing without any process, filesystem, or network isolation. Switch to DockerSandboxProvider for containment.');
+      this._isolationWarned = true;
     }
 
     return new Promise<SandboxExecResult>((resolve) => {

@@ -1635,7 +1635,7 @@ Always show the score explanation when presenting ranked results.`,
   registerProfileRoutes(app, operatingProfileStore, guard, approvalManager);
   registerSafeCoreRoutes(app, safeCoreStore, safeCoreEngine, guard, approvalManager);
   registerConfigRoute(app, join(dataDir, 'config'), guard, orchestrator, memory, heartbeatRef, approvalManager);
-  registerConversationRoutes(app, convStore, guard, channelEmit, memory ?? undefined, approvalManager, janitorStatus);
+  registerConversationRoutes(app, convStore, guard, channelEmit, memory ?? undefined, approvalManager, janitorStatus, orchestrator ?? undefined);
   if (memory) registerSessionMaintenanceRoutes(app, memory);
   registerSkillRoutes(app, skillRegistry, guard, skillRunner, approvalManager, skillFileLoader, skillComposer);
   registerVaultRoutes(app, skillRegistry, vaultRegistry, guard, approvalManager);
