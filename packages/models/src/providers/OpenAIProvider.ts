@@ -28,15 +28,15 @@ export class OpenAIProvider extends BaseProvider {
         data?: Array<{ id: string }>;
       };
       const all = (data.data ?? []).map(m => m.id);
-      // Keep only chat-completion-capable models. The OpenAI /models endpoint
-      // returns everything — embeddings, TTS, Whisper, DALL-E, moderation, etc.
-      // None of those work in the chat/completions flow and cluttering the list
-      // confuses model selection. Filter to known chat prefixes only.
-      const chatPrefixes = ['gpt-', 'o1', 'o3', 'o4', 'chatgpt-'];
+      // Keep only chat/completions-capable models. The OpenAI /models endpoint
+      // returns everything — embeddings, TTS, Whisper, DALL-E, moderation,
+      // realtime, etc. Filter to known chat model prefixes only.
+      const chatPrefixes = ['gpt-', 'chatgpt-', 'o1', 'o3', 'o4', 'o1-', 'o3-', 'o4-'];
       const chatModels = all.filter(id =>
         chatPrefixes.some(p => id.startsWith(p)) &&
-        !id.includes('instruct') &&   // gpt-3.5-turbo-instruct uses completions, not chat
-        !id.includes('realtime'),     // realtime preview models — different API
+        !id.includes('instruct') &&  // gpt-3.5-turbo-instruct — legacy completions endpoint
+        !id.includes('realtime') &&  // realtime API, different protocol
+        !id.includes('audio'),       // audio-preview models require audio input/output
       );
       return chatModels.length > 0 ? chatModels : this.config.models;
     } catch {
