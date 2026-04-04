@@ -1,7 +1,6 @@
-import { readFileSync, existsSync, mkdirSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
-import { randomUUID, createCipheriv, createDecipheriv, createHash, randomBytes } from 'crypto';
-import { hostname, platform } from 'os';
+import { randomUUID, createCipheriv, createDecipheriv, randomBytes } from 'crypto';
 import type { ProviderConfig, ProviderType, OAuthAccount, ProviderCredential } from './types.js';
 import { resolveCredential } from './credential.js';
 import { parseProviderList } from './config/validate.js';
@@ -14,20 +13,46 @@ import { OpenAICompatProvider } from './providers/OpenAICompatProvider.js';
 import { ClaudeAgentSdkProvider } from './providers/ClaudeAgentSdkProvider.js';
 
 // ─── Credential Encryption ───────────────────────────────────────────────────
-// AES-256-GCM with a machine-derived key. No OS keychain dependency.
-// The key is deterministic per machine so encrypted values survive process restarts.
-// Format: "<hex-iv>:<hex-tag>:<hex-ciphertext>"
+// AES-256-GCM with a randomly generated per-installation key stored at
+// <configDir>/credential.key (hex, 32 bytes = 256 bits).
+// On first start the key is generated with crypto.randomBytes and written to
+// disk; on every subsequent start it is loaded from disk. The key file should
+// be protected by OS file permissions (0600) and backed up alongside the data
+// directory — losing it means provider credentials must be re-entered.
+//
+// Format: "e1:<hex-iv>:<hex-tag>:<hex-ciphertext>"
 // Used for BOTH API keys and OAuth tokens — same scheme, same security level.
 
 const ENCRYPTION_VERSION = 'e1:'; // prefix to detect encrypted values
+const KEY_FILENAME = 'credential.key';
 
-function getDerivedKey(): Buffer {
-  const raw = `${hostname()}${platform()}krythor-v1`;
-  return createHash('sha256').update(raw).digest(); // 32 bytes
+function loadOrCreateEncryptionKey(configDir: string): Buffer {
+  const keyPath = join(configDir, KEY_FILENAME);
+  if (existsSync(keyPath)) {
+    const hex = readFileSync(keyPath, 'utf-8').trim();
+    if (hex.length === 64) return Buffer.from(hex, 'hex'); // 32 bytes
+    // Key file corrupted — regenerate (credentials will need to be re-entered)
+    console.error('[ModelRegistry] credential.key is malformed — regenerating. Provider credentials must be re-entered.');
+  }
+  const key = randomBytes(32);
+  mkdirSync(configDir, { recursive: true });
+  writeFileSync(keyPath, key.toString('hex'), { encoding: 'utf-8', mode: 0o600 });
+  return key;
 }
 
-function encryptSecret(plaintext: string): string {
-  const key = getDerivedKey();
+// Module-level key cache — loaded once per process, keyed by configDir.
+const keyCache = new Map<string, Buffer>();
+
+function getEncryptionKey(configDir: string): Buffer {
+  const cached = keyCache.get(configDir);
+  if (cached) return cached;
+  const key = loadOrCreateEncryptionKey(configDir);
+  keyCache.set(configDir, key);
+  return key;
+}
+
+function encryptSecret(plaintext: string, configDir: string): string {
+  const key = getEncryptionKey(configDir);
   const iv = randomBytes(12); // 96-bit IV for GCM
   const cipher = createCipheriv('aes-256-gcm', key, iv);
   const encrypted = Buffer.concat([cipher.update(plaintext, 'utf-8'), cipher.final()]);
@@ -35,35 +60,19 @@ function encryptSecret(plaintext: string): string {
   return ENCRYPTION_VERSION + [iv.toString('hex'), tag.toString('hex'), encrypted.toString('hex')].join(':');
 }
 
-function decryptSecret(ciphertext: string): string {
+function decryptSecret(ciphertext: string, configDir: string): string {
   if (!ciphertext.startsWith(ENCRYPTION_VERSION)) return ciphertext; // plaintext (legacy)
   const parts = ciphertext.slice(ENCRYPTION_VERSION.length).split(':');
   if (parts.length !== 3) return ciphertext; // malformed — return as-is
   const [ivHex, tagHex, encHex] = parts as [string, string, string];
   try {
-    const key = getDerivedKey();
+    const key = getEncryptionKey(configDir);
     const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(ivHex, 'hex'));
     decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
     return decipher.update(Buffer.from(encHex, 'hex')).toString('utf-8') + decipher.final('utf-8');
   } catch {
-    return ''; // tampered or wrong machine key — treat as missing
+    return ''; // tampered or wrong key — treat as missing
   }
-}
-
-function encryptOAuthAccount(account: OAuthAccount): OAuthAccount {
-  return {
-    ...account,
-    accessToken:  encryptSecret(account.accessToken),
-    refreshToken: account.refreshToken ? encryptSecret(account.refreshToken) : undefined,
-  };
-}
-
-function decryptOAuthAccount(account: OAuthAccount): OAuthAccount {
-  return {
-    ...account,
-    accessToken:  decryptSecret(account.accessToken),
-    refreshToken: account.refreshToken ? decryptSecret(account.refreshToken) : undefined,
-  };
 }
 
 // resolveCredential is exported from credential.ts and re-exported via index.ts.
@@ -74,13 +83,31 @@ export { resolveCredential };
 
 export class ModelRegistry {
   private configPath: string;
+  private configDir: string;
   private providers = new Map<string, BaseProvider>();
   private configs: ProviderConfig[] = [];
 
   constructor(configDir: string) {
+    this.configDir = configDir;
     this.configPath = join(configDir, 'providers.json');
     mkdirSync(configDir, { recursive: true });
     this.load();
+  }
+
+  private encryptOAuthAccount(account: OAuthAccount): OAuthAccount {
+    return {
+      ...account,
+      accessToken:  encryptSecret(account.accessToken, this.configDir),
+      refreshToken: account.refreshToken ? encryptSecret(account.refreshToken, this.configDir) : undefined,
+    };
+  }
+
+  private decryptOAuthAccount(account: OAuthAccount): OAuthAccount {
+    return {
+      ...account,
+      accessToken:  decryptSecret(account.accessToken, this.configDir),
+      refreshToken: account.refreshToken ? decryptSecret(account.refreshToken, this.configDir) : undefined,
+    };
   }
 
   // ── CRUD ───────────────────────────────────────────────────────────────────
@@ -99,8 +126,8 @@ export class ModelRegistry {
     }
 
     // Encrypt credentials before persisting
-    if (config.apiKey) config.apiKey = encryptSecret(config.apiKey);
-    if (config.oauthAccount) config.oauthAccount = encryptOAuthAccount(config.oauthAccount);
+    if (config.apiKey) config.apiKey = encryptSecret(config.apiKey, this.configDir);
+    if (config.oauthAccount) config.oauthAccount = this.encryptOAuthAccount(config.oauthAccount);
 
     this.configs.push(config);
     // Instantiate with decrypted credentials so providers can use them directly
@@ -120,10 +147,10 @@ export class ModelRegistry {
 
     // Encrypt any new credentials
     if (updates.apiKey !== undefined) {
-      updates = { ...updates, apiKey: updates.apiKey ? encryptSecret(updates.apiKey) : undefined };
+      updates = { ...updates, apiKey: updates.apiKey ? encryptSecret(updates.apiKey, this.configDir) : undefined };
     }
     if (updates.oauthAccount !== undefined) {
-      updates = { ...updates, oauthAccount: updates.oauthAccount ? encryptOAuthAccount(updates.oauthAccount) : undefined };
+      updates = { ...updates, oauthAccount: updates.oauthAccount ? this.encryptOAuthAccount(updates.oauthAccount) : undefined };
     }
 
     this.configs[idx] = { ...this.configs[idx]!, ...updates };
@@ -266,18 +293,18 @@ export class ModelRegistry {
         }
         // Migrate plaintext API keys to encrypted
         if (cfg.apiKey && !cfg.apiKey.startsWith(ENCRYPTION_VERSION)) {
-          cfg.apiKey = encryptSecret(cfg.apiKey);
+          cfg.apiKey = encryptSecret(cfg.apiKey, this.configDir);
           needsSave = true;
         }
         // Migrate plaintext OAuth tokens if somehow stored unencrypted
         if (cfg.oauthAccount) {
           let changed = false;
           if (cfg.oauthAccount.accessToken && !cfg.oauthAccount.accessToken.startsWith(ENCRYPTION_VERSION)) {
-            cfg.oauthAccount.accessToken = encryptSecret(cfg.oauthAccount.accessToken);
+            cfg.oauthAccount.accessToken = encryptSecret(cfg.oauthAccount.accessToken, this.configDir);
             changed = true;
           }
           if (cfg.oauthAccount.refreshToken && !cfg.oauthAccount.refreshToken.startsWith(ENCRYPTION_VERSION)) {
-            cfg.oauthAccount.refreshToken = encryptSecret(cfg.oauthAccount.refreshToken);
+            cfg.oauthAccount.refreshToken = encryptSecret(cfg.oauthAccount.refreshToken, this.configDir);
             changed = true;
           }
           if (changed) needsSave = true;
@@ -313,8 +340,8 @@ export class ModelRegistry {
 
   private withDecryptedCredentials(config: ProviderConfig): ProviderConfig {
     const result = { ...config };
-    if (result.apiKey) result.apiKey = decryptSecret(result.apiKey);
-    if (result.oauthAccount) result.oauthAccount = decryptOAuthAccount(result.oauthAccount);
+    if (result.apiKey) result.apiKey = decryptSecret(result.apiKey, this.configDir);
+    if (result.oauthAccount) result.oauthAccount = this.decryptOAuthAccount(result.oauthAccount);
     return result;
   }
 

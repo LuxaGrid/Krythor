@@ -13,6 +13,7 @@
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
+import { randomBytes } from 'crypto';
 
 export type ChannelType = 'telegram' | 'discord' | 'whatsapp' | 'slack' | 'signal' | 'mattermost' | 'googlechat' | 'bluebubbles' | 'imessage' | 'webchat';
 
@@ -811,11 +812,12 @@ export class ChatChannelRegistry {
       throw new Error(`Pairing codes for this channel are managed by DmPairingStore`);
     }
 
-    // Generate an 8-character uppercase alphanumeric code
+    // Generate an 8-character uppercase alphanumeric code using CSPRNG
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Excludes ambiguous chars (I, O, 0, 1)
+    const bytes = randomBytes(8);
     let code = '';
     for (let i = 0; i < 8; i++) {
-      code += chars[Math.floor(Math.random() * chars.length)];
+      code += chars[bytes[i]! % chars.length];
     }
 
     const expiresAt = Date.now() + 60 * 60 * 1_000; // 60 minutes
