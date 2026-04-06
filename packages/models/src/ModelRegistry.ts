@@ -296,6 +296,23 @@ export class ModelRegistry {
           cfg.models = cfg.models.map(m => m.replace(/^models\//, ''));
           needsSave = true;
         }
+        // Filter out non-chat model types persisted from earlier runs
+        // (Gemini returns imagen, veo, tts, embeddings, robotics, etc.)
+        if (cfg.models && cfg.models.length > 0) {
+          const nonChat = [
+            'embedding', 'imagen', 'veo', 'tts', 'aqa', 'lyria',
+            'robotics', 'computer-use', 'deep-research', 'audio-latest',
+            'native-audio', 'realtime', 'live-preview', 'image-preview',
+            'clip-preview',
+          ];
+          const filtered = cfg.models.filter(id =>
+            !nonChat.some(nc => id.toLowerCase().includes(nc)),
+          );
+          if (filtered.length !== cfg.models.length) {
+            cfg.models = filtered;
+            needsSave = true;
+          }
+        }
         // Migrate plaintext API keys to encrypted
         if (cfg.apiKey && !cfg.apiKey.startsWith(ENCRYPTION_VERSION)) {
           cfg.apiKey = encryptSecret(cfg.apiKey, this.configDir);
