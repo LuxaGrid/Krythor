@@ -24,7 +24,9 @@ export class OpenAICompatProvider extends OpenAIProvider {
       const data = await this.httpGet(`${this.config.endpoint}/models`, h) as {
         data?: Array<{ id: string }>;
       };
-      const ids = (data.data ?? []).map((m: { id: string }) => m.id).filter(Boolean);
+      const ids = (data.data ?? [])
+        .map((m: { id: string }) => m.id.replace(/^models\//, '')) // strip Gemini "models/" prefix
+        .filter(Boolean);
       return ids.length > 0 ? ids : this.config.models;
     } catch {
       return this.config.models;

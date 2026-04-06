@@ -894,10 +894,22 @@ export function CommandPanel({ health, onTabChange, newChatRef }: Props) {
 
   const noProvider = health ? health.models.providerCount === 0 : false;
 
-  // Load available models for recommendation bar + switcher
+  // Load available models on mount and whenever the model count changes.
+  // Also re-fetch after a short delay on mount so startup-time refreshModels()
+  // calls (which run fire-and-forget after the UI connects) are captured.
   useEffect(() => {
     listModels().then(setAvailableModels).catch(() => {});
   }, [health?.models.modelCount]);
+
+  useEffect(() => {
+    // Delayed fetch: startup refreshModels() runs ~0-2s after the gateway starts.
+    // Re-fetching after 3s ensures the live catalog is shown without needing a
+    // manual refresh or a modelCount change event.
+    const t = setTimeout(() => {
+      listModels().then(setAvailableModels).catch(() => {});
+    }, 3000);
+    return () => clearTimeout(t);
+  }, []);
 
   // Reset slash idx when matches change
   useEffect(() => { setSlashIdx(0); }, [slashMatches.length]);

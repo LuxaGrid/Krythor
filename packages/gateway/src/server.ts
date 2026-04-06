@@ -2211,7 +2211,9 @@ Always show the score explanation when presenting ranked results.`,
     // than only the models that were configured at provider-add time.
     setImmediate(() => {
       for (const provider of models.listProviders()) {
-        models.refreshModels(provider.id).catch(() => {});
+        models.refreshModels(provider.id).catch((err: unknown) => {
+          app.log.warn({ providerId: provider.id, err }, '[startup] Failed to refresh model list for provider');
+        });
       }
     });
   });
