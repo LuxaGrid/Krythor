@@ -235,17 +235,35 @@ function sortedModelGroups(models: ModelInfo[]): Array<{ provider: string; items
 
 export function ModelSwitcher({ selectedModelId, models, onChange }: ModelSwitcherProps) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
 
   if (models.length === 0) return null;
 
   const current = models.find(m => m.id === selectedModelId) ?? models[0];
   const isLocal = current?.badges.includes('local');
-  const groups = sortedModelGroups(models);
+
+  const filtered = query.trim()
+    ? models.filter(m =>
+        m.id.toLowerCase().includes(query.toLowerCase()) ||
+        m.provider.toLowerCase().includes(query.toLowerCase()),
+      )
+    : null;
+
+  const groups = filtered
+    ? (filtered.length > 0 ? sortedModelGroups(filtered) : [])
+    : sortedModelGroups(models);
+
+  const handleOpen = () => {
+    setOpen(true);
+    setQuery('');
+    setTimeout(() => searchRef.current?.focus(), 30);
+  };
 
   return (
     <div className="relative">
       <button
-        onClick={() => setOpen(o => !o)}
+        onClick={() => open ? setOpen(false) : handleOpen()}
         className="flex items-center gap-1.5 px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-xs text-zinc-300 transition-colors"
         title="Switch model"
       >
@@ -261,31 +279,53 @@ export function ModelSwitcher({ selectedModelId, models, onChange }: ModelSwitch
 
       {open && (
         <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute bottom-full mb-1 right-0 z-50 bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl min-w-[240px] max-h-[320px] overflow-y-auto">
-            {groups.map(({ provider, items }) => (
-              <div key={provider}>
-                <div className="px-3 pt-2 pb-1 text-[10px] text-zinc-600 font-medium uppercase tracking-wider sticky top-0 bg-zinc-900">
-                  {provider}
+          <div className="fixed inset-0 z-40" onClick={() => { setOpen(false); setQuery(''); }} />
+          <div className="absolute bottom-full mb-1 right-0 z-50 bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl min-w-[260px] max-h-[360px] flex flex-col">
+            <div className="p-2 border-b border-zinc-800 shrink-0">
+              <input
+                ref={searchRef}
+                type="text"
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Escape') { setOpen(false); setQuery(''); }
+                  if (e.key === 'Enter' && groups.length > 0) {
+                    const first = groups[0]?.items[0];
+                    if (first) { onChange(first.id, first.providerId); setOpen(false); setQuery(''); }
+                  }
+                }}
+                placeholder="Search models…"
+                className="w-full bg-zinc-800 text-xs text-zinc-200 placeholder-zinc-600 px-2.5 py-1.5 rounded outline-none focus:ring-1 focus:ring-brand-600/40"
+              />
+            </div>
+            <div className="overflow-y-auto">
+              {groups.length === 0 && (
+                <p className="px-3 py-4 text-xs text-zinc-600 text-center">No models match "{query}"</p>
+              )}
+              {groups.map(({ provider, items }) => (
+                <div key={provider}>
+                  <div className="px-3 pt-2 pb-1 text-[10px] text-zinc-600 font-medium uppercase tracking-wider sticky top-0 bg-zinc-900">
+                    {provider}
+                  </div>
+                  {items.map(m => {
+                    const local = m.badges.includes('local');
+                    const active = m.id === selectedModelId;
+                    return (
+                      <button
+                        key={`${m.providerId}/${m.id}`}
+                        onClick={() => { onChange(m.id, m.providerId); setOpen(false); setQuery(''); }}
+                        className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left hover:bg-zinc-800 transition-colors
+                          ${active ? 'text-zinc-100' : 'text-zinc-400'}`}
+                      >
+                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${local ? 'bg-emerald-400' : 'bg-sky-400'}`} />
+                        <span className="font-mono truncate">{m.id}</span>
+                        {active && <span className="ml-auto text-brand-400 shrink-0">✓</span>}
+                      </button>
+                    );
+                  })}
                 </div>
-                {items.map(m => {
-                  const local = m.badges.includes('local');
-                  const active = m.id === selectedModelId;
-                  return (
-                    <button
-                      key={`${m.providerId}/${m.id}`}
-                      onClick={() => { onChange(m.id, m.providerId); setOpen(false); }}
-                      className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left hover:bg-zinc-800 transition-colors
-                        ${active ? 'text-zinc-100' : 'text-zinc-400'}`}
-                    >
-                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${local ? 'bg-emerald-400' : 'bg-sky-400'}`} />
-                      <span className="font-mono truncate">{m.id}</span>
-                      {active && <span className="ml-auto text-brand-400 shrink-0">✓</span>}
-                    </button>
-                  );
-                })}
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </>
       )}
