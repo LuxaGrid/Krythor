@@ -106,7 +106,7 @@ export function registerProviderRoutes(app: FastifyInstance, models: ModelEngine
       return reply.code(404).send({ ok: false, error: 'Provider not found' });
     }
     if (!provider.isEnabled) {
-      return reply.code(400).send({ ok: false, error: 'Provider is disabled' });
+      return reply.send({ ok: false, error: 'Provider is disabled' });
     }
 
     const modelList = models.listModels().filter(m => m.providerId === provider.id);
@@ -116,7 +116,7 @@ export function registerProviderRoutes(app: FastifyInstance, models: ModelEngine
       const hint = isOllama
         ? 'No models pulled yet — run: ollama pull llama3.2'
         : 'No models available for this provider';
-      return reply.code(400).send({ ok: false, error: hint });
+      return reply.send({ ok: false, error: hint });
     }
 
     const start = Date.now();
