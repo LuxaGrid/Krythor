@@ -1078,12 +1078,28 @@ export function ModelsPanel({ health }: Props) {
                       </div>
                     )}
 
-                    {/* Refreshed models */}
-                    {refreshedModels[p.id] && (
-                      <p className="text-xs mt-0.5 text-zinc-500">
-                        {refreshedModels[p.id]!.length} model{refreshedModels[p.id]!.length !== 1 ? 's' : ''} found: {refreshedModels[p.id]!.slice(0, 3).join(', ')}{refreshedModels[p.id]!.length > 3 ? '…' : ''}
-                      </p>
-                    )}
+                    {/* Model list — show live-refreshed list if available, otherwise persisted config list */}
+                    {(() => {
+                      const displayModels = refreshedModels[p.id] ?? (p.models?.length ? p.models : null);
+                      if (!displayModels || displayModels.length === 0) return null;
+                      const isLive = !!refreshedModels[p.id];
+                      return (
+                        <div className="mt-1">
+                          <p className="text-[10px] text-zinc-600 mb-0.5">
+                            {displayModels.length} model{displayModels.length !== 1 ? 's' : ''}
+                            {isLive && <span className="ml-1 text-emerald-600">· live</span>}
+                          </p>
+                          <div className="flex flex-wrap gap-1">
+                            {displayModels.slice(0, 8).map(m => (
+                              <span key={m} className="text-[10px] bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded font-mono">{m}</span>
+                            ))}
+                            {displayModels.length > 8 && (
+                              <span className="text-[10px] text-zinc-600">+{displayModels.length - 8} more</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
 
                     {/* OAuth connect panel (inline) */}
                     {showOAuthPanel && (
