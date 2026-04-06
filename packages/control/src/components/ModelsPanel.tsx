@@ -210,6 +210,19 @@ const PROVIDER_PRESETS: ProviderPreset[] = [
     dashboardLabel: 'Open Mistral Console ↗',
     color: '#f59e0b',
   },
+  {
+    id: 'ollama',
+    label: 'Ollama',
+    tagline: 'Free, runs fully local — no API key required',
+    endpoint: 'http://localhost:11434',
+    authMethod: 'none',
+    models: [],
+    keyHint: '',
+    dashboardUrl: 'https://ollama.com',
+    dashboardLabel: 'Get Ollama ↗',
+    color: '#22c55e',
+    nativeType: 'ollama',
+  },
 ];
 
 const INPUT_CLS  = 'bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1.5 text-xs text-zinc-200 placeholder-zinc-600 outline-none focus:border-brand-600 focus:ring-1 focus:ring-brand-600/30 transition-colors';
@@ -294,6 +307,7 @@ export function ModelsPanel({ health }: Props) {
   const [presetAdding, setPresetAdding] = useState(false);
   const [presetError, setPresetError] = useState<string | null>(null);
   const [showPresets, setShowPresets] = useState(false);
+  const [presetDirectAdding, setPresetDirectAdding] = useState<string | null>(null); // id of preset being directly added
 
   // OAuth connect panel state (per-provider, for non-openai/anthropic providers)
   const [oauthPanel, setOauthPanel]     = useState<string | null>(null); // provider id
@@ -353,19 +367,45 @@ export function ModelsPanel({ health }: Props) {
 
   // ── Add via preset ───────────────────────────────────────────────────────
 
+  const handlePresetClick = async (preset: ProviderPreset) => {
+    if (preset.authMethod === 'none') {
+      // No key needed — add directly without opening the modal
+      setPresetDirectAdding(preset.id);
+      setShowPresets(false);
+      try {
+        const p = await addProvider({
+          name:       preset.label,
+          type:       (preset.nativeType ?? 'openai-compat') as Provider['type'],
+          endpoint:   preset.endpoint,
+          authMethod: 'none',
+          isDefault:  false,
+          models:     preset.models,
+        } as Omit<Provider, 'id'>);
+        await refreshModels(p.id).catch(() => {});
+        await load();
+      } catch { /* ignore */ } finally {
+        setPresetDirectAdding(null);
+      }
+    } else {
+      setPresetModal(preset);
+      setShowPresets(false);
+    }
+  };
+
   const handlePresetAdd = async () => {
     if (!presetModal) return;
-    const trimmed = presetKey.trim();
-    if (!trimmed) { setPresetError('Paste your API key to continue.'); return; }
     setPresetError(null);
     setPresetAdding(true);
     try {
+      const isKeyless = presetModal.authMethod === 'none';
+      const trimmed = presetKey.trim();
+      if (!isKeyless && !trimmed) { setPresetError('Paste your API key to continue.'); setPresetAdding(false); return; }
       const p = await addProvider({
         name:       presetModal.label,
         type:       (presetModal.nativeType ?? 'openai-compat') as Provider['type'],
         endpoint:   presetModal.endpoint,
-        authMethod: 'api_key',
-        apiKey:     trimmed,
+        authMethod: isKeyless ? 'none' : 'api_key',
+        ...(isKeyless ? {} : { apiKey: trimmed }),
         isDefault:  false,
         models:     presetModal.models,
       } as Omit<Provider, 'id'>);
@@ -738,8 +778,9 @@ export function ModelsPanel({ health }: Props) {
           <div className="grid grid-cols-2 gap-2">
             {PROVIDER_PRESETS.map(preset => (
               <button key={preset.id}
-                onClick={() => { setPresetModal(preset); setShowPresets(false); }}
-                className="text-left p-3 rounded-xl border border-zinc-800 hover:border-zinc-600 bg-zinc-900/60 hover:bg-zinc-800/60 transition-all group">
+                onClick={() => void handlePresetClick(preset)}
+                disabled={presetDirectAdding === preset.id}
+                className="text-left p-3 rounded-xl border border-zinc-800 hover:border-zinc-600 bg-zinc-900/60 hover:bg-zinc-800/60 transition-all group disabled:opacity-60 disabled:cursor-wait">
                 <div className="flex items-center gap-2 mb-1">
                   <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: preset.color }} />
                   <span className="text-xs font-semibold text-zinc-200 group-hover:text-white transition-colors">{preset.label}</span>
