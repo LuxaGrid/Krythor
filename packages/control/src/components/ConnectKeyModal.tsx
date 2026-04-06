@@ -59,7 +59,7 @@ const PROVIDER_CONFIG: Record<string, {
   },
   kimi: {
     label: 'Kimi (Moonshot)',
-    dashboardUrl: 'https://platform.moonshot.cn/console/api-keys',
+    dashboardUrl: 'https://platform.moonshot.ai/console/api-keys',
     dashboardLabel: 'Open Moonshot Console ↗',
     keyPrefix: '',
     keyHint: 'Moonshot API key',

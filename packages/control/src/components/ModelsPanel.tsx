@@ -186,7 +186,7 @@ const PROVIDER_PRESETS: ProviderPreset[] = [
       'kimi-thinking-preview',
     ],
     keyHint: 'Moonshot API key',
-    dashboardUrl: 'https://platform.moonshot.cn/console/api-keys',
+    dashboardUrl: 'https://platform.moonshot.ai/console/api-keys',
     dashboardLabel: 'Open Moonshot Console ↗',
     color: '#ec4899',
   },
