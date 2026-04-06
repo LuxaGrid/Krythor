@@ -43,7 +43,7 @@ Krythor is a local-first AI command platform. Run agents, route across models, e
 - Memory janitor runs every 6 hours; configurable from the UI
 
 **Model Routing**
-- Connect any combination of OpenAI, Anthropic, Ollama, LM Studio, OpenRouter, Groq, Mistral, Google Gemini, AWS Bedrock, Venice, and any OpenAI-compatible API
+- Connect any combination of OpenAI, Anthropic, Ollama, LM Studio, OpenRouter, Groq, Mistral, Google Gemini, Kimi (Moonshot), Venice, and any OpenAI-compatible API
 - Automatic fallback with circuit breaker and per-provider retry config
 - Named fallback chains — define ordered provider sequences scoped to a task type, agent, or skill
 - Provider priority ordering — configure which providers are tried first
@@ -59,31 +59,20 @@ Krythor is a local-first AI command platform. Run agents, route across models, e
 - Reusable task templates with input/output schemas and structured routing hints
 - Skill chaining — chain skills sequentially, passing each step's output to the next
 - Skill evolution proposals — structured change proposals with approve/reject/apply workflow and full version history
-- Vault with 40 official skills across 6 collections: Real Estate, Finance, Productivity, Communication, Business Workflow, and Starter Pack
 - Local JSON import for community skills with live risk analysis before install
-
-**Talent Marketplace**
-- Private directory for vendors, contractors, referral agents, and service providers
-- AI-powered ranking across 7 dimensions: category fit, geography, trust score, response history, recency, urgency boost, and preferred status — every result is fully explained
-- Trust scores computed from response rate, job outcomes, recency, and preferred flag; automatically recalculated daily
-- Outreach queue with approval-gated sending; full interaction and outcome logging
-- 6-view UI: Dashboard, Directory, Talent Detail, Request Matcher, Outreach Queue, Create/Edit form
-- Native `talent_marketplace` skill for agent-driven workflows
+- *(Official skill vault — coming in a future release)*
 
 **Krythor SafeCore™**
 
 *Every action is evaluated. Every action is visible. Every action can be approved. Nothing runs silently.*
 
-- Containment and execution control layer — run agents in sandboxed execution tiers before anything touches the host
-- Four execution modes: Read Only, Workspace, Connector Controlled, Elevated Access
+- Containment and execution control layer — run agents in a sandboxed process before anything touches the host
 - Trust level inferred automatically on every action — Safe, Needs Approval, or High Risk — shown throughout the UI
-- Approval workflow — high-risk and policy-flagged actions pause for operator review before proceeding; approval modal shows exactly what will happen and why
-- Promotion workflow — completed runs stay contained until an operator approves promotion to host
-- Per-mode policy configuration: allowed paths, blocked commands, allowed hosts, retention rules
-- Full audit trail: every action, file touched, command run, network attempt, approval, and promotion logged with trust-level indicators
+- Approval workflow — high-risk and policy-flagged actions pause for operator review before proceeding
+- Full audit trail: every action, file touched, command run, network attempt, approval logged with trust-level indicators
 - Persistent SafeCore™ status chip in the UI status bar — live state always visible
 - SafeCore health included in `/health` endpoint: total runs, pending approvals, blocked actions
-- 5-view SafeCore Console: Dashboard, Runs, Review Queue, Promotion Review, Activity
+- *(Docker/VM isolation — coming in a future release; current sandbox runs on local process)*
 
 **Guardrails & Safety**
 - Policy engine with allow / deny / warn / require-approval per operation
@@ -142,7 +131,7 @@ pnpm install && pnpm run build
 node start.js
 ```
 
-Requires Node.js 22+ and pnpm (`npm install -g pnpm`).
+Requires Node.js 20+ and pnpm (`npm install -g pnpm`).
 
 ### Docker
 
@@ -175,15 +164,15 @@ Settings, memory, and data are always preserved.
 | Provider | Type | API key |
 |---|---|---|
 | Ollama | Local | No |
-| LM Studio | Local | No |
+| LM Studio / llama-server | Local | No |
 | OpenAI | Cloud | Yes |
 | Anthropic | Cloud | Yes |
 | Google Gemini | Cloud | Yes |
-| Mistral | Cloud | Yes |
 | Groq | Cloud | Yes |
 | OpenRouter | Cloud | Yes |
+| Mistral | Cloud | Yes |
 | Venice | Cloud | Yes |
-| AWS Bedrock | Cloud | Yes |
+| Kimi (Moonshot) | Cloud | Yes |
 | Any OpenAI-compatible | Local/Cloud | Optional |
 
 ---
