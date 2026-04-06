@@ -26,7 +26,17 @@ export class OpenAICompatProvider extends OpenAIProvider {
       };
       const ids = (data.data ?? [])
         .map((m: { id: string }) => m.id.replace(/^models\//, '')) // strip Gemini "models/" prefix
-        .filter(Boolean);
+        .filter((id: string) => {
+          if (!id) return false;
+          // Exclude known non-chat model types that appear in Gemini and other APIs
+          const nonChat = [
+            'embedding', 'imagen', 'veo', 'tts', 'aqa', 'lyria',
+            'robotics', 'computer-use', 'deep-research', 'audio-latest',
+            'native-audio', 'realtime', 'live-preview', 'image-preview',
+            'clip-preview',
+          ];
+          return !nonChat.some(nc => id.toLowerCase().includes(nc));
+        });
       return ids.length > 0 ? ids : this.config.models;
     } catch {
       return this.config.models;

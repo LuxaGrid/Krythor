@@ -291,6 +291,11 @@ export class ModelRegistry {
           cfg.authMethod = cfg.apiKey ? 'api_key' : 'none';
           needsSave = true;
         }
+        // Strip 'models/' prefix that Gemini's API injects into model IDs
+        if (cfg.models?.some(m => m.startsWith('models/'))) {
+          cfg.models = cfg.models.map(m => m.replace(/^models\//, ''));
+          needsSave = true;
+        }
         // Migrate plaintext API keys to encrypted
         if (cfg.apiKey && !cfg.apiKey.startsWith(ENCRYPTION_VERSION)) {
           cfg.apiKey = encryptSecret(cfg.apiKey, this.configDir);
