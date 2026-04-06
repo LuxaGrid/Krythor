@@ -76,6 +76,27 @@ export class RunRateLimitError extends Error {
 /** Default max runs per minute per agent (0 = unlimited). */
 const DEFAULT_MAX_RUNS_PER_MINUTE = 20;
 
+/**
+ * Returns true when the error message indicates a configuration fault —
+ * bad model ID, auth failure, invalid request — rather than a transient
+ * infrastructure failure. Config faults should not be recorded against the
+ * agent's health gate because retrying won't help until the config is fixed.
+ */
+function isConfigFault(errorMessage?: string): boolean {
+  if (!errorMessage) return false;
+  const msg = errorMessage.toLowerCase();
+  return (
+    msg.includes('http 400') ||
+    msg.includes('http 401') ||
+    msg.includes('http 403') ||
+    msg.includes('invalid model') ||
+    msg.includes('model not found') ||
+    msg.includes('does not exist') ||
+    msg.includes('unknown model') ||
+    msg.includes('no model specified')
+  );
+}
+
 /** Interval at which the idle-timeout janitor runs (ms). */
 const JANITOR_INTERVAL_MS = 15_000; // 15 seconds
 
@@ -395,11 +416,15 @@ export class AgentOrchestrator extends EventEmitter {
     } finally {
       this.releaseSlot();
     }
-    this.healthGate.record(
-      agentId,
-      run.status === 'completed' ? 'success' : run.status === 'stopped' ? 'stopped' : 'failure',
-      { fallbackOccurred: run.fallbackOccurred, retryCount: run.retryCount },
-    );
+    // Config faults (bad model ID, auth error, invalid request) are not transient
+    // failures — recording them degrades stability and can pause the agent incorrectly.
+    if (!isConfigFault(run.errorMessage)) {
+      this.healthGate.record(
+        agentId,
+        run.status === 'completed' ? 'success' : run.status === 'stopped' ? 'stopped' : 'failure',
+        { fallbackOccurred: run.fallbackOccurred, retryCount: run.retryCount },
+      );
+    }
     this.storeRun(run);
     this.transcriptStore?.write(run);
     return run;
@@ -434,11 +459,13 @@ export class AgentOrchestrator extends EventEmitter {
     } finally {
       this.releaseSlot();
     }
-    this.healthGate.record(
-      agentId,
-      run.status === 'completed' ? 'success' : run.status === 'stopped' ? 'stopped' : 'failure',
-      { fallbackOccurred: run.fallbackOccurred, retryCount: run.retryCount },
-    );
+    if (!isConfigFault(run.errorMessage)) {
+      this.healthGate.record(
+        agentId,
+        run.status === 'completed' ? 'success' : run.status === 'stopped' ? 'stopped' : 'failure',
+        { fallbackOccurred: run.fallbackOccurred, retryCount: run.retryCount },
+      );
+    }
     this.storeRun(run);
     this.transcriptStore?.write(run);
     return run;
