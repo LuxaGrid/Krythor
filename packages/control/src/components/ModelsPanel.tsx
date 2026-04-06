@@ -231,6 +231,13 @@ function AuthBadge({ p }: { p: Provider }) {
       </span>
     );
   }
+  if (p.authMethod === 'api_key' && !p.apiKey) {
+    return (
+      <span className="text-xs bg-red-950/60 text-red-400 px-1.5 py-0.5 rounded" title="API key could not be decrypted — re-enter it to restore model access">
+        key lost — re-enter
+      </span>
+    );
+  }
   if (p.authMethod === 'api_key' && p.apiKey) {
     return (
       <span className="text-xs bg-zinc-800 text-zinc-500 px-1.5 py-0.5 rounded">
