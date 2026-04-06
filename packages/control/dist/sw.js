@@ -8,12 +8,17 @@
 //   - /api/*, /ws/*               → network-only (never cache live data)
 //   - everything else             → network-first with cache fallback
 
-const CACHE_NAME = 'krythor-0.9.0-1775494226209'; // replaced by deploy-dist.js
+const CACHE_NAME = 'krythor-0.9.0-1775494537376'; // replaced by deploy-dist.js
 
 // ── Install ────────────────────────────────────────────────────────────────────
 self.addEventListener('install', (event) => {
   // Skip waiting so the new SW activates immediately (don't wait for tab close)
   event.waitUntil(self.skipWaiting());
+});
+
+// ── Message ────────────────────────────────────────────────────────────────────
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
 // ── Activate ───────────────────────────────────────────────────────────────────

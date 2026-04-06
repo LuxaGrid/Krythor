@@ -16,6 +16,11 @@ self.addEventListener('install', (event) => {
   event.waitUntil(self.skipWaiting());
 });
 
+// ── Message ────────────────────────────────────────────────────────────────────
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
+});
+
 // ── Activate ───────────────────────────────────────────────────────────────────
 self.addEventListener('activate', (event) => {
   // Delete all caches from previous versions, claim clients, then tell every
