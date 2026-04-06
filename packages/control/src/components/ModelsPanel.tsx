@@ -55,16 +55,16 @@ const PROVIDER_PRESETS: ProviderPreset[] = [
   {
     id: 'openai',
     label: 'OpenAI',
-    tagline: 'GPT-5, GPT-4.1, o4-mini — OpenAI\'s full model lineup',
+    tagline: 'GPT-4.1, o4-mini — OpenAI\'s full model lineup',
     endpoint: 'https://api.openai.com/v1',
     authMethod: 'api_key',
+    // Fallback list — startup refresh fetches the live catalog automatically.
+    // Use known-stable IDs only; avoid speculative future model names.
     models: [
-      'gpt-5', 'gpt-5-mini', 'gpt-5-nano',
       'gpt-4.1', 'gpt-4.1-mini', 'gpt-4.1-nano',
       'gpt-4o', 'gpt-4o-mini',
-      'gpt-4.5-preview',
-      'o4-mini', 'o3', 'o3-mini', 'o1', 'o1-mini',
-      'gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo',
+      'o4-mini', 'o3', 'o3-mini', 'o1',
+      'gpt-4-turbo', 'gpt-3.5-turbo',
     ],
     keyHint: 'Starts with sk-',
     dashboardUrl: 'https://platform.openai.com/api-keys',
@@ -78,6 +78,7 @@ const PROVIDER_PRESETS: ProviderPreset[] = [
     tagline: 'Claude Opus, Sonnet, Haiku — best for reasoning and code',
     endpoint: 'https://api.anthropic.com',
     authMethod: 'api_key',
+    // *-latest aliases are officially maintained by Anthropic and self-update.
     models: [
       'claude-opus-4-6',
       'claude-sonnet-4-6',
@@ -95,18 +96,15 @@ const PROVIDER_PRESETS: ProviderPreset[] = [
   {
     id: 'groq',
     label: 'Groq',
-    tagline: 'Ultra-fast inference — fastest Llama & Mixtral available',
+    tagline: 'Ultra-fast inference — Llama, Gemma, and more',
     endpoint: 'https://api.groq.com/openai/v1',
     authMethod: 'api_key',
     models: [
       'llama-3.3-70b-versatile',
-      'llama-3.1-70b-versatile',
       'llama-3.1-8b-instant',
-      'llama3-70b-8192',
-      'llama3-8b-8192',
-      'mixtral-8x7b-32768',
+      'llama-3.1-70b-versatile',
       'gemma2-9b-it',
-      'gemma-7b-it',
+      'mixtral-8x7b-32768',
     ],
     keyHint: 'Starts with gsk_',
     dashboardUrl: 'https://console.groq.com/keys',
@@ -119,6 +117,7 @@ const PROVIDER_PRESETS: ProviderPreset[] = [
     tagline: '100+ models — one API key for GPT, Claude, Gemini, Llama',
     endpoint: 'https://openrouter.ai/api/v1',
     authMethod: 'api_key',
+    // OpenRouter fetches its live catalog automatically on refresh.
     models: [
       'openai/gpt-4.1',
       'openai/gpt-4o',
@@ -127,7 +126,7 @@ const PROVIDER_PRESETS: ProviderPreset[] = [
       'google/gemini-2.5-pro',
       'google/gemini-2.5-flash',
       'meta-llama/llama-3.3-70b-instruct',
-      'mistralai/mistral-large',
+      'mistralai/mistral-large-latest',
       'deepseek/deepseek-r1',
     ],
     keyHint: 'Starts with sk-or-',
@@ -144,10 +143,9 @@ const PROVIDER_PRESETS: ProviderPreset[] = [
     models: [
       'gemini-2.5-pro',
       'gemini-2.5-flash',
+      'gemini-2.5-flash-lite',
       'gemini-2.0-flash',
       'gemini-2.0-flash-lite',
-      'gemini-1.5-pro',
-      'gemini-1.5-flash',
     ],
     keyHint: 'Starts with AIza',
     dashboardUrl: 'https://aistudio.google.com/app/apikey',
@@ -160,9 +158,9 @@ const PROVIDER_PRESETS: ProviderPreset[] = [
     tagline: 'Privacy-first AI — no logs, no training on your data',
     endpoint: 'https://api.venice.ai/api/v1',
     authMethod: 'api_key',
+    // Venice updates its model list frequently — refresh fetches the live catalog.
     models: [
       'llama-3.3-70b',
-      'llama-3.1-405b',
       'mistral-31-24b',
       'deepseek-r1-671b',
       'qwen-2.5-vl',
@@ -175,15 +173,15 @@ const PROVIDER_PRESETS: ProviderPreset[] = [
   {
     id: 'kimi',
     label: 'Kimi (Moonshot)',
-    tagline: 'Moonshot AI — 128K context, strong at long documents',
+    tagline: 'Moonshot AI — long context, strong at documents',
     endpoint: 'https://api.moonshot.cn/v1',
     authMethod: 'api_key',
     models: [
+      'kimi-k2.5',
+      'kimi-thinking-preview',
       'moonshot-v1-128k',
       'moonshot-v1-32k',
       'moonshot-v1-8k',
-      'kimi-latest',
-      'kimi-thinking-preview',
     ],
     keyHint: 'Moonshot API key',
     dashboardUrl: 'https://platform.moonshot.ai/console/api-keys',
@@ -196,14 +194,13 @@ const PROVIDER_PRESETS: ProviderPreset[] = [
     tagline: 'European frontier AI — Mistral Large, Codestral, and more',
     endpoint: 'https://api.mistral.ai/v1',
     authMethod: 'api_key',
+    // *-latest aliases are officially maintained by Mistral and self-update.
     models: [
       'mistral-large-latest',
-      'mistral-medium-latest',
       'mistral-small-latest',
       'mistral-saba-latest',
       'codestral-latest',
       'open-mistral-nemo',
-      'open-mixtral-8x22b',
     ],
     keyHint: 'Mistral API key',
     dashboardUrl: 'https://console.mistral.ai/api-keys',
