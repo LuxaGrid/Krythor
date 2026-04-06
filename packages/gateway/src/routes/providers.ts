@@ -112,7 +112,11 @@ export function registerProviderRoutes(app: FastifyInstance, models: ModelEngine
     const modelList = models.listModels().filter(m => m.providerId === provider.id);
     const testModel = modelList[0]?.id;
     if (!testModel) {
-      return reply.code(400).send({ ok: false, error: 'No models available for this provider' });
+      const isOllama = provider.type === 'ollama';
+      const hint = isOllama
+        ? 'No models pulled yet — run: ollama pull llama3.2'
+        : 'No models available for this provider';
+      return reply.code(400).send({ ok: false, error: hint });
     }
 
     const start = Date.now();
