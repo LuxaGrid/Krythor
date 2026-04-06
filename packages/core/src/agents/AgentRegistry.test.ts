@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdirSync, rmSync, existsSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -68,11 +68,14 @@ describe('AgentRegistry', () => {
   });
 
   it('lists agents sorted by updatedAt descending', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1000);
     const a1 = registry.create({ name: 'First',  systemPrompt: 'P' });
-    // Force a distinct timestamp so sort order is deterministic
+    vi.setSystemTime(2000);
     const a2 = registry.create({ name: 'Second', systemPrompt: 'P' });
-    // Manually set a2's updatedAt to be strictly after a1's
+    vi.setSystemTime(3000);
     registry.update(a2.id, { name: 'Second' });
+    vi.useRealTimers();
     const list = registry.list();
     // a2 was updated last, so updatedAt is higher — should be first in list
     expect(list[0]?.id).toBe(a2.id);
