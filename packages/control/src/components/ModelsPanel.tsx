@@ -307,7 +307,6 @@ export function ModelsPanel({ health }: Props) {
   const [presetAdding, setPresetAdding] = useState(false);
   const [presetError, setPresetError] = useState<string | null>(null);
   const [showPresets, setShowPresets] = useState(false);
-  const [presetDirectAdding, setPresetDirectAdding] = useState<string | null>(null); // id of preset being directly added
 
   // OAuth connect panel state (per-provider, for non-openai/anthropic providers)
   const [oauthPanel, setOauthPanel]     = useState<string | null>(null); // provider id
@@ -367,29 +366,9 @@ export function ModelsPanel({ health }: Props) {
 
   // ── Add via preset ───────────────────────────────────────────────────────
 
-  const handlePresetClick = async (preset: ProviderPreset) => {
-    if (preset.authMethod === 'none') {
-      // No key needed — add directly without opening the modal
-      setPresetDirectAdding(preset.id);
-      setShowPresets(false);
-      try {
-        const p = await addProvider({
-          name:       preset.label,
-          type:       (preset.nativeType ?? 'openai-compat') as Provider['type'],
-          endpoint:   preset.endpoint,
-          authMethod: 'none',
-          isDefault:  false,
-          models:     preset.models,
-        } as Omit<Provider, 'id'>);
-        await refreshModels(p.id).catch(() => {});
-        await load();
-      } catch { /* ignore */ } finally {
-        setPresetDirectAdding(null);
-      }
-    } else {
-      setPresetModal(preset);
-      setShowPresets(false);
-    }
+  const handlePresetClick = (preset: ProviderPreset) => {
+    setPresetModal(preset);
+    setShowPresets(false);
   };
 
   const handlePresetAdd = async () => {
@@ -723,49 +702,94 @@ export function ModelsPanel({ health }: Props) {
             </div>
             <div className="px-5 py-5 space-y-4">
               <p className="text-sm text-zinc-400 leading-relaxed">{presetModal.tagline}</p>
-              <div className="rounded-xl bg-zinc-800/40 border border-zinc-700/40 p-4 space-y-2">
-                <p className="text-xs text-zinc-500 font-medium uppercase tracking-wide">Steps</p>
-                <ol className="space-y-2">
-                  <li className="flex gap-2.5 text-sm text-zinc-400">
-                    <span className="font-mono font-bold shrink-0" style={{ color: presetModal.color }}>1.</span>
-                    <span>Get your API key from the {presetModal.label} dashboard.</span>
-                  </li>
-                  <li className="flex gap-2.5 text-sm text-zinc-400">
-                    <span className="font-mono font-bold shrink-0" style={{ color: presetModal.color }}>2.</span>
-                    <span>Paste it below and click Connect.</span>
-                  </li>
-                </ol>
-              </div>
-              {presetModal.dashboardUrl && (
-                <a href={presetModal.dashboardUrl} target="_blank" rel="noopener noreferrer"
-                  className="flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-xl text-sm font-medium text-white transition-colors"
-                  style={{ background: presetModal.color }}>
-                  {presetModal.dashboardLabel}
-                </a>
+              {presetModal.authMethod === 'none' ? (
+                <>
+                  <div className="rounded-xl bg-zinc-800/40 border border-zinc-700/40 p-4 space-y-2">
+                    <p className="text-xs text-zinc-500 font-medium uppercase tracking-wide">Setup</p>
+                    <ol className="space-y-2">
+                      <li className="flex gap-2.5 text-sm text-zinc-400">
+                        <span className="font-mono font-bold shrink-0" style={{ color: presetModal.color }}>1.</span>
+                        <span>Download and install Ollama from <span className="text-zinc-200">ollama.com</span>.</span>
+                      </li>
+                      <li className="flex gap-2.5 text-sm text-zinc-400">
+                        <span className="font-mono font-bold shrink-0" style={{ color: presetModal.color }}>2.</span>
+                        <span>Pull a model — e.g. <code className="font-mono text-zinc-300 bg-zinc-800 px-1 rounded">ollama pull llama3.2</code></span>
+                      </li>
+                      <li className="flex gap-2.5 text-sm text-zinc-400">
+                        <span className="font-mono font-bold shrink-0" style={{ color: presetModal.color }}>3.</span>
+                        <span>Ollama runs automatically in the background on <span className="font-mono text-zinc-300">localhost:11434</span>. Click Add below.</span>
+                      </li>
+                    </ol>
+                  </div>
+                  {presetModal.dashboardUrl && (
+                    <a href={presetModal.dashboardUrl} target="_blank" rel="noopener noreferrer"
+                      className="flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-xl text-sm font-medium text-white transition-colors"
+                      style={{ background: presetModal.color }}>
+                      {presetModal.dashboardLabel}
+                    </a>
+                  )}
+                  {presetError && (
+                    <p className="text-xs text-red-400 bg-red-950/30 border border-red-900/30 rounded-lg px-3 py-2">{presetError}</p>
+                  )}
+                  <div className="flex gap-2">
+                    <button onClick={() => void handlePresetAdd()} disabled={presetAdding}
+                      className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium text-zinc-900 transition-colors disabled:opacity-40 flex items-center justify-center gap-2"
+                      style={{ background: presetModal.color }}>
+                      {presetAdding ? <><Spinner /> Adding…</> : 'Add Ollama'}
+                    </button>
+                    <button onClick={() => { setPresetModal(null); setPresetError(null); }}
+                      className="px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 text-sm rounded-xl transition-colors">
+                      Cancel
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="rounded-xl bg-zinc-800/40 border border-zinc-700/40 p-4 space-y-2">
+                    <p className="text-xs text-zinc-500 font-medium uppercase tracking-wide">Steps</p>
+                    <ol className="space-y-2">
+                      <li className="flex gap-2.5 text-sm text-zinc-400">
+                        <span className="font-mono font-bold shrink-0" style={{ color: presetModal.color }}>1.</span>
+                        <span>Get your API key from the {presetModal.label} dashboard.</span>
+                      </li>
+                      <li className="flex gap-2.5 text-sm text-zinc-400">
+                        <span className="font-mono font-bold shrink-0" style={{ color: presetModal.color }}>2.</span>
+                        <span>Paste it below and click Connect.</span>
+                      </li>
+                    </ol>
+                  </div>
+                  {presetModal.dashboardUrl && (
+                    <a href={presetModal.dashboardUrl} target="_blank" rel="noopener noreferrer"
+                      className="flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-xl text-sm font-medium text-white transition-colors"
+                      style={{ background: presetModal.color }}>
+                      {presetModal.dashboardLabel}
+                    </a>
+                  )}
+                  <input
+                    type="password"
+                    value={presetKey}
+                    onChange={e => { setPresetKey(e.target.value); setPresetError(null); }}
+                    onKeyDown={e => { if (e.key === 'Enter') void handlePresetAdd(); }}
+                    placeholder={presetModal.keyHint}
+                    autoFocus
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3.5 py-2.5 text-sm text-zinc-200 placeholder-zinc-600 outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 transition-colors font-mono"
+                  />
+                  {presetError && (
+                    <p className="text-xs text-red-400 bg-red-950/30 border border-red-900/30 rounded-lg px-3 py-2">{presetError}</p>
+                  )}
+                  <div className="flex gap-2">
+                    <button onClick={() => void handlePresetAdd()} disabled={presetAdding || !presetKey.trim()}
+                      className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium text-zinc-900 transition-colors disabled:opacity-40 flex items-center justify-center gap-2"
+                      style={{ background: presetModal.color }}>
+                      {presetAdding ? <><Spinner /> Connecting…</> : 'Connect'}
+                    </button>
+                    <button onClick={() => { setPresetModal(null); setPresetKey(''); setPresetError(null); }}
+                      className="px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 text-sm rounded-xl transition-colors">
+                      Cancel
+                    </button>
+                  </div>
+                </>
               )}
-              <input
-                type="password"
-                value={presetKey}
-                onChange={e => { setPresetKey(e.target.value); setPresetError(null); }}
-                onKeyDown={e => { if (e.key === 'Enter') void handlePresetAdd(); }}
-                placeholder={presetModal.keyHint}
-                autoFocus
-                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3.5 py-2.5 text-sm text-zinc-200 placeholder-zinc-600 outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 transition-colors font-mono"
-              />
-              {presetError && (
-                <p className="text-xs text-red-400 bg-red-950/30 border border-red-900/30 rounded-lg px-3 py-2">{presetError}</p>
-              )}
-              <div className="flex gap-2">
-                <button onClick={() => void handlePresetAdd()} disabled={presetAdding || !presetKey.trim()}
-                  className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium text-zinc-900 transition-colors disabled:opacity-40 flex items-center justify-center gap-2"
-                  style={{ background: presetModal.color }}>
-                  {presetAdding ? <><Spinner /> Connecting…</> : 'Connect'}
-                </button>
-                <button onClick={() => { setPresetModal(null); setPresetKey(''); setPresetError(null); }}
-                  className="px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 text-sm rounded-xl transition-colors">
-                  Cancel
-                </button>
-              </div>
             </div>
           </div>
         </div>
@@ -779,8 +803,7 @@ export function ModelsPanel({ health }: Props) {
             {PROVIDER_PRESETS.map(preset => (
               <button key={preset.id}
                 onClick={() => void handlePresetClick(preset)}
-                disabled={presetDirectAdding === preset.id}
-                className="text-left p-3 rounded-xl border border-zinc-800 hover:border-zinc-600 bg-zinc-900/60 hover:bg-zinc-800/60 transition-all group disabled:opacity-60 disabled:cursor-wait">
+                className="text-left p-3 rounded-xl border border-zinc-800 hover:border-zinc-600 bg-zinc-900/60 hover:bg-zinc-800/60 transition-all group">
                 <div className="flex items-center gap-2 mb-1">
                   <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: preset.color }} />
                   <span className="text-xs font-semibold text-zinc-200 group-hover:text-white transition-colors">{preset.label}</span>
