@@ -98,7 +98,167 @@ function LogRow({ entry }: { entry: LogEntry }) {
   );
 }
 
+// ── Disk log history viewer ────────────────────────────────────────────────────
+
+interface DiskLogEntry {
+  ts?: string;
+  level?: string;
+  message?: string;
+  [key: string]: unknown;
+}
+
+interface LogFileInfo {
+  date: string;
+  filename: string;
+  sizeBytes: number;
+}
+
+function fmtBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function DiskLogRow({ entry }: { entry: DiskLogEntry & { raw?: string } }) {
+  const [expanded, setExpanded] = useState(false);
+  const level = (entry.level ?? 'info').toLowerCase() as LogEntry['level'];
+  const message = entry.message ?? entry.raw ?? JSON.stringify(entry);
+  const ts = entry.ts ? new Date(entry.ts).toLocaleTimeString('en-US', { hour12: false }) : '';
+  const prettyRaw = JSON.stringify(entry, null, 2);
+
+  return (
+    <div
+      className="border-b border-zinc-900/60 hover:bg-zinc-900/40 group transition-colors"
+      style={{ background: LEVEL_BG[level] ?? 'transparent' }}
+    >
+      <div className="flex items-start gap-2 px-3 py-1 cursor-pointer" onClick={() => setExpanded(e => !e)}>
+        <span className="text-[10px] text-zinc-700 tabular-nums flex-shrink-0 pt-px w-16">{ts}</span>
+        <span className="text-[10px] font-bold flex-shrink-0 pt-px w-10 uppercase" style={{ color: LEVEL_COLOR[level] ?? '#60a5fa' }}>
+          {level}
+        </span>
+        <span className="text-[10px] text-zinc-400 flex-1 leading-relaxed group-hover:text-zinc-300 transition-colors break-all pt-px">
+          {message}
+        </span>
+        <span className="text-[10px] text-zinc-700 flex-shrink-0 pt-px">{expanded ? '▲' : '▼'}</span>
+      </div>
+      {expanded && (
+        <pre className="px-3 pb-2 text-[10px] text-zinc-500 leading-relaxed whitespace-pre-wrap break-all bg-zinc-950/60 max-h-48 overflow-y-auto">
+          {prettyRaw}
+        </pre>
+      )}
+    </div>
+  );
+}
+
+function HistoryTab() {
+  const [files, setFiles] = useState<LogFileInfo[]>([]);
+  const [selectedDate, setSelectedDate] = useState<string>('today');
+  const [diskEntries, setDiskEntries] = useState<(DiskLogEntry & { raw?: string })[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [diskFilter, setDiskFilter] = useState<LevelFilter>('all');
+  const [diskSearch, setDiskSearch] = useState('');
+  const [logsDir, setLogsDir] = useState('');
+  const [total, setTotal] = useState(0);
+
+  // Load file list
+  useEffect(() => {
+    const token = getGatewayToken();
+    const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+    fetch('/api/logs', { headers })
+      .then(r => r.ok ? r.json() as Promise<{ files: LogFileInfo[]; logsDir: string }> : Promise.reject())
+      .then(data => { setFiles(data.files); setLogsDir(data.logsDir); })
+      .catch(() => {});
+  }, []);
+
+  const loadDate = useCallback((date: string) => {
+    setLoading(true);
+    setDiskEntries([]);
+    const token = getGatewayToken();
+    const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+    const url = date === 'today' ? '/api/logs/today?lines=500' : `/api/logs/${date}?lines=500`;
+    fetch(url, { headers })
+      .then(r => r.ok ? r.json() as Promise<{ entries: (DiskLogEntry & { raw?: string })[]; total: number }> : Promise.reject())
+      .then(data => { setDiskEntries(data.entries.reverse()); setTotal(data.total); })
+      .catch(() => { setDiskEntries([]); })
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => { loadDate(selectedDate); }, [selectedDate, loadDate]);
+
+  const visible = diskEntries.filter(e => {
+    const level = (e.level ?? 'info').toLowerCase();
+    if (diskFilter !== 'all' && level !== diskFilter) return false;
+    if (diskSearch) {
+      const haystack = `${e.message ?? ''} ${JSON.stringify(e)}`.toLowerCase();
+      if (!haystack.includes(diskSearch.toLowerCase())) return false;
+    }
+    return true;
+  });
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Controls */}
+      <div className="flex-shrink-0 flex items-center gap-2 px-3 py-2 border-b border-zinc-800/60 flex-wrap">
+        <select
+          value={selectedDate}
+          onChange={e => setSelectedDate(e.target.value)}
+          className="bg-zinc-900 border border-zinc-800 rounded px-2 py-0.5 text-[10px] font-mono text-zinc-300 outline-none focus:border-zinc-600"
+        >
+          <option value="today">today</option>
+          {files.map(f => (
+            <option key={f.date} value={f.date}>{f.date} ({fmtBytes(f.sizeBytes)})</option>
+          ))}
+        </select>
+
+        <div className="flex items-center gap-1">
+          {(['all', 'info', 'warn', 'error'] as LevelFilter[]).map(f => (
+            <button key={f} onClick={() => setDiskFilter(f)}
+              className="text-[10px] font-mono px-2 py-0.5 rounded transition-all uppercase tracking-wide"
+              style={{
+                background: diskFilter === f ? `${LEVEL_COLOR[f] ?? '#1eaeff'}18` : 'transparent',
+                color:      diskFilter === f ? (LEVEL_COLOR[f] ?? '#1eaeff') : '#52525b',
+                border:     diskFilter === f ? `1px solid ${LEVEL_COLOR[f] ?? '#1eaeff'}30` : '1px solid transparent',
+              }}>
+              {f}
+            </button>
+          ))}
+        </div>
+
+        <input
+          value={diskSearch}
+          onChange={e => setDiskSearch(e.target.value)}
+          placeholder="Filter…"
+          className="flex-1 min-w-0 bg-zinc-900 border border-zinc-800 rounded px-2 py-0.5 text-[10px] font-mono text-zinc-300 placeholder-zinc-700 outline-none focus:border-zinc-600 transition-colors"
+        />
+
+        <span className="text-[10px] font-mono text-zinc-700 tabular-nums">{visible.length}/{total}</span>
+        <button onClick={() => loadDate(selectedDate)}
+          className="text-[10px] font-mono px-2 py-0.5 rounded border border-zinc-800 text-zinc-600 hover:text-zinc-400 transition-colors">
+          ↻
+        </button>
+      </div>
+
+      {logsDir && (
+        <div className="px-3 py-1 text-[10px] font-mono text-zinc-700 border-b border-zinc-800/40 truncate" title={logsDir}>
+          {logsDir}
+        </div>
+      )}
+
+      <div className="flex-1 overflow-y-auto font-mono">
+        {loading ? (
+          <div className="flex items-center justify-center h-full text-[10px] text-zinc-700">loading…</div>
+        ) : visible.length === 0 ? (
+          <div className="flex items-center justify-center h-full text-[10px] text-zinc-800">no entries</div>
+        ) : (
+          visible.map((entry, i) => <DiskLogRow key={i} entry={entry} />)
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function LogsPanel() {
+  const [mode, setMode] = useState<'live' | 'history'>('live');
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [filter, setFilter] = useState<LevelFilter>('all');
   const [search, setSearch] = useState('');
@@ -197,9 +357,22 @@ export function LogsPanel() {
     <div className="flex flex-col h-full">
       <PanelHeader
         title="Logs"
-        description="Live gateway event stream. All agent runs, tool calls, memory events, and errors in real time."
-        tip="Events stream via WebSocket from /ws/stream. Filter by level or search by keyword. Pause to freeze the view. Clear removes all displayed entries (does not affect the gateway log file)."
+        description="Live gateway event stream and disk log history."
+        tip="Live: real-time events via WebSocket. History: disk log files written to the Krythor logs directory."
+        actions={
+          <div className="flex items-center gap-1 bg-zinc-900 border border-zinc-800 rounded p-0.5">
+            {(['live', 'history'] as const).map(m => (
+              <button key={m} onClick={() => setMode(m)}
+                className={`text-[10px] font-mono px-3 py-1 rounded transition-colors ${mode === m ? 'bg-zinc-800 text-zinc-200' : 'text-zinc-600 hover:text-zinc-400'}`}>
+                {m}
+              </button>
+            ))}
+          </div>
+        }
       />
+
+      {mode === 'history' && <HistoryTab />}
+      {mode === 'live' && <>
 
       {/* Toolbar */}
       <div className="flex-shrink-0 flex items-center gap-2 px-3 py-2 border-b border-zinc-800/60 flex-wrap">
@@ -286,6 +459,7 @@ export function LogsPanel() {
           </div>
         )}
       </div>
+      </>}
     </div>
   );
 }

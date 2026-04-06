@@ -77,6 +77,10 @@ export class DiskLogger {
       const safeData = data ? redactSecrets(data) as Record<string, unknown> : undefined;
       const line = JSON.stringify({ ts, level: level.toUpperCase(), message, ...safeData }) + '\n';
       appendFileSync(logFilePath(this.logsDir), line, 'utf-8');
+      // Mirror warn/error to stderr so they appear in the terminal during dev
+      if (level === 'error' || level === 'warn') {
+        process.stderr.write(`[${level.toUpperCase()}] ${ts} ${message}${safeData ? ' ' + JSON.stringify(safeData) : ''}\n`);
+      }
     } catch { /* non-fatal — disk logging must never crash the server */ }
   }
 

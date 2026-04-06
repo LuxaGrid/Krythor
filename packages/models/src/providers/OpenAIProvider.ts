@@ -102,7 +102,14 @@ export class OpenAIProvider extends BaseProvider {
       signal,
     });
 
-    if (!res.ok || !res.body) throw new Error(`OpenAI stream failed: HTTP ${res.status}`);
+    if (!res.ok || !res.body) {
+      let detail = '';
+      try {
+        const errBody = await res.json() as { error?: { message?: string } };
+        detail = errBody?.error?.message ? `: ${errBody.error.message}` : '';
+      } catch { /* body not JSON */ }
+      throw new Error(`OpenAI stream failed: HTTP ${res.status}${detail}`);
+    }
 
     const reader = res.body.getReader();
     const decoder = new TextDecoder();

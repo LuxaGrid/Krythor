@@ -50,6 +50,7 @@ import { registerOpenAICompatRoutes } from './routes/openai.compat.js';
 import { registerPluginRoutes } from './routes/plugins.js';
 import { registerApprovalRoutes } from './routes/approvals.js';
 import { registerAuditRoutes } from './routes/audit.js';
+import { registerLogRoutes } from './routes/logs.js';
 import { registerHookRoutes } from './routes/hooks.js';
 import { MetricsCollector } from './MetricsCollector.js';
 import { registerMetricsRoutes } from './routes/metrics.js';
@@ -1651,6 +1652,7 @@ Always show the score explanation when presenting ranked results.`,
   registerPluginRoutes(app, pluginLoader);
   registerApprovalRoutes(app, approvalManager);
   registerAuditRoutes(app, auditLogger, auditStore, accessProfileStore);
+  registerLogRoutes(app);
   registerApiKeyRoutes(app, apiKeyStore);
   registerWorkspaceRoutes(app);
 

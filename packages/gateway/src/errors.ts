@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyError } from 'fastify';
+import { logger } from './logger.js';
 
 // ─── API Error Envelope ───────────────────────────────────────────────────────
 //
@@ -86,7 +87,19 @@ export function registerErrorHandler(app: FastifyInstance): void {
       return reply.code(429).send(body);
     }
     const { code, message, hint } = classifyError(err);
+    const finalStatus = statusCode >= 400 ? statusCode : 500;
+    // Log all 5xx errors with full stack so they appear in the console/log file.
+    if (finalStatus >= 500) {
+      logger.error('[gateway] Unhandled error', {
+        requestId: req.id,
+        method:    req.method,
+        url:       req.url,
+        code,
+        message:   err.message,
+        stack:     err.stack,
+      });
+    }
     const body: ApiError = { code, message, hint, requestId: req.id };
-    return reply.code(statusCode >= 400 ? statusCode : 500).send(body);
+    return reply.code(finalStatus).send(body);
   });
 }

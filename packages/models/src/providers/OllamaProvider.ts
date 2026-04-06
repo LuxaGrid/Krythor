@@ -74,7 +74,15 @@ export class OllamaProvider extends BaseProvider {
       signal,
     });
 
-    if (!res.ok || !res.body) throw new Error(`Ollama stream failed: HTTP ${res.status}`);
+    if (!res.ok || !res.body) {
+      let detail = '';
+      try {
+        const errBody = await res.json() as { error?: string | { message?: string } };
+        const msg = typeof errBody?.error === 'string' ? errBody.error : errBody?.error?.message;
+        detail = msg ? `: ${msg}` : '';
+      } catch { /* body not JSON */ }
+      throw new Error(`Ollama stream failed: HTTP ${res.status}${detail}`);
+    }
 
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
