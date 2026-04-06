@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSidebarResize } from '../hooks/useSidebarResize.ts';
 import { SidebarResizeHandle } from './SidebarResizeHandle.tsx';
 import {
-  listSkills, listBuiltinSkills, createSkill, updateSkill, deleteSkill, listProviders, runSkill,
-  type Skill, type CreateSkillInput, type Provider, type BuiltinSkill, type SkillTaskProfile,
+  listSkills, listBuiltinSkills, createSkill, updateSkill, deleteSkill, listProviders, runSkill, listModels,
+  type Skill, type CreateSkillInput, type Provider, type BuiltinSkill, type SkillTaskProfile, type ModelInfo,
 } from '../api.ts';
 import { PanelHeader } from './PanelHeader.tsx';
 
@@ -81,10 +81,14 @@ function SkillFormPanel({
   );
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [modelInfos, setModelInfos] = useState<ModelInfo[]>([]);
+  const [modelSearch, setModelSearch] = useState('');
 
-  const allModels = providers.flatMap(p =>
-    (p.models ?? []).map(m => ({ label: `${m} (${p.name})`, modelId: m, providerId: p.id }))
-  );
+  useEffect(() => { listModels().then(setModelInfos).catch(() => {}); }, []);
+
+  const allModels = modelInfos.length > 0
+    ? modelInfos.map(m => ({ label: `${m.id} (${m.provider})`, modelId: m.id, providerId: m.providerId }))
+    : providers.flatMap(p => (p.models ?? []).map(m => ({ label: `${m} (${p.name})`, modelId: m, providerId: p.id })));
 
   const handleSubmit = async () => {
     if (!form.name.trim()) { setError('Name is required.'); return; }
@@ -157,6 +161,13 @@ function SkillFormPanel({
       </div>
       <div>
         <label className="text-xs text-zinc-500 block mb-1">Model (optional — overrides default)</label>
+        <input
+          type="text"
+          value={modelSearch}
+          onChange={e => setModelSearch(e.target.value)}
+          placeholder="Search models…"
+          className={`${INPUT_CLS} mb-1`}
+        />
         <select
           value={form.modelId ? `${form.modelId}|${form.providerId}` : ''}
           onChange={e => {
@@ -164,13 +175,16 @@ function SkillFormPanel({
             setForm(f => ({ ...f, modelId: modelId ?? '', providerId: providerId ?? '' }));
           }}
           className={SELECT_CLS}
+          size={Math.min(6, (modelSearch ? allModels.filter(m => m.label.toLowerCase().includes(modelSearch.toLowerCase())).length : allModels.length) + 1)}
         >
           <option value="">— Use default model —</option>
-          {allModels.map(m => (
-            <option key={`${m.modelId}|${m.providerId}`} value={`${m.modelId}|${m.providerId}`}>
-              {m.label}
-            </option>
-          ))}
+          {allModels
+            .filter(m => !modelSearch || m.label.toLowerCase().includes(modelSearch.toLowerCase()))
+            .map(m => (
+              <option key={`${m.modelId}|${m.providerId}`} value={`${m.modelId}|${m.providerId}`}>
+                {m.label}
+              </option>
+            ))}
         </select>
       </div>
       {/* Task Profile — affects ModelRecommender routing */}

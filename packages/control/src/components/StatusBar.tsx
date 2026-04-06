@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { listAgents, listModels, getSafeCoreDashboard, type Health, type ModelInfo, type SafeCoreDashboard } from '../api.ts';
 import { useAppConfig } from '../App.tsx';
 import { NotificationFeed } from './NotificationFeed.tsx';
@@ -20,6 +20,8 @@ export function StatusBar({ health, connected, onTabChange, onAbout, onSafeCoreC
   const [agents, setAgents]                 = useState<{ id: string; name: string }[]>([]);
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [models, setModels]                 = useState<ModelInfo[]>([]);
+  const [modelQuery, setModelQuery]         = useState('');
+  const modelSearchRef                      = useRef<HTMLInputElement>(null);
 
   // Resolve active agent name
   useEffect(() => {
@@ -46,8 +48,13 @@ export function StatusBar({ health, connected, onTabChange, onAbout, onSafeCoreC
 
   const openModelPicker = () => {
     setShowAgentPicker(false);
-    setShowModelPicker(s => !s);
-    if (!models.length) listModels().then(setModels).catch(() => {});
+    const opening = !showModelPicker;
+    setShowModelPicker(opening);
+    if (opening) {
+      setModelQuery('');
+      if (!models.length) listModels().then(setModels).catch(() => {});
+      setTimeout(() => modelSearchRef.current?.focus(), 30);
+    }
   };
 
   return (
@@ -117,44 +124,81 @@ export function StatusBar({ health, connected, onTabChange, onAbout, onSafeCoreC
           <span className="text-zinc-700">▾</span>
         </button>
         {showModelPicker && (
-          <div className="absolute top-full left-0 mt-1 z-50 bg-zinc-900 border border-zinc-700 rounded shadow-xl min-w-48 max-h-80 overflow-y-auto">
-            <div className="sticky top-0 px-2 py-1 text-zinc-600 border-b border-zinc-800 text-xs bg-zinc-900">Select model</div>
-            {noModel && (
-              <button
-                onClick={() => { setShowModelPicker(false); onTabChange('models'); }}
-                className="w-full text-left px-3 py-2 text-zinc-500 hover:bg-zinc-800 text-xs transition-colors"
-              >No providers — add one →</button>
-            )}
-            {models.length === 0 && !noModel && (
-              <div className="px-3 py-2 text-zinc-600 text-xs">No models found — try refreshing providers.</div>
-            )}
-            {/* Default option */}
-            {!noModel && (
-              <button
-                onClick={() => { setConfig({ selectedModel: undefined }); setShowModelPicker(false); }}
-                className={`w-full text-left px-3 py-2 hover:bg-zinc-800 text-xs transition-colors ${!config.selectedModel ? 'text-brand-400' : 'text-zinc-400'}`}
-              >
-                default
-                {!config.selectedModel && <span className="ml-1 text-brand-500">✓</span>}
-              </button>
-            )}
-            {models.map(m => (
-              <button
-                key={m.id}
-                onClick={() => { setConfig({ selectedModel: m.id }); setShowModelPicker(false); }}
-                className={`w-full text-left px-3 py-2 hover:bg-zinc-800 text-xs flex items-center gap-2 transition-colors ${config.selectedModel === m.id ? 'text-brand-400' : 'text-zinc-300'}`}
-              >
-                <span className="flex-1 truncate">{m.id}</span>
-                {m.badges.includes('local') && (
-                  <span className="text-emerald-700 shrink-0 text-xs">local</span>
-                )}
-                {m.badges.includes('remote') && (
-                  <span className="text-blue-700 shrink-0 text-xs">remote</span>
-                )}
-                {config.selectedModel === m.id && <span className="text-brand-500 shrink-0">✓</span>}
-              </button>
-            ))}
-          </div>
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => { setShowModelPicker(false); setModelQuery(''); }} />
+            <div className="absolute top-full left-0 mt-1 z-50 bg-zinc-900 border border-zinc-700 rounded shadow-xl min-w-[240px] max-h-[340px] flex flex-col">
+              {noModel ? (
+                <button
+                  onClick={() => { setShowModelPicker(false); onTabChange('models'); }}
+                  className="w-full text-left px-3 py-2 text-zinc-500 hover:bg-zinc-800 text-xs transition-colors"
+                >No providers — add one →</button>
+              ) : (
+                <>
+                  <div className="p-2 border-b border-zinc-800 shrink-0">
+                    <input
+                      ref={modelSearchRef}
+                      type="text"
+                      value={modelQuery}
+                      onChange={e => setModelQuery(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Escape') { setShowModelPicker(false); setModelQuery(''); } }}
+                      placeholder="Search models…"
+                      className="w-full bg-zinc-800 text-xs text-zinc-200 placeholder-zinc-600 px-2.5 py-1.5 rounded outline-none focus:ring-1 focus:ring-brand-600/40"
+                    />
+                  </div>
+                  <div className="overflow-y-auto">
+                    {/* Default option — only show when not searching */}
+                    {!modelQuery && (
+                      <button
+                        onClick={() => { setConfig({ selectedModel: undefined }); setShowModelPicker(false); }}
+                        className={`w-full text-left px-3 py-2 hover:bg-zinc-800 text-xs transition-colors ${!config.selectedModel ? 'text-brand-400' : 'text-zinc-400'}`}
+                      >
+                        default {!config.selectedModel && <span className="text-brand-500">✓</span>}
+                      </button>
+                    )}
+                    {(() => {
+                      const q = modelQuery.toLowerCase();
+                      const filtered = q
+                        ? models.filter(m => m.id.toLowerCase().includes(q) || m.provider.toLowerCase().includes(q))
+                        : models;
+                      // Group by provider, default provider first, local last
+                      const grouped = new Map<string, ModelInfo[]>();
+                      for (const m of filtered) {
+                        if (!grouped.has(m.provider)) grouped.set(m.provider, []);
+                        grouped.get(m.provider)!.push(m);
+                      }
+                      const providerOrder = (m: ModelInfo) => {
+                        if ((m as ModelInfo & { isDefault?: boolean }).isDefault) return 0;
+                        if (m.badges.includes('local')) return 2;
+                        return 1;
+                      };
+                      const groups = [...grouped.entries()]
+                        .map(([provider, items]) => ({ provider, items }))
+                        .sort((a, b) => providerOrder(a.items[0]!) - providerOrder(b.items[0]!));
+                      if (groups.length === 0) return (
+                        <p className="px-3 py-3 text-xs text-zinc-600 text-center">No models match "{modelQuery}"</p>
+                      );
+                      return groups.map(({ provider, items }) => (
+                        <div key={provider}>
+                          <div className="px-3 pt-2 pb-1 text-[10px] text-zinc-600 font-medium uppercase tracking-wider sticky top-0 bg-zinc-900">{provider}</div>
+                          {items.map(m => (
+                            <button
+                              key={`${m.providerId}/${m.id}`}
+                              onClick={() => { setConfig({ selectedModel: m.id }); setShowModelPicker(false); setModelQuery(''); }}
+                              className={`w-full text-left px-3 py-1.5 hover:bg-zinc-800 text-xs flex items-center gap-2 transition-colors ${config.selectedModel === m.id ? 'text-brand-400' : 'text-zinc-300'}`}
+                            >
+                              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${m.badges.includes('local') ? 'bg-emerald-400' : 'bg-sky-400'}`} />
+                              <span className="flex-1 truncate font-mono">{m.id}</span>
+                              {config.selectedModel === m.id && <span className="text-brand-500 shrink-0">✓</span>}
+                            </button>
+                          ))}
+                        </div>
+                      ));
+                    })()}
+                  </div>
+                </>
+              )}
+            </div>
+          </>
         )}
       </div>
 

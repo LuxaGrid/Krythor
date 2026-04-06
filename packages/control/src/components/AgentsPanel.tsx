@@ -562,6 +562,8 @@ export function AgentsPanel() {
     }))
   , [modelInfos]);
 
+  const [modelSearch, setModelSearch] = useState('');
+
   const { width: sidebarW, onMouseDown: sidebarDrag } = useSidebarResize('agents', 208);
 
   return (
@@ -746,6 +748,13 @@ export function AgentsPanel() {
             </div>
             <div>
               <label className="text-xs text-zinc-500 block mb-1">Model (optional)</label>
+              <input
+                type="text"
+                value={modelSearch}
+                onChange={e => setModelSearch(e.target.value)}
+                placeholder="Search models…"
+                className={`${INPUT_CLS} mb-1`}
+              />
               <select
                 value={form.modelId ? `${form.modelId}|${form.providerId}` : ''}
                 onChange={e => {
@@ -753,13 +762,16 @@ export function AgentsPanel() {
                   setForm(f => ({ ...f, modelId: modelId ?? '', providerId: providerId ?? '' }));
                 }}
                 className={SELECT_CLS}
+                size={Math.min(6, (modelSearch ? allModels.filter(m => m.label.toLowerCase().includes(modelSearch.toLowerCase())).length : allModels.length) + 1)}
               >
                 <option value="">— Use default provider model —</option>
-                {allModels.map(m => (
-                  <option key={`${m.modelId}|${m.providerId}`} value={`${m.modelId}|${m.providerId}`}>
-                    {m.label}
-                  </option>
-                ))}
+                {allModels
+                  .filter(m => !modelSearch || m.label.toLowerCase().includes(modelSearch.toLowerCase()))
+                  .map(m => (
+                    <option key={`${m.modelId}|${m.providerId}`} value={`${m.modelId}|${m.providerId}`}>
+                      {m.label}
+                    </option>
+                  ))}
               </select>
             </div>
             <div>
