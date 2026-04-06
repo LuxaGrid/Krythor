@@ -191,6 +191,48 @@ interface ModelSwitcherProps {
   onChange:         (modelId: string, providerId: string) => void;
 }
 
+/** Score a model ID so flagship/stable models sort before preview/mini/legacy variants. */
+function modelTierScore(id: string): number {
+  const lower = id.toLowerCase();
+  // Preview / experimental / dated snapshots sink to bottom
+  if (lower.includes('preview') || lower.includes('exp') || lower.match(/-\d{8}$/)) return 3;
+  // Mini / nano / lite / flash variants in the middle
+  if (lower.includes('mini') || lower.includes('nano') || lower.includes('lite') ||
+      lower.includes('flash') || lower.includes('small') || lower.includes('haiku')) return 2;
+  // Everything else (flagship) floats up
+  return 1;
+}
+
+/** Group and sort models: default-provider first, local last, flagship before mini/preview. */
+function sortedModelGroups(models: ModelInfo[]): Array<{ provider: string; items: ModelInfo[] }> {
+  // Determine provider order: default first, then remote, then local
+  const providerOrder = (m: ModelInfo) => {
+    if ((m as ModelInfo & { isDefault?: boolean }).isDefault) return 0;
+    if (m.badges.includes('local')) return 2;
+    return 1;
+  };
+
+  const grouped = new Map<string, ModelInfo[]>();
+  for (const m of models) {
+    const key = m.provider;
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key)!.push(m);
+  }
+
+  // Sort within each group by tier then alphabetically
+  for (const items of grouped.values()) {
+    items.sort((a, b) => {
+      const td = modelTierScore(a.id) - modelTierScore(b.id);
+      return td !== 0 ? td : a.id.localeCompare(b.id);
+    });
+  }
+
+  // Sort groups
+  return [...grouped.entries()]
+    .map(([provider, items]) => ({ provider, items }))
+    .sort((a, b) => providerOrder(a.items[0]!) - providerOrder(b.items[0]!));
+}
+
 export function ModelSwitcher({ selectedModelId, models, onChange }: ModelSwitcherProps) {
   const [open, setOpen] = useState(false);
 
@@ -198,6 +240,7 @@ export function ModelSwitcher({ selectedModelId, models, onChange }: ModelSwitch
 
   const current = models.find(m => m.id === selectedModelId) ?? models[0];
   const isLocal = current?.badges.includes('local');
+  const groups = sortedModelGroups(models);
 
   return (
     <div className="relative">
@@ -219,26 +262,30 @@ export function ModelSwitcher({ selectedModelId, models, onChange }: ModelSwitch
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute bottom-full mb-1 right-0 z-50 bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl min-w-[220px] max-h-[280px] overflow-y-auto">
-            {models.map(m => {
-              const local = m.badges.includes('local');
-              const active = m.id === selectedModelId;
-              return (
-                <button
-                  key={`${m.providerId}/${m.id}`}
-                  onClick={() => {
-                    onChange(m.id, m.providerId);
-                    setOpen(false);
-                  }}
-                  className={`w-full flex items-center gap-2 px-3 py-2 text-xs text-left hover:bg-zinc-800 transition-colors
-                    ${active ? 'text-zinc-100' : 'text-zinc-400'}`}
-                >
-                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${local ? 'bg-emerald-400' : 'bg-sky-400'}`} />
-                  <span className="font-mono truncate">{m.id}</span>
-                  {active && <span className="ml-auto text-brand-400">✓</span>}
-                </button>
-              );
-            })}
+          <div className="absolute bottom-full mb-1 right-0 z-50 bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl min-w-[240px] max-h-[320px] overflow-y-auto">
+            {groups.map(({ provider, items }) => (
+              <div key={provider}>
+                <div className="px-3 pt-2 pb-1 text-[10px] text-zinc-600 font-medium uppercase tracking-wider sticky top-0 bg-zinc-900">
+                  {provider}
+                </div>
+                {items.map(m => {
+                  const local = m.badges.includes('local');
+                  const active = m.id === selectedModelId;
+                  return (
+                    <button
+                      key={`${m.providerId}/${m.id}`}
+                      onClick={() => { onChange(m.id, m.providerId); setOpen(false); }}
+                      className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left hover:bg-zinc-800 transition-colors
+                        ${active ? 'text-zinc-100' : 'text-zinc-400'}`}
+                    >
+                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${local ? 'bg-emerald-400' : 'bg-sky-400'}`} />
+                      <span className="font-mono truncate">{m.id}</span>
+                      {active && <span className="ml-auto text-brand-400 shrink-0">✓</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
           </div>
         </>
       )}
